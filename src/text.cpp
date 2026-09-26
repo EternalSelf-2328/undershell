@@ -21,6 +21,7 @@ namespace fs = std::filesystem;
 
 std::string TextRenderer::fontsDir() {
   std::vector<std::string> candidates;
+  if (const char* env = std::getenv("UNDERSHELL_DATA_DIR"); env && *env) candidates.push_back(std::string(env) + "/fonts");
   if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg) candidates.push_back(std::string(xdg) + "/undershell/fonts");
   candidates.push_back(expandHome("~/.local/share/undershell/fonts"));
   if (*US_INSTALL_DATA_DIR) candidates.push_back(std::string(US_INSTALL_DATA_DIR) + "/fonts");

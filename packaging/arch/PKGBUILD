@@ -31,7 +31,7 @@ pkgver() {
 }
 
 build() {
-  arch-meson undershell build
+  arch-meson undershell build -Ddev_paths=false
   meson compile -C build
 }
 

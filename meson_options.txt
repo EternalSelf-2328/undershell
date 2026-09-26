@@ -1,2 +1,4 @@
 option('systemd_user_unit_dir', type : 'string', value : '',
   description : 'Where to install the systemd user unit (default: derived from the prefix)')
+option('dev_paths', type : 'boolean', value : true,
+  description : 'Let binaries run from the build tree find data in the source tree (off for packages)')

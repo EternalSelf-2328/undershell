@@ -26,11 +26,15 @@ wayland_protos = dependency('wayland-protocols')
 
 datadir = get_option('prefix') / get_option('datadir') / 'undershell'
 add_project_arguments(
-  '-DUS_SOURCE_DATA_DIR="' + meson.project_source_root() / 'data' + '"',
   '-DUS_INSTALL_DATA_DIR="' + datadir + '"',
-  '-DUS_SOURCE_DIR="' + meson.project_source_root() + '"',
   '-DUS_VERSION="' + meson.project_version() + '"',
   language : 'cpp')
+# running straight from the build tree finds the bundled fonts in the source
+# tree; packages turn this off so no build path ends up in the binary
+if get_option('dev_paths')
+  add_project_arguments('-DUS_SOURCE_DATA_DIR="' + meson.project_source_root() / 'data' + '"', language : 'cpp')
+endif
+test_args = ['-DUS_SOURCE_DIR="' + meson.project_source_root() + '"']
 
 scanner = find_program('wayland-scanner')
 wl_protos_dir = wayland_protos.get_variable('pkgdatadir')
@@ -94,5 +98,6 @@ install_data('README.md', 'NOTICE.md', 'docs/OPTIONS.md', install_dir : docdir)
 install_data('LICENSE', install_dir : prefix / get_option('datadir') / 'licenses/undershell')
 
 foreach t : ['config', 'docs', 'editor', 'media', 'motion', 'render']
-  test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep))
+  test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep, cpp_args : test_args),
+       env : ['UNDERSHELL_DATA_DIR=' + meson.project_source_root() / 'data'])
 endforeach
