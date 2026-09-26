@@ -1,5 +1,5 @@
 project('undershell', 'cpp', 'c',
-  version : '0.2.0',
+  version : '1.0.0',
   license : 'GPL-3.0-or-later',
   default_options : ['cpp_std=c++20', 'warning_level=2', 'buildtype=release', 'b_ndebug=if-release'])
 
@@ -29,6 +29,7 @@ add_project_arguments(
   '-DUS_SOURCE_DATA_DIR="' + meson.project_source_root() / 'data' + '"',
   '-DUS_INSTALL_DATA_DIR="' + datadir + '"',
   '-DUS_SOURCE_DIR="' + meson.project_source_root() + '"',
+  '-DUS_VERSION="' + meson.project_version() + '"',
   language : 'cpp')
 
 scanner = find_program('wayland-scanner')
@@ -56,6 +57,7 @@ core = static_library('undershell-core',
   'src/clock.cpp',
   'src/config.cpp',
   'src/depth.cpp',
+  'src/docgen.cpp',
   'src/editor.cpp',
   'src/gl.cpp',
   'src/inspector.cpp',
@@ -75,6 +77,22 @@ core_dep = declare_dependency(link_with : core, include_directories : include_di
 executable('undershell', 'src/main.cpp', dependencies : core_dep, install : true)
 install_subdir('data/fonts', install_dir : datadir)
 
-foreach t : ['config', 'editor', 'media', 'motion', 'render']
+# systemd user unit: /usr/lib/systemd/user for packages, ~/.local/share/systemd/user
+# (a directory systemd also searches) for user installs
+prefix = get_option('prefix')
+unitdir = get_option('systemd_user_unit_dir')
+if unitdir == ''
+  unitdir = prefix == '/usr' ? '/usr/lib/systemd/user' : prefix / get_option('datadir') / 'systemd/user'
+endif
+docdir = prefix / get_option('datadir') / 'doc/undershell'
+unit_conf = configuration_data()
+unit_conf.set('BINDIR', prefix / get_option('bindir'))
+unit_conf.set('DOCDIR', docdir)
+configure_file(input : 'data/undershell.service.in', output : 'undershell.service',
+  configuration : unit_conf, install : true, install_dir : unitdir)
+install_data('README.md', 'NOTICE.md', 'docs/OPTIONS.md', install_dir : docdir)
+install_data('LICENSE', install_dir : prefix / get_option('datadir') / 'licenses/undershell')
+
+foreach t : ['config', 'docs', 'editor', 'media', 'motion', 'render']
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep))
 endforeach

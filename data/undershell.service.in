@@ -1,0 +1,17 @@
+[Unit]
+Description=undershell desktop widgets
+Documentation=file://@DOCDIR@/README.md
+# lives and dies with the graphical session (umbriel, niri, Hyprland...)
+PartOf=graphical-session.target
+After=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@BINDIR@/undershell
+Restart=on-failure
+RestartSec=2
+# WAYLAND_DISPLAY and XDG_RUNTIME_DIR come from the session environment
+
+[Install]
+WantedBy=graphical-session.target

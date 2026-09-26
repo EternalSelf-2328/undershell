@@ -1,0 +1,45 @@
+# Maintainer: EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>
+#
+# Builds undershell from its git repository. By default it clones the local
+# checkout; point UNDERSHELL_REPO at a URL (or another path) to build elsewhere:
+#   UNDERSHELL_REPO=https://example.org/undershell.git makepkg -si
+
+pkgname=undershell
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Desktop widgets that live under your shell: Ryoku's visualizer, clocks and music card, with Noctalia palette and depth"
+arch=('x86_64')
+url="https://github.com/ryoku-dev/ryoku"
+license=('GPL-3.0-or-later' 'MIT' 'OFL-1.1')
+depends=('wayland' 'libglvnd' 'libpipewire' 'tomlplusplus' 'glib2' 'cairo' 'pango' 'fontconfig'
+         'libxkbcommon' 'systemd-libs' 'gdk-pixbuf2' 'curl')
+makedepends=('git' 'meson' 'ninja' 'wayland-protocols' 'nlohmann-json')
+optdepends=('noctalia: theme palette, wallpaper and wallpaper_depth integration'
+            'pipewire: live audio for the visualizer')
+_repo="${UNDERSHELL_REPO:-https://github.com/EternalSelf-2328/undershell.git}"
+case "$_repo" in
+  /*) source=("undershell::git+file://$_repo") ;;
+  *)  source=("undershell::git+$_repo") ;;
+esac
+sha256sums=('SKIP')
+
+pkgver() {
+  cd undershell
+  local base
+  base=$(sed -n "s/^  version : '\(.*\)',$/\1/p" meson.build)
+  printf "%s.r%s.%s" "$base" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  arch-meson undershell build
+  meson compile -C build
+}
+
+check() {
+  # headless: the render test uses EGL surfaceless and skips itself without it
+  meson test -C build --print-errorlogs
+}
+
+package() {
+  meson install -C build --destdir "$pkgdir"
+}

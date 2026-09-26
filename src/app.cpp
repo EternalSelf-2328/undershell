@@ -945,6 +945,7 @@ int App::computeTimeout() {
   double next = 1e9;
   for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt})
     if (t > 0) next = std::min(next, t);
+  if (!m_noctalia.ready()) next = std::min(next, m_noctRetryAt);
   for (auto& w : m_widgets) {
     if (!w->configured || !w->impl) continue;
     if (!w->needsRender) {
@@ -1031,6 +1032,11 @@ int App::run() {
     if (m_refreshDepthAt > 0 && now >= m_refreshDepthAt) {
       m_refreshDepthAt = 0;
       updateDepth();
+    }
+    // until Noctalia's config has been read once, retry every few seconds
+    if (!m_noctalia.ready() && now >= m_noctRetryAt) {
+      m_noctRetryAt = now + 3;
+      refreshNoctalia();
     }
     // safety net: a mask generated while an event was missed is found anyway
     if (m_depth.missing() && m_refreshDepthAt == 0) m_refreshDepthAt = now + 15;

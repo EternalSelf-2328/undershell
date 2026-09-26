@@ -33,6 +33,8 @@ public:
   // palette. Returns true if anything the widgets use changed.
   bool refresh();
   [[nodiscard]] const NoctaliaState& state() const { return m_state; }
+  // true once an export has been read (palette/depth settings are known)
+  [[nodiscard]] bool ready() const { return !m_lastExport.empty(); }
 
   static std::string settingsPath();
   static std::string configDir();
@@ -42,6 +44,7 @@ private:
   NoctaliaState m_state;
   std::string m_paletteKey;
   std::string m_lastExport;
+  bool m_warned = false;
 };
 
 }  // namespace undershell

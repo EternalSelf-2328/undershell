@@ -41,9 +41,12 @@ static int fillModeIndex(const std::string& s) {
 bool Noctalia::refresh() {
   std::string exported = runCommand("noctalia config export", 8);
   if (exported.empty()) {
-    US_WARN("`noctalia config export` returned nothing (is Noctalia running?)");
+    if (!m_warned) US_WARN("`noctalia config export` returned nothing; retrying (is Noctalia installed?)");
+    m_warned = true;
     return false;
   }
+  if (m_warned) US_INFO("Noctalia config available");
+  m_warned = false;
   if (exported == m_lastExport) return false;
   m_lastExport = exported;
 

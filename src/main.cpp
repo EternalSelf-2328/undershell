@@ -4,6 +4,7 @@
 // wallpaper_depth masks).
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app.hpp"
+#include "docgen.hpp"
 #include "common.hpp"
 #include "ipc.hpp"
 #include "offscreen.hpp"
@@ -19,6 +20,7 @@ int main(int argc, char** argv) {
     if (!std::strcmp(argv[i], "--debug")) undershell::g_logLevel = undershell::LogLevel::Debug;
     if (!std::strcmp(argv[i], "-h") || !std::strcmp(argv[i], "--help")) {
       std::puts("usage: undershell [--debug]            run the widgets\n"
+                "       undershell --doc | --version | --snapshot DIR\n"
                 "       undershell msg <command>       edit | edit-on | edit-off | demo | reset | reload | status | quit\n"
                 "                                         set <id|all> <key> <value>   e.g. set all style orb\n"
                 "                                         add <visualizer|clock|now_playing> [look] · remove <id>\n"
@@ -26,6 +28,14 @@ int main(int argc, char** argv) {
       return 0;
     }
     if (!std::strcmp(argv[i], "--snapshot") && i + 1 < argc) return undershell::snapshotLooks(argv[i + 1]);
+    if (!std::strcmp(argv[i], "--doc")) {
+      std::fputs(undershell::optionsMarkdown().c_str(), stdout);
+      return 0;
+    }
+    if (!std::strcmp(argv[i], "--version")) {
+      std::puts("undershell " US_VERSION);
+      return 0;
+    }
     if (!std::strcmp(argv[i], "msg")) {
       if (i + 1 >= argc) {
         std::fputs("msg needs a command\n", stderr);

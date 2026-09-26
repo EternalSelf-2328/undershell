@@ -99,6 +99,30 @@ thickness, reflection, grow, shape, color_mode theme/gradient/custom,
 color/color2 as a Noctalia role or `#hex`, gain, smoothing, peaks, mirror,
 idle_wave, spin, glow, fps, opacity, depth). You can have several widgets.
 
+## Install
+
+**As a package (Arch / CachyOS):**
+
+```sh
+cd packaging/arch && makepkg -si
+systemctl --user enable --now undershell
+```
+
+**By hand:**
+
+```sh
+meson setup build --prefix=$HOME/.local
+ninja -C build && meson test -C build && meson install -C build
+systemctl --user daemon-reload && systemctl --user enable --now undershell
+```
+
+It runs as a **systemd user service** tied to the graphical session: it starts
+with it, restarts itself if it crashes, and its logs go to the journal
+(`journalctl --user -u undershell`). To stop it: `systemctl --user disable --now undershell`.
+
+Every option is documented in [`docs/OPTIONS.md`](docs/OPTIONS.md) (generated
+from the same table the inspector uses: `undershell --doc`).
+
 ## Build and tests
 
 ```sh
@@ -143,10 +167,9 @@ libsystemd (sd-bus), gdk-pixbuf, libcurl, nlohmann-json.
 - [x] Phase 3: clocks (12 faces, 3 dates), 2D canvas, hollow text and halo
 - [x] Phase 4: now-playing card (MPRIS via sd-bus, cover, album color, LRCLIB lyrics, controls)
 - [x] Phase 5: inspector, gallery, duplicate/delete, full undo
-- [ ] Phase 6: autostart, PKGBUILD, documentation
+- [x] Phase 6: systemd service, PKGBUILD, generated option docs, credits
 
 ## License
 
-GPL-3.0-or-later (the shader and the motion are derived from Ryoku, GPL-3.0).
-It includes code adapted from Noctalia (MIT): the spectrum analysis and the
-wallpaper sampling math for the mask.
+GPL-3.0-or-later. Credits and third-party licenses (Ryoku GPL-3.0, Noctalia
+MIT, OFL fonts, LRCLIB) are in [`NOTICE.md`](NOTICE.md).
