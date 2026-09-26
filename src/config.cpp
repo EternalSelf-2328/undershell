@@ -183,6 +183,96 @@ VisualizerConfig VisualizerConfig::fromTable(const toml::table& t) {
   return v;
 }
 
+static std::vector<std::string> fileLines(const std::string& path) {
+  std::istringstream in(readFile(path));
+  std::vector<std::string> lines;
+  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  return lines;
+}
+
+// a block runs from its [[widget]] header up to the next header, minus the
+// blank lines that separate it from that header
+static void trimBlockEnd(const std::vector<std::string>& lines, size_t start, size_t& end) {
+  while (end > start + 1 && lines[end - 1].find_first_not_of(" \t") == std::string::npos) --end;
+}
+
+std::string Config::blockText(const std::string& path, const std::string& id) {
+  auto lines = fileLines(path);
+  size_t start = 0, end = 0;
+  if (!findBlock(lines, id, start, end)) return {};
+  trimBlockEnd(lines, start, end);
+  std::string out;
+  for (size_t i = start; i < end; ++i) out += lines[i] + "\n";
+  return out;
+}
+
+bool Config::removeBlock(const std::string& path, const std::string& id, std::string* removed) {
+  auto lines = fileLines(path);
+  size_t start = 0, end = 0;
+  if (!findBlock(lines, id, start, end)) return false;
+  size_t cut = end;
+  trimBlockEnd(lines, start, cut);
+  if (removed) {
+    removed->clear();
+    for (size_t i = start; i < cut; ++i) *removed += lines[i] + "\n";
+  }
+  // drop the block and the blank lines before it
+  size_t from = start;
+  while (from > 0 && lines[from - 1].find_first_not_of(" \t") == std::string::npos) --from;
+  lines.erase(lines.begin() + static_cast<long>(from), lines.begin() + static_cast<long>(cut));
+  std::string out;
+  for (auto& l : lines) out += l + "\n";
+  return writeFileAtomic(path, out);
+}
+
+bool Config::appendBlock(const std::string& path, const std::string& block) {
+  std::string text = readFile(path);
+  while (!text.empty() && (text.back() == '\n' || text.back() == ' ')) text.pop_back();
+  return writeFileAtomic(path, text + "\n\n" + block + (block.ends_with("\n") ? "" : "\n"));
+}
+
+std::string Config::tomlText(const toml::node& n) {
+  if (const auto* str = n.as_string()) {
+    // always a basic "..." string (toml++ would pick '...' literals)
+    std::string out = "\"";
+    for (char c : str->get()) {
+      if (c == '"' || c == '\\') out += '\\';
+      out += c;
+    }
+    return out + "\"";
+  }
+  std::ostringstream ss;
+  n.visit([&](auto&& v) { ss << v; });
+  return ss.str();
+}
+
+std::string Config::defaultBlock(const std::string& type, const std::string& id, const std::string& output, int x, int y,
+                                 int w, int h, const std::string& look) {
+  std::string b = std::format("[[widget]]\nid = \"{}\"\ntype = \"{}\"\n", id, type);
+  if (!output.empty()) b += std::format("output = \"{}\"\n", output);
+  b += std::format("x = {}\ny = {}\nwidth = {}\nheight = {}\n", x, y, w, h);
+  if (type == "clock") {
+    b += std::format("face = \"{}\"            # digital minimal analog flip rings bighour metal goodnight grand column outline banner\n",
+                     look.empty() ? "digital" : look);
+    b += "date = \"inline\"          # none inline badge stacked\n"
+         "clock_24h = true\nseconds = false\n"
+         "accent = \"primary\"        # primary secondary tertiary brand mono custom\n"
+         "accent_color = \"#e2342a\"\nink = \"on_surface\"\n"
+         "language = \"system\"      # system en es\nweather = true            # metal face\nfahrenheit = false\n";
+  } else if (type == "visualizer") {
+    b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral\n",
+                     look.empty() ? "bars" : look);
+  } else if (type == "now_playing") {
+    b += "plate = \"cover\"           # cover glass none\n"
+         "show_lyrics = true          # synced lyrics from LRCLIB\n"
+         "viz = \"bars\"              # bars wave (when there are no lyrics)\n"
+         "accent_source = \"album\"   # album theme\n"
+         "music_app = \"spotify\"     # opened by the corner button\n"
+         "ink = \"on_surface\"\nfps = 30\n";
+  }
+  return b;
+}
+
 bool Config::saveGeometry(const std::string& path, const WidgetConfig& w) {
   return editBlock(path, w.id, {{"x", std::to_string(w.x)}, {"y", std::to_string(w.y)},
                                 {"width", std::to_string(w.width)}, {"height", std::to_string(w.height)}});

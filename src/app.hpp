@@ -137,12 +137,17 @@ private:
     std::string id;
     int x = 0, y = 0, w = 0, h = 0;
     std::string style;
+    std::string kind = "geom";  // geom | prop | add | remove
+    std::string key, value;     // prop: the key and its TOML value before
+    std::string block;          // add/remove: the widget's block text
   };
   EditOp snapshot(const Widget& w) const;
   void pushUndo(const Widget& w, const char* kind);
   void applyOp(const EditOp& op);
   void undo();
   void redo();
+  void applyEditOp(const EditOp& op, bool undoing);
+  [[nodiscard]] EditOp inverseOf(const EditOp& op) const;
   void nudge(int dx, int dy, bool resize);
   bool keyAction(uint32_t key);
   [[nodiscard]] bool modActive(const char* name) const;
@@ -155,6 +160,25 @@ private:
   bool widgetPointer(PointerEvent::Type type, wl_surface* s, double x, double y, uint32_t button);
   void updateInputRegion(Widget& w);
   void drawEditorText(EditSurface& e);
+  // inspector + gallery (inspector.cpp)
+  struct UiControl {
+    enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel } type = Panel;
+    Rect r;       // output coordinates
+    int prop = -1;
+    std::string value;  // swatch colour / gallery type
+  };
+  void layoutUi(const EditSurface& e);
+  void layoutGallery(float W, float H);
+  void drawUi(EditSurface& e);
+  int uiHit(double x, double y) const;
+  bool uiPress(int index, double x);
+  void uiDrag(double x);
+  bool uiScroll(double x, double y, int step);
+  void setProp(Widget& w, const std::string& key, const std::string& tomlValue);
+  void applyProp(Widget& w, const std::string& key, const std::string& tomlValue);
+  std::string addWidget(const std::string& type, const std::string& look, int x, int y, bool record);
+  void removeWidget(Widget& w);
+  void duplicateWidget(Widget& w);
   void moveWidget(Widget& w, int x, int y);
   void clampToOutput(WidgetConfig& c, const Output* o) const;
   void persist(Widget& w);
@@ -207,7 +231,7 @@ private:
   EditSurface* m_pointerEdit = nullptr;  // editor surface under the pointer
   Widget* m_pointerWidget = nullptr;     // widget hovered / being dragged
   double m_px = 0, m_py = 0;             // pointer, output coordinates
-  enum class Drag { None, Move, Resize } m_drag = Drag::None;
+  enum class Drag { None, Move, Resize, Slider } m_drag = Drag::None;
   double m_pressX = 0, m_pressY = 0;     // pointer at press, output coordinates
   int m_startX = 0, m_startY = 0, m_dragW = 0, m_dragH = 0;
   double m_scrollAcc = 0;
@@ -222,6 +246,12 @@ private:
   int m_repeatRate = 25, m_repeatDelay = 600;
   uint32_t m_repeatKey = 0;
   double m_repeatNext = 0;
+  std::vector<UiControl> m_ui;
+  const Output* m_uiOutput = nullptr;
+  bool m_galleryOpen = false;
+  float m_inspScroll = 0;
+  int m_sliderControl = -1;
+  std::string m_pendingSelect;  // select this id once the reload creates it
   bool m_running = true;
   bool m_demo = false;
   double m_demoT = 0;

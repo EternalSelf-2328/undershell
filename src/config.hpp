@@ -60,6 +60,17 @@ struct Config {
   // Sets `key = value` (value already TOML-formatted) inside widget `id`'s
   // block, adding the line if missing. Comments and layout are preserved.
   static bool setKey(const std::string& path, const std::string& id, const std::string& key, const std::string& tomlValue);
+  // The full text of widget `id`'s [[widget]] block (with its header), or "".
+  static std::string blockText(const std::string& path, const std::string& id);
+  // Removes widget `id`'s block; returns its text through `removed`.
+  static bool removeBlock(const std::string& path, const std::string& id, std::string* removed = nullptr);
+  // Appends a block (as returned by blockText / defaultBlock).
+  static bool appendBlock(const std::string& path, const std::string& block);
+  // A commented starter block for a widget type.
+  static std::string defaultBlock(const std::string& type, const std::string& id, const std::string& output, int x, int y,
+                                  int w, int h, const std::string& look);
+  // TOML text of a value (strings quoted), for undo records
+  static std::string tomlText(const toml::node& n);
 };
 
 }  // namespace undershell

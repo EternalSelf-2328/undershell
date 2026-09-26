@@ -393,6 +393,12 @@ void App::syncWidgets() {
   for (auto& old : m_widgets)
     if (old) destroySurface(*old);
   m_widgets = std::move(next);
+  if (!m_pendingSelect.empty())
+    for (auto& w : m_widgets)
+      if (w->cfg.id == m_pendingSelect) {
+        m_selected = w.get();
+        m_pendingSelect.clear();
+      }
   validateEditPointers();
 }
 
@@ -647,6 +653,7 @@ void App::setEditMode(bool on) {
   m_pointerWidget = nullptr;
   m_pointerEdit = nullptr;
   m_repeatKey = 0;
+  m_galleryOpen = false;
   m_guidesV.clear();
   m_guidesH.clear();
   if (on && !m_selected)
@@ -821,50 +828,40 @@ std::string App::handleCommand(const std::string& cmd) {
     return std::format("set {} = {} on {} widget(s)", key, toml, n);
   }
   if (cmd.rfind("add ", 0) == 0) {
-    // add <type> [look]: append a new [[widget]] block, centred on the first output
+    // add <type> [look]: a new widget centred on the first output
     std::istringstream in(cmd.substr(4));
     std::string type, look;
     in >> type >> look;
     if (!createWidget(type)) return "error: unknown widget type '" + type + "'";
-    const Output* o = m_outputs.empty() ? nullptr : m_outputs.front().get();
-    const int ow = o ? static_cast<int>(o->logicalW()) : 1920, oh = o ? static_cast<int>(o->logicalH()) : 1080;
-    std::string id = type;
-    for (int n = 2;; ++n) {
-      bool taken = false;
-      for (auto& c : m_config.widgets) taken = taken || c.id == id;
-      if (!taken) break;
-      id = type + std::to_string(n);
-    }
-    const int w = type == "clock" ? 560 : (type == "now_playing" ? 560 : 1000);
-    const int h = type == "clock" ? 240 : (type == "now_playing" ? 302 : 280);
-    std::string block = std::format("\n[[widget]]\nid = \"{}\"\ntype = \"{}\"\n", id, type);
-    if (o) block += std::format("output = \"{}\"\n", o->name);
-    block += std::format("x = {}\ny = {}\nwidth = {}\nheight = {}\n", (ow - w) / 2, (oh - h) / 2, w, h);
-    if (type == "clock") {
-      block += std::format("face = \"{}\"            # digital minimal analog flip rings bighour metal goodnight grand column outline banner\n",
-                           look.empty() ? "digital" : look);
-      block += "date = \"inline\"          # none inline badge stacked\n"
-               "clock_24h = true\nseconds = false\n"
-               "accent = \"primary\"        # primary secondary tertiary brand mono custom\n"
-               "accent_color = \"#e2342a\"\nink = \"on_surface\"\n"
-               "language = \"system\"      # system en es\nweather = true            # metal face\nfahrenheit = false\n";
-    } else if (type == "visualizer") {
-      block += std::format("style = \"{}\"\n", look.empty() ? "bars" : look);
-    } else if (type == "now_playing") {
-      block += "plate = \"cover\"           # cover glass none\n"
-               "show_lyrics = true          # synced lyrics from LRCLIB\n"
-               "viz = \"bars\"              # bars wave (when there are no lyrics)\n"
-               "accent_source = \"album\"   # album theme\n"
-               "music_app = \"spotify\"     # opened by the corner button\n"
-               "ink = \"on_surface\"\nfps = 30\n";
-    }
-    const std::string text = readFile(m_configPath);
-    if (!writeFileAtomic(m_configPath, text + block)) return "error: could not write the config";
-    m_reloadConfigAt = nowSeconds() + 0.05;
-    return std::format("added {} ({}) at {},{} {}x{}", id, type, (ow - w) / 2, (oh - h) / 2, w, h);
+    const std::string id = addWidget(type, look, INT32_MIN, INT32_MIN, false);
+    return id.empty() ? "error: could not write the config" : "added " + id;
   }
-  if (cmd == "remove" || cmd.rfind("remove ", 0) == 0) {
-    return "error: remove is not available yet (delete the [[widget]] block from the config)";
+  if (cmd.rfind("remove ", 0) == 0) {
+    const std::string id = cmd.substr(7);
+    for (auto& w : m_widgets)
+      if (w->cfg.id == id) {
+        removeWidget(*w);
+        return "removed " + id;
+      }
+    // disabled widgets have no instance: remove the block directly
+    return Config::removeBlock(m_configPath, id) ? "removed " + id : "error: no widget '" + id + "'";
+  }
+  if (cmd.rfind("select ", 0) == 0) {
+    const std::string id = cmd.substr(7);
+    for (auto& w : m_widgets)
+      if (w->cfg.id == id) {
+        m_selected = w.get();
+        m_inspScroll = 0;
+        markEditDirty();
+        return "selected " + id;
+      }
+    return "error: no widget '" + id + "'";
+  }
+  if (cmd == "gallery") {
+    if (!m_edit) setEditMode(true);
+    m_galleryOpen = !m_galleryOpen;
+    markEditDirty();
+    return m_galleryOpen ? "gallery open" : "gallery closed";
   }
   if (cmd == "reset") {
     // bring every widget back to the bottom-centre of its output
@@ -920,7 +917,7 @@ std::string App::handleCommand(const std::string& cmd) {
     }
     return s;
   }
-  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, reset, reload, status, quit)";
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, gallery, reset, reload, status, quit)";
 }
 
 // ── file watching ───────────────────────────────────────────────────────────

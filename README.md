@@ -62,6 +62,9 @@ undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
 undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing
+undershell msg remove clock    # remove it
+undershell msg select clock    # select it in the editor (scripts)
+undershell msg gallery         # open the editor with the gallery
 undershell msg reload
 undershell msg quit
 undershell --snapshot DIR   # render the 12 looks to PNG (no window needed)
@@ -77,7 +80,10 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 | Magnet | snaps to the screen center, the edges and other widgets (guide lines); **Shift** = free |
 | Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
 | Change look | **wheel** over the widget (visualizer style or clock face) |
-| Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes and looks) |
+| Options | the **inspector** appears next to the selected widget: lists ‹ ›, switches, sliders (drag or wheel) and theme color swatches; you see every change live |
+| Add | the **＋** button (bottom right) opens the gallery: visualizer, clock, music |
+| Duplicate / delete | **Ctrl+D** · **Del** (or the inspector buttons) |
+| Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes, looks, options, additions and deletions) |
 | Exit | **Esc**, Enter or right-click |
 
 While editing with no music, the visualizers move with the demo spectrum.
@@ -112,6 +118,7 @@ bundled fonts, via headless EGL). If you change a look on purpose: `build/test_r
 |---|---|
 | `src/app.*` | Wayland, EGL, loop, surfaces, IPC |
 | `src/editor.cpp`, `snap.hpp` | the editor: selection, magnet, keyboard, undo/redo, labels |
+| `src/inspector.cpp`, `schema.hpp` | inspector (options per type) and widget gallery |
 | `src/widget.*` | the widget interface (`WidgetImpl`) and the type registry |
 | `src/visualizer.*`, `motion.hpp`, `shaders/` | the visualizer (Ryoku) |
 | `src/clock.*` | the clocks (Ryoku): faces as display lists |
@@ -135,7 +142,7 @@ libsystemd (sd-bus), gdk-pixbuf, libcurl, nlohmann-json.
 - [x] Phase 2: editor (guides, arrows, undo/redo, demo while editing, labels)
 - [x] Phase 3: clocks (12 faces, 3 dates), 2D canvas, hollow text and halo
 - [x] Phase 4: now-playing card (MPRIS via sd-bus, cover, album color, LRCLIB lyrics, controls)
-- [ ] Phase 5: inspector and widget gallery in the editor
+- [x] Phase 5: inspector, gallery, duplicate/delete, full undo
 - [ ] Phase 6: autostart, PKGBUILD, documentation
 
 ## License

@@ -189,24 +189,75 @@ void App::applyOp(const EditOp& op) {
   }
 }
 
+// the inverse of `op` against the current state, for the other stack
+App::EditOp App::inverseOf(const EditOp& op) const {
+  const auto& widgets = m_widgets;
+  EditOp inv = op;
+  if (op.kind == "add") inv.kind = "remove";
+  else if (op.kind == "remove") inv.kind = "add";
+  else if (op.kind == "prop") {
+    for (auto& w : widgets)
+      if (w->cfg.id == op.id) {
+        const toml::node* n = w->cfg.options.get(op.key);
+        inv.value = n ? Config::tomlText(*n) : std::string();
+      }
+  }
+  return inv;
+}
+
 void App::undo() {
   if (m_undo.empty()) return;
   EditOp op = m_undo.back();
   m_undo.pop_back();
-  for (auto& w : m_widgets)
-    if (w->cfg.id == op.id) m_redo.push_back(snapshot(*w));
   m_lastOpKind.clear();
-  applyOp(op);
+  if (op.kind == "geom") {
+    for (auto& w : m_widgets)
+      if (w->cfg.id == op.id) m_redo.push_back(snapshot(*w));
+    applyOp(op);
+    return;
+  }
+  m_redo.push_back(inverseOf(op));
+  applyEditOp(op, true);
 }
 
 void App::redo() {
   if (m_redo.empty()) return;
   EditOp op = m_redo.back();
   m_redo.pop_back();
-  for (auto& w : m_widgets)
-    if (w->cfg.id == op.id) m_undo.push_back(snapshot(*w));
   m_lastOpKind.clear();
-  applyOp(op);
+  if (op.kind == "geom") {
+    for (auto& w : m_widgets)
+      if (w->cfg.id == op.id) m_undo.push_back(snapshot(*w));
+    applyOp(op);
+    return;
+  }
+  m_undo.push_back(inverseOf(op));
+  applyEditOp(op, false);
+}
+
+// undo of "add" removes the block, undo of "remove" puts it back, "prop"
+// restores the recorded value
+void App::applyEditOp(const EditOp& op, bool undoing) {
+  (void)undoing;
+  if (op.kind == "add") {
+    Config::removeBlock(m_configPath, op.id);
+    if (m_selected && m_selected->cfg.id == op.id) m_selected = nullptr;
+    m_reloadConfigAt = nowSeconds() + 0.02;
+  } else if (op.kind == "remove") {
+    Config::appendBlock(m_configPath, op.block);
+    WidgetConfig placeholder;
+    placeholder.id = op.id;
+    m_config.widgets.push_back(placeholder);
+    m_pendingSelect = op.id;
+    m_reloadConfigAt = nowSeconds() + 0.02;
+  } else if (op.kind == "prop") {
+    for (auto& w : m_widgets)
+      if (w->cfg.id == op.id) {
+        applyProp(*w, op.key, op.value);
+        m_selected = w.get();
+      }
+  }
+  markEditDirty();
 }
 
 void App::setStyle(Widget& w, const std::string& look) {
@@ -275,6 +326,9 @@ bool App::keyAction(uint32_t key) {
     case KEY_UP: nudge(0, -step, alt); return true;
     case KEY_DOWN: nudge(0, step, alt); return true;
     case KEY_TAB: cycleSelection(shift ? -1 : 1); return false;
+    case KEY_DELETE:
+      if (m_selected) removeWidget(*m_selected);
+      return false;
     default: break;
   }
   const bool isZ = sym == XKB_KEY_z || sym == XKB_KEY_Z || (sym == XKB_KEY_NoSymbol && key == KEY_Z);
@@ -287,6 +341,8 @@ bool App::keyAction(uint32_t key) {
     redo();
     return true;
   }
+  const bool isD = sym == XKB_KEY_d || sym == XKB_KEY_D || (sym == XKB_KEY_NoSymbol && key == KEY_D);
+  if (ctrl && isD && m_selected) duplicateWidget(*m_selected);
   return false;
 }
 
@@ -384,6 +440,18 @@ void App::onPointerMotion(double x, double y) {
   }
   m_px = x;
   m_py = y;
+  if (m_drag == Drag::Slider) {
+    uiDrag(x);
+    return;
+  }
+  if (m_drag == Drag::None && uiHit(x, y) >= 0) {
+    if (m_pointerWidget) {
+      m_pointerWidget = nullptr;
+      markEditDirty();
+    }
+    setCursor("pointer");
+    return;
+  }
   if (m_drag == Drag::None) {
     Widget* hit = widgetAt(m_pointerEdit->output, x, y);
     if (hit != m_pointerWidget) {
@@ -426,8 +494,22 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     return;
   }
   if (button != BTN_LEFT) return;
+  if (m_drag == Drag::Slider) {
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      m_drag = Drag::None;
+      m_sliderControl = -1;
+      markEditDirty();
+    }
+    return;
+  }
+  if (state == WL_POINTER_BUTTON_STATE_PRESSED && uiPress(uiHit(m_px, m_py), m_px)) {
+    markEditDirty();
+    return;
+  }
   Widget* w = m_pointerWidget;
   if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    m_galleryOpen = false;
+    if (w != m_selected) m_inspScroll = 0;
     m_selected = w;  // clicking empty space clears the selection
     markEditDirty();
     if (!w) return;
@@ -471,11 +553,13 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
 // wheel over a widget in the editor: step through its looks (visualizer
 // styles, clock faces)
 void App::onScroll(double value) {
-  if (!m_edit || m_drag != Drag::None || !m_pointerWidget) return;
+  if (!m_edit || m_drag != Drag::None) return;
   m_scrollAcc += value;
   if (std::abs(m_scrollAcc) < 10.0) return;  // one wheel notch
   const int step = m_scrollAcc > 0 ? 1 : -1;
   m_scrollAcc = 0;
+  if (uiScroll(m_px, m_py, step)) return;
+  if (!m_pointerWidget) return;
   Widget& w = *m_pointerWidget;
   std::vector<std::string> looks;
   if (w.cfg.type == "clock") {
@@ -513,10 +597,10 @@ void App::drawEditorText(EditSurface& e) {
   // the help line, centred under the top bar
   const bool es = spanish();
   const std::string help =
-      es ? "Arrastra: mover   ·   Esquina: tamaño   ·   Rueda: estilo   ·   Flechas: ajustar (Shift ×16, Alt: tamaño)"
-           "   ·   Tab: siguiente   ·   Ctrl+Z / Ctrl+Shift+Z   ·   Shift: sin imán   ·   Esc: salir"
-         : "Drag: move   ·   Corner: resize   ·   Wheel: look   ·   Arrows: nudge (Shift ×16, Alt: size)"
-           "   ·   Tab: next   ·   Ctrl+Z / Ctrl+Shift+Z   ·   Shift: no snap   ·   Esc: done";
+      es ? "Arrastra: mover  ·  Esquina: tamaño  ·  Rueda: estilo  ·  Flechas: ajustar (Shift ×16, Alt: tamaño)"
+           "  ·  Tab: siguiente  ·  Ctrl+Z / Ctrl+Shift+Z  ·  Ctrl+D: duplicar  ·  Supr: eliminar  ·  ＋: agregar  ·  Esc: salir"
+         : "Drag: move  ·  Corner: resize  ·  Wheel: look  ·  Arrows: nudge (Shift ×16, Alt: size)"
+           "  ·  Tab: next  ·  Ctrl+Z / Ctrl+Shift+Z  ·  Ctrl+D: duplicate  ·  Del: delete  ·  ＋: add  ·  Esc: done";
   TextStyle hs{.family = "Space Grotesk", .size = 13, .weight = 500};
   const TextImage& himg = m_text.get(help, hs, e.scale);
   put(help, hs, std::round((W - himg.w) / 2), 62, ink);
@@ -533,6 +617,7 @@ void App::drawEditorText(EditSurface& e) {
     if (ly < 90) ly = static_cast<float>(w->cfg.y) + 10;  // keep clear of the help line
     put(label, ls, lx, ly, sel ? w->impl->accent() : ink);
   }
+  drawUi(e);
   m_text.collect(20);
 }
 

@@ -50,6 +50,37 @@ int main() {
   CHECK(Config::setKey(path, "visualizer", "glow", "1"));
   CHECK(VisualizerConfig::fromTable(Config::load(path).widgets[0].options).glow == 1.0);
 
+  // blocks: append a starter, read it back, remove it, put it back (undo)
+  const std::string clockBlock = Config::defaultBlock("clock", "clock", "HDMI-A-1", 10, 20, 560, 240, "flip");
+  CHECK(Config::appendBlock(path, clockBlock));
+  cfg = Config::load(path);
+  CHECK(cfg.widgets.size() == 2);
+  CHECK(cfg.widgets[1].type == "clock" && cfg.widgets[1].options["face"].value_or(std::string()) == "flip");
+  const std::string got = Config::blockText(path, "clock");
+  CHECK(got.find("[[widget]]") == 0 && got.find("id = \"clock\"") != std::string::npos);
+  CHECK(got.find("visualizer") == std::string::npos);  // only its own block
+  std::string removed;
+  CHECK(Config::removeBlock(path, "clock", &removed));
+  CHECK(removed == got);
+  cfg = Config::load(path);
+  CHECK(cfg.widgets.size() == 1 && cfg.widgets[0].id == "visualizer");
+  CHECK(Config::appendBlock(path, removed));
+  CHECK(Config::load(path).widgets.size() == 2);
+  // removing the first block keeps the second intact
+  CHECK(Config::removeBlock(path, "visualizer"));
+  cfg = Config::load(path);
+  CHECK(cfg.widgets.size() == 1 && cfg.widgets[0].id == "clock" && cfg.widgets[0].x == 10);
+  CHECK(!Config::removeBlock(path, "visualizer"));
+  // every starter block parses
+  for (const char* t : {"visualizer", "clock", "now_playing"})
+    CHECK(Config::appendBlock(path, Config::defaultBlock(t, std::string("t-") + t, "", 0, 0, 100, 100, "")));
+  CHECK(Config::load(path).widgets.size() == 4);
+  // TOML text of values, for undo records
+  toml::table tt{{"s", "orb"}, {"b", true}, {"n", 12.5}, {"i", 64}};
+  CHECK(Config::tomlText(*tt.get("s")) == "\"orb\"");
+  CHECK(Config::tomlText(*tt.get("b")) == "true");
+  CHECK(Config::tomlText(*tt.get("i")) == "64");
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }

@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
       std::puts("usage: undershell [--debug]            run the widgets\n"
                 "       undershell msg <command>       edit | edit-on | edit-off | demo | reset | reload | status | quit\n"
                 "                                         set <id|all> <key> <value>   e.g. set all style orb\n"
-                "                                         add <visualizer|clock> [look]  e.g. add clock flip\n"
+                "                                         add <visualizer|clock|now_playing> [look] · remove <id>\n"
                 "config: ~/.config/undershell/config.toml (applies live)");
       return 0;
     }
