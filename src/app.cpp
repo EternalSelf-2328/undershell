@@ -355,7 +355,6 @@ void App::syncWidgets() {
         continue;
       }
     }
-    const bool wasFull = w->impl->fullscreen();
     const bool geomChanged = w->cfg.x != wc.x || w->cfg.y != wc.y || w->cfg.width != wc.width ||
                              w->cfg.height != wc.height || w->cfg.output != wc.output;
     w->cfg = wc;
@@ -372,7 +371,10 @@ void App::syncWidgets() {
         out = o.get();
         break;
       }
-    if (out != w->output || !w->surface || wasFull != w->impl->fullscreen()) {
+    // a look that switches between boxed and fullscreen (frame) needs a new
+    // surface; compare against how the surface was made, not the previous
+    // config (the inspector reconfigures the widget before the reload lands)
+    if (out != w->output || !w->surface || w->surfaceFullscreen != w->impl->fullscreen()) {
       destroySurface(*w);
       w->output = out;
       if (out) createSurface(*w);
@@ -415,7 +417,8 @@ void App::createSurface(Widget& w) {
                                                   ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "undershell");
   auto* ctx = new WidgetCtx{this, &w};
   zwlr_layer_surface_v1_add_listener(w.layer, &kLayer, ctx);
-  if (w.impl->fullscreen()) {
+  w.surfaceFullscreen = w.impl->fullscreen();
+  if (w.surfaceFullscreen) {
     zwlr_layer_surface_v1_set_anchor(w.layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
                                                   ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
     zwlr_layer_surface_v1_set_size(w.layer, 0, 0);
@@ -654,6 +657,8 @@ void App::setEditMode(bool on) {
   m_pointerEdit = nullptr;
   m_repeatKey = 0;
   m_galleryOpen = false;
+  m_helpOpen = false;
+  m_uiHover = -1;
   m_guidesV.clear();
   m_guidesH.clear();
   if (on && !m_selected)
@@ -738,7 +743,15 @@ void App::renderEdit(EditSurface& e) {
   int hover = -1, active = -1, selected = -1;
   Color accent = Color::fromHex("#e2342a");
   for (auto& w : m_widgets) {
-    if (w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
+    if (w->output != e.output || !w->impl || !w->surface) continue;
+    if (w->impl->fullscreen()) {
+      // a frame owns the screen: outline the whole output when it is selected
+      if (w.get() == m_selected) {
+        selected = static_cast<int>(rects.size());
+        rects.push_back({6, 6, static_cast<float>(e.w) - 12, static_cast<float>(e.h) - 12});
+      }
+      continue;
+    }
     const int idx = static_cast<int>(rects.size());
     if (w.get() == m_pointerWidget) (m_drag != Drag::None ? active : hover) = idx;
     if (w.get() == m_selected) selected = idx;
@@ -752,7 +765,7 @@ void App::renderEdit(EditSurface& e) {
   glClear(GL_COLOR_BUFFER_BIT);
   try {
     m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, selected, accent,
-                   static_cast<float>(m_config.gridSize), m_guidesV, m_guidesH);
+                   m_gridOn ? static_cast<float>(m_config.gridSize) : 0.0F, m_guidesV, m_guidesH);
     drawEditorText(e);
   } catch (const std::exception& ex) {
     US_ERROR("editor canvas failed: {}", ex.what());
@@ -1079,6 +1092,11 @@ int App::run() {
       for (auto& w : m_widgets) w->needsRender = true;
     }
     for (auto& w : m_widgets) {
+      // a live option change (inspector) may turn a boxed look fullscreen
+      if (w->impl && w->surface && w->surfaceFullscreen != w->impl->fullscreen()) {
+        destroySurface(*w);
+        createSurface(*w);
+      }
       if (w->impl && !w->needsRender && now >= w->impl->nextWakeup(now)) w->needsRender = true;
       if (!w->needsRender) continue;
       if (now + 0.0005 < w->lastRender + 1.0 / std::max(1, w->impl->fps())) continue;

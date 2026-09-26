@@ -119,7 +119,7 @@ void App::persist(Widget& w) {
 void App::snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool moving) {
   m_guidesV.clear();
   m_guidesH.clear();
-  if (modActive(XKB_MOD_NAME_SHIFT) || !w.output) return;
+  if (m_snapOn == modActive(XKB_MOD_NAME_SHIFT) || !w.output) return;  // magnet off, or Shift held
   const double ow = w.output->logicalW(), oh = w.output->logicalH();
   std::vector<double> tx = {0, ow / 2, ow}, ty = {0, oh / 2, oh};
   for (auto& o : m_widgets) {
@@ -278,7 +278,7 @@ Widget* App::target() {
 void App::cycleSelection(int step) {
   std::vector<Widget*> list;
   for (auto& w : m_widgets)
-    if (w->impl && !w->impl->fullscreen() && w->surface) list.push_back(w.get());
+    if (w->impl && w->surface) list.push_back(w.get());  // fullscreen ones too (inspector only)
   if (list.empty()) return;
   auto it = std::find(list.begin(), list.end(), m_selected);
   int idx = it == list.end() ? 0 : static_cast<int>(it - list.begin()) + step;
@@ -317,6 +317,13 @@ bool App::keyAction(uint32_t key) {
   xkb_keysym_t sym = m_xkbState ? xkb_state_key_get_one_sym(m_xkbState, key + 8) : XKB_KEY_NoSymbol;
   switch (key) {
     case KEY_ESC:
+      if (m_helpOpen || m_galleryOpen) {
+        m_helpOpen = m_galleryOpen = false;
+        markEditDirty();
+        return false;
+      }
+      setEditMode(false);
+      return false;
     case KEY_ENTER:
     case KEY_KPENTER:
       setEditMode(false);
@@ -413,6 +420,7 @@ void App::validateEditPointers() {
 void App::onPointerEnter(wl_surface* s, uint32_t serial, double x, double y) {
   m_pointerSerial = serial;
   m_pointerEdit = editBySurface(s);
+  US_DEBUG("pointer enter {} at {:.0f},{:.0f} (edit={})", m_pointerEdit ? "editor" : (widgetBySurface(s) ? "widget" : "other"), x, y, m_edit);
   if (!m_pointerEdit) {
     widgetPointer(PointerEvent::Enter, s, x, y, 0);
     return;
@@ -421,6 +429,7 @@ void App::onPointerEnter(wl_surface* s, uint32_t serial, double x, double y) {
 }
 
 void App::onPointerLeave(wl_surface* s) {
+  US_DEBUG("pointer leave {} (drag={})", editBySurface(s) ? "editor" : "widget/other", static_cast<int>(m_drag));
   if (!editBySurface(s)) {
     widgetPointer(PointerEvent::Leave, s, 0, 0, 0);
     return;
@@ -444,12 +453,17 @@ void App::onPointerMotion(double x, double y) {
     uiDrag(x);
     return;
   }
-  if (m_drag == Drag::None && uiHit(x, y) >= 0) {
+  const int hover = m_drag == Drag::None ? uiHit(x, y) : -1;
+  if (hover != m_uiHover) {
+    m_uiHover = hover;
+    markEditDirty();
+  }
+  if (hover >= 0) {
     if (m_pointerWidget) {
       m_pointerWidget = nullptr;
       markEditDirty();
     }
-    setCursor("pointer");
+    setCursor(m_ui[static_cast<size_t>(hover)].type == UiControl::Panel ? "default" : "pointer");
     return;
   }
   if (m_drag == Drag::None) {
@@ -484,6 +498,10 @@ void App::onPointerMotion(double x, double y) {
 
 void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   m_pointerSerial = serial;
+  US_DEBUG("button {} {} at {:.0f},{:.0f} edit={} surface={} drag={} ui={} hover={} selected={}", button,
+           state == WL_POINTER_BUTTON_STATE_PRESSED ? "down" : "up", m_px, m_py, m_edit, m_pointerEdit ? "editor" : "none",
+           static_cast<int>(m_drag), uiHit(m_px, m_py), m_pointerWidget ? m_pointerWidget->cfg.id : "-",
+           m_selected ? m_selected->cfg.id : "-");
   if (!m_edit || !m_pointerEdit) {
     widgetPointer(state == WL_POINTER_BUTTON_STATE_PRESSED ? PointerEvent::Press : PointerEvent::Release, nullptr, m_px,
                   m_py, button);
@@ -509,6 +527,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   Widget* w = m_pointerWidget;
   if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
     m_galleryOpen = false;
+    m_helpOpen = false;
     if (w != m_selected) m_inspScroll = 0;
     m_selected = w;  // clicking empty space clears the selection
     markEditDirty();
@@ -524,7 +543,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     setCursor(m_drag == Drag::Resize ? "se-resize" : "grabbing");
   } else if (m_drag != Drag::None && w) {
     // an axis held by a guide keeps it; the others snap to the grid
-    const bool free = modActive(XKB_MOD_NAME_SHIFT);
+    const bool free = modActive(XKB_MOD_NAME_SHIFT) || !m_gridOn;
     const bool keepX = !m_guidesV.empty(), keepY = !m_guidesH.empty();
     const int g = m_config.gridSize;
     auto snap = [g](int v) { return snapToGrid(v, g); };
@@ -594,17 +613,6 @@ void App::drawEditorText(EditSurface& e) {
     m_text.draw(img, x, y, c, W, H);
     return img.w;
   };
-  // the help line, centred under the top bar
-  const bool es = spanish();
-  const std::string help =
-      es ? "Arrastra: mover  ·  Esquina: tamaño  ·  Rueda: estilo  ·  Flechas: ajustar (Shift ×16, Alt: tamaño)"
-           "  ·  Tab: siguiente  ·  Ctrl+Z / Ctrl+Shift+Z  ·  Ctrl+D: duplicar  ·  Supr: eliminar  ·  ＋: agregar  ·  Esc: salir"
-         : "Drag: move  ·  Corner: resize  ·  Wheel: look  ·  Arrows: nudge (Shift ×16, Alt: size)"
-           "  ·  Tab: next  ·  Ctrl+Z / Ctrl+Shift+Z  ·  Ctrl+D: duplicate  ·  Del: delete  ·  ＋: add  ·  Esc: done";
-  TextStyle hs{.family = "Space Grotesk", .size = 13, .weight = 500};
-  const TextImage& himg = m_text.get(help, hs, e.scale);
-  put(help, hs, std::round((W - himg.w) / 2), 62, ink);
-
   // labels: id · look · size (and position while dragging)
   TextStyle ls{.family = "JetBrains Mono", .size = 12, .weight = 600};
   for (auto& w : m_widgets) {
@@ -614,7 +622,7 @@ void App::drawEditorText(EditSurface& e) {
     if (m_drag != Drag::None && w.get() == m_pointerWidget) label += std::format("  @ {},{}", w->cfg.x, w->cfg.y);
     float lx = static_cast<float>(std::max(8, w->cfg.x + 10));
     float ly = static_cast<float>(w->cfg.y) - 20;
-    if (ly < 90) ly = static_cast<float>(w->cfg.y) + 10;  // keep clear of the help line
+    if (ly < 106) ly = static_cast<float>(w->cfg.y) + 10;  // keep clear of the toolbar
     put(label, ls, lx, ly, sel ? w->impl->accent() : ink);
   }
   drawUi(e);

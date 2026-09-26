@@ -9,6 +9,7 @@
 #include "media.hpp"
 #include "noctalia.hpp"
 #include "overlay.hpp"
+#include "canvas.hpp"
 #include "text.hpp"
 #include "widget.hpp"
 
@@ -59,6 +60,7 @@ struct Widget {
   bool configured = false;
   bool needsRender = true;
   bool drewEmpty = false;
+  bool surfaceFullscreen = false;  // how the current surface was created
   double lastTick = 0, lastRender = 0;
   bool hovered = false;
   // the surface position pointer events are currently relative to: updated
@@ -133,6 +135,7 @@ private:
   Widget* widgetAt(const Output* o, double x, double y);
   void markEditDirty();
   // editor internals (editor.cpp)
+public:
   struct EditOp {
     std::string id;
     int x = 0, y = 0, w = 0, h = 0;
@@ -162,11 +165,14 @@ private:
   void drawEditorText(EditSurface& e);
   // inspector + gallery (inspector.cpp)
   struct UiControl {
-    enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel } type = Panel;
+    enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
+                Done, Chip } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
   };
+
+private:
   void layoutUi(const EditSurface& e);
   void layoutGallery(float W, float H);
   void drawUi(EditSurface& e);
@@ -249,6 +255,11 @@ private:
   std::vector<UiControl> m_ui;
   const Output* m_uiOutput = nullptr;
   bool m_galleryOpen = false;
+  bool m_helpOpen = false;
+  bool m_snapOn = true;   // magnet (Shift inverts)
+  bool m_gridOn = true;   // grid drawn + snapping on release
+  int m_uiHover = -1;
+  Canvas m_editCanvas;
   float m_inspScroll = 0;
   int m_sliderControl = -1;
   std::string m_pendingSelect;  // select this id once the reload creates it

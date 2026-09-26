@@ -6,6 +6,7 @@
 #include <cstring>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 
@@ -19,7 +20,8 @@ std::string IpcServer::socketPath() {
 IpcServer::~IpcServer() {
   if (m_fd >= 0) {
     close(m_fd);
-    unlink(socketPath().c_str());
+    struct stat st{};
+    if (stat(socketPath().c_str(), &st) == 0 && st.st_ino == m_inode) unlink(socketPath().c_str());
   }
 }
 
@@ -43,6 +45,8 @@ bool IpcServer::listen(Handler handler) {
     m_fd = -1;
     return false;
   }
+  struct stat st{};
+  if (stat(path.c_str(), &st) == 0) m_inode = st.st_ino;
   return true;
 }
 

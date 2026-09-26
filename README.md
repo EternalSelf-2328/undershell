@@ -75,19 +75,20 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 
 | Action | How |
 |---|---|
-| Select | click (empty space: deselect) · **Tab** / Shift+Tab |
+| Toolbar | top center: **＋** add · undo · redo · magnet · grid · one chip per widget (selects it, even fullscreen looks like `frame`) · **?** shortcuts · **Done** |
+| Select | click or its chip (empty space: deselect) · **Tab** / Shift+Tab |
 | Move / resize | drag · bottom-right corner |
-| Magnet | snaps to the screen center, the edges and other widgets (guide lines); **Shift** = free |
+| Magnet | snaps to the screen center, the edges and other widgets (guide lines); toggle it in the toolbar; **Shift** inverts it while held |
 | Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
 | Change look | **wheel** over the widget (visualizer style or clock face) |
 | Options | the **inspector** appears next to the selected widget: lists ‹ ›, switches, sliders (drag or wheel) and theme color swatches; you see every change live |
-| Add | the **＋** button (bottom right) opens the gallery: visualizer, clock, music |
+| Add | the **＋** button in the toolbar opens the gallery: visualizer, clock, music |
 | Duplicate / delete | **Ctrl+D** · **Del** (or the inspector buttons) |
 | Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes, looks, options, additions and deletions) |
 | Exit | **Esc**, Enter or right-click |
 
 While editing with no music, the visualizers move with the demo spectrum.
-Positions snap to the grid (16 px) on release and are saved to the config,
+With the grid on (toolbar), positions snap to it (16 px) on release and are saved to the config,
 without touching the rest of the file.
 
 ## Configuration

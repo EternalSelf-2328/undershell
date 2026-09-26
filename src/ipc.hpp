@@ -19,6 +19,7 @@ public:
 private:
   int m_fd = -1;
   Handler m_handler;
+  unsigned long m_inode = 0;  // our socket file: never unlink someone else's
 };
 
 // Client side: sends one command, prints the reply. Returns the exit code.
