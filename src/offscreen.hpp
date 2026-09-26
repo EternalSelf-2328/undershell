@@ -39,6 +39,9 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
 // Renders the now-playing card for a given media state (needs Headless).
 struct MediaState;
 Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now);
+// Lays `src` (a rendered widget) on a surface at `degrees` the way the daemon
+// draws a turned widget; the result is the turned box's surface (needs Headless).
+Image renderRotated(const Image& src, double degrees);
 // Renders one line of text in white (needs Headless).
 Image renderText(const std::string& text, const std::string& family, float size, int weight);
 

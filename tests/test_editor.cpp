@@ -1,6 +1,9 @@
 // Editor geometry: magnet snapping, screen bounds, grid.
 #include "check.hpp"
+#include "geom.hpp"
 #include "snap.hpp"
+
+#include <cmath>
 
 using namespace undershell;
 
@@ -35,5 +38,27 @@ int main() {
   CHECK(snapToGrid(25, 16) == 32);
   CHECK(snapToGrid(-9, 16) == -16);
   CHECK(snapToGrid(7, 0) == 7);
+  // rotation: unturned boxes are unchanged
+  WidgetConfig c;
+  c.x = 100, c.y = 200, c.width = 400, c.height = 100;
+  Box b = surfaceBox(c);
+  CHECK(b.x == 100 && b.y == 200 && b.w == 400 && b.h == 100);
+  // a quarter turn swaps the bounds about the same centre (300, 250)
+  c.rotation = 90;
+  b = visualBox(c);
+  CHECK(b.w == 100 && b.h == 400 && b.x == 250 && b.y == 50);
+  // local <-> output are inverse, and +angle turns clockwise (y down)
+  double ox = 0, oy = 0, lx = 0, ly = 0;
+  toOutput(c, 400, 50, ox, oy);  // the right edge's middle ends up below the centre
+  CHECK(std::abs(ox - 300) < 1e-9 && std::abs(oy - 450) < 1e-9);
+  c.rotation = 33;
+  toOutput(c, 17, 83, ox, oy);
+  toLocal(c, ox, oy, lx, ly);
+  CHECK(std::abs(lx - 17) < 1e-9 && std::abs(ly - 83) < 1e-9);
+  CHECK(insideWidget(c, 300, 250));
+  c.rotation = 45;  // the unturned corner is outside once turned
+  CHECK(!insideWidget(c, 102, 202));
+  CHECK(normalizeDegrees(190) == -170 && normalizeDegrees(-180) == 180 && normalizeDegrees(540) == 180);
+
   return TEST_RESULT();
 }

@@ -29,6 +29,18 @@ private:
 
 struct EditRect {
   float x, y, w, h;
+  float angle = 0;  // degrees, about the centre
+};
+
+// Draws a widget rendered off-screen (premultiplied texture of its own box)
+// turned about `centre` on the current surface, with a soft 1 px edge.
+class RotatedBlit {
+public:
+  void draw(GLuint texture, float surfaceW, float surfaceH, float centreX, float centreY, float boxW, float boxH,
+            float degrees);
+
+private:
+  Program m_prog;
 };
 
 // The editor canvas: drawn on a fullscreen surface above everything while
@@ -38,8 +50,11 @@ class OverlayPass {
 public:
   static constexpr int kMaxRects = 16;
   static constexpr int kMaxGuides = 4;
+  // `handle`: the rect that shows a rotation knob above its top edge (-1: none)
   void draw(float w, float h, const std::vector<EditRect>& rects, int hover, int active, int selected, Color accent,
-            float grid, const std::vector<float>& vguides, const std::vector<float>& hguides);
+            float grid, const std::vector<float>& vguides, const std::vector<float>& hguides, int handle = -1);
+  static constexpr float kHandleGap = 30;  // knob centre above the top edge
+  static constexpr float kHandleR = 7;
 
   // a rounded, filled rectangle (label plates); straight-alpha colour
   void drawPill(float x, float y, float w, float h, float radius, Color color, float surfaceW, float surfaceH);

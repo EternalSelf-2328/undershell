@@ -43,6 +43,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "spin", "Spin °/s", "Giro °/s", {}, 0, 120, 5, 0},
       {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.1, 1, 0.05, 1},
       {K::Number, "fps", "FPS", "FPS", {}, 15, 144, 15, 60, "", true},
+      {K::Number, "rotation", "Rotation °", "Inclinación °", {}, -180, 180, 1, 0, "", true},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
   };
   static const std::vector<PropSpec> clock = {
@@ -59,6 +60,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Bool, "weather", "Weather (metal)", "Clima (metal)", {}, 0, 1, 1, 1},
       {K::Bool, "fahrenheit", "Fahrenheit", "Fahrenheit", {}, 0, 1, 1, 0},
       {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.1, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Inclinación °", {}, -180, 180, 1, 0, "", true},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
   };
   static const std::vector<PropSpec> nowPlaying = {
@@ -69,6 +71,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Color, "ink", "Ink", "Tinta", {}, 0, 0, 0, 0, "on_surface"},
       {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.1, 1, 0.05, 1},
       {K::Number, "fps", "FPS", "FPS", {}, 15, 60, 15, 30, "", true},
+      {K::Number, "rotation", "Rotation °", "Inclinación °", {}, -180, 180, 1, 0, "", true},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
   };
   static const std::vector<PropSpec> none;

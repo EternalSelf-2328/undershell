@@ -185,6 +185,12 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (v.empty()) return;
   storeOption(w.cfg.options, key, v);
   if (key == "depth") w.cfg.depth = v == "true";
+  if (key == "rotation") {
+    try {
+      setRotation(w, std::stod(v));
+    } catch (const std::exception&) {
+    }
+  }
   if (w.impl) w.impl->configure(w.cfg, m_noctalia.state());
   w.needsRender = true;
   w.drewEmpty = false;
@@ -329,7 +335,7 @@ void App::layoutUi(const EditSurface& e) {
     }
   }
   if (m_helpOpen) {
-    const float hw = 560, hh = 300;
+    const float hw = 580, hh = 334;
     m_ui.push_back({UiControl::Panel, {std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh}, -1, "help"});
   }
 }
@@ -709,11 +715,13 @@ void App::drawUi(EditSurface& e) {
     static const K rows[] = {
         {"Arrastrar", "move", "mover"},
         {"Esquina", "resize", "cambiar tamaño"},
+        {"Asa superior", "turn (15° steps)", "inclinar (pasos de 15°)"},
         {"Rueda", "next look / value", "estilo o valor siguiente"},
         {"Shift", "hold: no magnet", "mantener: sin imán"},
         {"← → ↑ ↓", "nudge 1 px", "ajustar 1 px"},
         {"Shift+←", "nudge 16 px", "ajustar 16 px"},
         {"Alt+←", "resize", "tamaño"},
+        {"Ctrl+← →", "tilt 1° (Shift 15°)", "inclinar 1° (Shift 15°)"},
         {"Tab", "next widget", "siguiente widget"},
         {"Ctrl+Z", "undo", "deshacer"},
         {"Ctrl+Shift+Z", "redo", "rehacer"},

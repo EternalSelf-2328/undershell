@@ -13,6 +13,8 @@
 #undef namespace
 
 #include <cmath>
+#include <format>
+#include <numbers>
 #include <linux/input-event-codes.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -28,8 +30,19 @@ const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
                         "curtain", "line", "frame", "radial", "orb", "spiral"};
 
 bool inGrip(const Widget& w, double x, double y) {
-  return x > w.cfg.x + w.cfg.width - 26 && y > w.cfg.y + w.cfg.height - 26 && x < w.cfg.x + w.cfg.width &&
-         y < w.cfg.y + w.cfg.height;
+  double lx = 0, ly = 0;
+  toLocal(w.cfg, x, y, lx, ly);  // the grip turns with the widget
+  return lx > w.cfg.width - 26 && ly > w.cfg.height - 26 && lx < w.cfg.width && ly < w.cfg.height;
+}
+
+// pointer angle about the widget's centre, degrees
+double angleAt(const Widget& w, double x, double y) {
+  return std::atan2(y - (w.cfg.y + w.cfg.height / 2.0), x - (w.cfg.x + w.cfg.width / 2.0)) * 180.0 / std::numbers::pi;
+}
+
+std::string degreesText(double d) {
+  const double r = std::round(d * 10) / 10;
+  return r == std::floor(r) ? std::format("{:.0f}", r) : std::format("{:.1f}", r);
 }
 
 bool spanish() {
@@ -52,15 +65,23 @@ std::string lookOf(const Widget& w) {
 
 Widget* App::widgetAt(const Output* o, double x, double y) {
   // the selected widget wins overlaps, then the topmost (last listed)
-  if (m_selected && m_selected->output == o && x >= m_selected->cfg.x && y >= m_selected->cfg.y &&
-      x < m_selected->cfg.x + m_selected->cfg.width && y < m_selected->cfg.y + m_selected->cfg.height)
+  if (m_selected && m_selected->output == o && m_selected->impl && !m_selected->impl->fullscreen() &&
+      insideWidget(m_selected->cfg, x, y))
     return m_selected;
   for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it) {
     Widget& w = **it;
     if (w.output != o || !w.impl || w.impl->fullscreen() || !w.surface) continue;
-    if (x >= w.cfg.x && y >= w.cfg.y && x < w.cfg.x + w.cfg.width && y < w.cfg.y + w.cfg.height) return &w;
+    if (insideWidget(w.cfg, x, y)) return &w;
   }
   return nullptr;
+}
+
+// the knob above the selected widget's (turned) top edge
+bool App::inRotateHandle(const Widget& w, double x, double y) const {
+  if (&w != m_selected || !w.impl || w.impl->fullscreen()) return false;
+  double kx = 0, ky = 0;
+  toOutput(w.cfg, w.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
+  return std::hypot(x - kx, y - ky) <= OverlayPass::kHandleR + 6;
 }
 
 // Widgets may hang off the screen edge for composition, but a quarter of
@@ -78,26 +99,26 @@ void App::moveWidget(Widget& w, int x, int y) {
   if (c.x == w.cfg.x && c.y == w.cfg.y) return;
   w.cfg.x = c.x;
   w.cfg.y = c.y;
-  w.appliedX = c.x;
-  w.appliedY = c.y;
-  if (w.layer) {
-    zwlr_layer_surface_v1_set_margin(w.layer, c.y, 0, 0, c.x);
-    wl_surface_commit(w.surface);
-  }
+  placeLayer(w);
   w.needsRender = true;
   w.drewEmpty = false;
 }
 
-static void resizeWidget(Widget& w, int width, int height) {
+void App::resizeWidget(Widget& w, int width, int height) {
   if (width == w.cfg.width && height == w.cfg.height) return;
   w.cfg.width = width;
   w.cfg.height = height;
-  if (w.layer) {
-    zwlr_layer_surface_v1_set_size(w.layer, static_cast<uint32_t>(width), static_cast<uint32_t>(height));
-    wl_surface_commit(w.surface);
-  }
+  placeLayer(w);
   w.needsRender = true;
   w.drewEmpty = false;
+}
+
+void App::setRotation(Widget& w, double degrees) {
+  degrees = normalizeDegrees(degrees);
+  if (std::abs(degrees - w.cfg.rotation) < 1e-6) return;
+  w.cfg.rotation = degrees;
+  placeLayer(w);
+  markEditDirty();
 }
 
 void App::onMoveApplied(Widget*, int, int) {}
@@ -124,8 +145,9 @@ void App::snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool
   std::vector<double> tx = {0, ow / 2, ow}, ty = {0, oh / 2, oh};
   for (auto& o : m_widgets) {
     if (o.get() == &w || o->output != w.output || !o->impl || o->impl->fullscreen()) continue;
-    tx.insert(tx.end(), {double(o->cfg.x), o->cfg.x + o->cfg.width / 2.0, double(o->cfg.x + o->cfg.width)});
-    ty.insert(ty.end(), {double(o->cfg.y), o->cfg.y + o->cfg.height / 2.0, double(o->cfg.y + o->cfg.height)});
+    const Box b = visualBox(o->cfg);  // what you see, even when turned
+    tx.insert(tx.end(), {double(b.x), b.x + b.w / 2.0, double(b.x + b.w)});
+    ty.insert(ty.end(), {double(b.y), b.y + b.h / 2.0, double(b.y + b.h)});
   }
   auto best = [](const std::vector<double>& edges, const std::vector<double>& targets, double& delta, double& guide) {
     return snapAxis(edges, targets, kSnapPx, delta, guide);
@@ -328,8 +350,20 @@ bool App::keyAction(uint32_t key) {
     case KEY_KPENTER:
       setEditMode(false);
       return false;
-    case KEY_LEFT: nudge(-step, 0, alt); return true;
-    case KEY_RIGHT: nudge(step, 0, alt); return true;
+    case KEY_LEFT:
+    case KEY_RIGHT:
+      if (ctrl) {  // turn: 1°, Shift 15°
+        Widget* w = target();
+        if (w && w->impl && !w->impl->fullscreen()) {
+          const double d = (shift ? 15.0 : 1.0) * (key == KEY_LEFT ? -1 : 1);
+          double a = w->cfg.rotation + d;
+          if (shift) a = std::round(a / 15.0) * 15.0;
+          setProp(*w, "rotation", degreesText(normalizeDegrees(a)));
+        }
+        return true;
+      }
+      nudge(key == KEY_LEFT ? -step : step, 0, alt);
+      return true;
     case KEY_UP: nudge(0, -step, alt); return true;
     case KEY_DOWN: nudge(0, step, alt); return true;
     case KEY_TAB: cycleSelection(shift ? -1 : 1); return false;
@@ -467,6 +501,14 @@ void App::onPointerMotion(double x, double y) {
     return;
   }
   if (m_drag == Drag::None) {
+    if (m_selected && m_selected->output == m_pointerEdit->output && inRotateHandle(*m_selected, x, y)) {
+      if (m_pointerWidget != m_selected) {
+        m_pointerWidget = m_selected;
+        markEditDirty();
+      }
+      setCursor("grab");
+      return;
+    }
     Widget* hit = widgetAt(m_pointerEdit->output, x, y);
     if (hit != m_pointerWidget) {
       m_pointerWidget = hit;
@@ -479,10 +521,42 @@ void App::onPointerMotion(double x, double y) {
   if (!w) return;
   const int dx = static_cast<int>(std::lround(x - m_pressX));
   const int dy = static_cast<int>(std::lround(y - m_pressY));
+  if (m_drag == Drag::Rotate) {
+    double a = m_rotStart + (angleAt(*w, x, y) - m_rotPressAngle);
+    // magnet: 15° steps (Shift inverts); free turning still lands on whole degrees
+    a = (m_snapOn != modActive(XKB_MOD_NAME_SHIFT)) ? std::round(a / 15.0) * 15.0 : std::round(a);
+    setRotation(*w, a);
+    return;
+  }
   if (m_drag == Drag::Move) {
-    int nx = m_startX + dx, ny = m_startY + dy, nw = w->cfg.width, nh = w->cfg.height;
-    snapBox(*w, nx, ny, nw, nh, true);
-    moveWidget(*w, nx, ny);
+    // snap what is seen: the turned box's bounds
+    int nx = m_startX + dx, ny = m_startY + dy;
+    WidgetConfig c = w->cfg;
+    c.x = nx;
+    c.y = ny;
+    const Box vb = visualBox(c);
+    int bx = vb.x, by = vb.y, bw = vb.w, bh = vb.h;
+    snapBox(*w, bx, by, bw, bh, true);
+    moveWidget(*w, nx + bx - vb.x, ny + by - vb.y);
+  } else if (rotated(w->cfg)) {
+    // turned: size along the widget's own axes, the grabbed corner's opposite
+    // (its top-left, as seen) stays put
+    const double r = -w->cfg.rotation * std::numbers::pi / 180.0;
+    const double ldx = dx * std::cos(r) - dy * std::sin(r), ldy = dx * std::sin(r) + dy * std::cos(r);
+    WidgetConfig c = w->cfg;
+    c.width = std::max(48, static_cast<int>(std::lround(m_dragW + ldx)));
+    c.height = std::max(32, static_cast<int>(std::lround(m_dragH + ldy)));
+    const double a = w->cfg.rotation * std::numbers::pi / 180.0;
+    const double cx = m_anchorX + (c.width / 2.0) * std::cos(a) - (c.height / 2.0) * std::sin(a);
+    const double cy = m_anchorY + (c.width / 2.0) * std::sin(a) + (c.height / 2.0) * std::cos(a);
+    c.x = static_cast<int>(std::lround(cx - c.width / 2.0));
+    c.y = static_cast<int>(std::lround(cy - c.height / 2.0));
+    clampToOutput(c, w->output);
+    w->cfg.x = c.x;
+    w->cfg.y = c.y;
+    w->cfg.width = c.width;
+    w->cfg.height = c.height;
+    placeLayer(*w);
   } else {
     int nx = w->cfg.x, ny = w->cfg.y;
     int nw = std::max(48, m_dragW + dx), nh = std::max(32, m_dragH + dy);
@@ -532,8 +606,16 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_selected = w;  // clicking empty space clears the selection
     markEditDirty();
     if (!w) return;
+    if (inRotateHandle(*w, m_px, m_py)) {
+      m_drag = Drag::Rotate;
+      m_rotStart = w->cfg.rotation;
+      m_rotPressAngle = angleAt(*w, m_px, m_py);
+      setCursor("grabbing");
+      return;
+    }
     pushUndo(*w, "drag");
     m_drag = inGrip(*w, m_px, m_py) ? Drag::Resize : Drag::Move;
+    toOutput(w->cfg, 0, 0, m_anchorX, m_anchorY);
     m_pressX = m_px;
     m_pressY = m_py;
     m_startX = w->cfg.x;
@@ -541,9 +623,21 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_dragW = w->cfg.width;
     m_dragH = w->cfg.height;
     setCursor(m_drag == Drag::Resize ? "se-resize" : "grabbing");
+  } else if (m_drag == Drag::Rotate && w) {
+    m_drag = Drag::None;
+    const double a = w->cfg.rotation;
+    // one undo step per turn (never merged with the previous one): setProp
+    // records the stored value
+    if (std::abs(a - m_rotStart) > 1e-6) {
+      m_lastOpKind.clear();
+      setProp(*w, "rotation", degreesText(a));
+    }
+    setCursor("grab");
+    markEditDirty();
   } else if (m_drag != Drag::None && w) {
-    // an axis held by a guide keeps it; the others snap to the grid
-    const bool free = modActive(XKB_MOD_NAME_SHIFT) || !m_gridOn;
+    // an axis held by a guide keeps it; the others snap to the grid (a turned
+    // widget's box is not on the grid's axes: it stays where it was dropped)
+    const bool free = modActive(XKB_MOD_NAME_SHIFT) || !m_gridOn || rotated(w->cfg);
     const bool keepX = !m_guidesV.empty(), keepY = !m_guidesH.empty();
     const int g = m_config.gridSize;
     auto snap = [g](int v) { return snapToGrid(v, g); };
@@ -619,10 +713,15 @@ void App::drawEditorText(EditSurface& e) {
     if (w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
     const bool sel = w.get() == m_selected;
     std::string label = std::format("{}  ·  {}  ·  {}×{}", w->cfg.id, lookOf(*w), w->cfg.width, w->cfg.height);
-    if (m_drag != Drag::None && w.get() == m_pointerWidget) label += std::format("  @ {},{}", w->cfg.x, w->cfg.y);
-    float lx = static_cast<float>(std::max(8, w->cfg.x + 10));
-    float ly = static_cast<float>(w->cfg.y) - 20;
-    if (ly < 106) ly = static_cast<float>(w->cfg.y) + 10;  // keep clear of the toolbar
+    if (rotated(w->cfg)) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));
+    if (m_drag != Drag::None && m_drag != Drag::Rotate && w.get() == m_pointerWidget)
+      label += std::format("  @ {},{}", w->cfg.x, w->cfg.y);
+    // above what is seen; a selected turned widget's knob needs the room
+    const Box vb = visualBox(w->cfg);
+    float lx = static_cast<float>(std::max(8, vb.x + 10));
+    float ly = static_cast<float>(vb.y) - 20;
+    if (sel) ly -= OverlayPass::kHandleGap + OverlayPass::kHandleR;  // clear of the knob
+    if (ly < 106) ly = static_cast<float>(vb.y) + 10;  // keep clear of the toolbar
     put(label, ls, lx, ly, sel ? w->impl->accent() : ink);
   }
   drawUi(e);

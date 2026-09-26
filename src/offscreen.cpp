@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "offscreen.hpp"
 
+#include "geom.hpp"
+#include "overlay.hpp"
+
 #include "clock.hpp"
 #include "gl.hpp"
 #include "jobs.hpp"
@@ -74,6 +77,35 @@ static Image renderToImage(int w, int h, Fn&& draw) {
   for (int y = 0; y < h; ++y) std::copy_n(px.data() + static_cast<size_t>(h - 1 - y) * row, row, img.rgba.data() + static_cast<size_t>(y) * row);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glDeleteFramebuffers(1, &fbo);
+  glDeleteTextures(1, &tex);
+  return img;
+}
+
+Image renderRotated(const Image& src, double degrees) {
+  // upload bottom-up, as the daemon's off-screen target holds it
+  GLuint tex = 0;
+  glGenTextures(1, &tex);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  std::vector<std::uint8_t> flipped(src.rgba.size());
+  const size_t row = static_cast<size_t>(src.w) * 4;
+  for (int y = 0; y < src.h; ++y)
+    std::copy_n(src.rgba.data() + static_cast<size_t>(src.h - 1 - y) * row, row, flipped.data() + static_cast<size_t>(y) * row);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, src.w, src.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  WidgetConfig c;
+  c.width = src.w;
+  c.height = src.h;
+  c.rotation = degrees;
+  const Box b = surfaceBox(c);
+  RotatedBlit blit;
+  Image img = renderToImage(b.w, b.h, [&] {
+    blit.draw(tex, static_cast<float>(b.w), static_cast<float>(b.h), static_cast<float>(c.width / 2.0 - b.x),
+              static_cast<float>(c.height / 2.0 - b.y), static_cast<float>(c.width), static_cast<float>(c.height),
+              static_cast<float>(degrees));
+  });
   glDeleteTextures(1, &tex);
   return img;
 }

@@ -356,7 +356,8 @@ void App::syncWidgets() {
       }
     }
     const bool geomChanged = w->cfg.x != wc.x || w->cfg.y != wc.y || w->cfg.width != wc.width ||
-                             w->cfg.height != wc.height || w->cfg.output != wc.output;
+                             w->cfg.height != wc.height || w->cfg.output != wc.output ||
+                             std::abs(w->cfg.rotation - wc.rotation) > 1e-6;
     w->cfg = wc;
     for (auto& o : m_outputs)
       if (wc.output.empty() || o->name == wc.output) {
@@ -383,11 +384,7 @@ void App::syncWidgets() {
         destroySurface(*w);
         createSurface(*w);
       } else {
-        zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(w->cfg.width), static_cast<uint32_t>(w->cfg.height));
-        zwlr_layer_surface_v1_set_margin(w->layer, w->cfg.y, 0, 0, w->cfg.x);
-        wl_surface_commit(w->surface);
-        w->appliedX = w->cfg.x;
-        w->appliedY = w->cfg.y;
+        placeLayer(*w);
       }
     }
     next.push_back(std::move(w));
@@ -424,23 +421,43 @@ void App::createSurface(Widget& w) {
     zwlr_layer_surface_v1_set_size(w.layer, 0, 0);
   } else {
     zwlr_layer_surface_v1_set_anchor(w.layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
-    zwlr_layer_surface_v1_set_size(w.layer, static_cast<uint32_t>(w.cfg.width), static_cast<uint32_t>(w.cfg.height));
-    zwlr_layer_surface_v1_set_margin(w.layer, w.cfg.y, 0, 0, w.cfg.x);
+    const Box b = surfaceBox(w.cfg);
+    zwlr_layer_surface_v1_set_size(w.layer, static_cast<uint32_t>(b.w), static_cast<uint32_t>(b.h));
+    zwlr_layer_surface_v1_set_margin(w.layer, b.y, 0, 0, b.x);
+    w.appliedX = b.x;
+    w.appliedY = b.y;
   }
   // -1: position against the output edge, ignoring bars' reserved space, so
   // coordinates match the wallpaper (and the depth mask) exactly.
   zwlr_layer_surface_v1_set_exclusive_zone(w.layer, -1);
-  w.appliedX = w.cfg.x;
-  w.appliedY = w.cfg.y;
   zwlr_layer_surface_v1_set_keyboard_interactivity(w.layer, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
   applyInputRegion(w);
   wl_surface_commit(w.surface);
   w.configured = false;
 }
 
+void App::placeLayer(Widget& w) {
+  if (!w.layer || (w.impl && w.impl->fullscreen())) return;
+  const Box b = surfaceBox(w.cfg);
+  zwlr_layer_surface_v1_set_size(w.layer, static_cast<uint32_t>(b.w), static_cast<uint32_t>(b.h));
+  zwlr_layer_surface_v1_set_margin(w.layer, b.y, 0, 0, b.x);
+  applyInputRegion(w);
+  wl_surface_commit(w.surface);
+  w.appliedX = b.x;
+  w.appliedY = b.y;
+  w.needsRender = true;
+  w.drewEmpty = false;
+}
+
 void App::destroySurface(Widget& w) {
-  if (w.eglSurface != EGL_NO_SURFACE) {
+  if (w.eglSurface != EGL_NO_SURFACE || w.rtFbo) {
     eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
+    if (w.rtFbo) glDeleteFramebuffers(1, &w.rtFbo);
+    if (w.rtTex) glDeleteTextures(1, &w.rtTex);
+    w.rtFbo = w.rtTex = 0;
+    w.rtW = w.rtH = 0;
+  }
+  if (w.eglSurface != EGL_NO_SURFACE) {
     eglDestroySurface(m_egl, w.eglSurface);
     w.eglSurface = EGL_NO_SURFACE;
   }
@@ -466,10 +483,21 @@ void App::applyInputRegion(Widget& w) {
   if (!w.surface) return;
   // click-through except where the widget asks for input (buttons, rails)
   wl_region* region = wl_compositor_create_region(m_compositor);
-  if (w.impl && !w.impl->fullscreen())
-    for (const Rect& r : w.inputRects)
-      wl_region_add(region, static_cast<int>(std::floor(r.x)), static_cast<int>(std::floor(r.y)),
-                    static_cast<int>(std::ceil(r.w)), static_cast<int>(std::ceil(r.h)));
+  if (w.impl && !w.impl->fullscreen()) {
+    const Box b = surfaceBox(w.cfg);
+    for (const Rect& r : w.inputRects) {
+      // widget px -> surface px: the bounding box of the turned rect
+      double x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (auto [lx, ly] : {std::pair{r.x, r.y}, {r.x + r.w, r.y}, {r.x, r.y + r.h}, {r.x + r.w, r.y + r.h}}) {
+        double ox = 0, oy = 0;
+        toOutput(w.cfg, lx, ly, ox, oy);
+        x0 = std::min(x0, ox - b.x), y0 = std::min(y0, oy - b.y);
+        x1 = std::max(x1, ox - b.x), y1 = std::max(y1, oy - b.y);
+      }
+      wl_region_add(region, static_cast<int>(std::floor(x0)), static_cast<int>(std::floor(y0)),
+                    static_cast<int>(std::ceil(x1 - x0)), static_cast<int>(std::ceil(y1 - y0)));
+    }
+  }
   wl_surface_set_input_region(w.surface, region);
   wl_region_destroy(region);
 }
@@ -496,6 +524,11 @@ bool App::widgetPointer(PointerEvent::Type type, wl_surface* s, double x, double
   Widget* w = m_hoverWidget;
   if (!w || !w->impl) return false;
   if (type != PointerEvent::Press && type != PointerEvent::Release) {
+    if (!w->impl->fullscreen()) {
+      // surface px -> the widget's own coordinates (identity unless turned)
+      const Box b = surfaceBox(w->cfg);
+      toLocal(w->cfg, x + b.x, y + b.y, x, y);
+    }
     m_px = x;
     m_py = y;
   }
@@ -586,15 +619,38 @@ void App::render(Widget& w) {
   }
 
   eglMakeCurrent(m_egl, w.eglSurface, w.eglSurface, m_eglContext);
-  glViewport(0, 0, w.w * w.scale, w.h * w.scale);
+  // A turned widget draws its own box off-screen, then that picture is laid
+  // on the surface at its angle; the depth mask comes after, in output space.
+  const bool turn = show && !w.impl->fullscreen() && rotated(w.cfg);
+  if (turn) {
+    const int tw = w.cfg.width * w.scale, th = w.cfg.height * w.scale;
+    if (!w.rtFbo || w.rtW != tw || w.rtH != th) {
+      if (!w.rtTex) glGenTextures(1, &w.rtTex);
+      glBindTexture(GL_TEXTURE_2D, w.rtTex);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      if (!w.rtFbo) glGenFramebuffers(1, &w.rtFbo);
+      glBindFramebuffer(GL_FRAMEBUFFER, w.rtFbo);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, w.rtTex, 0);
+      w.rtW = tw;
+      w.rtH = th;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, w.rtFbo);
+    glViewport(0, 0, tw, th);
+  } else {
+    glViewport(0, 0, w.w * w.scale, w.h * w.scale);
+  }
   glClearColor(0, 0, 0, 0);
   glClear(GL_COLOR_BUFFER_BIT);
   const float ow = w.output ? w.output->logicalW() : 1920.0F;
   const float oh = w.output ? w.output->logicalH() : 1080.0F;
   if (show) {
     DrawContext dctx;
-    dctx.w = static_cast<float>(w.w);
-    dctx.h = static_cast<float>(w.h);
+    dctx.w = static_cast<float>(turn ? w.cfg.width : w.w);
+    dctx.h = static_cast<float>(turn ? w.cfg.height : w.h);
     dctx.outputW = ow;
     dctx.outputH = oh;
     dctx.scale = w.scale;
@@ -608,14 +664,28 @@ void App::render(Widget& w) {
       // a broken look must not take the daemon (and every other widget) down
       US_ERROR("widget {}: draw failed: {}", w.cfg.id, ex.what());
     }
+    if (turn) {
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      glViewport(0, 0, w.w * w.scale, w.h * w.scale);
+      glClear(GL_COLOR_BUFFER_BIT);
+      const Box b = surfaceBox(w.cfg);
+      try {
+        m_blit.draw(w.rtTex, static_cast<float>(w.w), static_cast<float>(w.h),
+                    static_cast<float>(w.cfg.x + w.cfg.width / 2.0 - b.x), static_cast<float>(w.cfg.y + w.cfg.height / 2.0 - b.y),
+                    static_cast<float>(w.cfg.width), static_cast<float>(w.cfg.height), static_cast<float>(w.cfg.rotation));
+      } catch (const std::exception& ex) {
+        US_ERROR("widget {}: rotated blit failed: {}", w.cfg.id, ex.what());
+      }
+    }
     if (w.cfg.depth && w.output) {
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         MaskParams mp;
         mp.texture = m->texture;
         mp.surfaceW = static_cast<float>(w.w);
         mp.surfaceH = static_cast<float>(w.h);
-        mp.offsetX = w.impl->fullscreen() ? 0.0F : static_cast<float>(w.cfg.x);
-        mp.offsetY = w.impl->fullscreen() ? 0.0F : static_cast<float>(w.cfg.y);
+        const Box b = surfaceBox(w.cfg);
+        mp.offsetX = w.impl->fullscreen() ? 0.0F : static_cast<float>(b.x);
+        mp.offsetY = w.impl->fullscreen() ? 0.0F : static_cast<float>(b.y);
         mp.outputW = ow;
         mp.outputH = oh;
         mp.imageW = static_cast<float>(m->width);
@@ -740,7 +810,7 @@ void App::markEditDirty() {
 void App::renderEdit(EditSurface& e) {
   if (!e.configured || e.eglSurface == EGL_NO_SURFACE || e.frameCb) return;
   std::vector<EditRect> rects;
-  int hover = -1, active = -1, selected = -1;
+  int hover = -1, active = -1, selected = -1, handle = -1;
   Color accent = Color::fromHex("#e2342a");
   for (auto& w : m_widgets) {
     if (w->output != e.output || !w->impl || !w->surface) continue;
@@ -754,9 +824,9 @@ void App::renderEdit(EditSurface& e) {
     }
     const int idx = static_cast<int>(rects.size());
     if (w.get() == m_pointerWidget) (m_drag != Drag::None ? active : hover) = idx;
-    if (w.get() == m_selected) selected = idx;
+    if (w.get() == m_selected) selected = handle = idx;
     rects.push_back({static_cast<float>(w->cfg.x), static_cast<float>(w->cfg.y), static_cast<float>(w->cfg.width),
-                     static_cast<float>(w->cfg.height)});
+                     static_cast<float>(w->cfg.height), static_cast<float>(w->cfg.rotation)});
     accent = w->impl->accent();
   }
   eglMakeCurrent(m_egl, e.eglSurface, e.eglSurface, m_eglContext);
@@ -765,7 +835,7 @@ void App::renderEdit(EditSurface& e) {
   glClear(GL_COLOR_BUFFER_BIT);
   try {
     m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, selected, accent,
-                   m_gridOn ? static_cast<float>(m_config.gridSize) : 0.0F, m_guidesV, m_guidesH);
+                   m_gridOn ? static_cast<float>(m_config.gridSize) : 0.0F, m_guidesV, m_guidesH, handle);
     drawEditorText(e);
   } catch (const std::exception& ex) {
     US_ERROR("editor canvas failed: {}", ex.what());
@@ -883,9 +953,8 @@ std::string App::handleCommand(const std::string& cmd) {
       const int ow = static_cast<int>(w->output->logicalW()), oh = static_cast<int>(w->output->logicalH());
       w->cfg.width = std::min(w->cfg.width, ow);
       w->cfg.height = std::min(w->cfg.height, oh);
-      zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(w->cfg.width), static_cast<uint32_t>(w->cfg.height));
       moveWidget(*w, (ow - w->cfg.width) / 2, oh - w->cfg.height - 64);
-      wl_surface_commit(w->surface);
+      placeLayer(*w);
       persist(*w);
       w->needsRender = true;
     }

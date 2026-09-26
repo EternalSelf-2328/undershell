@@ -50,6 +50,7 @@ Ryoku's desktop spectrum.
 | `spin` | 0 – 120 | `0` | Spin °/s |
 | `opacity` | 0.1 – 1 | `1` | Opacity |
 | `fps` | 15 – 144 | `60` | FPS |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
 
 ## `type = "clock"`
@@ -69,6 +70,7 @@ Ryoku's clock faces and date strips.
 | `weather` | `true` / `false` | `true` | Weather (metal) |
 | `fahrenheit` | `true` / `false` | `false` | Fahrenheit |
 | `opacity` | 0.1 – 1 | `1` | Opacity |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
 
 ## `type = "now_playing"`
@@ -84,5 +86,6 @@ Ryoku's now-playing card.
 | `ink` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Ink |
 | `opacity` | 0.1 – 1 | `1` | Opacity |
 | `fps` | 15 – 60 | `30` | FPS |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
 | `music_app` | shell command | `"spotify"` | opened by the corner button (not in the inspector) |

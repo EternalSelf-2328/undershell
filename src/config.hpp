@@ -41,6 +41,7 @@ struct WidgetConfig {
   int x = 0, y = 0, width = 800, height = 240;  // logical px on the output
   bool enabled = true;
   bool depth = true;   // pass behind the wallpaper_depth foreground
+  double rotation = 0;  // degrees, clockwise, about the box centre
   toml::table options;  // the whole [[widget]] table
 };
 

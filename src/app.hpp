@@ -4,6 +4,7 @@
 #include "audio.hpp"
 #include "config.hpp"
 #include "depth.hpp"
+#include "geom.hpp"
 #include "ipc.hpp"
 #include "jobs.hpp"
 #include "media.hpp"
@@ -14,6 +15,7 @@
 #include "widget.hpp"
 
 #include <EGL/egl.h>
+#include <GLES3/gl3.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -66,7 +68,10 @@ struct Widget {
   // the surface position pointer events are currently relative to: updated
   // only once the compositor has processed our margin change (wl_display.sync)
   int appliedX = 0, appliedY = 0;
-  std::vector<Rect> inputRects;  // last input region set (surface px)
+  std::vector<Rect> inputRects;  // last input region set (widget px)
+  // off-screen target of a turned widget (its own box, at buffer scale)
+  GLuint rtFbo = 0, rtTex = 0;
+  int rtW = 0, rtH = 0;
   uint64_t frames = 0;
   uint64_t framesAtMark = 0;
   double markAt = 0;
@@ -125,6 +130,7 @@ private:
   void syncWidgets();
   void createSurface(Widget& w);
   void destroySurface(Widget& w);
+  void placeLayer(Widget& w);  // layer size + margin from the (turned) box
   void applyInputRegion(Widget& w);
   void render(Widget& w);
   void setEditMode(bool on);
@@ -186,6 +192,9 @@ private:
   void removeWidget(Widget& w);
   void duplicateWidget(Widget& w);
   void moveWidget(Widget& w, int x, int y);
+  void resizeWidget(Widget& w, int width, int height);
+  bool inRotateHandle(const Widget& w, double x, double y) const;
+  void setRotation(Widget& w, double degrees);  // live, not persisted
   void clampToOutput(WidgetConfig& c, const Output* o) const;
   void persist(Widget& w);
   void setCursor(const char* name);
@@ -225,6 +234,7 @@ private:
   Noctalia m_noctalia;
   DepthMasks m_depth;
   MaskPass m_maskPass;
+  RotatedBlit m_blit;
   TextRenderer m_text;
   OverlayPass m_overlay;
   IpcServer m_ipc;
@@ -237,7 +247,9 @@ private:
   EditSurface* m_pointerEdit = nullptr;  // editor surface under the pointer
   Widget* m_pointerWidget = nullptr;     // widget hovered / being dragged
   double m_px = 0, m_py = 0;             // pointer, output coordinates
-  enum class Drag { None, Move, Resize, Slider } m_drag = Drag::None;
+  enum class Drag { None, Move, Resize, Slider, Rotate } m_drag = Drag::None;
+  double m_rotStart = 0, m_rotPressAngle = 0;  // rotate drag
+  double m_anchorX = 0, m_anchorY = 0;         // turned resize: fixed corner
   double m_pressX = 0, m_pressY = 0;     // pointer at press, output coordinates
   int m_startX = 0, m_startY = 0, m_dragW = 0, m_dragH = 0;
   double m_scrollAcc = 0;

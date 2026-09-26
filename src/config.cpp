@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <regex>
 #include <sstream>
@@ -100,6 +101,10 @@ Config Config::load(const std::string& path) {
       w.height = static_cast<int>(std::max<int64_t>(24, get<int64_t>(*t, "height", 240)));
       w.enabled = get<bool>(*t, "enabled", true);
       w.depth = get<bool>(*t, "depth", true);
+      if (auto r = (*t)["rotation"].value<double>()) {
+        double d = std::fmod(*r, 360.0);
+        w.rotation = d <= -180.0 ? d + 360.0 : (d > 180.0 ? d - 360.0 : d);
+      }
       w.options = *t;
       cfg.widgets.push_back(std::move(w));
     }

@@ -119,6 +119,28 @@ int main(int argc, char** argv) {
     }
   }
 
+  // a turned widget: at 0° the blit reproduces the picture (orientation is
+  // right), and a 30° turn matches its golden
+  {
+    const Image src = renderLook("bars", 480, 160, pal);
+    const Image same = renderRotated(src, 0);
+    const double d0 = imageDiff(same, src);
+    if (d0 < 0 || d0 > 0.5) std::fprintf(stderr, "unturned blit differs from its source: %.3f\n", d0);
+    CHECK(d0 >= 0 && d0 <= 0.5);
+    const Image turned = renderRotated(src, 30);
+    CHECK(turned.w > src.w && turned.h > src.h);
+    const std::string path = golden + "/rotated-bars-30.png";
+    if (update) {
+      writePng(turned, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(turned, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "turned bars differ from golden: %.3f\n", d);
+      CHECK(d >= 0 && d <= 1.5);
+    }
+  }
+
   // every auxiliary pass compiles and draws (a GLSL error must fail here,
   // never in the running daemon)
   while (glGetError() != GL_NO_ERROR) {}
