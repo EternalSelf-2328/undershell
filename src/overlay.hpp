@@ -37,10 +37,16 @@ struct EditRect {
 class OverlayPass {
 public:
   static constexpr int kMaxRects = 16;
-  void draw(float w, float h, const std::vector<EditRect>& rects, int hover, int active, Color accent, float grid);
+  static constexpr int kMaxGuides = 4;
+  void draw(float w, float h, const std::vector<EditRect>& rects, int hover, int active, int selected, Color accent,
+            float grid, const std::vector<float>& vguides, const std::vector<float>& hguides);
+
+  // a rounded, filled rectangle (label plates); straight-alpha colour
+  void drawPill(float x, float y, float w, float h, float radius, Color color, float surfaceW, float surfaceH);
 
 private:
   Program m_prog;
+  Program m_pill;
 };
 
 }  // namespace undershell

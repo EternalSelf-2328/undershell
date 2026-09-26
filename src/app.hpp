@@ -22,6 +22,9 @@ struct wl_output;
 struct wl_seat;
 struct wl_pointer;
 struct wl_keyboard;
+struct xkb_context;
+struct xkb_keymap;
+struct xkb_state;
 struct wl_shm;
 struct wl_surface;
 struct wl_callback;
@@ -100,6 +103,10 @@ public:
   void onEditFrameDone(EditSurface* e);
   void onKey(uint32_t key, uint32_t state);
   void onScroll(double value);
+  void onKeymap(int fd, uint32_t size);
+  void onModifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
+  void onRepeatInfo(int32_t rate, int32_t delay);
+  void onKeyboardLeave();
   void setupSeat(wl_seat* seat, uint32_t caps);
 
   Output* outputByWl(wl_output* o);
@@ -122,6 +129,27 @@ private:
   EditSurface* editBySurface(wl_surface* s);
   Widget* widgetAt(const Output* o, double x, double y);
   void markEditDirty();
+  // editor internals (editor.cpp)
+  struct EditOp {
+    std::string id;
+    int x = 0, y = 0, w = 0, h = 0;
+    std::string style;
+  };
+  EditOp snapshot(const Widget& w) const;
+  void pushUndo(const Widget& w, const char* kind);
+  void applyOp(const EditOp& op);
+  void undo();
+  void redo();
+  void nudge(int dx, int dy, bool resize);
+  bool keyAction(uint32_t key);
+  [[nodiscard]] bool modActive(const char* name) const;
+  Widget* target();
+  void cycleSelection(int step);
+  void snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool moving);
+  void setStyle(Widget& w, const std::string& look);
+  void editorTick(double now);
+  void validateEditPointers();
+  void drawEditorText(EditSurface& e);
   void moveWidget(Widget& w, int x, int y);
   void clampToOutput(WidgetConfig& c, const Output* o) const;
   void persist(Widget& w);
@@ -174,6 +202,17 @@ private:
   double m_pressX = 0, m_pressY = 0;     // pointer at press, output coordinates
   int m_startX = 0, m_startY = 0, m_dragW = 0, m_dragH = 0;
   double m_scrollAcc = 0;
+  Widget* m_selected = nullptr;
+  std::vector<EditOp> m_undo, m_redo;
+  std::string m_lastOpKind, m_lastOpId;
+  double m_lastOpAt = 0;
+  std::vector<float> m_guidesV, m_guidesH;  // output coordinates
+  xkb_context* m_xkb = nullptr;
+  xkb_keymap* m_keymap = nullptr;
+  xkb_state* m_xkbState = nullptr;
+  int m_repeatRate = 25, m_repeatDelay = 600;
+  uint32_t m_repeatKey = 0;
+  double m_repeatNext = 0;
   bool m_running = true;
   bool m_demo = false;
   double m_demoT = 0;

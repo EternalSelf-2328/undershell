@@ -39,11 +39,22 @@ undershell msg quit
 undershell --snapshot DIR   # render the 12 looks to PNG (no window needed)
 ```
 
-**Editor**: `msg edit` makes the widgets interactive. Drag to move, the
-bottom-right corner to resize, 16 px grid; on release it saves `x/y/width/height`
-to the config (it only touches those lines, and keeps your comments).
-**Right-click** exits the editor. You can bind it to a key in Umbriel, e.g.
-`"Mod+Shift+W" = "spawn:undershell msg edit"`.
+**Editor** (`msg edit`, e.g. bound to `"Mod+Ctrl+D" = "spawn:/home/USER/.local/bin/undershell msg edit"`
+in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.local/bin`):
+
+| Action | How |
+|---|---|
+| Select | click (empty space: deselect) · **Tab** / Shift+Tab |
+| Move / resize | drag · bottom-right corner |
+| Magnet | snaps to the screen center, the edges and other widgets (guide lines); **Shift** = free |
+| Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
+| Change look | **wheel** over the widget |
+| Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes and looks) |
+| Exit | **Esc**, Enter or right-click |
+
+While editing with no music, the visualizers move with the demo spectrum.
+Positions snap to the grid (16 px) on release and are saved to the config,
+without touching the rest of the file.
 
 ## Configuration
 
@@ -62,15 +73,16 @@ ninja -C build && meson test -C build && meson install -C build
 ```
 
 The tests don't need a compositor: `config` (loading and in-place editing
-of the file), `motion` (Ryoku's easing) and `render` (the 12 looks against
-the images in `tests/golden/` and text with the bundled fonts, via headless
-EGL). If you change a look on purpose: `build/test_render --update`.
+of the file), `editor` (magnet, limits, grid), `motion` (Ryoku's easing) and `render` (the 12 looks against
+the images in `tests/golden/`, compilation of every shader, and text with the
+bundled fonts, via headless EGL). If you change a look on purpose: `build/test_render --update`.
 
 ## Structure
 
 | | |
 |---|---|
-| `src/app.*` | Wayland, EGL, loop, surfaces, editor, IPC |
+| `src/app.*` | Wayland, EGL, loop, surfaces, IPC |
+| `src/editor.cpp`, `snap.hpp` | the editor: selection, magnet, keyboard, undo/redo, labels |
 | `src/widget.*` | the widget interface (`WidgetImpl`) and the type registry |
 | `src/visualizer.*`, `motion.hpp`, `shaders/` | the visualizer (Ryoku) |
 | `src/text.*` | text: Pango → cached textures |
@@ -86,7 +98,7 @@ EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo.
 
 - [x] Phase 0: visualizer (12 looks), depth, Noctalia palette, editor, IPC
 - [x] Phase 1: widget interface, text, fonts, automated tests
-- [ ] Phase 2: editor (guides, arrows, undo/redo, demo while editing)
+- [x] Phase 2: editor (guides, arrows, undo/redo, demo while editing, labels)
 - [ ] Phase 3: clocks (12 faces)
 - [ ] Phase 4: now-playing card (MPRIS, cover, lyrics)
 - [ ] Phase 5: inspector and widget gallery in the editor

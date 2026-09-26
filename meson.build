@@ -49,6 +49,7 @@ core = static_library('undershell-core',
   'src/audio.cpp',
   'src/config.cpp',
   'src/depth.cpp',
+  'src/editor.cpp',
   'src/gl.cpp',
   'src/ipc.cpp',
   'src/noctalia.cpp',
@@ -63,6 +64,6 @@ core_dep = declare_dependency(link_with : core, include_directories : include_di
 executable('undershell', 'src/main.cpp', dependencies : core_dep, install : true)
 install_subdir('data/fonts', install_dir : datadir)
 
-foreach t : ['config', 'motion', 'render']
+foreach t : ['config', 'editor', 'motion', 'render']
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep))
 endforeach

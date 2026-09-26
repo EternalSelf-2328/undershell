@@ -2,7 +2,10 @@
 // Regenerate goldens with:  build/test_render --update
 #include "check.hpp"
 #include "offscreen.hpp"
+#include "overlay.hpp"
 #include "text.hpp"
+
+#include <stdexcept>
 
 #include <cstring>
 #include <filesystem>
@@ -38,6 +41,59 @@ int main(int argc, char** argv) {
     if (d < 0 || d > 1.5) std::fprintf(stderr, "look %s differs from golden: %.3f\n", look, d);
     CHECK(d >= 0 && d <= 1.5);
   }
+
+  // every auxiliary pass compiles and draws (a GLSL error must fail here,
+  // never in the running daemon)
+  while (glGetError() != GL_NO_ERROR) {}
+  auto glcheck = [](const char* where) {
+    GLenum e = glGetError();
+    if (e != GL_NO_ERROR) std::fprintf(stderr, "GL error 0x%x after %s\n", e, where);
+    return e == GL_NO_ERROR;
+  };
+  GLuint fbo = 0, target = 0;  // headless: no default framebuffer
+  glGenTextures(1, &target);
+  glBindTexture(GL_TEXTURE_2D, target);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 320, 200, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+  glGenFramebuffers(1, &fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, target, 0);
+  glViewport(0, 0, 320, 200);
+  try {
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    const unsigned char px[4] = {0, 128, 255, 64};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 2, 2, 0, GL_RED, GL_UNSIGNED_BYTE, px);
+    OverlayPass ov;
+    CHECK(glcheck("texture upload"));
+    ov.draw(320, 200, {{10, 10, 100, 60}, {150, 40, 80, 80}}, 0, 1, 1, Color{1, 0, 0, 1}, 16, {160}, {100});
+    CHECK(glcheck("overlay"));
+    ov.drawPill(10, 10, 120, 30, 9, Color{0, 0, 0, 0.7F}, 320, 200);
+    CHECK(glcheck("pill"));
+    MaskPass mask;
+    for (int mode = 0; mode < 6; ++mode) {
+      MaskParams mp;
+      mp.texture = tex;
+      mp.surfaceW = 100;
+      mp.surfaceH = 50;
+      mp.outputW = 1920;
+      mp.outputH = 1080;
+      mp.imageW = 2;
+      mp.imageH = 2;
+      mp.fillMode = mode;
+      mask.draw(mp);
+      CHECK(glcheck("mask"));
+    }
+    glDeleteTextures(1, &tex);
+    CHECK(glcheck("cleanup"));
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "pass failed: %s\n", e.what());
+    CHECK(false);
+  }
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glDeleteFramebuffers(1, &fbo);
+  glDeleteTextures(1, &target);
 
   // text: the bundled fonts resolve and draw
   TextRenderer::registerBundledFonts();

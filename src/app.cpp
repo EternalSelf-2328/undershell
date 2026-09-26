@@ -110,14 +110,22 @@ static void editFrame(void* d, wl_callback* cb, uint32_t) {
 }
 static const wl_callback_listener kEditFrame = {editFrame};
 
-static void kbKeymap(void*, wl_keyboard*, uint32_t, int32_t fd, uint32_t) { close(fd); }
+static void kbKeymap(void* d, wl_keyboard*, uint32_t format, int32_t fd, uint32_t size) {
+  if (format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
+    static_cast<App*>(d)->onKeymap(fd, size);
+  } else {
+    close(fd);
+  }
+}
 static void kbEnter(void*, wl_keyboard*, uint32_t, wl_surface*, wl_array*) {}
-static void kbLeave(void*, wl_keyboard*, uint32_t, wl_surface*) {}
+static void kbLeave(void* d, wl_keyboard*, uint32_t, wl_surface*) { static_cast<App*>(d)->onKeyboardLeave(); }
 static void kbKey(void* d, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t state) {
   static_cast<App*>(d)->onKey(key, state);
 }
-static void kbMods(void*, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) {}
-static void kbRepeat(void*, wl_keyboard*, int32_t, int32_t) {}
+static void kbMods(void* d, wl_keyboard*, uint32_t, uint32_t dep, uint32_t lat, uint32_t lock, uint32_t group) {
+  static_cast<App*>(d)->onModifiers(dep, lat, lock, group);
+}
+static void kbRepeat(void* d, wl_keyboard*, int32_t rate, int32_t delay) { static_cast<App*>(d)->onRepeatInfo(rate, delay); }
 static const wl_keyboard_listener kKeyboard = {kbKeymap, kbEnter, kbLeave, kbKey, kbMods, kbRepeat};
 
 static void ptrEnter(void* d, wl_pointer*, uint32_t serial, wl_surface* s, wl_fixed_t x, wl_fixed_t y) {
@@ -385,6 +393,7 @@ void App::syncWidgets() {
   for (auto& old : m_widgets)
     if (old) destroySurface(*old);
   m_widgets = std::move(next);
+  validateEditPointers();
 }
 
 // ── surfaces ────────────────────────────────────────────────────────────────
@@ -488,13 +497,15 @@ void App::onFrameDone(Widget* w) {
 AudioFrame App::audioFrame() {
   static std::vector<float> bands;
   AudioFrame f;
-  const bool silent = !m_demo && (!m_audioOk || m_audio.idle());
-  const auto& vals = m_demo ? m_demoBands : m_audio.values();
+  // while editing in silence the looks move on the demo spectrum
+  const bool demo = m_demo || (m_edit && (!m_audioOk || m_audio.idle()));
+  const bool silent = !demo && (!m_audioOk || m_audio.idle());
+  const auto& vals = demo ? m_demoBands : m_audio.values();
   bands.resize(vals.size());
   for (size_t i = 0; i < vals.size(); ++i) bands[i] = silent ? 0.0F : vals[i] / 0.9F;
   f.bands = &bands;
   f.silent = silent;
-  f.energy = silent ? 0.0 : (m_demo ? 0.3 : m_audio.energy());
+  f.energy = silent ? 0.0 : (demo ? 0.3 : m_audio.energy());
   return f;
 }
 
@@ -530,7 +541,12 @@ void App::render(Widget& w) {
     dctx.outputH = oh;
     dctx.scale = w.scale;
     dctx.text = &m_text;
-    w.impl->draw(dctx);
+    try {
+      w.impl->draw(dctx);
+    } catch (const std::exception& ex) {
+      // a broken look must not take the daemon (and every other widget) down
+      US_ERROR("widget {}: draw failed: {}", w.cfg.id, ex.what());
+    }
     if (w.cfg.depth && w.output) {
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         MaskParams mp;
@@ -544,7 +560,11 @@ void App::render(Widget& w) {
         mp.imageW = static_cast<float>(m->width);
         mp.imageH = static_cast<float>(m->height);
         mp.fillMode = m_noctalia.state().fillMode;
-        m_maskPass.draw(mp);
+        try {
+          m_maskPass.draw(mp);
+        } catch (const std::exception& ex) {
+          US_ERROR("depth mask pass failed: {}", ex.what());
+        }
       }
     }
   }
@@ -573,6 +593,15 @@ void App::setEditMode(bool on) {
   m_drag = Drag::None;
   m_pointerWidget = nullptr;
   m_pointerEdit = nullptr;
+  m_repeatKey = 0;
+  m_guidesV.clear();
+  m_guidesH.clear();
+  if (on && !m_selected)
+    for (auto& w : m_widgets)
+      if (w->impl && !w->impl->fullscreen()) {
+        m_selected = w.get();
+        break;
+      }
   if (on) {
     for (auto& o : m_outputs) createEditSurface(o.get());
   } else {
@@ -646,13 +675,13 @@ void App::markEditDirty() {
 void App::renderEdit(EditSurface& e) {
   if (!e.configured || e.eglSurface == EGL_NO_SURFACE || e.frameCb) return;
   std::vector<EditRect> rects;
-  int hover = -1, active = -1;
+  int hover = -1, active = -1, selected = -1;
   Color accent = Color::fromHex("#e2342a");
   for (auto& w : m_widgets) {
-    if (w->output != e.output || w->impl->fullscreen() || !w->surface) continue;
-    if (w.get() == m_pointerWidget) {
-      (m_drag != Drag::None ? active : hover) = static_cast<int>(rects.size());
-    }
+    if (w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
+    const int idx = static_cast<int>(rects.size());
+    if (w.get() == m_pointerWidget) (m_drag != Drag::None ? active : hover) = idx;
+    if (w.get() == m_selected) selected = idx;
     rects.push_back({static_cast<float>(w->cfg.x), static_cast<float>(w->cfg.y), static_cast<float>(w->cfg.width),
                      static_cast<float>(w->cfg.height)});
     accent = w->impl->accent();
@@ -661,8 +690,13 @@ void App::renderEdit(EditSurface& e) {
   glViewport(0, 0, e.w * e.scale, e.h * e.scale);
   glClearColor(0, 0, 0, 0);
   glClear(GL_COLOR_BUFFER_BIT);
-  m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, accent,
-                 static_cast<float>(m_config.gridSize));
+  try {
+    m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, selected, accent,
+                   static_cast<float>(m_config.gridSize), m_guidesV, m_guidesH);
+    drawEditorText(e);
+  } catch (const std::exception& ex) {
+    US_ERROR("editor canvas failed: {}", ex.what());
+  }
   e.frameCb = wl_surface_frame(e.surface);
   wl_callback_add_listener(e.frameCb, &kEditFrame, new EditCtx{this, &e});
   eglSwapBuffers(m_egl, e.eglSurface);
@@ -681,16 +715,6 @@ Widget* App::widgetBySurface(wl_surface* s) {
   return nullptr;
 }
 
-// topmost (last listed) widget on an output containing the point
-Widget* App::widgetAt(const Output* o, double x, double y) {
-  for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it) {
-    Widget& w = **it;
-    if (w.output != o || w.impl->fullscreen() || !w.surface) continue;
-    if (x >= w.cfg.x && y >= w.cfg.y && x < w.cfg.x + w.cfg.width && y < w.cfg.y + w.cfg.height) return &w;
-  }
-  return nullptr;
-}
-
 void App::setCursor(const char* name) {
   if (!m_pointer || !m_cursorTheme || !m_cursorSurface) return;
   wl_cursor* c = wl_cursor_theme_get_cursor(m_cursorTheme, name);
@@ -702,171 +726,6 @@ void App::setCursor(const char* name) {
   wl_surface_commit(m_cursorSurface);
   wl_pointer_set_cursor(m_pointer, m_pointerSerial, m_cursorSurface, static_cast<int>(img->hotspot_x),
                         static_cast<int>(img->hotspot_y));
-}
-
-static bool inGrip(const Widget& w, double x, double y) {
-  return x > w.cfg.x + w.cfg.width - 26 && y > w.cfg.y + w.cfg.height - 26;
-}
-
-void App::onPointerEnter(wl_surface* s, uint32_t serial, double x, double y) {
-  m_pointerSerial = serial;
-  m_pointerEdit = editBySurface(s);
-  if (!m_pointerEdit) return;
-  onPointerMotion(x, y);
-}
-
-void App::onPointerLeave(wl_surface* s) {
-  if (editBySurface(s) != m_pointerEdit) return;
-  if (m_drag == Drag::None) {
-    m_pointerEdit = nullptr;
-    m_pointerWidget = nullptr;
-    markEditDirty();
-  }
-}
-
-void App::onPointerMotion(double x, double y) {
-  if (!m_edit || !m_pointerEdit) return;
-  m_px = x;
-  m_py = y;
-  if (m_drag == Drag::None) {
-    Widget* hit = widgetAt(m_pointerEdit->output, x, y);
-    if (hit != m_pointerWidget) {
-      m_pointerWidget = hit;
-      markEditDirty();
-    }
-    setCursor(!hit ? "default" : (inGrip(*hit, x, y) ? "se-resize" : "grab"));
-    return;
-  }
-  Widget* w = m_pointerWidget;
-  if (!w) return;
-  const int dx = static_cast<int>(std::lround(x - m_pressX));
-  const int dy = static_cast<int>(std::lround(y - m_pressY));
-  if (m_drag == Drag::Move) {
-    moveWidget(*w, m_startX + dx, m_startY + dy);
-  } else {
-    WidgetConfig c = w->cfg;
-    c.width = std::max(48, m_dragW + dx);
-    c.height = std::max(32, m_dragH + dy);
-    clampToOutput(c, w->output);
-    if (c.width != w->cfg.width || c.height != w->cfg.height) {
-      w->cfg.width = c.width;
-      w->cfg.height = c.height;
-      zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(c.width), static_cast<uint32_t>(c.height));
-      wl_surface_commit(w->surface);
-    }
-  }
-  w->needsRender = true;
-  w->drewEmpty = false;
-  markEditDirty();
-}
-
-// Widgets may hang off the screen edge for composition, but a quarter of
-// them (at least 48 px) always stays on the output so none can be lost.
-void App::clampToOutput(WidgetConfig& c, const Output* o) const {
-  if (!o) return;
-  const int ow = static_cast<int>(o->logicalW()), oh = static_cast<int>(o->logicalH());
-  c.width = std::clamp(c.width, 48, std::max(48, ow * 2));
-  c.height = std::clamp(c.height, 32, std::max(32, oh * 2));
-  const int keepX = std::min(c.width, std::max(48, c.width / 4));
-  const int keepY = std::min(c.height, std::max(48, c.height / 4));
-  c.x = std::clamp(c.x, keepX - c.width, ow - keepX);
-  c.y = std::clamp(c.y, keepY - c.height, oh - keepY);
-}
-
-void App::moveWidget(Widget& w, int x, int y) {
-  WidgetConfig c = w.cfg;
-  c.x = x;
-  c.y = y;
-  clampToOutput(c, w.output);
-  if (c.x == w.cfg.x && c.y == w.cfg.y) return;
-  w.cfg.x = c.x;
-  w.cfg.y = c.y;
-  w.appliedX = c.x;
-  w.appliedY = c.y;
-  zwlr_layer_surface_v1_set_margin(w.layer, c.y, 0, 0, c.x);
-  wl_surface_commit(w.surface);
-}
-
-void App::onMoveApplied(Widget*, int, int) {}
-
-void App::persist(Widget& w) {
-  for (auto& c : m_config.widgets)
-    if (c.id == w.cfg.id) {
-      c.x = w.cfg.x;
-      c.y = w.cfg.y;
-      c.width = w.cfg.width;
-      c.height = w.cfg.height;
-    }
-  if (!Config::saveGeometry(m_configPath, w.cfg)) US_WARN("could not save the new geometry of {}", w.cfg.id);
-}
-
-void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
-  m_pointerSerial = serial;
-  if (!m_edit || !m_pointerEdit) return;
-  if (button == BTN_RIGHT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
-    setEditMode(false);
-    return;
-  }
-  if (button != BTN_LEFT) return;
-  Widget* w = m_pointerWidget;
-  if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-    if (!w) return;
-    m_drag = inGrip(*w, m_px, m_py) ? Drag::Resize : Drag::Move;
-    m_pressX = m_px;
-    m_pressY = m_py;
-    m_startX = w->cfg.x;
-    m_startY = w->cfg.y;
-    m_dragW = w->cfg.width;
-    m_dragH = w->cfg.height;
-    setCursor(m_drag == Drag::Resize ? "se-resize" : "grabbing");
-    markEditDirty();
-  } else if (m_drag != Drag::None && w) {
-    // snap to the grid, like Noctalia's desktop editor, then persist
-    const int g = std::max(1, m_config.gridSize);
-    auto snap = [g](int v) { return static_cast<int>(std::lround(static_cast<double>(v) / g)) * g; };
-    if (m_drag == Drag::Move) {
-      moveWidget(*w, snap(w->cfg.x), snap(w->cfg.y));
-    } else {
-      WidgetConfig c = w->cfg;
-      c.width = snap(c.width);
-      c.height = snap(c.height);
-      clampToOutput(c, w->output);
-      w->cfg.width = c.width;
-      w->cfg.height = c.height;
-      zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(c.width), static_cast<uint32_t>(c.height));
-      wl_surface_commit(w->surface);
-    }
-    m_drag = Drag::None;
-    setCursor("grab");
-    persist(*w);
-    w->needsRender = true;
-    markEditDirty();
-  }
-}
-
-// wheel over a widget in the editor: step through the looks
-void App::onScroll(double value) {
-  static const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                                 "curtain", "line", "frame", "radial", "orb", "spiral"};
-  if (!m_edit || m_drag != Drag::None || !m_pointerWidget || m_pointerWidget->cfg.type != "visualizer") return;
-  m_scrollAcc += value;
-  if (std::abs(m_scrollAcc) < 10.0) return;  // one wheel notch
-  const int step = m_scrollAcc > 0 ? 1 : -1;
-  m_scrollAcc = 0;
-  Widget& w = *m_pointerWidget;
-  int idx = 0;
-  for (int i = 0; i < 12; ++i)
-    if (w.cfg.options["style"].value_or(std::string("bars")) == kLooks[i]) idx = i;
-  idx = (idx + step + 12) % 12;
-  if (std::string(kLooks[idx]) == "frame") idx = (idx + step + 12) % 12;  // frame owns the whole screen
-  const std::string look = kLooks[idx];
-  US_INFO("{}: style {}", w.cfg.id, look);
-  // the file watcher reloads it, which reconfigures the widget in place
-  Config::setKey(m_configPath, w.cfg.id, "style", "\"" + look + "\"");
-}
-
-void App::onKey(uint32_t key, uint32_t state) {
-  if (m_edit && state == WL_KEYBOARD_KEY_STATE_PRESSED && (key == KEY_ESC || key == KEY_ENTER)) setEditMode(false);
 }
 
 // ── commands ────────────────────────────────────────────────────────────────
@@ -991,8 +850,9 @@ int App::computeTimeout() {
   }
   for (auto& e : m_editSurfaces)
     if (e->needsRender && !e->frameCb) next = now;
+  if (m_edit && m_repeatKey) next = std::min(next, m_repeatNext);
   int timeout = next >= 1e8 ? -1 : std::max(0, static_cast<int>(std::ceil((next - now) * 1000)));
-  if (m_demo) timeout = timeout < 0 ? 16 : std::min(timeout, 16);
+  if (m_demo || (m_edit && (!m_audioOk || m_audio.idle()))) timeout = timeout < 0 ? 16 : std::min(timeout, 16);
   if (m_audioOk) {
     int a = m_audio.pollTimeoutMs();
     if (a >= 0) timeout = timeout < 0 ? a : std::min(timeout, a);
@@ -1063,7 +923,7 @@ int App::run() {
     if (m_audioOk && m_audio.tick()) {
       for (auto& w : m_widgets) w->needsRender = true;
     }
-    if (m_demo) {
+    if (m_demo || m_edit) {
       // a synthetic spectrum: a bass beat under drifting mids and a little noise
       m_demoT = now;
       const int n = 64;
@@ -1084,6 +944,7 @@ int App::run() {
       if (now + 0.0005 < w->lastRender + 1.0 / std::max(1, w->impl->fps())) continue;
       render(*w);
     }
+    if (m_edit) editorTick(now);
     for (auto& e : m_editSurfaces)
       if (e->needsRender) renderEdit(*e);
   }
