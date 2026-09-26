@@ -2,6 +2,7 @@
 // Regenerate goldens with:  build/test_render --update
 #include "check.hpp"
 #include "clock.hpp"
+#include "media.hpp"
 #include "offscreen.hpp"
 #include "overlay.hpp"
 #include "text.hpp"
@@ -74,6 +75,48 @@ int main(int argc, char** argv) {
     const double d = imageDiff(img, ref);
     if (d < 0 || d > 1.5) std::fprintf(stderr, "clock %s differs from golden: %.3f\n", face.c_str(), d);
     CHECK(d >= 0 && d <= 1.5);
+  }
+
+  // the now-playing card: synced lyrics, the no-lyrics spectrum, nothing
+  {
+    MediaState st;
+    st.present = true;
+    st.playing = true;
+    st.title = "Cariño mío";
+    st.artist = "Paloma San Basilio";
+    st.lengthUs = 208'000'000;
+    st.positionUs = 40'000'000;
+    st.positionAt = 500;
+    st.canNext = st.canPrev = st.canToggle = st.canSeek = true;
+    st.hasAccent = true;
+    st.accent = Color::fromHex("#e0654a");
+    st.lyrics = MediaState::Lyrics::Synced;
+    st.lines = parseLrc("[00:31.84]Sé que estás pensando que te soy infiel\n[00:36.05]Que te estoy mintiendo\n"
+                        "[00:39.50]Que no te quiero\n[00:43.10]Y que busco en otros brazos lo que no me das\n[00:48.00]\n");
+    MediaState viz = st;
+    viz.lyrics = MediaState::Lyrics::None;
+    viz.lines.clear();
+    viz.playing = false;
+    struct Case {
+      const char* name;
+      const MediaState* s;
+    } cases[] = {{"np-lyrics", &st}, {"np-viz", &viz}, {"np-empty", nullptr}};
+    for (auto& cs : cases) {
+      Image img = renderNowPlaying(cs.s, 560, 302, pal, 500);
+      size_t lit = 0;
+      for (size_t i = 3; i < img.rgba.size(); i += 4) lit += img.rgba[i] > 8;
+      CHECK(lit > 560u * 302u / 4);  // the plate at least
+      const std::string path = golden + "/" + cs.name + ".png";
+      if (update) {
+        writePng(img, path, false);
+        continue;
+      }
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(img, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "%s differs from golden: %.3f\n", cs.name, d);
+      CHECK(d >= 0 && d <= 1.5);
+    }
   }
 
   // every auxiliary pass compiles and draws (a GLSL error must fail here,

@@ -5,6 +5,8 @@
 #include "config.hpp"
 #include "depth.hpp"
 #include "ipc.hpp"
+#include "jobs.hpp"
+#include "media.hpp"
 #include "noctalia.hpp"
 #include "overlay.hpp"
 #include "text.hpp"
@@ -62,6 +64,7 @@ struct Widget {
   // the surface position pointer events are currently relative to: updated
   // only once the compositor has processed our margin change (wl_display.sync)
   int appliedX = 0, appliedY = 0;
+  std::vector<Rect> inputRects;  // last input region set (surface px)
   uint64_t frames = 0;
   uint64_t framesAtMark = 0;
   double markAt = 0;
@@ -149,6 +152,8 @@ private:
   void setStyle(Widget& w, const std::string& look);
   void editorTick(double now);
   void validateEditPointers();
+  bool widgetPointer(PointerEvent::Type type, wl_surface* s, double x, double y, uint32_t button);
+  void updateInputRegion(Widget& w);
   void drawEditorText(EditSurface& e);
   void moveWidget(Widget& w, int x, int y);
   void clampToOutput(WidgetConfig& c, const Output* o) const;
@@ -182,6 +187,10 @@ private:
   Config m_config;
   std::vector<std::unique_ptr<Widget>> m_widgets;
   Audio m_audio;
+  Jobs m_jobs{2};
+  MediaService m_media{m_jobs};
+  uint64_t m_mediaGen = 0;
+  Widget* m_hoverWidget = nullptr;  // widget surface under the pointer (not editing)
   bool m_audioOk = false;
   Noctalia m_noctalia;
   DepthMasks m_depth;

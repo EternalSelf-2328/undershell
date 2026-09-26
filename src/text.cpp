@@ -63,6 +63,13 @@ static PangoLayout* makeLayout(cairo_t* cr, const std::string& text, const TextS
     pango_attr_list_unref(attrs);
   }
   pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.size()));
+  if (st.maxWidth > 0) {
+    pango_layout_set_width(layout, static_cast<int>(st.maxWidth * PANGO_SCALE));
+    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+    pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+    pango_layout_set_height(layout, -std::max(1, st.maxLines));  // negative = line count
+    pango_layout_set_alignment(layout, st.align == 1 ? PANGO_ALIGN_CENTER : (st.align == 2 ? PANGO_ALIGN_RIGHT : PANGO_ALIGN_LEFT));
+  }
   return layout;
 }
 
@@ -92,8 +99,9 @@ void TextRenderer::releaseGl() {
 
 const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st, int scale) {
   registerBundledFonts();
-  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}", text, st.family, st.size,
-                                      st.weight, st.letterSpacing, st.italic ? 1 : 0, scale, st.stroke);
+  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}\x1f{:.1f}\x1f{}\x1f{}", text, st.family,
+                                      st.size, st.weight, st.letterSpacing, st.italic ? 1 : 0, scale, st.stroke,
+                                      st.maxWidth, st.maxLines, st.align);
   auto it = m_cache.find(key);
   if (it != m_cache.end()) {
     it->second.lastUse = nowSeconds();

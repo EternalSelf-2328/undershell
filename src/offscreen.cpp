@@ -3,6 +3,9 @@
 
 #include "clock.hpp"
 #include "gl.hpp"
+#include "jobs.hpp"
+#include "media.hpp"
+#include "nowplaying.hpp"
 #include "text.hpp"
 #include "visualizer.hpp"
 
@@ -126,6 +129,50 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
   });
   tr.releaseGl();
   ClockWidget::setFixedTime(0);
+  return img;
+}
+
+Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now) {
+  Jobs jobs(1);
+  MediaService media(jobs);
+  if (state) media.setStateForTest(*state);
+  NowPlayingWidget np;
+  np.configure(NowPlayingConfig{}, noct);
+  TextRenderer tr;
+  // settle the spectrum and the lyric glide
+  std::vector<float> bands(64);
+  for (int i = 0; i < 64; ++i) bands[static_cast<size_t>(i)] = 0.15F + 0.7F * std::exp(-i / 20.0F) * (0.6F + 0.4F * std::sin(i * 0.7F));
+  for (int step = 0; step < 60; ++step) {
+    TickContext tc;
+    tc.now = now - 1 + step / 60.0;
+    tc.dt = 1.0 / 60;
+    tc.audio.bands = &bands;
+    tc.audio.energy = 0.4;
+    tc.audio.silent = false;
+    tc.media = &media;
+    np.tick(tc);
+  }
+  Image img = renderToImage(w, h, [&] {
+    DrawContext dc;
+    dc.w = static_cast<float>(w);
+    dc.h = static_cast<float>(h);
+    dc.outputW = 1920;
+    dc.outputH = 1080;
+    dc.text = &tr;
+    dc.media = &media;
+    dc.now = now;
+    np.draw(dc);  // first draw fixes the lyric index...
+    glClear(GL_COLOR_BUFFER_BIT);
+    for (int step = 0; step < 60; ++step) {  // ...then let the glide settle
+      TickContext tc;
+      tc.now = now;
+      tc.dt = 1.0 / 60;
+      tc.media = &media;
+      np.tick(tc);
+    }
+    np.draw(dc);
+  });
+  tr.releaseGl();
   return img;
 }
 

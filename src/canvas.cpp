@@ -23,7 +23,7 @@ static const char* kShapeFrag = R"(#version 300 es
 precision highp float;
 in vec2 v_px;
 out vec4 fragColor;
-uniform int u_kind;        // 0 round rect, 1 circle, 2 segment, 3 arc
+uniform int u_kind;        // 0 round rect, 1 circle, 2 segment, 3 arc, 4 triangle, 5 wave
 uniform vec4 u_a;          // kind-specific
 uniform vec4 u_b;
 uniform vec4 u_fill;       // straight alpha
@@ -63,6 +63,24 @@ void main() {
             vec2 local = vec2(dot(q, t) - len * 0.5, dot(q, vec2(-t.y, t.x)));
             d = roundBox(local, vec2(len * 0.5 + u_b.x, u_b.x), 0.0);
         }
+    } else if (u_kind == 4) {     // a: x1 y1 x2 y2   b: x3 y3
+        vec2 p0 = u_a.xy, p1 = u_a.zw, p2 = u_b.xy;
+        vec2 e0 = p1 - p0, e1 = p2 - p1, e2 = p0 - p2;
+        vec2 v0 = p - p0, v1 = p - p1, v2 = p - p2;
+        vec2 pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+        vec2 pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+        vec2 pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+        float sgn = sign(e0.x * e2.y - e0.y * e2.x);
+        vec2 dd = min(min(vec2(dot(pq0, pq0), sgn * (v0.x * e0.y - v0.y * e0.x)),
+                          vec2(dot(pq1, pq1), sgn * (v1.x * e1.y - v1.y * e1.x))),
+                      vec2(dot(pq2, pq2), sgn * (v2.x * e2.y - v2.y * e2.x)));
+        d = -sqrt(dd.x) * sign(dd.y);
+    } else if (u_kind == 5) {     // a: x0 x1 baseline amplitude   b: k(2pi/wl) phase halfthick
+        float x = clamp(p.x, u_a.x, u_a.y);
+        float yv = u_a.z + u_a.w * sin(x * u_b.x + u_b.y);
+        float slope = u_a.w * u_b.x * cos(x * u_b.x + u_b.y);
+        d = abs(p.y - yv) / sqrt(1.0 + slope * slope) - u_b.z;
+        d = max(d, max(u_a.x - p.x, p.x - u_a.y));   // flat ends
     } else {                      // a: cx cy r halfwidth   b: a0 a1 roundcap
         vec2 q = p - u_a.xy;
         float ang = atan(q.x, -q.y);            // 0 at 12 o'clock, clockwise
@@ -153,6 +171,101 @@ void Canvas::arc(float cx, float cy, float r, float width, float a0, float a1, C
   shape(3, X - R - hw, Y - R - hw, X + R + hw, Y + R + hw, p, color, 0, {});
 }
 
+void Canvas::triangle(float x1, float y1, float x2, float y2, float x3, float y3, Color color) {
+  auto X = [&](float v) { return m_ox + v * m_scale; };
+  auto Y = [&](float v) { return m_oy + v * m_scale; };
+  const float p[8] = {X(x1), Y(y1), X(x2), Y(y2), X(x3), Y(y3), 0, 0};
+  shape(4, std::min({p[0], p[2], p[4]}), std::min({p[1], p[3], p[5]}), std::max({p[0], p[2], p[4]}),
+        std::max({p[1], p[3], p[5]}), p, color, 0, {});
+}
+
+void Canvas::wave(float x0, float x1, float y, float amplitude, float wavelength, float phase, float thickness,
+                  Color color) {
+  if (x1 <= x0) return;
+  const float X0 = m_ox + x0 * m_scale, X1 = m_ox + x1 * m_scale, Yb = m_oy + y * m_scale;
+  const float A = amplitude * m_scale, k = 2 * std::numbers::pi_v<float> / (wavelength * m_scale);
+  const float hw = thickness * m_scale / 2;
+  // the sine starts at x0 and travels right as `phase` (design px) grows
+  const float p[8] = {X0, X1, Yb, A, k, -(phase * m_scale + X0) * k, hw, 0};
+  shape(5, X0 - hw, Yb - A - hw, X1 + hw, Yb + A + hw, p, color, 0, {});
+}
+
+static const char* kImageFrag = R"(#version 300 es
+precision highp float;
+in vec2 v_px;
+out vec4 fragColor;
+uniform sampler2D u_tex;
+uniform vec4 u_rect;      // x y w h (surface px)
+uniform vec4 u_uv;        // uv origin + size (cover crop)
+uniform float u_radius;
+uniform float u_opacity;
+uniform vec2 u_blur;      // uv radius
+float roundBox(vec2 p, vec2 b, float r) {
+    r = min(r, min(b.x, b.y));
+    vec2 q = abs(p) - b + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+void main() {
+    vec2 local = (v_px - u_rect.xy) / u_rect.zw;
+    vec2 uv = u_uv.xy + local * u_uv.zw;
+    vec4 c;
+    if (u_blur.x > 0.0) {
+        vec4 sum = vec4(0.0);
+        float wsum = 0.0;
+        for (int j = -4; j <= 4; j++)
+            for (int i = -4; i <= 4; i++) {
+                float w = exp(-float(i * i + j * j) / 10.0);
+                sum += textureLod(u_tex, uv + vec2(float(i), float(j)) * u_blur / 4.0, 3.0) * w;
+                wsum += w;
+            }
+        c = sum / wsum;
+    } else {
+        c = texture(u_tex, uv);
+    }
+    float d = roundBox(v_px - (u_rect.xy + u_rect.zw * 0.5), u_rect.zw * 0.5, u_radius);
+    float a = (1.0 - smoothstep(-0.6, 0.6, d)) * c.a * u_opacity;
+    fragColor = vec4(c.rgb * a, a);
+}
+)";
+
+void Canvas::image(GLuint texture, int texW, int texH, float x, float y, float w, float h, float radius, float opacity,
+                   float blur) {
+  if (!texture || texW <= 0 || texH <= 0 || w <= 0 || h <= 0) return;
+  if (!m_image.valid()) m_image.create(kShapeVert, kImageFrag, "canvas-image");
+  const float X = m_ox + x * m_scale, Y = m_oy + y * m_scale, W = w * m_scale, H = h * m_scale;
+  // "cover": crop the texture to the rect's aspect ratio, centred
+  const float ta = static_cast<float>(texW) / texH, ra = W / H;
+  float uw = 1, uh = 1;
+  if (ta > ra) uw = ra / ta;
+  else uh = ta / ra;
+  glUseProgram(m_image.id());
+  glUniform4f(m_image.uniform("u_bounds"), X, Y, X + W, Y + H);
+  glUniform2f(m_image.uniform("u_surface"), m_w, m_h);
+  glUniform4f(m_image.uniform("u_rect"), X, Y, W, H);
+  glUniform4f(m_image.uniform("u_uv"), (1 - uw) / 2, (1 - uh) / 2, uw, uh);
+  glUniform1f(m_image.uniform("u_radius"), radius * m_scale);
+  glUniform1f(m_image.uniform("u_opacity"), opacity);
+  glUniform2f(m_image.uniform("u_blur"), blur > 0 ? blur * m_scale / W * uw : 0.0F, blur > 0 ? blur * m_scale / H * uh : 0.0F);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glUniform1i(m_image.uniform("u_tex"), 0);
+  glEnable(GL_BLEND);
+  glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  drawUnitQuad();
+  glDisable(GL_BLEND);
+}
+
+void Canvas::clip(float x, float y, float w, float h) {
+  // GL scissor is in framebuffer pixels, origin bottom-left
+  const float X = (m_ox + x * m_scale) * m_pixelScale, Y = (m_oy + y * m_scale) * m_pixelScale;
+  const float W = w * m_scale * m_pixelScale, H = h * m_scale * m_pixelScale;
+  glEnable(GL_SCISSOR_TEST);
+  glScissor(static_cast<GLint>(std::floor(X)), static_cast<GLint>(std::floor(m_h * m_pixelScale - Y - H)),
+            static_cast<GLsizei>(std::ceil(W)), static_cast<GLsizei>(std::ceil(H)));
+}
+
+void Canvas::clip() { glDisable(GL_SCISSOR_TEST); }
+
 Canvas::Size Canvas::measure(const std::string& text, const TextStyle& style) {
   Size s;
   TextRenderer::measure(text, style, s.w, s.h, s.baseline);
@@ -166,6 +279,7 @@ void Canvas::text(const std::string& text, const TextStyle& style, float x, floa
   st.size = style.size * m_scale;
   st.letterSpacing = style.letterSpacing * m_scale;
   st.stroke = style.stroke * m_scale;
+  st.maxWidth = style.maxWidth * m_scale;
   const TextImage& img = m_text->get(text, st, m_pixelScale);
   m_text->drawEx(img, m_ox + x * m_scale, m_oy + y * m_scale, color, m_w, m_h, 1, sy, blur * m_scale, opacity);
 }

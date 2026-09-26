@@ -16,6 +16,11 @@ deps = [
   dependency('pangocairo'),
   dependency('fontconfig'),
   dependency('xkbcommon'),
+  dependency('libsystemd'),
+  dependency('gdk-pixbuf-2.0'),
+  dependency('libcurl'),
+  dependency('nlohmann_json'),
+  dependency('threads'),
 ]
 wayland_protos = dependency('wayland-protocols')
 
@@ -54,6 +59,9 @@ core = static_library('undershell-core',
   'src/editor.cpp',
   'src/gl.cpp',
   'src/ipc.cpp',
+  'src/jobs.cpp',
+  'src/media.cpp',
+  'src/nowplaying.cpp',
   'src/noctalia.cpp',
   'src/offscreen.cpp',
   'src/overlay.cpp',
@@ -66,6 +74,6 @@ core_dep = declare_dependency(link_with : core, include_directories : include_di
 executable('undershell', 'src/main.cpp', dependencies : core_dep, install : true)
 install_subdir('data/fonts', install_dir : datadir)
 
-foreach t : ['config', 'editor', 'motion', 'render']
+foreach t : ['config', 'editor', 'media', 'motion', 'render']
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep))
 endforeach

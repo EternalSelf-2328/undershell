@@ -8,6 +8,7 @@
 #include "config.hpp"
 #include "noctalia.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,6 +16,18 @@
 namespace undershell {
 
 class TextRenderer;
+class MediaService;
+
+struct Rect {
+  float x = 0, y = 0, w = 0, h = 0;
+  [[nodiscard]] bool contains(float px, float py) const { return px >= x && py >= y && px < x + w && py < y + h; }
+};
+
+struct PointerEvent {
+  enum Type { Enter, Leave, Motion, Press, Release } type = Motion;
+  float x = 0, y = 0;  // surface logical px
+  uint32_t button = 0;
+};
 
 struct AudioFrame {
   const std::vector<float>* bands = nullptr;  // 0..1, empty when silent
@@ -26,6 +39,7 @@ struct TickContext {
   double now = 0;  // seconds, steady clock
   double dt = 0;   // since this widget's previous tick
   AudioFrame audio;
+  MediaService* media = nullptr;
 };
 
 struct DrawContext {
@@ -33,6 +47,8 @@ struct DrawContext {
   float outputW = 0, outputH = 0;   // the monitor, logical px
   int scale = 1;
   TextRenderer* text = nullptr;
+  MediaService* media = nullptr;
+  double now = 0;
 };
 
 class WidgetImpl {
@@ -63,9 +79,23 @@ public:
   [[nodiscard]] virtual bool usesAudio() const { return false; }
   [[nodiscard]] virtual Color accent() const { return Color::fromHex("#e2342a"); }
   virtual void rest() {}
+
+  // Input. Widgets are click-through except inside inputRects() (surface
+  // logical px), where the App forwards pointer events. Return true from
+  // onPointer to request a redraw.
+  [[nodiscard]] virtual std::vector<Rect> inputRects() const { return {}; }
+  virtual bool onPointer(const PointerEvent& ev) {
+    (void)ev;
+    return false;
+  }
+  [[nodiscard]] virtual const char* cursor() const { return "default"; }
+
+  // shared feeds this widget needs (the App only runs what someone wants)
+  [[nodiscard]] virtual bool wantsMedia() const { return false; }
+  [[nodiscard]] virtual bool wantsLyrics() const { return false; }
 };
 
-// Known types: "visualizer", "clock". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock", "now_playing". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 

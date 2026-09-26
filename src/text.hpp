@@ -21,6 +21,9 @@ struct TextStyle {
   float letterSpacing = 0;   // logical px between glyphs
   bool italic = false;
   float stroke = 0;          // > 0: hollow text, outline this wide (logical px)
+  float maxWidth = 0;        // > 0: wrap (maxLines > 1) or ellipsize at this width
+  int maxLines = 1;
+  int align = 0;             // 0 left, 1 centre, 2 right (within maxWidth)
 };
 
 struct TextImage {

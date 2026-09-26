@@ -36,6 +36,9 @@ Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noc
 // Renders a clock face at a fixed wall-clock time (needs Headless).
 struct ClockConfig;
 Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime);
+// Renders the now-playing card for a given media state (needs Headless).
+struct MediaState;
+Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now);
 // Renders one line of text in white (needs Headless).
 Image renderText(const std::string& text, const std::string& family, float size, int weight);
 

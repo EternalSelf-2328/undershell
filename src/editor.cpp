@@ -344,6 +344,7 @@ void App::validateEditPointers() {
     return false;
   };
   if (m_selected && !alive(m_selected)) m_selected = nullptr;
+  if (m_hoverWidget && !alive(m_hoverWidget)) m_hoverWidget = nullptr;
   if (m_pointerWidget && !alive(m_pointerWidget)) {
     m_pointerWidget = nullptr;
     m_drag = Drag::None;
@@ -356,11 +357,18 @@ void App::validateEditPointers() {
 void App::onPointerEnter(wl_surface* s, uint32_t serial, double x, double y) {
   m_pointerSerial = serial;
   m_pointerEdit = editBySurface(s);
-  if (!m_pointerEdit) return;
+  if (!m_pointerEdit) {
+    widgetPointer(PointerEvent::Enter, s, x, y, 0);
+    return;
+  }
   onPointerMotion(x, y);
 }
 
 void App::onPointerLeave(wl_surface* s) {
+  if (!editBySurface(s)) {
+    widgetPointer(PointerEvent::Leave, s, 0, 0, 0);
+    return;
+  }
   if (editBySurface(s) != m_pointerEdit) return;
   if (m_drag == Drag::None) {
     m_pointerEdit = nullptr;
@@ -370,7 +378,10 @@ void App::onPointerLeave(wl_surface* s) {
 }
 
 void App::onPointerMotion(double x, double y) {
-  if (!m_edit || !m_pointerEdit) return;
+  if (!m_edit || !m_pointerEdit) {
+    widgetPointer(PointerEvent::Motion, nullptr, x, y, 0);
+    return;
+  }
   m_px = x;
   m_py = y;
   if (m_drag == Drag::None) {
@@ -405,7 +416,11 @@ void App::onPointerMotion(double x, double y) {
 
 void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   m_pointerSerial = serial;
-  if (!m_edit || !m_pointerEdit) return;
+  if (!m_edit || !m_pointerEdit) {
+    widgetPointer(state == WL_POINTER_BUTTON_STATE_PRESSED ? PointerEvent::Press : PointerEvent::Release, nullptr, m_px,
+                  m_py, button);
+    return;
+  }
   if (button == BTN_RIGHT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
     setEditMode(false);
     return;

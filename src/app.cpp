@@ -455,10 +455,57 @@ void App::destroySurface(Widget& w) {
 
 void App::applyInputRegion(Widget& w) {
   if (!w.surface) return;
-  // widgets never take input: the editor has its own surface
-  wl_region* empty = wl_compositor_create_region(m_compositor);
-  wl_surface_set_input_region(w.surface, empty);
-  wl_region_destroy(empty);
+  // click-through except where the widget asks for input (buttons, rails)
+  wl_region* region = wl_compositor_create_region(m_compositor);
+  if (w.impl && !w.impl->fullscreen())
+    for (const Rect& r : w.inputRects)
+      wl_region_add(region, static_cast<int>(std::floor(r.x)), static_cast<int>(std::floor(r.y)),
+                    static_cast<int>(std::ceil(r.w)), static_cast<int>(std::ceil(r.h)));
+  wl_surface_set_input_region(w.surface, region);
+  wl_region_destroy(region);
+}
+
+void App::updateInputRegion(Widget& w) {
+  if (!w.impl) return;
+  std::vector<Rect> rects = w.impl->inputRects();
+  auto same = [](const std::vector<Rect>& a, const std::vector<Rect>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+      if (std::abs(a[i].x - b[i].x) > 0.5F || std::abs(a[i].y - b[i].y) > 0.5F || std::abs(a[i].w - b[i].w) > 0.5F ||
+          std::abs(a[i].h - b[i].h) > 0.5F)
+        return false;
+    return true;
+  };
+  if (same(rects, w.inputRects)) return;
+  w.inputRects = std::move(rects);
+  applyInputRegion(w);  // double-buffered: lands with the next commit (swap)
+}
+
+// Pointer on a widget surface (outside the editor): forwarded to the widget.
+bool App::widgetPointer(PointerEvent::Type type, wl_surface* s, double x, double y, uint32_t button) {
+  if (type == PointerEvent::Enter) m_hoverWidget = widgetBySurface(s);
+  Widget* w = m_hoverWidget;
+  if (!w || !w->impl) return false;
+  if (type != PointerEvent::Press && type != PointerEvent::Release) {
+    m_px = x;
+    m_py = y;
+  }
+  PointerEvent ev;
+  ev.type = type;
+  ev.x = static_cast<float>(type == PointerEvent::Press || type == PointerEvent::Release ? m_px : x);
+  ev.y = static_cast<float>(type == PointerEvent::Press || type == PointerEvent::Release ? m_py : y);
+  ev.button = button;
+  if (w->impl->onPointer(ev)) {
+    w->needsRender = true;
+    w->drewEmpty = false;
+  }
+  if (type == PointerEvent::Leave) {
+    m_hoverWidget = nullptr;
+  } else {
+    const char* want = w->impl->cursor();
+    setCursor(std::string_view(want) == "pointer" ? "pointer" : "default");
+  }
+  return true;
 }
 
 void App::onLayerConfigure(Widget* w, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t width, uint32_t height) {
@@ -490,6 +537,7 @@ void App::onFrameDone(Widget* w) {
   TickContext ctx;
   ctx.now = nowSeconds();
   ctx.audio = audioFrame();
+  ctx.media = &m_media;
   if ((w->impl && w->impl->animating(ctx)) || m_drag != Drag::None) w->needsRender = true;
 }
 
@@ -519,6 +567,7 @@ void App::render(Widget& w) {
   tctx.now = now;
   tctx.dt = dt;
   tctx.audio = audioFrame();
+  tctx.media = &m_media;
   w.impl->tick(tctx);
 
   const bool show = w.impl->visible();
@@ -541,6 +590,9 @@ void App::render(Widget& w) {
     dctx.outputH = oh;
     dctx.scale = w.scale;
     dctx.text = &m_text;
+    dctx.media = &m_media;
+    dctx.now = now;
+    m_media.uploadPending();
     try {
       w.impl->draw(dctx);
     } catch (const std::exception& ex) {
@@ -569,6 +621,7 @@ void App::render(Widget& w) {
     }
   }
   w.drewEmpty = !show;
+  updateInputRegion(w);
   w.frameCb = wl_surface_frame(w.surface);
   wl_callback_add_listener(w.frameCb, &kFrame, new WidgetCtx{this, &w});
   eglSwapBuffers(m_egl, w.eglSurface);
@@ -782,7 +835,8 @@ std::string App::handleCommand(const std::string& cmd) {
       if (!taken) break;
       id = type + std::to_string(n);
     }
-    const int w = type == "clock" ? 560 : 1000, h = type == "clock" ? 240 : 280;
+    const int w = type == "clock" ? 560 : (type == "now_playing" ? 560 : 1000);
+    const int h = type == "clock" ? 240 : (type == "now_playing" ? 302 : 280);
     std::string block = std::format("\n[[widget]]\nid = \"{}\"\ntype = \"{}\"\n", id, type);
     if (o) block += std::format("output = \"{}\"\n", o->name);
     block += std::format("x = {}\ny = {}\nwidth = {}\nheight = {}\n", (ow - w) / 2, (oh - h) / 2, w, h);
@@ -796,6 +850,13 @@ std::string App::handleCommand(const std::string& cmd) {
                "language = \"system\"      # system en es\nweather = true            # metal face\nfahrenheit = false\n";
     } else if (type == "visualizer") {
       block += std::format("style = \"{}\"\n", look.empty() ? "bars" : look);
+    } else if (type == "now_playing") {
+      block += "plate = \"cover\"           # cover glass none\n"
+               "show_lyrics = true          # synced lyrics from LRCLIB\n"
+               "viz = \"bars\"              # bars wave (when there are no lyrics)\n"
+               "accent_source = \"album\"   # album theme\n"
+               "music_app = \"spotify\"     # opened by the corner button\n"
+               "ink = \"on_surface\"\nfps = 30\n";
     }
     const std::string text = readFile(m_configPath);
     if (!writeFileAtomic(m_configPath, text + block)) return "error: could not write the config";
@@ -835,14 +896,23 @@ std::string App::handleCommand(const std::string& cmd) {
     return "bye";
   }
   if (cmd == "status") {
-    std::string s = std::format("widgets={} edit={} audio={} palette_roles={} fill_mode={}\n", m_widgets.size(),
+    const MediaState& ms = m_media.state();
+    std::string s = std::format("media: {}{}{}\n", ms.present ? (ms.playing ? "playing " : "paused ") : "none",
+                                ms.present ? ms.title + " — " + ms.artist : std::string(),
+                                ms.present ? std::format(" (cover {}x{}, lyrics {})", ms.coverW, ms.coverH,
+                                                         ms.lyrics == MediaState::Lyrics::Synced ? "synced"
+                                                         : ms.lyrics == MediaState::Lyrics::Plain ? "plain"
+                                                         : ms.lyrics == MediaState::Lyrics::Searching ? "searching" : "none")
+                                           : std::string());
+    s += std::format("widgets={} edit={} audio={} palette_roles={} fill_mode={}\n", m_widgets.size(),
                                 m_edit, m_audioOk ? (m_audio.idle() ? "idle" : "active") : "off",
                                 m_noctalia.state().palette.size(), m_noctalia.state().fillMode);
     for (auto& w : m_widgets) {
       const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
       const bool stale = nowSeconds() - w->markAt > 1.5;
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
-                                                           : w->cfg.type + ":" + w->cfg.options["face"].value_or(std::string("digital"));
+                                     : w->cfg.type == "clock" ? "clock:" + w->cfg.options["face"].value_or(std::string("digital"))
+                                                              : w->cfg.type;
       s += std::format("  {} {} on {} at {},{} {}x{} depth={} frames={} fps={:.0f}\n", w->cfg.id, look,
                        w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height,
                        m ? fs::path(m->maskPath).filename().string().substr(0, 12) : "none", w->frames,
@@ -893,6 +963,7 @@ int App::computeTimeout() {
   if (m_edit && m_repeatKey) next = std::min(next, m_repeatNext);
   int timeout = next >= 1e8 ? -1 : std::max(0, static_cast<int>(std::ceil((next - now) * 1000)));
   if (m_demo || (m_edit && (!m_audioOk || m_audio.idle()))) timeout = timeout < 0 ? 16 : std::min(timeout, 16);
+  if (const int mt = m_media.pollTimeoutMs(now); mt >= 0) timeout = timeout < 0 ? mt : std::min(timeout, mt);
   if (m_audioOk) {
     int a = m_audio.pollTimeoutMs();
     if (a >= 0) timeout = timeout < 0 ? a : std::min(timeout, a);
@@ -913,6 +984,7 @@ int App::run() {
   m_depth.update(m_noctalia.state(), outputNames());
   loadConfig();
   m_audioOk = m_audio.start();
+  m_media.start();
 
   m_inotify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
   const uint32_t mask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE;
@@ -925,11 +997,13 @@ int App::run() {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
     wl_display_flush(m_display);
 
-    pollfd fds[4] = {{wl_display_get_fd(m_display), POLLIN, 0},
+    pollfd fds[6] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
                      {m_inotify, POLLIN, 0},
-                     {m_ipc.fd(), POLLIN, 0}};
-    int r = poll(fds, 4, computeTimeout());
+                     {m_ipc.fd(), POLLIN, 0},
+                     {m_media.fd(), POLLIN, 0},
+                     {m_jobs.fd(), POLLIN, 0}};
+    int r = poll(fds, 6, computeTimeout());
     if (r < 0 && errno != EINTR) {
       wl_display_cancel_read(m_display);
       break;
@@ -945,6 +1019,8 @@ int App::run() {
     if (r > 0 && (fds[1].revents & POLLIN)) m_audio.dispatch();
     if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
+    if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();
+    if (r > 0 && (fds[5].revents & POLLIN)) m_jobs.dispatch();
 
     const double now = nowSeconds();
     if (m_reloadConfigAt > 0 && now >= m_reloadConfigAt) {
@@ -963,7 +1039,26 @@ int App::run() {
     if (m_depth.missing() && m_refreshDepthAt == 0) m_refreshDepthAt = now + 15;
 
     if (m_audioOk && m_audio.tick()) {
-      for (auto& w : m_widgets) w->needsRender = true;
+      for (auto& w : m_widgets)
+        if (w->impl && w->impl->usesAudio()) w->needsRender = true;
+    }
+    // the media feed runs only while a widget shows it
+    bool wantMedia = false, wantLyrics = false;
+    for (auto& w : m_widgets)
+      if (w->impl) {
+        wantMedia = wantMedia || w->impl->wantsMedia();
+        wantLyrics = wantLyrics || w->impl->wantsLyrics();
+      }
+    m_media.setWanted(wantMedia, wantLyrics);
+    m_media.poll(now);
+    m_media.dispatch();
+    if (m_media.generation() != m_mediaGen) {
+      m_mediaGen = m_media.generation();
+      for (auto& w : m_widgets)
+        if (w->impl && w->impl->wantsMedia()) {
+          w->needsRender = true;
+          w->drewEmpty = false;
+        }
     }
     if (m_demo || m_edit) {
       // a synthetic spectrum: a bass beat under drifting mids and a little noise

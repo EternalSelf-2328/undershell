@@ -25,6 +25,15 @@ public:
   void segment(float x1, float y1, float x2, float y2, float width, Color color, bool roundCap = true);
   // angles in radians, 0 = 12 o'clock, clockwise
   void arc(float cx, float cy, float r, float width, float a0, float a1, Color color, bool roundCap = true);
+  void triangle(float x1, float y1, float x2, float y2, float x3, float y3, Color color);
+  // a sine stroke from x0 to x1 around baseline y: amplitude, wavelength, phase (px)
+  void wave(float x0, float x1, float y, float amplitude, float wavelength, float phase, float thickness, Color color);
+  // an RGBA texture drawn "cover"-fitted into a rounded rect; blur in design px
+  void image(GLuint texture, int texW, int texH, float x, float y, float w, float h, float radius, float opacity = 1,
+             float blur = 0);
+  // clip subsequent drawing to a rect (design units); clip() with no args ends it
+  void clip(float x, float y, float w, float h);
+  void clip();
 
   // Text in design units. (x, y) = top-left of the logical box. sy squashes
   // vertically about the box centre (flip cards); blur > 0 draws a soft halo.
@@ -41,6 +50,7 @@ private:
   int m_pixelScale = 1;
   TextRenderer* m_text = nullptr;
   Program m_prog;
+  Program m_image;
 };
 
 }  // namespace undershell

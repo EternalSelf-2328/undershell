@@ -38,6 +38,22 @@ Ryoku's QML with its same measurements; the design fits the widget box.
 Day and month names follow the system language (or `language = "en" | "es"`).
 It redraws only when the second (or minute) changes; `flip` animates at 30 fps.
 
+## Now playing (card)
+
+Ryoku's music card: the cover (downloaded and decoded in the background),
+the album color on the plate, the progress bar, the pulse and the play
+button (Ryoku's `accentOf`), synced lyrics from **LRCLIB** (cached in
+`~/.cache/undershell/lyrics`) with the sung line lit and its neighbors
+fading, or a live spectrum when there are no lyrics; wavy seek bar
+(**click to jump**), previous / play-pause / next and a button that opens your
+app (`music_app`). The player is the one from Noctalia's MPRIS aggregator
+(`dev.noctalia.Mpris`, via sd-bus), with instant updates from signals.
+Options: `plate` (cover, glass, none), `show_lyrics`, `viz` (bars, wave),
+`accent_source` (album, theme), `music_app`, `fps`.
+
+Widgets are click-through except on their buttons, so the desktop
+keeps working normally around them.
+
 ## Usage
 
 ```sh
@@ -45,7 +61,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
-undershell msg add clock flip  # add a widget (clock or visualizer) to the config
+undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing
 undershell msg reload
 undershell msg quit
 undershell --snapshot DIR   # render the 12 looks to PNG (no window needed)
@@ -85,7 +101,8 @@ ninja -C build && meson test -C build && meson install -C build
 ```
 
 The tests don't need a compositor: `config` (loading and in-place editing
-of the file), `editor` (magnet, limits, grid), `motion` (Ryoku's easing) and `render` (the 12 looks against
+of the file), `editor` (magnet, limits, grid), `media` (LRC, album color,
+position), `motion` (Ryoku's easing) and `render` (the 12 looks against
 the images in `tests/golden/`, compilation of every shader, and text with the
 bundled fonts, via headless EGL). If you change a look on purpose: `build/test_render --update`.
 
@@ -98,7 +115,9 @@ bundled fonts, via headless EGL). If you change a look on purpose: `build/test_r
 | `src/widget.*` | the widget interface (`WidgetImpl`) and the type registry |
 | `src/visualizer.*`, `motion.hpp`, `shaders/` | the visualizer (Ryoku) |
 | `src/clock.*` | the clocks (Ryoku): faces as display lists |
-| `src/canvas.*` | 2D canvas: rects, circles, segments, SDF arcs + text |
+| `src/canvas.*` | 2D canvas: rects, circles, segments, arcs, triangles, wave, images + text |
+| `src/nowplaying.*` | the music card (Ryoku) |
+| `src/media.*`, `src/jobs.*` | MPRIS (sd-bus), covers, album color, lyrics; background jobs |
 | `src/text.*` | text: Pango → cached textures |
 | `src/audio.*` | PipeWire capture + FFT |
 | `src/noctalia.*`, `src/depth.*` | Noctalia palette and depth masks |
@@ -106,7 +125,8 @@ bundled fonts, via headless EGL). If you change a look on purpose: `build/test_r
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono (OFL) |
 
 Dependencies (all present on CachyOS with Noctalia): wayland, wayland-protocols,
-EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo.
+EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo, pango, fontconfig, xkbcommon,
+libsystemd (sd-bus), gdk-pixbuf, libcurl, nlohmann-json.
 
 ## Status
 
@@ -114,7 +134,7 @@ EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo.
 - [x] Phase 1: widget interface, text, fonts, automated tests
 - [x] Phase 2: editor (guides, arrows, undo/redo, demo while editing, labels)
 - [x] Phase 3: clocks (12 faces, 3 dates), 2D canvas, hollow text and halo
-- [ ] Phase 4: now-playing card (MPRIS, cover, lyrics)
+- [x] Phase 4: now-playing card (MPRIS via sd-bus, cover, album color, LRCLIB lyrics, controls)
 - [ ] Phase 5: inspector and widget gallery in the editor
 - [ ] Phase 6: autostart, PKGBUILD, documentation
 
