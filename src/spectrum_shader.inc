@@ -287,40 +287,45 @@ void main() {
         // the frame: a full ring of bars around the whole screen's edge, packed
         // with a small gap and each grown inward to its own height, so it reads
         // as a bar spectrum wrapped around the display.
-        float dL = cpx.x;
-        float dR = cw - cpx.x;
-        float dT = cpx.y;
-        float dB = ch - cpx.y;
+        // A pixel near a corner can be reached by bars of both edges that meet
+        // there, so the nearest horizontal and vertical edge are both evaluated
+        // and the closer bar wins; picking one edge per pixel cut the bars and
+        // their glow along the corner's diagonal.
         float perim = 2.0 * (cw + ch);
-        float ed;   // inward distance from the nearest edge
-        float s;    // arc length clockwise from the top-left corner
-        float mE = min(min(dL, dR), min(dT, dB));
-        if (mE == dT)      { ed = dT; s = cpx.x; }
-        else if (mE == dR) { ed = dR; s = cw + cpx.y; }
-        else if (mE == dB) { ed = dB; s = cw + ch + (cw - cpx.x); }
-        else               { ed = dL; s = 2.0 * cw + ch + (ch - cpx.y); }
-        float al = s / perim;
-        // Many bars, packed: each samples the smoothed spectrum at its own spot,
-        // so the ring fills with bars of uneven height rather than sparse ticks.
         float ticks = max(bands, 1.0) * 3.0;
         float slotP = perim / ticks;
-        float ti = floor(s / slotP);
-        float ci = (ti + 0.5) * slotP;
-        float tAl = (ti + 0.5) / ticks;
-        float lvv = lvSmooth(tAl);
-        float len = max(minLen, maxLen * lvv);
         float barWp = max(1.5, slotP * thickness);
-        tRamp = tAl;
-        hot = lvv;
-        sd = roundBox(vec2(s - ci, ed - len * 0.5), vec2(barWp * 0.5, len * 0.5), capR);
-        lift = clamp(ed / max(len, 1.0), 0.0, 1.0);
-        if (peakOn > 0.5) {
-            float ph = maxLen * pkAt(bandAt(tAl));
-            float capH = max(2.0, min(capR * 1.1, barWp * 0.34));
-            float sdp = roundBox(vec2(s - ci, ed - (ph + capH * 1.6)),
-                                 vec2(barWp * 0.46, capH * 0.5), capH * 0.5);
-            extraA += (1.0 - smoothstep(-aa, aa, sdp)) * 0.85;
+        float capH = max(2.0, min(capR * 1.1, barWp * 0.34));
+        float dT = cpx.y;
+        float dB = ch - cpx.y;
+        float dL = cpx.x;
+        float dR = cw - cpx.x;
+        // arc length clockwise from the top-left corner, and inward distance
+        vec2 hSE = dT <= dB ? vec2(cpx.x, dT) : vec2(cw + ch + (cw - cpx.x), dB);
+        vec2 vSE = dR <= dL ? vec2(cw + cpx.y, dR) : vec2(2.0 * cw + ch + (ch - cpx.y), dL);
+        float peakA = 0.0;
+        for (int k = 0; k < 2; ++k) {
+            vec2 se = k == 0 ? hSE : vSE;
+            float ti = floor(se.x / slotP);
+            float ci = (ti + 0.5) * slotP;
+            float tAl = fract((ti + 0.5) / ticks);
+            float lvv = lvSmooth(tAl);
+            float len = max(minLen, maxLen * lvv);
+            float d = roundBox(vec2(se.x - ci, se.y - len * 0.5), vec2(barWp * 0.5, len * 0.5), capR);
+            if (d < sd) {
+                sd = d;
+                tRamp = tAl;
+                hot = lvv;
+                lift = clamp(se.y / max(len, 1.0), 0.0, 1.0);
+            }
+            if (peakOn > 0.5) {
+                float ph = maxLen * pkAt(bandAt(tAl));
+                float sdp = roundBox(vec2(se.x - ci, se.y - (ph + capH * 1.6)),
+                                     vec2(barWp * 0.46, capH * 0.5), capH * 0.5);
+                peakA = max(peakA, (1.0 - smoothstep(-aa, aa, sdp)) * 0.85);
+            }
         }
+        extraA += peakA;
     } else if (st == 9) {
         vec2 q = px - origin;
         float d = length(q);
