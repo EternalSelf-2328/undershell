@@ -1,0 +1,1134 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "app.hpp"
+
+// the generated header names a parameter `namespace`
+#define namespace namespace_
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#undef namespace
+
+#include <EGL/eglext.h>
+#include <GLES3/gl3.h>
+#include <cerrno>
+#include <cmath>
+#include <sstream>
+#include <csignal>
+#include <cstring>
+#include <filesystem>
+#include <linux/input-event-codes.h>
+#include <poll.h>
+#include <sys/inotify.h>
+#include <unistd.h>
+#include <wayland-client.h>
+#include <wayland-cursor.h>
+#include <wayland-egl.h>
+#include <cairo.h>
+
+namespace undershell {
+
+namespace fs = std::filesystem;
+static volatile std::sig_atomic_t g_quit = 0;
+
+// ── listener trampolines ────────────────────────────────────────────────────
+
+static void regGlobal(void* d, wl_registry* r, uint32_t n, const char* i, uint32_t v) {
+  static_cast<App*>(d)->onGlobal(r, n, i, v);
+}
+static void regRemove(void* d, wl_registry*, uint32_t n) { static_cast<App*>(d)->onGlobalRemove(n); }
+static const wl_registry_listener kRegistry = {regGlobal, regRemove};
+
+struct OutputCtx {
+  App* app;
+  Output* out;
+};
+static void outGeometry(void*, wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*, int32_t) {}
+static void outMode(void* d, wl_output*, uint32_t flags, int32_t w, int32_t h, int32_t) {
+  if (flags & WL_OUTPUT_MODE_CURRENT) {
+    auto* c = static_cast<OutputCtx*>(d);
+    c->out->modeW = w;
+    c->out->modeH = h;
+  }
+}
+static void outDone(void* d, wl_output*) {
+  auto* c = static_cast<OutputCtx*>(d);
+  c->app->onOutputDone(c->out);
+}
+static void outScale(void* d, wl_output*, int32_t s) { static_cast<OutputCtx*>(d)->out->scale = std::max(1, s); }
+static void outName(void* d, wl_output*, const char* n) { static_cast<OutputCtx*>(d)->out->name = n; }
+static void outDesc(void*, wl_output*, const char*) {}
+static const wl_output_listener kOutput = {outGeometry, outMode, outDone, outScale, outName, outDesc};
+
+static void lsConfigure(void* d, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t w, uint32_t h);
+static void lsClosed(void* d, zwlr_layer_surface_v1*);
+static const zwlr_layer_surface_v1_listener kLayer = {lsConfigure, lsClosed};
+
+struct WidgetCtx {
+  App* app;
+  Widget* w;
+};
+static void lsConfigure(void* d, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t w, uint32_t h) {
+  auto* c = static_cast<WidgetCtx*>(d);
+  c->app->onLayerConfigure(c->w, ls, serial, w, h);
+}
+static void lsClosed(void* d, zwlr_layer_surface_v1*) {
+  auto* c = static_cast<WidgetCtx*>(d);
+  c->app->onLayerClosed(c->w);
+}
+
+static void frameDone(void* d, wl_callback* cb, uint32_t) {
+  auto* c = static_cast<WidgetCtx*>(d);
+  wl_callback_destroy(cb);
+  c->w->frameCb = nullptr;
+  App* app = c->app;
+  Widget* w = c->w;
+  delete c;
+  app->onFrameDone(w);
+}
+static const wl_callback_listener kFrame = {frameDone};
+
+
+
+struct EditCtx {
+  App* app;
+  EditSurface* e;
+};
+static void editConfigure(void* d, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t w, uint32_t h) {
+  auto* c = static_cast<EditCtx*>(d);
+  c->app->onEditConfigure(c->e, ls, serial, w, h);
+}
+static void editClosed(void*, zwlr_layer_surface_v1*) {}
+static const zwlr_layer_surface_v1_listener kEditLayer = {editConfigure, editClosed};
+static void editFrame(void* d, wl_callback* cb, uint32_t) {
+  auto* c = static_cast<EditCtx*>(d);
+  wl_callback_destroy(cb);
+  c->e->frameCb = nullptr;
+  App* app = c->app;
+  EditSurface* e = c->e;
+  delete c;
+  app->onEditFrameDone(e);
+}
+static const wl_callback_listener kEditFrame = {editFrame};
+
+static void kbKeymap(void*, wl_keyboard*, uint32_t, int32_t fd, uint32_t) { close(fd); }
+static void kbEnter(void*, wl_keyboard*, uint32_t, wl_surface*, wl_array*) {}
+static void kbLeave(void*, wl_keyboard*, uint32_t, wl_surface*) {}
+static void kbKey(void* d, wl_keyboard*, uint32_t, uint32_t, uint32_t key, uint32_t state) {
+  static_cast<App*>(d)->onKey(key, state);
+}
+static void kbMods(void*, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) {}
+static void kbRepeat(void*, wl_keyboard*, int32_t, int32_t) {}
+static const wl_keyboard_listener kKeyboard = {kbKeymap, kbEnter, kbLeave, kbKey, kbMods, kbRepeat};
+
+static void ptrEnter(void* d, wl_pointer*, uint32_t serial, wl_surface* s, wl_fixed_t x, wl_fixed_t y) {
+  static_cast<App*>(d)->onPointerEnter(s, serial, wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+static void ptrLeave(void* d, wl_pointer*, uint32_t, wl_surface* s) { static_cast<App*>(d)->onPointerLeave(s); }
+static void ptrMotion(void* d, wl_pointer*, uint32_t, wl_fixed_t x, wl_fixed_t y) {
+  static_cast<App*>(d)->onPointerMotion(wl_fixed_to_double(x), wl_fixed_to_double(y));
+}
+static void ptrButton(void* d, wl_pointer*, uint32_t serial, uint32_t, uint32_t button, uint32_t state) {
+  static_cast<App*>(d)->onPointerButton(serial, button, state);
+}
+static void ptrAxis(void* d, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {
+  if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) static_cast<App*>(d)->onScroll(wl_fixed_to_double(value));
+}
+static void ptrFrame(void*, wl_pointer*) {}
+static void ptrAxisSource(void*, wl_pointer*, uint32_t) {}
+static void ptrAxisStop(void*, wl_pointer*, uint32_t, uint32_t) {}
+static void ptrAxisDiscrete(void*, wl_pointer*, uint32_t, int32_t) {}
+static void ptrAxis120(void*, wl_pointer*, uint32_t, int32_t) {}
+static void ptrAxisRel(void*, wl_pointer*, uint32_t, uint32_t) {}
+static const wl_pointer_listener kPointer = {ptrEnter,      ptrLeave,    ptrMotion,       ptrButton,  ptrAxis,   ptrFrame,
+                                             ptrAxisSource, ptrAxisStop, ptrAxisDiscrete, ptrAxis120, ptrAxisRel};
+
+static void seatCaps(void* d, wl_seat* s, uint32_t caps) { static_cast<App*>(d)->setupSeat(s, caps); }
+static void seatName(void*, wl_seat*, const char*) {}
+static const wl_seat_listener kSeat = {seatCaps, seatName};
+
+// ── lifecycle ───────────────────────────────────────────────────────────────
+
+App::App() = default;
+
+App::~App() {
+  for (auto& e : m_editSurfaces) destroyEditSurface(*e);
+  for (auto& w : m_widgets) destroySurface(*w);
+  if (m_egl != EGL_NO_DISPLAY) {
+    eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
+    m_depth.releaseGl();
+    eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (m_eglContext != EGL_NO_CONTEXT) eglDestroyContext(m_egl, m_eglContext);
+    eglTerminate(m_egl);
+  }
+  if (m_cursorSurface) wl_surface_destroy(m_cursorSurface);
+  if (m_cursorTheme) wl_cursor_theme_destroy(m_cursorTheme);
+  if (m_inotify >= 0) close(m_inotify);
+  if (m_display) wl_display_disconnect(m_display);
+}
+
+bool App::initWayland() {
+  m_display = wl_display_connect(nullptr);
+  if (!m_display) {
+    US_ERROR("cannot connect to the Wayland display");
+    return false;
+  }
+  m_registry = wl_display_get_registry(m_display);
+  wl_registry_add_listener(m_registry, &kRegistry, this);
+  wl_display_roundtrip(m_display);
+  wl_display_roundtrip(m_display);  // output names/modes
+  if (!m_compositor || !m_layerShell) {
+    US_ERROR("compositor lacks wl_compositor or zwlr_layer_shell_v1");
+    return false;
+  }
+  if (m_shm) {
+    const char* size = std::getenv("XCURSOR_SIZE");
+    m_cursorTheme = wl_cursor_theme_load(std::getenv("XCURSOR_THEME"), size ? std::atoi(size) : 24, m_shm);
+    m_cursorSurface = wl_compositor_create_surface(m_compositor);
+  }
+  return true;
+}
+
+void App::onGlobal(wl_registry* reg, uint32_t name, const char* iface, uint32_t version) {
+  std::string_view i(iface);
+  if (i == wl_compositor_interface.name) {
+    m_compositor = static_cast<wl_compositor*>(wl_registry_bind(reg, name, &wl_compositor_interface, std::min(version, 4u)));
+  } else if (i == zwlr_layer_shell_v1_interface.name) {
+    m_layerShell = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, std::min(version, 4u)));
+  } else if (i == wl_shm_interface.name) {
+    m_shm = static_cast<wl_shm*>(wl_registry_bind(reg, name, &wl_shm_interface, 1));
+  } else if (i == wl_seat_interface.name && !m_seat) {
+    m_seat = static_cast<wl_seat*>(wl_registry_bind(reg, name, &wl_seat_interface, std::min(version, 7u)));
+    wl_seat_add_listener(m_seat, &kSeat, this);
+  } else if (i == wl_output_interface.name) {
+    auto out = std::make_unique<Output>();
+    out->global = name;
+    out->wl = static_cast<wl_output*>(wl_registry_bind(reg, name, &wl_output_interface, std::min(version, 4u)));
+    auto* ctx = new OutputCtx{this, out.get()};
+    wl_output_add_listener(out->wl, &kOutput, ctx);
+    m_outputs.push_back(std::move(out));
+  }
+}
+
+void App::onGlobalRemove(uint32_t name) {
+  for (auto it = m_outputs.begin(); it != m_outputs.end(); ++it) {
+    if ((*it)->global != name) continue;
+    for (auto& w : m_widgets)
+      if (w->output == it->get()) destroySurface(*w);
+    for (auto e = m_editSurfaces.begin(); e != m_editSurfaces.end();) {
+      if ((*e)->output == it->get()) {
+        destroyEditSurface(**e);
+        e = m_editSurfaces.erase(e);
+      } else {
+        ++e;
+      }
+    }
+    wl_output_destroy((*it)->wl);
+    m_outputs.erase(it);
+    return;
+  }
+}
+
+void App::onOutputDone(Output*) {
+  // outputs can appear after startup (hotplug): (re)attach widgets
+  if (m_eglContext != EGL_NO_CONTEXT) syncWidgets();
+}
+
+Output* App::outputByWl(wl_output* o) {
+  for (auto& out : m_outputs)
+    if (out->wl == o) return out.get();
+  return nullptr;
+}
+
+std::vector<std::string> App::outputNames() const {
+  std::vector<std::string> v;
+  for (auto& o : m_outputs) v.push_back(o->name);
+  return v;
+}
+
+void App::setupSeat(wl_seat* seat, uint32_t caps) {
+  const bool hasPointer = caps & WL_SEAT_CAPABILITY_POINTER;
+  if (hasPointer && !m_pointer) {
+    m_pointer = wl_seat_get_pointer(seat);
+    wl_pointer_add_listener(m_pointer, &kPointer, this);
+  } else if (!hasPointer && m_pointer) {
+    wl_pointer_release(m_pointer);
+    m_pointer = nullptr;
+  }
+  const bool hasKeyboard = caps & WL_SEAT_CAPABILITY_KEYBOARD;
+  if (hasKeyboard && !m_keyboard) {
+    m_keyboard = wl_seat_get_keyboard(seat);
+    wl_keyboard_add_listener(m_keyboard, &kKeyboard, this);
+  } else if (!hasKeyboard && m_keyboard) {
+    wl_keyboard_release(m_keyboard);
+    m_keyboard = nullptr;
+  }
+}
+
+bool App::initEgl() {
+  m_egl = eglGetPlatformDisplay(EGL_PLATFORM_WAYLAND_KHR, m_display, nullptr);
+  if (m_egl == EGL_NO_DISPLAY || !eglInitialize(m_egl, nullptr, nullptr)) {
+    US_ERROR("EGL initialisation failed");
+    return false;
+  }
+  eglBindAPI(EGL_OPENGL_ES_API);
+  const EGLint attrs[] = {EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+                          EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE};
+  EGLint n = 0;
+  if (!eglChooseConfig(m_egl, attrs, &m_eglConfig, 1, &n) || n < 1) {
+    US_ERROR("no suitable EGL config");
+    return false;
+  }
+  const EGLint ctxAttrs[] = {EGL_CONTEXT_MAJOR_VERSION, 3, EGL_NONE};
+  m_eglContext = eglCreateContext(m_egl, m_eglConfig, EGL_NO_CONTEXT, ctxAttrs);
+  if (m_eglContext == EGL_NO_CONTEXT) {
+    US_ERROR("could not create a GLES 3 context");
+    return false;
+  }
+  eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
+  US_INFO("GL: {} / {}", reinterpret_cast<const char*>(glGetString(GL_RENDERER)),
+          reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+  return true;
+}
+
+// ── config / noctalia / depth ──────────────────────────────────────────────
+
+void App::loadConfig() {
+  try {
+    m_config = Config::load(m_configPath);
+  } catch (...) {
+    US_WARN("keeping the previous configuration");
+    return;
+  }
+  int maxBars = 16;
+  for (auto& w : m_config.widgets) maxBars = std::max(maxBars, w.viz.bars);
+  m_audio.setBandCount(maxBars);
+  m_audio.setNoiseReduction(static_cast<float>(m_config.noiseReduction));
+  m_audio.setMonstercat(m_config.monstercat);
+  syncWidgets();
+}
+
+void App::refreshNoctalia() {
+  if (m_noctalia.refresh()) {
+    for (auto& w : m_widgets) {
+      w->viz.configure(w->cfg.viz, m_noctalia.state());
+      w->needsRender = true;
+    }
+    updateDepth();
+  }
+}
+
+void App::updateDepth() {
+  if (m_depth.update(m_noctalia.state(), outputNames())) {
+    for (auto& w : m_widgets) w->needsRender = true;
+  }
+}
+
+// Keeps m_widgets in step with the config: reconfigures existing widgets in
+// place (so a saved file or an editor drop never flickers), adds new ones and
+// drops removed ones.
+void App::syncWidgets() {
+  std::vector<std::unique_ptr<Widget>> next;
+  for (const auto& wc : m_config.widgets) {
+    if (!wc.enabled || wc.type != "visualizer") continue;
+    std::unique_ptr<Widget> w;
+    for (auto& old : m_widgets) {
+      if (old && old->cfg.id == wc.id) {
+        w = std::move(old);
+        break;
+      }
+    }
+    if (!w) w = std::make_unique<Widget>();
+    const bool geomChanged = w->cfg.x != wc.x || w->cfg.y != wc.y || w->cfg.width != wc.width ||
+                             w->cfg.height != wc.height || w->cfg.output != wc.output ||
+                             (w->cfg.viz.style == "frame") != (wc.viz.style == "frame");
+    w->cfg = wc;
+    for (auto& o : m_outputs)
+      if (wc.output.empty() || o->name == wc.output) {
+        clampToOutput(w->cfg, o.get());
+        break;
+      }
+    w->viz.configure(w->cfg.viz, m_noctalia.state());
+    w->needsRender = true;
+    Output* out = nullptr;
+    for (auto& o : m_outputs)
+      if (wc.output.empty() ? true : o->name == wc.output) {
+        out = o.get();
+        break;
+      }
+    if (out != w->output || !w->surface) {
+      destroySurface(*w);
+      w->output = out;
+      if (out) createSurface(*w);
+    } else if (geomChanged && w->layer) {
+      if (w->viz.fullscreen()) {
+        destroySurface(*w);
+        createSurface(*w);
+      } else {
+        zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(w->cfg.width), static_cast<uint32_t>(w->cfg.height));
+        zwlr_layer_surface_v1_set_margin(w->layer, w->cfg.y, 0, 0, w->cfg.x);
+        wl_surface_commit(w->surface);
+        w->appliedX = w->cfg.x;
+        w->appliedY = w->cfg.y;
+      }
+    }
+    next.push_back(std::move(w));
+  }
+  for (auto& old : m_widgets)
+    if (old) destroySurface(*old);
+  m_widgets = std::move(next);
+}
+
+// ── surfaces ────────────────────────────────────────────────────────────────
+
+void App::createSurface(Widget& w) {
+  if (!w.output) return;
+  w.surface = wl_compositor_create_surface(m_compositor);
+  w.scale = w.output->scale;
+  wl_surface_set_buffer_scale(w.surface, w.scale);
+  // Bottom layer, like Noctalia's own desktop widgets: above the wallpaper,
+  // below every window.
+  w.layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, w.surface, w.output->wl,
+                                                  ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "undershell");
+  auto* ctx = new WidgetCtx{this, &w};
+  zwlr_layer_surface_v1_add_listener(w.layer, &kLayer, ctx);
+  if (w.viz.fullscreen()) {
+    zwlr_layer_surface_v1_set_anchor(w.layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+                                                  ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+    zwlr_layer_surface_v1_set_size(w.layer, 0, 0);
+  } else {
+    zwlr_layer_surface_v1_set_anchor(w.layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+    zwlr_layer_surface_v1_set_size(w.layer, static_cast<uint32_t>(w.cfg.width), static_cast<uint32_t>(w.cfg.height));
+    zwlr_layer_surface_v1_set_margin(w.layer, w.cfg.y, 0, 0, w.cfg.x);
+  }
+  // -1: position against the output edge, ignoring bars' reserved space, so
+  // coordinates match the wallpaper (and the depth mask) exactly.
+  zwlr_layer_surface_v1_set_exclusive_zone(w.layer, -1);
+  w.appliedX = w.cfg.x;
+  w.appliedY = w.cfg.y;
+  zwlr_layer_surface_v1_set_keyboard_interactivity(w.layer, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
+  applyInputRegion(w);
+  wl_surface_commit(w.surface);
+  w.configured = false;
+}
+
+void App::destroySurface(Widget& w) {
+  if (w.eglSurface != EGL_NO_SURFACE) {
+    eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
+    eglDestroySurface(m_egl, w.eglSurface);
+    w.eglSurface = EGL_NO_SURFACE;
+  }
+  if (w.eglWindow) wl_egl_window_destroy(w.eglWindow);
+  w.eglWindow = nullptr;
+  if (w.frameCb) {
+    delete static_cast<WidgetCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(w.frameCb)));
+    wl_callback_destroy(w.frameCb);
+  }
+  w.frameCb = nullptr;
+  if (w.layer) zwlr_layer_surface_v1_destroy(w.layer);
+  w.layer = nullptr;
+  if (w.surface) wl_surface_destroy(w.surface);
+  w.surface = nullptr;
+  w.configured = false;
+  if (m_pointerWidget == &w) {
+    m_pointerWidget = nullptr;
+    m_drag = Drag::None;
+  }
+}
+
+void App::applyInputRegion(Widget& w) {
+  if (!w.surface) return;
+  // widgets never take input: the editor has its own surface
+  wl_region* empty = wl_compositor_create_region(m_compositor);
+  wl_surface_set_input_region(w.surface, empty);
+  wl_region_destroy(empty);
+}
+
+void App::onLayerConfigure(Widget* w, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t width, uint32_t height) {
+  zwlr_layer_surface_v1_ack_configure(ls, serial);
+  int nw = width ? static_cast<int>(width) : w->cfg.width;
+  int nh = height ? static_cast<int>(height) : w->cfg.height;
+  if (!w->eglWindow) {
+    w->eglWindow = wl_egl_window_create(w->surface, nw * w->scale, nh * w->scale);
+    w->eglSurface = eglCreatePlatformWindowSurface(m_egl, m_eglConfig, w->eglWindow, nullptr);
+    eglMakeCurrent(m_egl, w->eglSurface, w->eglSurface, m_eglContext);
+    eglSwapInterval(m_egl, 0);  // pacing comes from frame callbacks
+  } else if (nw != w->w || nh != w->h) {
+    wl_egl_window_resize(w->eglWindow, nw * w->scale, nh * w->scale, 0, 0);
+  }
+  w->w = nw;
+  w->h = nh;
+  w->configured = true;
+  w->needsRender = true;
+  w->drewEmpty = false;
+}
+
+void App::onLayerClosed(Widget* w) {
+  destroySurface(*w);
+  w->output = nullptr;
+}
+
+void App::onFrameDone(Widget* w) {
+  // keep drawing while the picture moves; otherwise stay asleep
+  const double e = m_demo ? 0.3 : m_audio.energy();
+  if (w->viz.animating(e) || m_drag != Drag::None) w->needsRender = true;
+}
+
+void App::render(Widget& w) {
+  if (!w.configured || w.eglSurface == EGL_NO_SURFACE || w.frameCb) return;
+  const double now = nowSeconds();
+  const double dt = w.lastTick > 0 ? std::min(0.1, now - w.lastTick) : 1.0 / 60;
+  w.lastTick = now;
+
+  // analyser bands arrive in 0..0.9; the looks expect 0..1
+  static std::vector<float> raw;
+  const auto& vals = m_demo ? m_demoBands : m_audio.values();
+  raw.resize(vals.size());
+  const bool silent = !m_demo && m_audio.idle();
+  for (size_t i = 0; i < vals.size(); ++i) raw[i] = silent ? 0.0F : vals[i] / 0.9F;
+  double energy = silent ? 0.0 : m_audio.energy();
+  if (m_demo) energy = 0.3;
+  w.viz.tick(dt, silent ? std::vector<float>{} : raw, energy);
+
+  const bool show = w.viz.visible();
+  if (!show && w.drewEmpty) {
+    w.needsRender = false;
+    return;
+  }
+
+  eglMakeCurrent(m_egl, w.eglSurface, w.eglSurface, m_eglContext);
+  glViewport(0, 0, w.w * w.scale, w.h * w.scale);
+  glClearColor(0, 0, 0, 0);
+  glClear(GL_COLOR_BUFFER_BIT);
+  const float ow = w.output ? w.output->logicalW() : 1920.0F;
+  const float oh = w.output ? w.output->logicalH() : 1080.0F;
+  if (w.viz.visible()) {
+    w.viz.draw(static_cast<float>(w.w), static_cast<float>(w.h), ow, oh);
+    if (w.cfg.viz.depth && w.output) {
+      if (const DepthMask* m = m_depth.get(w.output->name)) {
+        MaskParams mp;
+        mp.texture = m->texture;
+        mp.surfaceW = static_cast<float>(w.w);
+        mp.surfaceH = static_cast<float>(w.h);
+        mp.offsetX = w.viz.fullscreen() ? 0.0F : static_cast<float>(w.cfg.x);
+        mp.offsetY = w.viz.fullscreen() ? 0.0F : static_cast<float>(w.cfg.y);
+        mp.outputW = ow;
+        mp.outputH = oh;
+        mp.imageW = static_cast<float>(m->width);
+        mp.imageH = static_cast<float>(m->height);
+        mp.fillMode = m_noctalia.state().fillMode;
+        m_maskPass.draw(mp);
+      }
+    }
+  }
+  w.drewEmpty = !show;
+  w.frameCb = wl_surface_frame(w.surface);
+  wl_callback_add_listener(w.frameCb, &kFrame, new WidgetCtx{this, &w});
+  eglSwapBuffers(m_egl, w.eglSurface);
+  w.lastRender = now;
+  w.needsRender = false;
+  ++w.frames;
+  if (now - w.markAt >= 1.0) {
+    w.fpsMeasured = (w.frames - w.framesAtMark) / (now - w.markAt);
+    w.framesAtMark = w.frames;
+    w.markAt = now;
+  }
+}
+
+// ── edit mode ───────────────────────────────────────────────────────────────
+// While editing, a transparent fullscreen surface on the overlay layer takes
+// the pointer and keyboard. Pointer positions on it are output coordinates,
+// so dragging never depends on where the (moving) widget surface is.
+
+void App::setEditMode(bool on) {
+  if (on == m_edit) return;
+  m_edit = on;
+  m_drag = Drag::None;
+  m_pointerWidget = nullptr;
+  m_pointerEdit = nullptr;
+  if (on) {
+    for (auto& o : m_outputs) createEditSurface(o.get());
+  } else {
+    for (auto& e : m_editSurfaces) destroyEditSurface(*e);
+    m_editSurfaces.clear();
+  }
+  US_INFO("edit mode {}", on ? "on" : "off");
+}
+
+void App::createEditSurface(Output* o) {
+  auto e = std::make_unique<EditSurface>();
+  e->output = o;
+  e->scale = o->scale;
+  e->surface = wl_compositor_create_surface(m_compositor);
+  wl_surface_set_buffer_scale(e->surface, e->scale);
+  e->layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, e->surface, o->wl, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
+                                                   "undershell-editor");
+  zwlr_layer_surface_v1_add_listener(e->layer, &kEditLayer, new EditCtx{this, e.get()});
+  zwlr_layer_surface_v1_set_anchor(e->layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+                                                 ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
+  zwlr_layer_surface_v1_set_size(e->layer, 0, 0);
+  zwlr_layer_surface_v1_set_exclusive_zone(e->layer, -1);
+  zwlr_layer_surface_v1_set_keyboard_interactivity(e->layer, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE);
+  wl_surface_commit(e->surface);
+  m_editSurfaces.push_back(std::move(e));
+}
+
+void App::destroyEditSurface(EditSurface& e) {
+  if (e.eglSurface != EGL_NO_SURFACE) {
+    eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
+    eglDestroySurface(m_egl, e.eglSurface);
+    e.eglSurface = EGL_NO_SURFACE;
+  }
+  if (e.eglWindow) wl_egl_window_destroy(e.eglWindow);
+  e.eglWindow = nullptr;
+  if (e.frameCb) {
+    delete static_cast<EditCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(e.frameCb)));
+    wl_callback_destroy(e.frameCb);
+    e.frameCb = nullptr;
+  }
+  if (e.layer) zwlr_layer_surface_v1_destroy(e.layer);
+  e.layer = nullptr;
+  if (e.surface) wl_surface_destroy(e.surface);
+  e.surface = nullptr;
+}
+
+void App::onEditConfigure(EditSurface* e, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t width, uint32_t height) {
+  zwlr_layer_surface_v1_ack_configure(ls, serial);
+  const int nw = width ? static_cast<int>(width) : static_cast<int>(e->output->logicalW());
+  const int nh = height ? static_cast<int>(height) : static_cast<int>(e->output->logicalH());
+  if (!e->eglWindow) {
+    e->eglWindow = wl_egl_window_create(e->surface, nw * e->scale, nh * e->scale);
+    e->eglSurface = eglCreatePlatformWindowSurface(m_egl, m_eglConfig, e->eglWindow, nullptr);
+    eglMakeCurrent(m_egl, e->eglSurface, e->eglSurface, m_eglContext);
+    eglSwapInterval(m_egl, 0);
+  } else if (nw != e->w || nh != e->h) {
+    wl_egl_window_resize(e->eglWindow, nw * e->scale, nh * e->scale, 0, 0);
+  }
+  e->w = nw;
+  e->h = nh;
+  e->configured = true;
+  e->needsRender = true;
+}
+
+void App::onEditFrameDone(EditSurface*) {}  // redraws are driven by markEditDirty()
+
+void App::markEditDirty() {
+  for (auto& e : m_editSurfaces) e->needsRender = true;
+}
+
+void App::renderEdit(EditSurface& e) {
+  if (!e.configured || e.eglSurface == EGL_NO_SURFACE || e.frameCb) return;
+  std::vector<EditRect> rects;
+  int hover = -1, active = -1;
+  Color accent = Color::fromHex("#e2342a");
+  for (auto& w : m_widgets) {
+    if (w->output != e.output || w->viz.fullscreen() || !w->surface) continue;
+    if (w.get() == m_pointerWidget) {
+      (m_drag != Drag::None ? active : hover) = static_cast<int>(rects.size());
+    }
+    rects.push_back({static_cast<float>(w->cfg.x), static_cast<float>(w->cfg.y), static_cast<float>(w->cfg.width),
+                     static_cast<float>(w->cfg.height)});
+    accent = w->viz.accent();
+  }
+  eglMakeCurrent(m_egl, e.eglSurface, e.eglSurface, m_eglContext);
+  glViewport(0, 0, e.w * e.scale, e.h * e.scale);
+  glClearColor(0, 0, 0, 0);
+  glClear(GL_COLOR_BUFFER_BIT);
+  m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, accent,
+                 static_cast<float>(m_config.gridSize));
+  e.frameCb = wl_surface_frame(e.surface);
+  wl_callback_add_listener(e.frameCb, &kEditFrame, new EditCtx{this, &e});
+  eglSwapBuffers(m_egl, e.eglSurface);
+  e.needsRender = false;
+}
+
+EditSurface* App::editBySurface(wl_surface* s) {
+  for (auto& e : m_editSurfaces)
+    if (e->surface == s) return e.get();
+  return nullptr;
+}
+
+Widget* App::widgetBySurface(wl_surface* s) {
+  for (auto& w : m_widgets)
+    if (w->surface == s) return w.get();
+  return nullptr;
+}
+
+// topmost (last listed) widget on an output containing the point
+Widget* App::widgetAt(const Output* o, double x, double y) {
+  for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it) {
+    Widget& w = **it;
+    if (w.output != o || w.viz.fullscreen() || !w.surface) continue;
+    if (x >= w.cfg.x && y >= w.cfg.y && x < w.cfg.x + w.cfg.width && y < w.cfg.y + w.cfg.height) return &w;
+  }
+  return nullptr;
+}
+
+void App::setCursor(const char* name) {
+  if (!m_pointer || !m_cursorTheme || !m_cursorSurface) return;
+  wl_cursor* c = wl_cursor_theme_get_cursor(m_cursorTheme, name);
+  if (!c) c = wl_cursor_theme_get_cursor(m_cursorTheme, "left_ptr");
+  if (!c || c->image_count == 0) return;
+  wl_cursor_image* img = c->images[0];
+  wl_surface_attach(m_cursorSurface, wl_cursor_image_get_buffer(img), 0, 0);
+  wl_surface_damage(m_cursorSurface, 0, 0, static_cast<int>(img->width), static_cast<int>(img->height));
+  wl_surface_commit(m_cursorSurface);
+  wl_pointer_set_cursor(m_pointer, m_pointerSerial, m_cursorSurface, static_cast<int>(img->hotspot_x),
+                        static_cast<int>(img->hotspot_y));
+}
+
+static bool inGrip(const Widget& w, double x, double y) {
+  return x > w.cfg.x + w.cfg.width - 26 && y > w.cfg.y + w.cfg.height - 26;
+}
+
+void App::onPointerEnter(wl_surface* s, uint32_t serial, double x, double y) {
+  m_pointerSerial = serial;
+  m_pointerEdit = editBySurface(s);
+  if (!m_pointerEdit) return;
+  onPointerMotion(x, y);
+}
+
+void App::onPointerLeave(wl_surface* s) {
+  if (editBySurface(s) != m_pointerEdit) return;
+  if (m_drag == Drag::None) {
+    m_pointerEdit = nullptr;
+    m_pointerWidget = nullptr;
+    markEditDirty();
+  }
+}
+
+void App::onPointerMotion(double x, double y) {
+  if (!m_edit || !m_pointerEdit) return;
+  m_px = x;
+  m_py = y;
+  if (m_drag == Drag::None) {
+    Widget* hit = widgetAt(m_pointerEdit->output, x, y);
+    if (hit != m_pointerWidget) {
+      m_pointerWidget = hit;
+      markEditDirty();
+    }
+    setCursor(!hit ? "default" : (inGrip(*hit, x, y) ? "se-resize" : "grab"));
+    return;
+  }
+  Widget* w = m_pointerWidget;
+  if (!w) return;
+  const int dx = static_cast<int>(std::lround(x - m_pressX));
+  const int dy = static_cast<int>(std::lround(y - m_pressY));
+  if (m_drag == Drag::Move) {
+    moveWidget(*w, m_startX + dx, m_startY + dy);
+  } else {
+    WidgetConfig c = w->cfg;
+    c.width = std::max(48, m_dragW + dx);
+    c.height = std::max(32, m_dragH + dy);
+    clampToOutput(c, w->output);
+    if (c.width != w->cfg.width || c.height != w->cfg.height) {
+      w->cfg.width = c.width;
+      w->cfg.height = c.height;
+      zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(c.width), static_cast<uint32_t>(c.height));
+      wl_surface_commit(w->surface);
+    }
+  }
+  w->needsRender = true;
+  w->drewEmpty = false;
+  markEditDirty();
+}
+
+// Widgets may hang off the screen edge for composition, but a quarter of
+// them (at least 48 px) always stays on the output so none can be lost.
+void App::clampToOutput(WidgetConfig& c, const Output* o) const {
+  if (!o) return;
+  const int ow = static_cast<int>(o->logicalW()), oh = static_cast<int>(o->logicalH());
+  c.width = std::clamp(c.width, 48, std::max(48, ow * 2));
+  c.height = std::clamp(c.height, 32, std::max(32, oh * 2));
+  const int keepX = std::min(c.width, std::max(48, c.width / 4));
+  const int keepY = std::min(c.height, std::max(48, c.height / 4));
+  c.x = std::clamp(c.x, keepX - c.width, ow - keepX);
+  c.y = std::clamp(c.y, keepY - c.height, oh - keepY);
+}
+
+void App::moveWidget(Widget& w, int x, int y) {
+  WidgetConfig c = w.cfg;
+  c.x = x;
+  c.y = y;
+  clampToOutput(c, w.output);
+  if (c.x == w.cfg.x && c.y == w.cfg.y) return;
+  w.cfg.x = c.x;
+  w.cfg.y = c.y;
+  w.appliedX = c.x;
+  w.appliedY = c.y;
+  zwlr_layer_surface_v1_set_margin(w.layer, c.y, 0, 0, c.x);
+  wl_surface_commit(w.surface);
+}
+
+void App::onMoveApplied(Widget*, int, int) {}
+
+void App::persist(Widget& w) {
+  for (auto& c : m_config.widgets)
+    if (c.id == w.cfg.id) {
+      c.x = w.cfg.x;
+      c.y = w.cfg.y;
+      c.width = w.cfg.width;
+      c.height = w.cfg.height;
+    }
+  if (!Config::saveGeometry(m_configPath, w.cfg)) US_WARN("could not save the new geometry of {}", w.cfg.id);
+}
+
+void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
+  m_pointerSerial = serial;
+  if (!m_edit || !m_pointerEdit) return;
+  if (button == BTN_RIGHT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    setEditMode(false);
+    return;
+  }
+  if (button != BTN_LEFT) return;
+  Widget* w = m_pointerWidget;
+  if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+    if (!w) return;
+    m_drag = inGrip(*w, m_px, m_py) ? Drag::Resize : Drag::Move;
+    m_pressX = m_px;
+    m_pressY = m_py;
+    m_startX = w->cfg.x;
+    m_startY = w->cfg.y;
+    m_dragW = w->cfg.width;
+    m_dragH = w->cfg.height;
+    setCursor(m_drag == Drag::Resize ? "se-resize" : "grabbing");
+    markEditDirty();
+  } else if (m_drag != Drag::None && w) {
+    // snap to the grid, like Noctalia's desktop editor, then persist
+    const int g = std::max(1, m_config.gridSize);
+    auto snap = [g](int v) { return static_cast<int>(std::lround(static_cast<double>(v) / g)) * g; };
+    if (m_drag == Drag::Move) {
+      moveWidget(*w, snap(w->cfg.x), snap(w->cfg.y));
+    } else {
+      WidgetConfig c = w->cfg;
+      c.width = snap(c.width);
+      c.height = snap(c.height);
+      clampToOutput(c, w->output);
+      w->cfg.width = c.width;
+      w->cfg.height = c.height;
+      zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(c.width), static_cast<uint32_t>(c.height));
+      wl_surface_commit(w->surface);
+    }
+    m_drag = Drag::None;
+    setCursor("grab");
+    persist(*w);
+    w->needsRender = true;
+    markEditDirty();
+  }
+}
+
+// wheel over a widget in the editor: step through the looks
+void App::onScroll(double value) {
+  static const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
+                                 "curtain", "line", "frame", "radial", "orb", "spiral"};
+  if (!m_edit || m_drag != Drag::None || !m_pointerWidget) return;
+  m_scrollAcc += value;
+  if (std::abs(m_scrollAcc) < 10.0) return;  // one wheel notch
+  const int step = m_scrollAcc > 0 ? 1 : -1;
+  m_scrollAcc = 0;
+  Widget& w = *m_pointerWidget;
+  int idx = 0;
+  for (int i = 0; i < 12; ++i)
+    if (w.cfg.viz.style == kLooks[i]) idx = i;
+  idx = (idx + step + 12) % 12;
+  if (std::string(kLooks[idx]) == "frame") idx = (idx + step + 12) % 12;  // frame owns the whole screen
+  const std::string look = kLooks[idx];
+  US_INFO("{}: style {}", w.cfg.id, look);
+  // the file watcher reloads it, which reconfigures the widget in place
+  Config::setKey(m_configPath, w.cfg.id, "style", "\"" + look + "\"");
+}
+
+void App::onKey(uint32_t key, uint32_t state) {
+  if (m_edit && state == WL_KEYBOARD_KEY_STATE_PRESSED && (key == KEY_ESC || key == KEY_ENTER)) setEditMode(false);
+}
+
+// ── commands ────────────────────────────────────────────────────────────────
+
+std::string App::handleCommand(const std::string& cmd) {
+  if (cmd == "ping") return "pong";
+  if (cmd == "edit") {
+    setEditMode(!m_edit);
+    return m_edit ? "edit on" : "edit off";
+  }
+  if (cmd == "edit-on") {
+    setEditMode(true);
+    return "edit on";
+  }
+  if (cmd == "edit-off") {
+    setEditMode(false);
+    return "edit off";
+  }
+  if (cmd.rfind("set ", 0) == 0) {
+    // set <id|all> <key> <value>
+    std::istringstream in(cmd.substr(4));
+    std::string id, key, value;
+    in >> id >> key;
+    std::getline(in, value);
+    value.erase(0, value.find_first_not_of(' '));
+    if (id.empty() || key.empty() || value.empty()) return "error: usage: set <id|all> <key> <value>";
+    auto isNumber = [](const std::string& v) {
+      char* end = nullptr;
+      std::strtod(v.c_str(), &end);
+      return end && *end == '\0';
+    };
+    const std::string toml = (value == "true" || value == "false" || isNumber(value) || value.front() == '"')
+                                 ? value
+                                 : "\"" + value + "\"";
+    int n = 0;
+    for (auto& c : m_config.widgets)
+      if (id == "all" || c.id == id) n += Config::setKey(m_configPath, c.id, key, toml) ? 1 : 0;
+    if (n == 0) return "error: no widget '" + id + "'";
+    m_reloadConfigAt = nowSeconds() + 0.05;
+    return std::format("set {} = {} on {} widget(s)", key, toml, n);
+  }
+  if (cmd == "reset") {
+    // bring every widget back to the bottom-centre of its output
+    for (auto& w : m_widgets) {
+      if (!w->output || w->viz.fullscreen()) continue;
+      const int ow = static_cast<int>(w->output->logicalW()), oh = static_cast<int>(w->output->logicalH());
+      w->cfg.width = std::min(w->cfg.width, ow);
+      w->cfg.height = std::min(w->cfg.height, oh);
+      zwlr_layer_surface_v1_set_size(w->layer, static_cast<uint32_t>(w->cfg.width), static_cast<uint32_t>(w->cfg.height));
+      moveWidget(*w, (ow - w->cfg.width) / 2, oh - w->cfg.height - 64);
+      wl_surface_commit(w->surface);
+      persist(*w);
+      w->needsRender = true;
+    }
+    return "reset";
+  }
+  if (cmd == "reload") {
+    loadConfig();
+    m_refreshNoctAt = nowSeconds();
+    return "reloaded";
+  }
+  if (cmd == "demo" || cmd == "demo-on" || cmd == "demo-off") {
+    m_demo = cmd == "demo" ? !m_demo : cmd == "demo-on";
+    for (auto& w : m_widgets) w->needsRender = true;
+    return m_demo ? "demo on" : "demo off";
+  }
+  if (cmd == "quit") {
+    m_running = false;
+    return "bye";
+  }
+  if (cmd == "status") {
+    std::string s = std::format("widgets={} edit={} audio={} palette_roles={} fill_mode={}\n", m_widgets.size(),
+                                m_edit, m_audioOk ? (m_audio.idle() ? "idle" : "active") : "off",
+                                m_noctalia.state().palette.size(), m_noctalia.state().fillMode);
+    for (auto& w : m_widgets) {
+      const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
+      const bool stale = nowSeconds() - w->markAt > 1.5;
+      s += std::format("  {} {} on {} at {},{} {}x{} depth={} frames={} fps={:.0f}\n", w->cfg.id, w->cfg.viz.style,
+                       w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height,
+                       m ? fs::path(m->maskPath).filename().string().substr(0, 12) : "none", w->frames,
+                       stale ? 0.0 : w->fpsMeasured);
+    }
+    return s;
+  }
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, reset, reload, status, quit)";
+}
+
+// ── file watching ───────────────────────────────────────────────────────────
+
+void App::handleInotify() {
+  alignas(inotify_event) char buf[8192];
+  for (;;) {
+    ssize_t n = read(m_inotify, buf, sizeof(buf));
+    if (n <= 0) break;
+    for (char* p = buf; p < buf + n;) {
+      auto* ev = reinterpret_cast<inotify_event*>(p);
+      std::string name = ev->len ? ev->name : "";
+      const double now = nowSeconds();
+      if (ev->wd == m_wdConfig && name == fs::path(m_configPath).filename().string()) m_reloadConfigAt = now + 0.15;
+      if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
+      if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
+      if (ev->wd == m_wdMasks && name.ends_with(".png")) m_refreshDepthAt = now + 0.3;
+      p += sizeof(inotify_event) + ev->len;
+    }
+  }
+}
+
+int App::computeTimeout() {
+  const double now = nowSeconds();
+  double next = 1e9;
+  for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt})
+    if (t > 0) next = std::min(next, t);
+  for (auto& w : m_widgets) {
+    if (!w->needsRender || w->frameCb || !w->configured) continue;
+    const double due = w->lastRender + 1.0 / std::max(1, w->viz.fps());
+    next = std::min(next, due);
+  }
+  for (auto& e : m_editSurfaces)
+    if (e->needsRender && !e->frameCb) next = now;
+  int timeout = next >= 1e8 ? -1 : std::max(0, static_cast<int>(std::ceil((next - now) * 1000)));
+  if (m_demo) timeout = timeout < 0 ? 16 : std::min(timeout, 16);
+  if (m_audioOk) {
+    int a = m_audio.pollTimeoutMs();
+    if (a >= 0) timeout = timeout < 0 ? a : std::min(timeout, a);
+  }
+  return timeout;
+}
+
+// ── main loop ───────────────────────────────────────────────────────────────
+
+int App::run() {
+  std::signal(SIGINT, [](int) { g_quit = 1; });
+  std::signal(SIGTERM, [](int) { g_quit = 1; });
+  if (!m_ipc.listen([this](const std::string& c) { return handleCommand(c); })) return 1;
+  if (!initWayland() || !initEgl()) return 1;
+
+  m_configPath = Config::defaultPath();
+  m_noctalia.refresh();
+  m_depth.update(m_noctalia.state(), outputNames());
+  loadConfig();
+  m_audioOk = m_audio.start();
+
+  m_inotify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+  const uint32_t mask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE;
+  m_wdConfig = inotify_add_watch(m_inotify, fs::path(m_configPath).parent_path().c_str(), mask);
+  m_wdNoctState = inotify_add_watch(m_inotify, fs::path(Noctalia::settingsPath()).parent_path().c_str(), mask);
+  m_wdNoctConfig = inotify_add_watch(m_inotify, Noctalia::configDir().c_str(), mask);
+  m_wdMasks = inotify_add_watch(m_inotify, DepthMasks::maskDir().c_str(), mask);
+
+  while (m_running && !g_quit) {
+    while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
+    wl_display_flush(m_display);
+
+    pollfd fds[4] = {{wl_display_get_fd(m_display), POLLIN, 0},
+                     {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
+                     {m_inotify, POLLIN, 0},
+                     {m_ipc.fd(), POLLIN, 0}};
+    int r = poll(fds, 4, computeTimeout());
+    if (r < 0 && errno != EINTR) {
+      wl_display_cancel_read(m_display);
+      break;
+    }
+    if (r > 0 && (fds[0].revents & POLLIN)) {
+      if (wl_display_read_events(m_display) < 0) break;
+    } else {
+      wl_display_cancel_read(m_display);
+    }
+    if (fds[0].revents & (POLLERR | POLLHUP)) break;
+    wl_display_dispatch_pending(m_display);
+
+    if (r > 0 && (fds[1].revents & POLLIN)) m_audio.dispatch();
+    if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
+    if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
+
+    const double now = nowSeconds();
+    if (m_reloadConfigAt > 0 && now >= m_reloadConfigAt) {
+      m_reloadConfigAt = 0;
+      loadConfig();
+    }
+    if (m_refreshNoctAt > 0 && now >= m_refreshNoctAt) {
+      m_refreshNoctAt = 0;
+      refreshNoctalia();
+    }
+    if (m_refreshDepthAt > 0 && now >= m_refreshDepthAt) {
+      m_refreshDepthAt = 0;
+      updateDepth();
+    }
+
+    if (m_audioOk && m_audio.tick()) {
+      for (auto& w : m_widgets) w->needsRender = true;
+    }
+    if (m_demo) {
+      // a synthetic spectrum: a bass beat under drifting mids and a little noise
+      m_demoT = now;
+      const int n = 64;
+      m_demoBands.resize(n);
+      const double beat = std::pow(std::max(0.0, std::sin(now * 2 * M_PI * 2.0)), 8.0);
+      for (int i = 0; i < n; ++i) {
+        const double x = i / double(n - 1);
+        double v = 0.55 * std::exp(-x * 2.2) * (0.6 + 0.4 * beat) +
+                   0.25 * (0.5 + 0.5 * std::sin(now * 3 + i * 0.35)) * (1 - x * 0.5) +
+                   0.05 * (0.5 + 0.5 * std::sin(now * 17.0 + i * 2.1));
+        m_demoBands[static_cast<size_t>(i)] = static_cast<float>(std::clamp(v, 0.0, 1.0) * 0.9);
+      }
+      for (auto& w : m_widgets) w->needsRender = true;
+    }
+    for (auto& w : m_widgets) {
+      if (!w->needsRender) continue;
+      if (now + 0.0005 < w->lastRender + 1.0 / std::max(1, w->viz.fps())) continue;
+      render(*w);
+    }
+    for (auto& e : m_editSurfaces)
+      if (e->needsRender) renderEdit(*e);
+  }
+  US_INFO("exiting");
+  return 0;
+}
+
+// ── offscreen previews ──────────────────────────────────────────────────────
+
+int snapshotLooks(const std::string& dir) {
+  EGLDisplay dpy = eglGetPlatformDisplay(0x31DD /* EGL_PLATFORM_SURFACELESS_MESA */, EGL_DEFAULT_DISPLAY, nullptr);
+  if (dpy == EGL_NO_DISPLAY || !eglInitialize(dpy, nullptr, nullptr)) {
+    US_ERROR("surfaceless EGL unavailable");
+    return 1;
+  }
+  eglBindAPI(EGL_OPENGL_ES_API);
+  const EGLint cattr[] = {EGL_CONTEXT_MAJOR_VERSION, 3, EGL_NONE};
+  EGLContext ctx = eglCreateContext(dpy, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT, cattr);
+  if (ctx == EGL_NO_CONTEXT || !eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx)) {
+    US_ERROR("could not create a surfaceless GLES context");
+    return 1;
+  }
+  Noctalia noct;
+  noct.refresh();
+  fs::create_directories(dir);
+  const char* looks[] = {"bars", "split", "dots", "segments", "wave", "ribbon", "curtain", "line", "frame", "radial", "orb", "spiral"};
+  for (const char* look : looks) {
+    VisualizerConfig vc;
+    vc.style = look;
+    vc.peaks = std::string(look) == "bars" || std::string(look) == "segments";
+    const bool polar = std::string(look) == "radial" || std::string(look) == "orb" || std::string(look) == "spiral";
+    const bool frame = std::string(look) == "frame";
+    const int W = frame ? 960 : (polar ? 420 : 900), H = frame ? 540 : (polar ? 420 : 280);
+    Visualizer viz;
+    viz.configure(vc, noct.state());
+    std::vector<float> raw(64);
+    for (int step = 0; step < 90; ++step) {
+      const double t = step / 60.0;
+      for (int i = 0; i < 64; ++i) {
+        const double x = i / 63.0;
+        raw[static_cast<size_t>(i)] = static_cast<float>(std::clamp(
+            0.6 * std::exp(-x * 2.2) + 0.28 * (0.5 + 0.5 * std::sin(t * 3 + i * 0.35)) * (1 - x * 0.5), 0.0, 1.0));
+      }
+      viz.tick(1.0 / 60, raw, 0.4);
+    }
+    GLuint fbo = 0, tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, W, H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    glViewport(0, 0, W, H);
+    glClearColor(0, 0, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    viz.draw(static_cast<float>(W), static_cast<float>(H), frame ? 960.0F : 1920.0F, frame ? 540.0F : 1080.0F);
+    std::vector<unsigned char> px(static_cast<size_t>(W) * H * 4);
+    glReadPixels(0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    // over a dark plate, flipped to top-down, as cairo ARGB32
+    cairo_surface_t* img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
+    unsigned char* dst = cairo_image_surface_get_data(img);
+    const int stride = cairo_image_surface_get_stride(img);
+    for (int y = 0; y < H; ++y)
+      for (int x = 0; x < W; ++x) {
+        const unsigned char* s = &px[(static_cast<size_t>(H - 1 - y) * W + x) * 4];
+        const float a = s[3] / 255.0F;
+        auto over = [&](unsigned char c, float bg) { return static_cast<unsigned char>(std::min(255.0F, c + bg * (1 - a))); };
+        auto* d = reinterpret_cast<uint32_t*>(dst + y * stride) + x;
+        *d = 0xff000000u | (over(s[0], 18) << 16) | (over(s[1], 18) << 8) | over(s[2], 24);
+      }
+    cairo_surface_mark_dirty(img);
+    cairo_surface_write_to_png(img, (dir + "/" + look + ".png").c_str());
+    cairo_surface_destroy(img);
+    glDeleteFramebuffers(1, &fbo);
+    glDeleteTextures(1, &tex);
+    US_INFO("wrote {}/{}.png", dir, look);
+  }
+  eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+  eglDestroyContext(dpy, ctx);
+  eglTerminate(dpy);
+  return 0;
+}
+
+}  // namespace undershell
