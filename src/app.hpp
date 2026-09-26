@@ -7,7 +7,8 @@
 #include "ipc.hpp"
 #include "noctalia.hpp"
 #include "overlay.hpp"
-#include "visualizer.hpp"
+#include "text.hpp"
+#include "widget.hpp"
 
 #include <EGL/egl.h>
 #include <memory>
@@ -42,7 +43,7 @@ struct Output {
 
 struct Widget {
   WidgetConfig cfg;
-  Visualizer viz;
+  std::unique_ptr<WidgetImpl> impl;
   Output* output = nullptr;
   wl_surface* surface = nullptr;
   zwlr_layer_surface_v1* layer = nullptr;
@@ -127,6 +128,7 @@ private:
   void setCursor(const char* name);
   Widget* widgetBySurface(wl_surface* s);
   int computeTimeout();
+  AudioFrame audioFrame();
   void handleInotify();
   std::string handleCommand(const std::string& cmd);
   std::vector<std::string> outputNames() const;
@@ -156,6 +158,7 @@ private:
   Noctalia m_noctalia;
   DepthMasks m_depth;
   MaskPass m_maskPass;
+  TextRenderer m_text;
   OverlayPass m_overlay;
   IpcServer m_ipc;
   int m_inotify = -1;
@@ -177,7 +180,5 @@ private:
   std::vector<float> m_demoBands;
 };
 
-// Offscreen render of every look to PNGs (for previews and testing).
-int snapshotLooks(const std::string& dir);
 
 }  // namespace undershell

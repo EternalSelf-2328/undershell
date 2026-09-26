@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
-#include "config.hpp"
 #include "gl.hpp"
 #include "motion.hpp"
-#include "noctalia.hpp"
+#include "widget.hpp"
 
 #include <array>
 #include <vector>
@@ -12,21 +11,21 @@
 namespace undershell {
 
 // Ryoku's desktop spectrum (VisualizerView + SpectrumField + Motion).
-class Visualizer {
+class Visualizer final : public WidgetImpl {
 public:
+  void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
   void configure(const VisualizerConfig& cfg, const NoctaliaState& noct);
-  // Advances motion. raw = analyser bands (0..1), empty when silent.
-  void tick(double dt, const std::vector<float>& raw, double energy);
-  // Draws into the current framebuffer (logical size w x h). outputW/H: the
-  // monitor, used by the frame look and for scale-dependent sizes.
-  void draw(float w, float h, float outputW, float outputH);
+  void tick(const TickContext& ctx) override;
+  void draw(const DrawContext& ctx) override;
 
-  [[nodiscard]] bool animating(double energy) const { return m_motion.animating(energy); }
-  [[nodiscard]] bool visible() const { return m_motion.fade() > 0.002; }
-  [[nodiscard]] int fps() const { return m_cfg.fps; }
-  [[nodiscard]] bool fullscreen() const { return m_cfg.style == "frame"; }
-  void rest() { m_motion.rest(); }
-  [[nodiscard]] Color accent() const { return m_ramp[4]; }
+  [[nodiscard]] bool animating(const TickContext& ctx) const override { return m_motion.animating(ctx.audio.energy); }
+  [[nodiscard]] bool visible() const override { return m_motion.fade() > 0.002; }
+  [[nodiscard]] int fps() const override { return m_cfg.fps; }
+  [[nodiscard]] bool fullscreen() const override { return m_cfg.style == "frame"; }
+  [[nodiscard]] bool usesAudio() const override { return true; }
+  [[nodiscard]] Color accent() const override { return m_ramp[4]; }
+  void rest() override { m_motion.rest(); }
+  [[nodiscard]] const VisualizerConfig& config() const { return m_cfg; }
 
 private:
   VisualizerConfig m_cfg;

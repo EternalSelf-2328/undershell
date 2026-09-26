@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app.hpp"
 
+#include "visualizer.hpp"
+
 // the generated header names a parameter `namespace`
 #define namespace namespace_
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
@@ -298,7 +300,8 @@ void App::loadConfig() {
     return;
   }
   int maxBars = 16;
-  for (auto& w : m_config.widgets) maxBars = std::max(maxBars, w.viz.bars);
+  for (auto& w : m_config.widgets)
+    if (w.type == "visualizer") maxBars = std::max(maxBars, VisualizerConfig::fromTable(w.options).bars);
   m_audio.setBandCount(maxBars);
   m_audio.setNoiseReduction(static_cast<float>(m_config.noiseReduction));
   m_audio.setMonstercat(m_config.monstercat);
@@ -308,7 +311,7 @@ void App::loadConfig() {
 void App::refreshNoctalia() {
   if (m_noctalia.refresh()) {
     for (auto& w : m_widgets) {
-      w->viz.configure(w->cfg.viz, m_noctalia.state());
+      if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
       w->needsRender = true;
     }
     updateDepth();
@@ -327,7 +330,7 @@ void App::updateDepth() {
 void App::syncWidgets() {
   std::vector<std::unique_ptr<Widget>> next;
   for (const auto& wc : m_config.widgets) {
-    if (!wc.enabled || wc.type != "visualizer") continue;
+    if (!wc.enabled) continue;
     std::unique_ptr<Widget> w;
     for (auto& old : m_widgets) {
       if (old && old->cfg.id == wc.id) {
@@ -336,16 +339,24 @@ void App::syncWidgets() {
       }
     }
     if (!w) w = std::make_unique<Widget>();
+    if (!w->impl || w->cfg.type != wc.type) {
+      destroySurface(*w);
+      w->impl = createWidget(wc.type);
+      if (!w->impl) {
+        US_WARN("widget {}: unknown type '{}'", wc.id, wc.type);
+        continue;
+      }
+    }
+    const bool wasFull = w->impl->fullscreen();
     const bool geomChanged = w->cfg.x != wc.x || w->cfg.y != wc.y || w->cfg.width != wc.width ||
-                             w->cfg.height != wc.height || w->cfg.output != wc.output ||
-                             (w->cfg.viz.style == "frame") != (wc.viz.style == "frame");
+                             w->cfg.height != wc.height || w->cfg.output != wc.output;
     w->cfg = wc;
     for (auto& o : m_outputs)
       if (wc.output.empty() || o->name == wc.output) {
         clampToOutput(w->cfg, o.get());
         break;
       }
-    w->viz.configure(w->cfg.viz, m_noctalia.state());
+    w->impl->configure(w->cfg, m_noctalia.state());
     w->needsRender = true;
     Output* out = nullptr;
     for (auto& o : m_outputs)
@@ -353,12 +364,12 @@ void App::syncWidgets() {
         out = o.get();
         break;
       }
-    if (out != w->output || !w->surface) {
+    if (out != w->output || !w->surface || wasFull != w->impl->fullscreen()) {
       destroySurface(*w);
       w->output = out;
       if (out) createSurface(*w);
     } else if (geomChanged && w->layer) {
-      if (w->viz.fullscreen()) {
+      if (w->impl->fullscreen()) {
         destroySurface(*w);
         createSurface(*w);
       } else {
@@ -389,7 +400,7 @@ void App::createSurface(Widget& w) {
                                                   ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "undershell");
   auto* ctx = new WidgetCtx{this, &w};
   zwlr_layer_surface_v1_add_listener(w.layer, &kLayer, ctx);
-  if (w.viz.fullscreen()) {
+  if (w.impl->fullscreen()) {
     zwlr_layer_surface_v1_set_anchor(w.layer, ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
                                                   ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT | ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT);
     zwlr_layer_surface_v1_set_size(w.layer, 0, 0);
@@ -467,27 +478,39 @@ void App::onLayerClosed(Widget* w) {
 
 void App::onFrameDone(Widget* w) {
   // keep drawing while the picture moves; otherwise stay asleep
-  const double e = m_demo ? 0.3 : m_audio.energy();
-  if (w->viz.animating(e) || m_drag != Drag::None) w->needsRender = true;
+  TickContext ctx;
+  ctx.now = nowSeconds();
+  ctx.audio = audioFrame();
+  if ((w->impl && w->impl->animating(ctx)) || m_drag != Drag::None) w->needsRender = true;
+}
+
+// The shared audio input: analyser bands normalised to 0..1 (or the demo).
+AudioFrame App::audioFrame() {
+  static std::vector<float> bands;
+  AudioFrame f;
+  const bool silent = !m_demo && (!m_audioOk || m_audio.idle());
+  const auto& vals = m_demo ? m_demoBands : m_audio.values();
+  bands.resize(vals.size());
+  for (size_t i = 0; i < vals.size(); ++i) bands[i] = silent ? 0.0F : vals[i] / 0.9F;
+  f.bands = &bands;
+  f.silent = silent;
+  f.energy = silent ? 0.0 : (m_demo ? 0.3 : m_audio.energy());
+  return f;
 }
 
 void App::render(Widget& w) {
-  if (!w.configured || w.eglSurface == EGL_NO_SURFACE || w.frameCb) return;
+  if (!w.configured || w.eglSurface == EGL_NO_SURFACE || w.frameCb || !w.impl) return;
   const double now = nowSeconds();
   const double dt = w.lastTick > 0 ? std::min(0.1, now - w.lastTick) : 1.0 / 60;
   w.lastTick = now;
 
-  // analyser bands arrive in 0..0.9; the looks expect 0..1
-  static std::vector<float> raw;
-  const auto& vals = m_demo ? m_demoBands : m_audio.values();
-  raw.resize(vals.size());
-  const bool silent = !m_demo && m_audio.idle();
-  for (size_t i = 0; i < vals.size(); ++i) raw[i] = silent ? 0.0F : vals[i] / 0.9F;
-  double energy = silent ? 0.0 : m_audio.energy();
-  if (m_demo) energy = 0.3;
-  w.viz.tick(dt, silent ? std::vector<float>{} : raw, energy);
+  TickContext tctx;
+  tctx.now = now;
+  tctx.dt = dt;
+  tctx.audio = audioFrame();
+  w.impl->tick(tctx);
 
-  const bool show = w.viz.visible();
+  const bool show = w.impl->visible();
   if (!show && w.drewEmpty) {
     w.needsRender = false;
     return;
@@ -499,16 +522,23 @@ void App::render(Widget& w) {
   glClear(GL_COLOR_BUFFER_BIT);
   const float ow = w.output ? w.output->logicalW() : 1920.0F;
   const float oh = w.output ? w.output->logicalH() : 1080.0F;
-  if (w.viz.visible()) {
-    w.viz.draw(static_cast<float>(w.w), static_cast<float>(w.h), ow, oh);
-    if (w.cfg.viz.depth && w.output) {
+  if (show) {
+    DrawContext dctx;
+    dctx.w = static_cast<float>(w.w);
+    dctx.h = static_cast<float>(w.h);
+    dctx.outputW = ow;
+    dctx.outputH = oh;
+    dctx.scale = w.scale;
+    dctx.text = &m_text;
+    w.impl->draw(dctx);
+    if (w.cfg.depth && w.output) {
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         MaskParams mp;
         mp.texture = m->texture;
         mp.surfaceW = static_cast<float>(w.w);
         mp.surfaceH = static_cast<float>(w.h);
-        mp.offsetX = w.viz.fullscreen() ? 0.0F : static_cast<float>(w.cfg.x);
-        mp.offsetY = w.viz.fullscreen() ? 0.0F : static_cast<float>(w.cfg.y);
+        mp.offsetX = w.impl->fullscreen() ? 0.0F : static_cast<float>(w.cfg.x);
+        mp.offsetY = w.impl->fullscreen() ? 0.0F : static_cast<float>(w.cfg.y);
         mp.outputW = ow;
         mp.outputH = oh;
         mp.imageW = static_cast<float>(m->width);
@@ -619,13 +649,13 @@ void App::renderEdit(EditSurface& e) {
   int hover = -1, active = -1;
   Color accent = Color::fromHex("#e2342a");
   for (auto& w : m_widgets) {
-    if (w->output != e.output || w->viz.fullscreen() || !w->surface) continue;
+    if (w->output != e.output || w->impl->fullscreen() || !w->surface) continue;
     if (w.get() == m_pointerWidget) {
       (m_drag != Drag::None ? active : hover) = static_cast<int>(rects.size());
     }
     rects.push_back({static_cast<float>(w->cfg.x), static_cast<float>(w->cfg.y), static_cast<float>(w->cfg.width),
                      static_cast<float>(w->cfg.height)});
-    accent = w->viz.accent();
+    accent = w->impl->accent();
   }
   eglMakeCurrent(m_egl, e.eglSurface, e.eglSurface, m_eglContext);
   glViewport(0, 0, e.w * e.scale, e.h * e.scale);
@@ -655,7 +685,7 @@ Widget* App::widgetBySurface(wl_surface* s) {
 Widget* App::widgetAt(const Output* o, double x, double y) {
   for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it) {
     Widget& w = **it;
-    if (w.output != o || w.viz.fullscreen() || !w.surface) continue;
+    if (w.output != o || w.impl->fullscreen() || !w.surface) continue;
     if (x >= w.cfg.x && y >= w.cfg.y && x < w.cfg.x + w.cfg.width && y < w.cfg.y + w.cfg.height) return &w;
   }
   return nullptr;
@@ -818,7 +848,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
 void App::onScroll(double value) {
   static const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
                                  "curtain", "line", "frame", "radial", "orb", "spiral"};
-  if (!m_edit || m_drag != Drag::None || !m_pointerWidget) return;
+  if (!m_edit || m_drag != Drag::None || !m_pointerWidget || m_pointerWidget->cfg.type != "visualizer") return;
   m_scrollAcc += value;
   if (std::abs(m_scrollAcc) < 10.0) return;  // one wheel notch
   const int step = m_scrollAcc > 0 ? 1 : -1;
@@ -826,7 +856,7 @@ void App::onScroll(double value) {
   Widget& w = *m_pointerWidget;
   int idx = 0;
   for (int i = 0; i < 12; ++i)
-    if (w.cfg.viz.style == kLooks[i]) idx = i;
+    if (w.cfg.options["style"].value_or(std::string("bars")) == kLooks[i]) idx = i;
   idx = (idx + step + 12) % 12;
   if (std::string(kLooks[idx]) == "frame") idx = (idx + step + 12) % 12;  // frame owns the whole screen
   const std::string look = kLooks[idx];
@@ -881,7 +911,7 @@ std::string App::handleCommand(const std::string& cmd) {
   if (cmd == "reset") {
     // bring every widget back to the bottom-centre of its output
     for (auto& w : m_widgets) {
-      if (!w->output || w->viz.fullscreen()) continue;
+      if (!w->output || w->impl->fullscreen()) continue;
       const int ow = static_cast<int>(w->output->logicalW()), oh = static_cast<int>(w->output->logicalH());
       w->cfg.width = std::min(w->cfg.width, ow);
       w->cfg.height = std::min(w->cfg.height, oh);
@@ -914,7 +944,7 @@ std::string App::handleCommand(const std::string& cmd) {
     for (auto& w : m_widgets) {
       const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
       const bool stale = nowSeconds() - w->markAt > 1.5;
-      s += std::format("  {} {} on {} at {},{} {}x{} depth={} frames={} fps={:.0f}\n", w->cfg.id, w->cfg.viz.style,
+      s += std::format("  {} {} on {} at {},{} {}x{} depth={} frames={} fps={:.0f}\n", w->cfg.id, w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars")) : w->cfg.type,
                        w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height,
                        m ? fs::path(m->maskPath).filename().string().substr(0, 12) : "none", w->frames,
                        stale ? 0.0 : w->fpsMeasured);
@@ -950,8 +980,13 @@ int App::computeTimeout() {
   for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt})
     if (t > 0) next = std::min(next, t);
   for (auto& w : m_widgets) {
-    if (!w->needsRender || w->frameCb || !w->configured) continue;
-    const double due = w->lastRender + 1.0 / std::max(1, w->viz.fps());
+    if (!w->configured || !w->impl) continue;
+    if (!w->needsRender) {
+      next = std::min(next, w->impl->nextWakeup(now));
+      continue;
+    }
+    if (w->frameCb) continue;
+    const double due = w->lastRender + 1.0 / std::max(1, w->impl->fps());
     next = std::min(next, due);
   }
   for (auto& e : m_editSurfaces)
@@ -1044,90 +1079,15 @@ int App::run() {
       for (auto& w : m_widgets) w->needsRender = true;
     }
     for (auto& w : m_widgets) {
+      if (w->impl && !w->needsRender && now >= w->impl->nextWakeup(now)) w->needsRender = true;
       if (!w->needsRender) continue;
-      if (now + 0.0005 < w->lastRender + 1.0 / std::max(1, w->viz.fps())) continue;
+      if (now + 0.0005 < w->lastRender + 1.0 / std::max(1, w->impl->fps())) continue;
       render(*w);
     }
     for (auto& e : m_editSurfaces)
       if (e->needsRender) renderEdit(*e);
   }
   US_INFO("exiting");
-  return 0;
-}
-
-// ── offscreen previews ──────────────────────────────────────────────────────
-
-int snapshotLooks(const std::string& dir) {
-  EGLDisplay dpy = eglGetPlatformDisplay(0x31DD /* EGL_PLATFORM_SURFACELESS_MESA */, EGL_DEFAULT_DISPLAY, nullptr);
-  if (dpy == EGL_NO_DISPLAY || !eglInitialize(dpy, nullptr, nullptr)) {
-    US_ERROR("surfaceless EGL unavailable");
-    return 1;
-  }
-  eglBindAPI(EGL_OPENGL_ES_API);
-  const EGLint cattr[] = {EGL_CONTEXT_MAJOR_VERSION, 3, EGL_NONE};
-  EGLContext ctx = eglCreateContext(dpy, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT, cattr);
-  if (ctx == EGL_NO_CONTEXT || !eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, ctx)) {
-    US_ERROR("could not create a surfaceless GLES context");
-    return 1;
-  }
-  Noctalia noct;
-  noct.refresh();
-  fs::create_directories(dir);
-  const char* looks[] = {"bars", "split", "dots", "segments", "wave", "ribbon", "curtain", "line", "frame", "radial", "orb", "spiral"};
-  for (const char* look : looks) {
-    VisualizerConfig vc;
-    vc.style = look;
-    vc.peaks = std::string(look) == "bars" || std::string(look) == "segments";
-    const bool polar = std::string(look) == "radial" || std::string(look) == "orb" || std::string(look) == "spiral";
-    const bool frame = std::string(look) == "frame";
-    const int W = frame ? 960 : (polar ? 420 : 900), H = frame ? 540 : (polar ? 420 : 280);
-    Visualizer viz;
-    viz.configure(vc, noct.state());
-    std::vector<float> raw(64);
-    for (int step = 0; step < 90; ++step) {
-      const double t = step / 60.0;
-      for (int i = 0; i < 64; ++i) {
-        const double x = i / 63.0;
-        raw[static_cast<size_t>(i)] = static_cast<float>(std::clamp(
-            0.6 * std::exp(-x * 2.2) + 0.28 * (0.5 + 0.5 * std::sin(t * 3 + i * 0.35)) * (1 - x * 0.5), 0.0, 1.0));
-      }
-      viz.tick(1.0 / 60, raw, 0.4);
-    }
-    GLuint fbo = 0, tex = 0;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, W, H, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
-    glViewport(0, 0, W, H);
-    glClearColor(0, 0, 0, 0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    viz.draw(static_cast<float>(W), static_cast<float>(H), frame ? 960.0F : 1920.0F, frame ? 540.0F : 1080.0F);
-    std::vector<unsigned char> px(static_cast<size_t>(W) * H * 4);
-    glReadPixels(0, 0, W, H, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    // over a dark plate, flipped to top-down, as cairo ARGB32
-    cairo_surface_t* img = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
-    unsigned char* dst = cairo_image_surface_get_data(img);
-    const int stride = cairo_image_surface_get_stride(img);
-    for (int y = 0; y < H; ++y)
-      for (int x = 0; x < W; ++x) {
-        const unsigned char* s = &px[(static_cast<size_t>(H - 1 - y) * W + x) * 4];
-        const float a = s[3] / 255.0F;
-        auto over = [&](unsigned char c, float bg) { return static_cast<unsigned char>(std::min(255.0F, c + bg * (1 - a))); };
-        auto* d = reinterpret_cast<uint32_t*>(dst + y * stride) + x;
-        *d = 0xff000000u | (over(s[0], 18) << 16) | (over(s[1], 18) << 8) | over(s[2], 24);
-      }
-    cairo_surface_mark_dirty(img);
-    cairo_surface_write_to_png(img, (dir + "/" + look + ".png").c_str());
-    cairo_surface_destroy(img);
-    glDeleteFramebuffers(1, &fbo);
-    glDeleteTextures(1, &tex);
-    US_INFO("wrote {}/{}.png", dir, look);
-  }
-  eglMakeCurrent(dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-  eglDestroyContext(dpy, ctx);
-  eglTerminate(dpy);
   return 0;
 }
 

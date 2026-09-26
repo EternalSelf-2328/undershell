@@ -6,6 +6,7 @@
 #include "app.hpp"
 #include "common.hpp"
 #include "ipc.hpp"
+#include "offscreen.hpp"
 
 #include <cstring>
 #include <string>

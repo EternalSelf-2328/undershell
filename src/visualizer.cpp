@@ -13,6 +13,10 @@ namespace undershell {
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
                                 "curtain", "line", "frame", "radial", "orb", "spiral"};
 
+void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
+  configure(VisualizerConfig::fromTable(cfg.options), noct);
+}
+
 void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noct) {
   m_cfg = cfg;
   m_styleIndex = 0;
@@ -42,11 +46,13 @@ void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noc
   }
 }
 
-void Visualizer::tick(double dt, const std::vector<float>& raw, double energy) {
-  m_motion.tick(dt, raw, energy);
+void Visualizer::tick(const TickContext& ctx) {
+  static const std::vector<float> kEmpty;
+  m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);
 }
 
-void Visualizer::draw(float w, float h, float outputW, float outputH) {
+void Visualizer::draw(const DrawContext& ctx) {
+  const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;
   if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kSpectrumFrag, "spectrum");
 
   const bool polar = m_styleIndex >= 9;

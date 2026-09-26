@@ -99,27 +99,8 @@ Config Config::load(const std::string& path) {
       w.width = static_cast<int>(std::max<int64_t>(24, get<int64_t>(*t, "width", 800)));
       w.height = static_cast<int>(std::max<int64_t>(24, get<int64_t>(*t, "height", 240)));
       w.enabled = get<bool>(*t, "enabled", true);
-      auto& v = w.viz;
-      v.style = get<std::string>(*t, "style", v.style);
-      v.bars = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "bars", v.bars), 4, 128));
-      v.thickness = std::clamp(get<double>(*t, "thickness", v.thickness), 0.05, 1.0);
-      v.reflection = std::clamp(get<double>(*t, "reflection", v.reflection), 0.0, 0.6);
-      v.segments = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "segments", v.segments), 3, 24));
-      v.grow = get<std::string>(*t, "grow", v.grow);
-      v.shape = get<std::string>(*t, "shape", v.shape);
-      v.colorMode = get<std::string>(*t, "color_mode", v.colorMode);
-      v.color = get<std::string>(*t, "color", v.color);
-      v.color2 = get<std::string>(*t, "color2", v.color2);
-      v.gain = std::clamp(get<double>(*t, "gain", v.gain), 0.1, 4.0);
-      v.smoothing = std::clamp(get<double>(*t, "smoothing", v.smoothing), 0.0, 1.0);
-      v.peaks = get<bool>(*t, "peaks", v.peaks);
-      v.mirror = get<bool>(*t, "mirror", v.mirror);
-      v.idleWave = get<bool>(*t, "idle_wave", v.idleWave);
-      v.spin = get<double>(*t, "spin", v.spin);
-      v.glow = std::clamp(get<double>(*t, "glow", v.glow), 0.0, 1.0);
-      v.fps = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "fps", v.fps), 5, 240));
-      v.opacity = std::clamp(get<double>(*t, "opacity", v.opacity), 0.0, 1.0);
-      v.depth = get<bool>(*t, "depth", v.depth);
+      w.depth = get<bool>(*t, "depth", true);
+      w.options = *t;
       cfg.widgets.push_back(std::move(w));
     }
   }
@@ -176,6 +157,30 @@ static bool editBlock(const std::string& path, const std::string& id,
   std::string out;
   for (auto& l : lines) out += l + "\n";
   return writeFileAtomic(path, out);
+}
+
+VisualizerConfig VisualizerConfig::fromTable(const toml::table& t) {
+  VisualizerConfig v;
+  v.style = get<std::string>(t, "style", v.style);
+  v.bars = static_cast<int>(std::clamp<int64_t>(get<int64_t>(t, "bars", v.bars), 4, 128));
+  v.thickness = std::clamp(get<double>(t, "thickness", v.thickness), 0.05, 1.0);
+  v.reflection = std::clamp(get<double>(t, "reflection", v.reflection), 0.0, 0.6);
+  v.segments = static_cast<int>(std::clamp<int64_t>(get<int64_t>(t, "segments", v.segments), 3, 24));
+  v.grow = get<std::string>(t, "grow", v.grow);
+  v.shape = get<std::string>(t, "shape", v.shape);
+  v.colorMode = get<std::string>(t, "color_mode", v.colorMode);
+  v.color = get<std::string>(t, "color", v.color);
+  v.color2 = get<std::string>(t, "color2", v.color2);
+  v.gain = std::clamp(get<double>(t, "gain", v.gain), 0.1, 4.0);
+  v.smoothing = std::clamp(get<double>(t, "smoothing", v.smoothing), 0.0, 1.0);
+  v.peaks = get<bool>(t, "peaks", v.peaks);
+  v.mirror = get<bool>(t, "mirror", v.mirror);
+  v.idleWave = get<bool>(t, "idle_wave", v.idleWave);
+  v.spin = get<double>(t, "spin", v.spin);
+  v.glow = std::clamp(get<double>(t, "glow", v.glow), 0.0, 1.0);
+  v.fps = static_cast<int>(std::clamp<int64_t>(get<int64_t>(t, "fps", v.fps), 5, 240));
+  v.opacity = std::clamp(get<double>(t, "opacity", v.opacity), 0.0, 1.0);
+  return v;
 }
 
 bool Config::saveGeometry(const std::string& path, const WidgetConfig& w) {

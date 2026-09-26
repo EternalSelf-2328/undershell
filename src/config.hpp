@@ -2,6 +2,7 @@
 #pragma once
 
 #include <string>
+#include <toml++/toml.hpp>
 #include <vector>
 
 namespace undershell {
@@ -26,16 +27,21 @@ struct VisualizerConfig {
   double glow = 0.6;
   int fps = 60;
   double opacity = 1.0;
-  bool depth = true;   // honour wallpaper_depth masks
+
+  // reads the visualizer keys of a [[widget]] table (missing keys keep defaults)
+  static VisualizerConfig fromTable(const toml::table& t);
 };
 
+// The keys every widget shares; type-specific keys stay in `options` and are
+// read by the widget itself (so adding a widget type never touches this file).
 struct WidgetConfig {
   std::string id;
   std::string type = "visualizer";
   std::string output;  // connector name; empty = first output
   int x = 0, y = 0, width = 800, height = 240;  // logical px on the output
   bool enabled = true;
-  VisualizerConfig viz;
+  bool depth = true;   // pass behind the wallpaper_depth foreground
+  toml::table options;  // the whole [[widget]] table
 };
 
 struct Config {

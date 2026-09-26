@@ -54,21 +54,43 @@ thickness, reflection, grow, shape, color_mode theme/gradient/custom,
 color/color2 as a Noctalia role or `#hex`, gain, smoothing, peaks, mirror,
 idle_wave, spin, glow, fps, opacity, depth). You can have several widgets.
 
-## Build
+## Build and tests
 
 ```sh
 meson setup build --prefix=$HOME/.local
-ninja -C build && meson install -C build
+ninja -C build && meson test -C build && meson install -C build
 ```
+
+The tests don't need a compositor: `config` (loading and in-place editing
+of the file), `motion` (Ryoku's easing) and `render` (the 12 looks against
+the images in `tests/golden/` and text with the bundled fonts, via headless
+EGL). If you change a look on purpose: `build/test_render --update`.
+
+## Structure
+
+| | |
+|---|---|
+| `src/app.*` | Wayland, EGL, loop, surfaces, editor, IPC |
+| `src/widget.*` | the widget interface (`WidgetImpl`) and the type registry |
+| `src/visualizer.*`, `motion.hpp`, `shaders/` | the visualizer (Ryoku) |
+| `src/text.*` | text: Pango → cached textures |
+| `src/audio.*` | PipeWire capture + FFT |
+| `src/noctalia.*`, `src/depth.*` | Noctalia palette and depth masks |
+| `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
+| `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono (OFL) |
 
 Dependencies (all present on CachyOS with Noctalia): wayland, wayland-protocols,
 EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo.
 
 ## Status
 
-- [x] Phase 1: base, visualizer (12 looks), depth, Noctalia palette, editor
-- [ ] Phase 2: clocks (12 faces)
-- [ ] Phase 3: now-playing card (MPRIS, cover, lyrics)
+- [x] Phase 0: visualizer (12 looks), depth, Noctalia palette, editor, IPC
+- [x] Phase 1: widget interface, text, fonts, automated tests
+- [ ] Phase 2: editor (guides, arrows, undo/redo, demo while editing)
+- [ ] Phase 3: clocks (12 faces)
+- [ ] Phase 4: now-playing card (MPRIS, cover, lyrics)
+- [ ] Phase 5: inspector and widget gallery in the editor
+- [ ] Phase 6: autostart, PKGBUILD, documentation
 
 ## License
 
