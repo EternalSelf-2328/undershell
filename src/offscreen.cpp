@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "offscreen.hpp"
 
+#include "clock.hpp"
 #include "gl.hpp"
 #include "text.hpp"
 #include "visualizer.hpp"
@@ -9,6 +10,7 @@
 #include <EGL/eglext.h>
 #include <cairo.h>
 #include <cmath>
+#include <ctime>
 #include <filesystem>
 
 namespace undershell {
@@ -105,6 +107,28 @@ Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noc
   });
 }
 
+Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime) {
+  ClockWidget::setFixedTime(static_cast<std::time_t>(fixedTime));
+  ClockWidget clock;
+  clock.configure(cfg, noct);
+  TextRenderer tr;
+  TickContext tc;
+  tc.now = 1000;
+  clock.tick(tc);
+  Image img = renderToImage(w, h, [&] {
+    DrawContext dc;
+    dc.w = static_cast<float>(w);
+    dc.h = static_cast<float>(h);
+    dc.outputW = 1920;
+    dc.outputH = 1080;
+    dc.text = &tr;
+    clock.draw(dc);
+  });
+  tr.releaseGl();
+  ClockWidget::setFixedTime(0);
+  return img;
+}
+
 Image renderText(const std::string& text, const std::string& family, float size, int weight) {
   TextRenderer tr;
   TextStyle st;
@@ -197,6 +221,16 @@ int snapshotLooks(const std::string& dir) {
     lookSize(look, w, h);
     writePng(renderLook(look, w, h, noct.state()), dir + "/" + look + ".png", true);
     US_INFO("wrote {}/{}.png", dir, look);
+  }
+  for (const auto& face : ClockWidget::faces()) {
+    ClockConfig cc;
+    cc.face = face;
+    cc.seconds = true;
+    const bool tall = face == "goodnight";
+    const bool square = face == "analog" || face == "rings";
+    writePng(renderClock(cc, tall ? 360 : (square ? 400 : 900), tall ? 640 : (square ? 460 : 360), noct.state(), std::time(nullptr)),
+             dir + "/clock-" + face + ".png", true);
+    US_INFO("wrote {}/clock-{}.png", dir, face);
   }
   return 0;
 }

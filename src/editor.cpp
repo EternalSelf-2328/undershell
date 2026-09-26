@@ -4,6 +4,7 @@
 // labels. Pointer positions come from the fullscreen editor surface, so they
 // are output coordinates and never depend on the widget being moved.
 #include "app.hpp"
+#include "clock.hpp"
 #include "snap.hpp"
 
 // the generated header names a parameter `namespace`
@@ -39,8 +40,11 @@ bool spanish() {
   return false;
 }
 
+// the key that selects a widget's look, and its current value
+const char* lookKey(const Widget& w) { return w.cfg.type == "clock" ? "face" : "style"; }
 std::string lookOf(const Widget& w) {
-  return w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string("bars")) : w.cfg.type;
+  if (w.cfg.type == "clock") return w.cfg.options["face"].value_or(std::string("digital"));
+  return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
 
@@ -178,7 +182,7 @@ void App::applyOp(const EditOp& op) {
     resizeWidget(*w, c.width, c.height);
     moveWidget(*w, op.x, op.y);
     persist(*w);
-    if (w->cfg.type == "visualizer" && op.style != lookOf(*w)) setStyle(*w, op.style);
+    if (op.style != lookOf(*w)) setStyle(*w, op.style);
     m_selected = w.get();
     markEditDirty();
     return;
@@ -208,8 +212,8 @@ void App::redo() {
 void App::setStyle(Widget& w, const std::string& look) {
   // write through the config: the file watcher reloads and reconfigures the
   // widget in place, so the file stays the single source of truth
-  w.cfg.options.insert_or_assign("style", look);
-  Config::setKey(m_configPath, w.cfg.id, "style", "\"" + look + "\"");
+  w.cfg.options.insert_or_assign(lookKey(w), look);
+  Config::setKey(m_configPath, w.cfg.id, lookKey(w), "\"" + look + "\"");
   markEditDirty();
 }
 
@@ -449,24 +453,33 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   }
 }
 
-// wheel over a widget in the editor: step through the looks
+// wheel over a widget in the editor: step through its looks (visualizer
+// styles, clock faces)
 void App::onScroll(double value) {
-  if (!m_edit || m_drag != Drag::None || !m_pointerWidget || m_pointerWidget->cfg.type != "visualizer") return;
+  if (!m_edit || m_drag != Drag::None || !m_pointerWidget) return;
   m_scrollAcc += value;
   if (std::abs(m_scrollAcc) < 10.0) return;  // one wheel notch
   const int step = m_scrollAcc > 0 ? 1 : -1;
   m_scrollAcc = 0;
   Widget& w = *m_pointerWidget;
-  int idx = 0;
+  std::vector<std::string> looks;
+  if (w.cfg.type == "clock") {
+    looks = ClockWidget::faces();
+  } else if (w.cfg.type == "visualizer") {
+    for (const char* l : kLooks)
+      if (std::string(l) != "frame") looks.push_back(l);  // frame owns the whole screen
+  }
+  if (looks.empty()) return;
   const std::string cur = lookOf(w);
-  for (int i = 0; i < 12; ++i)
-    if (cur == kLooks[i]) idx = i;
-  idx = (idx + step + 12) % 12;
-  if (std::string(kLooks[idx]) == "frame") idx = (idx + step + 12) % 12;  // frame owns the whole screen
+  int idx = 0;
+  for (size_t i = 0; i < looks.size(); ++i)
+    if (looks[i] == cur) idx = static_cast<int>(i);
+  const int n = static_cast<int>(looks.size());
+  idx = ((idx + step) % n + n) % n;
   pushUndo(w, "style");
   m_selected = &w;
-  setStyle(w, kLooks[idx]);
-  US_INFO("{}: style {}", w.cfg.id, kLooks[idx]);
+  setStyle(w, looks[static_cast<size_t>(idx)]);
+  US_INFO("{}: {} {}", w.cfg.id, lookKey(w), looks[static_cast<size_t>(idx)]);
 }
 
 // ── on-canvas text ──────────────────────────────────────────────────────────

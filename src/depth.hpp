@@ -35,6 +35,8 @@ public:
   // for an output, or nullptr when there is none.
   const DepthMask* get(const std::string& output);
   void releaseGl();
+  // true when the plugin is active but some output still has no mask
+  [[nodiscard]] bool missing() const { return m_missing; }
 
 private:
   std::string sha256Of(const std::string& path);
@@ -47,6 +49,7 @@ private:
     std::string sha;
   };
   std::map<std::string, HashEntry> m_hashes;
+  bool m_missing = false;
 };
 
 }  // namespace undershell

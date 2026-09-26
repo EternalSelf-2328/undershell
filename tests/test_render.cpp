@@ -1,13 +1,16 @@
 // Rendering regression: every look against its golden image, and text.
 // Regenerate goldens with:  build/test_render --update
 #include "check.hpp"
+#include "clock.hpp"
 #include "offscreen.hpp"
 #include "overlay.hpp"
 #include "text.hpp"
 
 #include <stdexcept>
 
+#include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 
 using namespace undershell;
@@ -39,6 +42,37 @@ int main(int argc, char** argv) {
     CHECK(readPng(path, ref));
     const double d = imageDiff(img, ref);
     if (d < 0 || d > 1.5) std::fprintf(stderr, "look %s differs from golden: %.3f\n", look, d);
+    CHECK(d >= 0 && d <= 1.5);
+  }
+
+  // clock faces at a fixed moment (Sat 2026-09-26 21:07:42 local), English
+  // names and no weather, so the goldens do not depend on this machine
+  setenv("TZ", "UTC", 1);
+  tzset();
+  for (const auto& face : ClockWidget::faces()) {
+    ClockConfig cc;
+    cc.face = face;
+    cc.seconds = true;
+    cc.clock24 = face != "banner";  // exercise the AM/PM path once
+    cc.language = "en";
+    cc.weather = false;
+    cc.date = face == "analog" ? "stacked" : (face == "rings" ? "badge" : "inline");
+    const bool tall = face == "goodnight", square = face == "analog" || face == "rings";
+    const int w = tall ? 216 : (square ? 240 : 480), h = tall ? 384 : (square ? 276 : 190);
+    Image img = renderClock(cc, w, h, pal, 1790457462);
+    size_t lit = 0;
+    for (size_t i = 3; i < img.rgba.size(); i += 4) lit += img.rgba[i] > 8;
+    if (lit <= static_cast<size_t>(w * h / 100)) std::fprintf(stderr, "clock %s drew almost nothing\n", face.c_str());
+    CHECK(lit > static_cast<size_t>(w * h / 100));
+    const std::string path = golden + "/clock-" + face + ".png";
+    if (update) {
+      writePng(img, path, false);
+      continue;
+    }
+    Image ref;
+    CHECK(readPng(path, ref));
+    const double d = imageDiff(img, ref);
+    if (d < 0 || d > 1.5) std::fprintf(stderr, "clock %s differs from golden: %.3f\n", face.c_str(), d);
     CHECK(d >= 0 && d <= 1.5);
   }
 

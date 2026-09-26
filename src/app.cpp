@@ -767,6 +767,44 @@ std::string App::handleCommand(const std::string& cmd) {
     m_reloadConfigAt = nowSeconds() + 0.05;
     return std::format("set {} = {} on {} widget(s)", key, toml, n);
   }
+  if (cmd.rfind("add ", 0) == 0) {
+    // add <type> [look]: append a new [[widget]] block, centred on the first output
+    std::istringstream in(cmd.substr(4));
+    std::string type, look;
+    in >> type >> look;
+    if (!createWidget(type)) return "error: unknown widget type '" + type + "'";
+    const Output* o = m_outputs.empty() ? nullptr : m_outputs.front().get();
+    const int ow = o ? static_cast<int>(o->logicalW()) : 1920, oh = o ? static_cast<int>(o->logicalH()) : 1080;
+    std::string id = type;
+    for (int n = 2;; ++n) {
+      bool taken = false;
+      for (auto& c : m_config.widgets) taken = taken || c.id == id;
+      if (!taken) break;
+      id = type + std::to_string(n);
+    }
+    const int w = type == "clock" ? 560 : 1000, h = type == "clock" ? 240 : 280;
+    std::string block = std::format("\n[[widget]]\nid = \"{}\"\ntype = \"{}\"\n", id, type);
+    if (o) block += std::format("output = \"{}\"\n", o->name);
+    block += std::format("x = {}\ny = {}\nwidth = {}\nheight = {}\n", (ow - w) / 2, (oh - h) / 2, w, h);
+    if (type == "clock") {
+      block += std::format("face = \"{}\"            # digital minimal analog flip rings bighour metal goodnight grand column outline banner\n",
+                           look.empty() ? "digital" : look);
+      block += "date = \"inline\"          # none inline badge stacked\n"
+               "clock_24h = true\nseconds = false\n"
+               "accent = \"primary\"        # primary secondary tertiary brand mono custom\n"
+               "accent_color = \"#e2342a\"\nink = \"on_surface\"\n"
+               "language = \"system\"      # system en es\nweather = true            # metal face\nfahrenheit = false\n";
+    } else if (type == "visualizer") {
+      block += std::format("style = \"{}\"\n", look.empty() ? "bars" : look);
+    }
+    const std::string text = readFile(m_configPath);
+    if (!writeFileAtomic(m_configPath, text + block)) return "error: could not write the config";
+    m_reloadConfigAt = nowSeconds() + 0.05;
+    return std::format("added {} ({}) at {},{} {}x{}", id, type, (ow - w) / 2, (oh - h) / 2, w, h);
+  }
+  if (cmd == "remove" || cmd.rfind("remove ", 0) == 0) {
+    return "error: remove is not available yet (delete the [[widget]] block from the config)";
+  }
   if (cmd == "reset") {
     // bring every widget back to the bottom-centre of its output
     for (auto& w : m_widgets) {
@@ -803,14 +841,16 @@ std::string App::handleCommand(const std::string& cmd) {
     for (auto& w : m_widgets) {
       const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
       const bool stale = nowSeconds() - w->markAt > 1.5;
-      s += std::format("  {} {} on {} at {},{} {}x{} depth={} frames={} fps={:.0f}\n", w->cfg.id, w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars")) : w->cfg.type,
+      const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
+                                                           : w->cfg.type + ":" + w->cfg.options["face"].value_or(std::string("digital"));
+      s += std::format("  {} {} on {} at {},{} {}x{} depth={} frames={} fps={:.0f}\n", w->cfg.id, look,
                        w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height,
                        m ? fs::path(m->maskPath).filename().string().substr(0, 12) : "none", w->frames,
                        stale ? 0.0 : w->fpsMeasured);
     }
     return s;
   }
-  return "error: unknown command (edit, edit-on, edit-off, demo, set, reset, reload, status, quit)";
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, reset, reload, status, quit)";
 }
 
 // ── file watching ───────────────────────────────────────────────────────────
@@ -919,6 +959,8 @@ int App::run() {
       m_refreshDepthAt = 0;
       updateDepth();
     }
+    // safety net: a mask generated while an event was missed is found anyway
+    if (m_depth.missing() && m_refreshDepthAt == 0) m_refreshDepthAt = now + 15;
 
     if (m_audioOk && m_audio.tick()) {
       for (auto& w : m_widgets) w->needsRender = true;

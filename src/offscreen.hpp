@@ -33,6 +33,9 @@ NoctaliaState testPalette();
 
 // Renders a visualizer look fed a fixed synthetic spectrum (needs Headless).
 Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noct);
+// Renders a clock face at a fixed wall-clock time (needs Headless).
+struct ClockConfig;
+Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime);
 // Renders one line of text in white (needs Headless).
 Image renderText(const std::string& text, const std::string& family, float size, int weight);
 

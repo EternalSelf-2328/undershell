@@ -65,7 +65,7 @@ public:
   virtual void rest() {}
 };
 
-// Known types: "visualizer". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 

@@ -92,8 +92,8 @@ void TextRenderer::releaseGl() {
 
 const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st, int scale) {
   registerBundledFonts();
-  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}", text, st.family, st.size, st.weight,
-                                      st.letterSpacing, st.italic ? 1 : 0, scale);
+  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}", text, st.family, st.size,
+                                      st.weight, st.letterSpacing, st.italic ? 1 : 0, scale, st.stroke);
   auto it = m_cache.find(key);
   if (it != m_cache.end()) {
     it->second.lastUse = nowSeconds();
@@ -118,7 +118,8 @@ const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st,
   const double top = std::min(toPx(ink.y), toPx(logical.y));
   const double right = std::max(toPx(ink.x + ink.width), toPx(logical.x + logical.width));
   const double bottom = std::max(toPx(ink.y + ink.height), toPx(logical.y + logical.height));
-  const int pad = 1;
+  // room for an outline and for a blurred halo sampled around the glyphs
+  const int pad = 2 + static_cast<int>(std::ceil(st.stroke * scale)) + static_cast<int>(std::ceil(st.size * 0.12 * scale));
   const int pxW = std::max(1, static_cast<int>(std::ceil((right - left) * scale)) + 2 * pad);
   const int pxH = std::max(1, static_cast<int>(std::ceil((bottom - top) * scale)) + 2 * pad);
 
@@ -129,7 +130,14 @@ const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st,
   cairo_translate(cr, -left, -top);
   cairo_set_source_rgba(cr, 1, 1, 1, 1);
   layout = makeLayout(cr, text, st);
-  pango_cairo_show_layout(cr, layout);
+  if (st.stroke > 0) {
+    pango_cairo_layout_path(cr, layout);
+    cairo_set_line_width(cr, st.stroke);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+    cairo_stroke(cr);
+  } else {
+    pango_cairo_show_layout(cr, layout);
+  }
   g_object_unref(layout);
   cairo_destroy(cr);
   cairo_surface_flush(surf);
@@ -176,8 +184,23 @@ in vec2 v_uv;
 out vec4 fragColor;
 uniform sampler2D u_tex;
 uniform vec4 u_color;   // straight alpha
+uniform vec2 u_blur;    // blur radius in uv units (0 = sharp)
 void main() {
-    float a = texture(u_tex, v_uv).r * u_color.a;
+    float a;
+    if (u_blur.x > 0.0) {
+        // 7x7 gaussian-ish tap grid: a soft halo behind the glyphs
+        float sum = 0.0, wsum = 0.0;
+        for (int j = -3; j <= 3; j++)
+            for (int i = -3; i <= 3; i++) {
+                float w = exp(-float(i * i + j * j) / 6.0);
+                sum += texture(u_tex, v_uv + vec2(float(i), float(j)) * u_blur / 3.0).r * w;
+                wsum += w;
+            }
+        a = sum / wsum;
+    } else {
+        a = texture(u_tex, v_uv).r;
+    }
+    a *= u_color.a;
     fragColor = vec4(u_color.rgb * a, a);
 }
 )";
@@ -197,6 +220,11 @@ void main() {
 
 void TextRenderer::draw(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH,
                         float opacity) {
+  drawEx(img, x, y, color, surfaceW, surfaceH, 1, 1, 0, opacity);
+}
+
+void TextRenderer::drawEx(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float sx,
+                          float sy, float blur, float opacity) {
   if (!img.texture || surfaceW <= 0 || surfaceH <= 0) return;
   if (!m_prog.valid()) m_prog.create(kTextVert, kTextFrag, "text");
   glUseProgram(m_prog.id());
@@ -205,7 +233,11 @@ void TextRenderer::draw(const TextImage& img, float x, float y, Color color, flo
   glUniform1i(m_prog.uniform("u_tex"), 0);
   glUniform4f(m_prog.uniform("u_color"), color.r, color.g, color.b, color.a * opacity);
   glUniform2f(m_prog.uniform("u_surface"), surfaceW, surfaceH);
-  glUniform4f(m_prog.uniform("u_rect"), x + img.quadX, y + img.quadY, img.quadW, img.quadH);
+  glUniform2f(m_prog.uniform("u_blur"), blur > 0 ? blur / img.quadW : 0.0F, blur > 0 ? blur / img.quadH : 0.0F);
+  // scale about the logical box centre
+  const float cx = x + img.w / 2, cy = y + img.h / 2;
+  const float qx = cx + (x + img.quadX - cx) * sx, qy = cy + (y + img.quadY - cy) * sy;
+  glUniform4f(m_prog.uniform("u_rect"), qx, qy, img.quadW * sx, img.quadH * sy);
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
   drawUnitQuad();

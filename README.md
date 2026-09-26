@@ -27,6 +27,17 @@ runs on Umbriel/niri/Hyprland. Its first widgets are ports of
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`).
 
+## Clock: 12 faces
+
+`digital`, `minimal`, `analog`, `flip` (cards that flip, colon that
+"breathes"), `rings`, `bighour` (outlined month and seconds), `metal` (with
+the weather from Noctalia's cache), `goodnight` (the day in the "kana" alphabet),
+`grand` (Fraunces serif), `column`, `outline` (hollow numerals) and `banner`
+(with a halo). Dates: `inline`, `badge`, `stacked` or `none`. Translated from
+Ryoku's QML with its same measurements; the design fits the widget box.
+Day and month names follow the system language (or `language = "en" | "es"`).
+It redraws only when the second (or minute) changes; `flip` animates at 30 fps.
+
 ## Usage
 
 ```sh
@@ -34,6 +45,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
+undershell msg add clock flip  # add a widget (clock or visualizer) to the config
 undershell msg reload
 undershell msg quit
 undershell --snapshot DIR   # render the 12 looks to PNG (no window needed)
@@ -48,7 +60,7 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 | Move / resize | drag · bottom-right corner |
 | Magnet | snaps to the screen center, the edges and other widgets (guide lines); **Shift** = free |
 | Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
-| Change look | **wheel** over the widget |
+| Change look | **wheel** over the widget (visualizer style or clock face) |
 | Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes and looks) |
 | Exit | **Esc**, Enter or right-click |
 
@@ -85,6 +97,8 @@ bundled fonts, via headless EGL). If you change a look on purpose: `build/test_r
 | `src/editor.cpp`, `snap.hpp` | the editor: selection, magnet, keyboard, undo/redo, labels |
 | `src/widget.*` | the widget interface (`WidgetImpl`) and the type registry |
 | `src/visualizer.*`, `motion.hpp`, `shaders/` | the visualizer (Ryoku) |
+| `src/clock.*` | the clocks (Ryoku): faces as display lists |
+| `src/canvas.*` | 2D canvas: rects, circles, segments, SDF arcs + text |
 | `src/text.*` | text: Pango → cached textures |
 | `src/audio.*` | PipeWire capture + FFT |
 | `src/noctalia.*`, `src/depth.*` | Noctalia palette and depth masks |
@@ -99,7 +113,7 @@ EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo.
 - [x] Phase 0: visualizer (12 looks), depth, Noctalia palette, editor, IPC
 - [x] Phase 1: widget interface, text, fonts, automated tests
 - [x] Phase 2: editor (guides, arrows, undo/redo, demo while editing, labels)
-- [ ] Phase 3: clocks (12 faces)
+- [x] Phase 3: clocks (12 faces, 3 dates), 2D canvas, hollow text and halo
 - [ ] Phase 4: now-playing card (MPRIS, cover, lyrics)
 - [ ] Phase 5: inspector and widget gallery in the editor
 - [ ] Phase 6: autostart, PKGBUILD, documentation
