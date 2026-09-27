@@ -46,6 +46,14 @@ struct WidgetConfig {
   toml::table options;  // the whole [[widget]] table
 };
 
+// A layout saved on purpose (the editor's "Profiles" panel): [[widget]]
+// blocks under a comment header, in saves/<id>.toml next to config.toml.
+struct SavedLayout {
+  std::string id, name, created, wallpaper;
+  std::vector<WidgetConfig> widgets;
+  std::string blocks;
+};
+
 struct Config {
   std::string path;
   std::vector<WidgetConfig> widgets;
@@ -75,6 +83,13 @@ struct Config {
   // (the current layout stays), -1 when saving failed (nothing changed).
   static int switchProfile(const std::string& path, const std::string& dir, const std::string& fromKey,
                            const std::string& fromLabel, const std::string& toKey);
+  // Saved layouts. writeSave returns the id (a new one unless `id` is given,
+  // which overwrites that save keeping its name when `name` is empty).
+  static std::vector<SavedLayout> listSaves(const std::string& dir);  // newest first
+  static std::string writeSave(const std::string& dir, const std::string& name, const std::string& wallpaper,
+                               const std::string& blocks, const std::string& id = "");
+  static bool renameSave(const std::string& dir, const std::string& id, const std::string& name);
+  static bool deleteSave(const std::string& dir, const std::string& id);
   // A block's text with its id and position replaced (duplicating a widget).
   static std::string retargetBlock(const std::string& block, const std::string& id, int x, int y);
   // Sets `key = value` (value already TOML-formatted) inside widget `id`'s

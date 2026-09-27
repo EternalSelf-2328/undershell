@@ -40,6 +40,8 @@ struct zwlr_layer_surface_v1;
 
 namespace undershell {
 
+bool spanishUi();  // the editor speaks Spanish under an es_* locale
+
 struct Output {
   wl_output* wl = nullptr;
   uint32_t global = 0;
@@ -133,6 +135,16 @@ private:
   std::string profileKeyFor(const std::string& wallpaper);
   std::string profileWallpaper() const;
   std::string profileStatus() const;
+  // saved layouts (saves.cpp)
+  std::string savesDir() const;
+  void refreshSaves();
+  std::string saveLayout(const std::string& name);  // "" = "Profile N"
+  bool overwriteSave(const std::string& id);
+  bool loadSave(const std::string& id);
+  void replaceLayout(const std::string& blocks, bool record);
+  std::string savesJson();
+  bool textKey(uint32_t key);  // typing a save's name
+  void commitRename();
   void syncWidgets();
   void createSurface(Widget& w);
   void destroySurface(Widget& w);
@@ -152,7 +164,7 @@ public:
     std::string id;
     int x = 0, y = 0, w = 0, h = 0;
     std::string style;
-    std::string kind = "geom";  // geom | prop | add | remove
+    std::string kind = "geom";  // geom | prop | add | remove | layout
     std::string key, value;     // prop: the key and its TOML value before
     std::string block;          // add/remove: the widget's block text
   };
@@ -178,7 +190,7 @@ public:
   // inspector + gallery (inspector.cpp)
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
-                Done, Chip } type = Panel;
+                Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -277,6 +289,12 @@ private:
   const Output* m_uiOutput = nullptr;
   bool m_galleryOpen = false;
   bool m_helpOpen = false;
+  bool m_savesOpen = false;
+  std::vector<SavedLayout> m_saves;
+  std::string m_saveCurrent;              // the save that matches the screen
+  std::string m_renaming, m_renameText;   // save whose name is being typed
+  std::string m_confirmDelete;            // save armed for deletion (second click)
+  int m_saveScroll = 0;                   // first row shown
   bool m_snapOn = true;   // magnet (Shift inverts)
   bool m_gridOn = true;   // grid drawn + snapping on release
   int m_uiHover = -1;

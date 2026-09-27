@@ -4,8 +4,11 @@
 -- Talks to the daemon through `undershell msg`; `msg json` is its state.
 
 local state = nil        -- decoded `undershell msg json`, or nil when not running
+local saves = {}         -- decoded `undershell msg saves`
 local pending = {}       -- slider values being dragged, by "id:key"
 local busy = false
+local newName = ""       -- the name typed for the next saved profile
+local armedDelete = nil  -- save id waiting for its confirming click
 
 local function tr(key, params)
   return noctalia.tr(key, params)
@@ -32,6 +35,14 @@ local function refresh()
       decoded = noctalia.json.decode(result.stdout)
     end
     state = type(decoded) == "table" and decoded or nil
+    render()
+  end)
+  noctalia.runAsync({ binary(), "msg", "saves" }, function(result)
+    local decoded = nil
+    if result.exitCode == 0 and result.stdout ~= nil then
+      decoded = noctalia.json.decode(result.stdout)
+    end
+    saves = type(decoded) == "table" and decoded or {}
     render()
   end)
 end
@@ -82,7 +93,7 @@ local function notRunning()
       ui.glyph({ name = "alert-triangle", size = 20, color = "error" }),
       ui.label({ text = tr("panel.not_running"), fontWeight = "bold", fontSize = 13, flexGrow = 1 }),
     }),
-    ui.label({ text = tr("panel.not_running_hint"), color = "on_surface_variant", fontSize = 11, wrap = true }),
+    ui.label({ text = tr("panel.not_running_hint"), color = "on_surface_variant", fontSize = 11 }),
     ui.button({ text = tr("panel.start"), glyph = "player-play", variant = "primary", onClick = function()
       noctalia.runAsync({ "systemctl", "--user", "start", "undershell.service" }, function(_r)
         refresh()
@@ -113,11 +124,11 @@ local function profileCard()
   return ui.column({ gap = 6, padding = 10, radius = 8, fill = "surface_variant/0.35" }, {
     ui.row({ gap = 8, align = "center" }, {
       ui.glyph({ name = "photo", size = 16, color = "primary" }),
-      ui.label({ text = line, fontSize = 12, wrap = true, flexGrow = 1 }),
+      ui.label({ text = line, fontSize = 12, flexGrow = 1 }),
     }),
     ui.row({ gap = 8, align = "center" }, {
       ui.glyph({ name = "layers-subtract", size = 16, color = depth.field == true and "primary" or "on_surface_variant" }),
-      ui.label({ text = depthLine, fontSize = 12, color = "on_surface_variant", wrap = true, flexGrow = 1 }),
+      ui.label({ text = depthLine, fontSize = 12, color = "on_surface_variant", flexGrow = 1 }),
     }),
   })
 end
@@ -218,6 +229,74 @@ local function widgetCard(w)
   })
 end
 
+-- saved profiles: named copies of the layout, loaded back on demand
+local function savesSection()
+  local rows = {
+    ui.row({ align = "center", gap = 8 }, {
+      ui.glyph({ name = "device-floppy", size = 16, color = "primary" }),
+      ui.label({ text = tr("saves.title"), fontWeight = "bold", fontSize = 13, flexGrow = 1 }),
+    }),
+    ui.label({ text = tr("saves.hint"), color = "on_surface_variant", fontSize = 11 }),
+    ui.row({ gap = 8, align = "center" }, {
+      ui.input({ value = "", placeholder = tr("saves.placeholder"), controlSize = "sm", flexGrow = 1,
+        submitOnEnter = true,
+        onChange = function(v)
+          newName = v or ""
+        end,
+        onSubmit = function(v)
+          send({ "save", (v ~= nil and v ~= "") and v or "" })
+        end,
+      }),
+      ui.button({ text = tr("saves.save"), glyph = "device-floppy", variant = "primary", controlSize = "sm", onClick = function()
+        if newName ~= "" then
+          send({ "save", newName })
+        else
+          send({ "save" })
+        end
+      end }),
+    }),
+  }
+  if #saves == 0 then
+    table.insert(rows, ui.label({ text = tr("saves.empty"), color = "on_surface_variant", fontSize = 11 }))
+  end
+  for _, sv in ipairs(saves) do
+    local meta = (sv.created or "") .. " · " .. tostring(sv.widgets or 0) .. " widgets"
+    if sv.wallpaper ~= nil and sv.wallpaper ~= "" then
+      meta = meta .. " · " .. sv.wallpaper
+    end
+    if sv.current == true then
+      meta = tr("saves.on_screen") .. " · " .. meta
+    end
+    local armed = armedDelete == sv.id
+    table.insert(rows, ui.row({ key = "save:" .. sv.id, gap = 8, align = "center", padding = 8, radius = 8,
+      fill = sv.current == true and "primary/0.12" or "surface_variant/0.35" }, {
+      ui.column({ gap = 1, flexGrow = 1 }, {
+        ui.label({ text = sv.name or sv.id, fontWeight = "bold", fontSize = 12 }),
+        ui.label({ text = meta, fontSize = 10, color = sv.current == true and "primary" or "on_surface_variant" }),
+      }),
+      ui.button({ text = tr("saves.load"), variant = "primary", controlSize = "sm", onClick = function()
+        armedDelete = nil
+        send({ "save-load", sv.id })
+      end }),
+      ui.button({ glyph = "device-floppy", variant = "ghost", controlSize = "sm", tooltip = tr("saves.overwrite"), onClick = function()
+        armedDelete = nil
+        send({ "save-overwrite", sv.id })
+      end }),
+      ui.button({ glyph = "trash", variant = armed and "destructive" or "ghost", controlSize = "sm",
+        tooltip = armed and tr("saves.confirm") or tr("saves.delete"), onClick = function()
+        if armedDelete == sv.id then
+          armedDelete = nil
+          send({ "save-delete", sv.id })
+        else
+          armedDelete = sv.id
+          render()
+        end
+      end }),
+    }))
+  end
+  return ui.column({ gap = 6 }, rows)
+end
+
 render = function()
   local children = { header() }
   if state == nil then
@@ -226,12 +305,12 @@ render = function()
     table.insert(children, profileCard())
     table.insert(children, actions())
     table.insert(children, ui.separator({}))
-    local cards = {}
+    local cards = { savesSection(), ui.separator({}) }
     for _, w in ipairs(state.widgets or {}) do
       table.insert(cards, widgetCard(w))
     end
     if #cards == 0 then
-      table.insert(cards, ui.label({ text = tr("panel.no_widgets"), color = "on_surface_variant", fontSize = 12, wrap = true }))
+      table.insert(cards, ui.label({ text = tr("panel.no_widgets"), color = "on_surface_variant", fontSize = 12 }))
     end
     table.insert(children, ui.scroll({ flexGrow = 1, gap = 8 }, cards))
   end

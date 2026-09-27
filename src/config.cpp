@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ctime>
 #include <filesystem>
 #include <regex>
 #include <sstream>
@@ -332,6 +333,92 @@ std::string Config::replaceWidgetBlocks(const std::string& text, const std::stri
   while (!out.empty() && (out.back() == '\n' || out.back() == ' ')) out.pop_back();
   if (blocks.empty()) return out + "\n";
   return out + "\n\n" + blocks + (blocks.ends_with("\n") ? "" : "\n");
+}
+
+namespace {
+std::string oneLine(std::string s) {
+  for (char& c : s)
+    if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+  while (!s.empty() && s.back() == ' ') s.pop_back();
+  while (!s.empty() && s.front() == ' ') s.erase(s.begin());
+  return s;
+}
+
+bool validSaveId(const std::string& id) {
+  if (id.empty() || id.size() > 64) return false;
+  for (char c : id)
+    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-') return false;  // never a path
+  return true;
+}
+
+std::string headerValue(const std::string& text, const char* key) {
+  std::smatch m;
+  const std::regex re(std::string("(^|\n)# ") + key + ": ([^\n]*)");
+  return std::regex_search(text, m, re) ? m[2].str() : std::string();
+}
+}  // namespace
+
+std::vector<SavedLayout> Config::listSaves(const std::string& dir) {
+  std::vector<SavedLayout> out;
+  std::error_code ec;
+  for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+    if (e.path().extension() != ".toml" || !validSaveId(e.path().stem().string())) continue;
+    SavedLayout s;
+    s.id = e.path().stem().string();
+    const std::string text = readFile(e.path().string());
+    s.name = headerValue(text, "name");
+    s.created = headerValue(text, "created");
+    s.wallpaper = headerValue(text, "wallpaper");
+    s.blocks = widgetBlocks(text);
+    if (s.name.empty()) s.name = s.id;
+    try {
+      s.widgets = load(e.path().string()).widgets;
+    } catch (...) {
+    }
+    out.push_back(std::move(s));
+  }
+  std::sort(out.begin(), out.end(), [](const SavedLayout& a, const SavedLayout& b) { return a.id > b.id; });
+  return out;
+}
+
+std::string Config::writeSave(const std::string& dir, const std::string& name, const std::string& wallpaper,
+                              const std::string& blocks, const std::string& id) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  std::string use = id, keepName = oneLine(name), created;
+  const std::time_t now = std::time(nullptr);
+  char stamp[32], when[32];
+  std::strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", std::localtime(&now));
+  std::strftime(when, sizeof when, "%Y-%m-%d %H:%M", std::localtime(&now));
+  if (use.empty()) {
+    use = stamp;
+    for (int n = 2; std::filesystem::exists(dir + "/" + use + ".toml", ec); ++n) use = std::string(stamp) + "-" + std::to_string(n);
+  } else {
+    if (!validSaveId(use)) return {};
+    const std::string old = readFile(dir + "/" + use + ".toml");
+    if (keepName.empty()) keepName = headerValue(old, "name");
+  }
+  if (keepName.empty()) keepName = use;
+  const std::string text = std::format("# undershell saved layout\n# name: {}\n# created: {}\n# wallpaper: {}\n\n{}", keepName,
+                                       when, oneLine(wallpaper), blocks);
+  return writeFileAtomic(dir + "/" + use + ".toml", text) ? use : std::string();
+}
+
+bool Config::renameSave(const std::string& dir, const std::string& id, const std::string& name) {
+  if (!validSaveId(id) || oneLine(name).empty()) return false;
+  const std::string path = dir + "/" + id + ".toml";
+  std::string text = readFile(path);
+  if (text.empty()) return false;
+  const std::regex re("(^|\n)# name: [^\n]*");
+  text = std::regex_replace(text, re, "$1# name: " + std::regex_replace(oneLine(name), std::regex(R"(\$)"), "$$$$"),
+                            std::regex_constants::format_first_only);
+  return writeFileAtomic(path, text);
+}
+
+bool Config::deleteSave(const std::string& dir, const std::string& id) {
+  if (!validSaveId(id)) return false;
+  std::error_code ec;
+  return std::filesystem::remove(dir + "/" + id + ".toml", ec);
 }
 
 int Config::switchProfile(const std::string& path, const std::string& dir, const std::string& fromKey,

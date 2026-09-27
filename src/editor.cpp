@@ -217,6 +217,7 @@ App::EditOp App::inverseOf(const EditOp& op) const {
   EditOp inv = op;
   if (op.kind == "add") inv.kind = "remove";
   else if (op.kind == "remove") inv.kind = "add";
+  else if (op.kind == "layout") inv.block = Config::widgetBlocks(readFile(m_configPath));
   else if (op.kind == "prop") {
     for (auto& w : widgets)
       if (w->cfg.id == op.id) {
@@ -272,6 +273,8 @@ void App::applyEditOp(const EditOp& op, bool undoing) {
     m_config.widgets.push_back(placeholder);
     m_pendingSelect = op.id;
     m_reloadConfigAt = nowSeconds() + 0.02;
+  } else if (op.kind == "layout") {
+    replaceLayout(op.block, false);
   } else if (op.kind == "prop") {
     for (auto& w : m_widgets)
       if (w->cfg.id == op.id) {
@@ -332,6 +335,7 @@ bool App::modActive(const char* name) const {
 
 // Returns true for keys that auto-repeat while held.
 bool App::keyAction(uint32_t key) {
+  if (!m_renaming.empty()) return textKey(key);
   const bool shift = modActive(XKB_MOD_NAME_SHIFT);
   const bool ctrl = modActive(XKB_MOD_NAME_CTRL);
   const bool alt = modActive(XKB_MOD_NAME_ALT);
@@ -339,8 +343,9 @@ bool App::keyAction(uint32_t key) {
   xkb_keysym_t sym = m_xkbState ? xkb_state_key_get_one_sym(m_xkbState, key + 8) : XKB_KEY_NoSymbol;
   switch (key) {
     case KEY_ESC:
-      if (m_helpOpen || m_galleryOpen) {
-        m_helpOpen = m_galleryOpen = false;
+      if (m_helpOpen || m_galleryOpen || m_savesOpen) {
+        m_helpOpen = m_galleryOpen = m_savesOpen = false;
+        m_confirmDelete.clear();
         markEditDirty();
         return false;
       }
@@ -396,6 +401,46 @@ void App::onKey(uint32_t key, uint32_t state) {
   } else if (key == m_repeatKey) {
     m_repeatKey = 0;
   }
+}
+
+// Typing a saved layout's name: Enter keeps it, Esc drops the edit.
+bool App::textKey(uint32_t key) {
+  if (key == KEY_ENTER || key == KEY_KPENTER) {
+    commitRename();
+    return false;
+  }
+  if (key == KEY_ESC) {
+    m_renaming.clear();
+    markEditDirty();
+    return false;
+  }
+  if (key == KEY_BACKSPACE) {
+    // drop one UTF-8 character
+    while (!m_renameText.empty()) {
+      const unsigned char c = static_cast<unsigned char>(m_renameText.back());
+      m_renameText.pop_back();
+      if ((c & 0xC0) != 0x80) break;
+    }
+    markEditDirty();
+    return true;
+  }
+  if (!m_xkbState || modActive(XKB_MOD_NAME_CTRL)) return false;
+  char buf[16] = {};
+  const int n = xkb_state_key_get_utf8(m_xkbState, key + 8, buf, sizeof buf);
+  if (n > 0 && static_cast<unsigned char>(buf[0]) >= 0x20 && buf[0] != 0x7f && m_renameText.size() < 48) {
+    m_renameText += std::string(buf, static_cast<size_t>(n));
+    markEditDirty();
+    return true;
+  }
+  return false;
+}
+
+void App::commitRename() {
+  if (m_renaming.empty()) return;
+  if (!m_renameText.empty()) Config::renameSave(savesDir(), m_renaming, m_renameText);
+  m_renaming.clear();
+  refreshSaves();
+  markEditDirty();
 }
 
 void App::onKeymap(int fd, uint32_t size) {
@@ -606,6 +651,9 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
     m_galleryOpen = false;
     m_helpOpen = false;
+    m_savesOpen = false;
+    m_confirmDelete.clear();
+    commitRename();
     if (w != m_selected) m_inspScroll = 0;
     m_selected = w;  // clicking empty space clears the selection
     markEditDirty();

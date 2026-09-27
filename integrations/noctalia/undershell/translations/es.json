@@ -22,5 +22,15 @@
   "panel.plane": "Plano de profundidad (más alto = más cerca)",
   "panel.plane_auto": "plugin",
   "panel.tilt": "Inclinación",
-  "panel.no_widgets": "Aún no hay widgets. Abre el editor y agrega uno con ＋."
+  "panel.no_widgets": "Aún no hay widgets. Abre el editor y agrega uno con ＋.",
+  "saves.title": "Perfiles guardados",
+  "saves.hint": "Cada fondo ya recuerda su disposición por sí solo. Aquí guardas copias con nombre para cargarlas cuando quieras (cargar se puede deshacer en el editor con Ctrl+Z).",
+  "saves.placeholder": "Nombre del perfil (opcional)",
+  "saves.save": "Guardar",
+  "saves.empty": "Aún no hay perfiles guardados.",
+  "saves.on_screen": "en pantalla",
+  "saves.load": "Cargar",
+  "saves.overwrite": "Sobrescribir con lo que hay en pantalla",
+  "saves.delete": "Eliminar",
+  "saves.confirm": "Clic otra vez para eliminar"
 }

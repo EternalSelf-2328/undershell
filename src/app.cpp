@@ -739,6 +739,9 @@ void App::setEditMode(bool on) {
   m_repeatKey = 0;
   m_galleryOpen = false;
   m_helpOpen = false;
+  m_savesOpen = false;
+  m_confirmDelete.clear();
+  if (!on) commitRename();
   m_uiHover = -1;
   m_guidesV.clear();
   m_guidesH.clear();
@@ -986,6 +989,27 @@ std::string App::handleCommand(const std::string& cmd) {
     m_running = false;
     return "bye";
   }
+  if (cmd == "saves") return savesJson();
+  if (cmd == "save" || cmd.rfind("save ", 0) == 0) {
+    const std::string id = saveLayout(cmd.size() > 5 ? cmd.substr(5) : std::string());
+    return id.empty() ? "error: could not save" : "saved " + id;
+  }
+  if (cmd.rfind("save-load ", 0) == 0) return loadSave(cmd.substr(10)) ? "loaded" : "error: no such save";
+  if (cmd.rfind("save-overwrite ", 0) == 0) return overwriteSave(cmd.substr(15)) ? "overwritten" : "error: no such save";
+  if (cmd.rfind("save-delete ", 0) == 0) {
+    const bool ok = Config::deleteSave(savesDir(), cmd.substr(12));
+    refreshSaves();
+    markEditDirty();
+    return ok ? "deleted" : "error: no such save";
+  }
+  if (cmd.rfind("save-rename ", 0) == 0) {
+    const std::string rest = cmd.substr(12);
+    const size_t sp = rest.find(' ');
+    const bool ok = sp != std::string::npos && Config::renameSave(savesDir(), rest.substr(0, sp), rest.substr(sp + 1));
+    refreshSaves();
+    markEditDirty();
+    return ok ? "renamed" : "error: usage save-rename <id> <name>";
+  }
   if (cmd == "json") {
     // machine-readable state for front ends (the Noctalia bar plugin)
     auto q = [](const std::string& v) {
@@ -1054,7 +1078,7 @@ std::string App::handleCommand(const std::string& cmd) {
     }
     return s;
   }
-  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, gallery, reset, reload, status, json, quit)";
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
 }
 
 // ── file watching ───────────────────────────────────────────────────────────

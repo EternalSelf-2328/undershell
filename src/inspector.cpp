@@ -8,10 +8,19 @@
 
 #include <climits>
 #include <cmath>
+#include <filesystem>
 #include <regex>
 #include <xkbcommon/xkbcommon.h>
 
 namespace undershell {
+
+bool spanishUi() {
+  for (const char* v : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
+    const char* s = std::getenv(v);
+    if (s && *s) return std::string_view(s).starts_with("es");
+  }
+  return false;
+}
 
 namespace {
 constexpr float kPanelW = 300, kRowH = 30, kColorRowH = 54, kHeadH = 46, kFootH = 46, kLabelW = 118;
@@ -20,14 +29,6 @@ constexpr double kCoalesceProp = 1.0;
 Color withAlphaC(Color c, float a) {
   c.a *= a;
   return c;
-}
-
-bool spanishUi() {
-  for (const char* v : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
-    const char* s = std::getenv(v);
-    if (s && *s) return std::string_view(s).starts_with("es");
-  }
-  return false;
 }
 
 // the current value of an option as text, falling back to the schema default
@@ -210,6 +211,15 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
 
 namespace {
 constexpr float kBarY = 50, kBarH = 46, kBtn = 34, kGap = 6, kSep = 14, kChipH = 30;
+// the Profiles (saved layouts) panel
+constexpr float kSavesW = 540, kSavesHead = 92, kSaveRowH = 70, kSavePitch = 76;
+constexpr int kSaveRows = 5;
+
+bool isSaveControl(App::UiControl::Type t) {
+  using T = App::UiControl::Type;
+  return t == T::SaveNew || t == T::SaveLoad || t == T::SaveOverwrite || t == T::SaveRename || t == T::SaveDelete ||
+         t == T::SaveRow;
+}
 
 const char* chipIcon(const std::string& type) {
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
@@ -224,6 +234,10 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Magnet: return es ? "Imán: alinear con bordes, centro y otros widgets" : "Magnet: snap to edges, centre and widgets";
     case T::Grid: return es ? "Cuadrícula" : "Grid";
     case T::Help: return es ? "Atajos de teclado" : "Keyboard shortcuts";
+    case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
+    case T::SaveOverwrite: return es ? "Sobrescribir con lo que hay en pantalla" : "Overwrite with what is on screen";
+    case T::SaveRename: return es ? "Renombrar" : "Rename";
+    case T::SaveDelete: return es ? "Eliminar (clic otra vez para confirmar)" : "Delete (click again to confirm)";
     case T::Done: return es ? "Terminar  (Esc)" : "Done  (Esc)";
     default: return {};
   }
@@ -245,7 +259,8 @@ void App::layoutUi(const EditSurface& e) {
   std::vector<Item> items = {{UiControl::Plus, kBtn, ""},   {UiControl::Panel, kSep, "sep"},
                              {UiControl::Undo, kBtn, ""},   {UiControl::Redo, kBtn, ""},
                              {UiControl::Panel, kSep, "sep"}, {UiControl::Magnet, kBtn, ""},
-                             {UiControl::Grid, kBtn, ""},   {UiControl::Panel, kSep, "sep"}};
+                             {UiControl::Grid, kBtn, ""},   {UiControl::Panel, kSep, "sep"},
+                             {UiControl::Saves, kBtn, ""},  {UiControl::Panel, kSep, "sep"}};
   for (auto& w : m_widgets) {
     if (!w->impl || w->output != e.output) continue;
     float tw = 0, th = 0, b = 0;
@@ -261,12 +276,13 @@ void App::layoutUi(const EditSurface& e) {
   const float bx = std::round((W - total) / 2);
   m_ui.push_back({UiControl::Panel, {bx, kBarY, total, kBarH}, -1, "toolbar"});
   float x = bx + 12;
-  Rect addRect;
+  Rect addRect, savesRect;
   for (auto& it : items) {
     const float h = it.type == UiControl::Chip ? kChipH : kBtn;
     Rect r{x, kBarY + (kBarH - h) / 2, it.w, h};
     if (it.value != "sep") m_ui.push_back({it.type, r, -1, it.value});
     if (it.type == UiControl::Plus) addRect = r;
+    if (it.type == UiControl::Saves) savesRect = r;
     x += it.w + kGap;
   }
 
@@ -339,6 +355,32 @@ void App::layoutUi(const EditSurface& e) {
       y += 70;
     }
   }
+  if (m_savesOpen) {
+    const int n = static_cast<int>(m_saves.size());
+    m_saveScroll = std::clamp(m_saveScroll, 0, std::max(0, n - kSaveRows));
+    const int shown = std::min(kSaveRows, n - m_saveScroll);
+    const float sh = kSavesHead + 48 + (n == 0 ? 56 : shown * kSavePitch) + 10 + (n > kSaveRows ? 18 : 0);
+    const float sx = std::clamp(savesRect.x + savesRect.w / 2 - kSavesW / 2, 12.0F, W - kSavesW - 12);
+    const float sy = kBarY + kBarH + 10;
+    m_ui.push_back({UiControl::Panel, {sx, sy, kSavesW, sh}, -1, "saves"});
+    m_ui.push_back({UiControl::SaveNew, {sx + 14, sy + kSavesHead, kSavesW - 28, 38}});
+    float ry = sy + kSavesHead + 48;
+    for (int k = 0; k < shown; ++k) {
+      const SavedLayout& sv = m_saves[static_cast<size_t>(m_saveScroll + k)];
+      const Rect row{sx + 14, ry, kSavesW - 28, kSaveRowH};
+      m_ui.push_back({UiControl::SaveRow, row, -1, sv.id});
+      float bx = row.x + row.w - 10 - 28;
+      const float by = row.y + (row.h - 28) / 2;
+      m_ui.push_back({UiControl::SaveDelete, {bx, by, 28, 28}, -1, sv.id});
+      bx -= 32;
+      m_ui.push_back({UiControl::SaveRename, {bx, by, 28, 28}, -1, sv.id});
+      bx -= 32;
+      m_ui.push_back({UiControl::SaveOverwrite, {bx, by, 28, 28}, -1, sv.id});
+      bx -= 74;
+      m_ui.push_back({UiControl::SaveLoad, {bx, by, 68, 28}, -1, sv.id});
+      ry += kSavePitch;
+    }
+  }
   if (m_helpOpen) {
     const float hw = 580, hh = 334;
     m_ui.push_back({UiControl::Panel, {std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh}, -1, "help"});
@@ -361,10 +403,57 @@ bool App::uiPress(int index, double x) {
   if (index < 0 || index >= static_cast<int>(m_ui.size())) return false;
   const UiControl c = m_ui[static_cast<size_t>(index)];
   Widget* w = m_selected;
+  // a click anywhere but the name being typed keeps that name; a delete stays
+  // armed only for the very next click
+  if (!(c.type == UiControl::SaveRow && c.value == m_renaming)) commitRename();
+  if (c.type != UiControl::SaveDelete) m_confirmDelete.clear();
   switch (c.type) {
+    case UiControl::Saves:
+      m_savesOpen = !m_savesOpen;
+      m_galleryOpen = m_helpOpen = false;
+      if (m_savesOpen) refreshSaves();
+      markEditDirty();
+      return true;
+    case UiControl::SaveNew: {
+      const std::string id = saveLayout("");
+      if (!id.empty()) {
+        m_renaming = id;  // type a name right away (Enter keeps "Profile N")
+        m_renameText.clear();
+        m_saveScroll = 0;
+      }
+      markEditDirty();
+      return true;
+    }
+    case UiControl::SaveLoad:
+      loadSave(c.value);
+      return true;
+    case UiControl::SaveOverwrite:
+      overwriteSave(c.value);
+      return true;
+    case UiControl::SaveRename:
+      for (const auto& sv : m_saves)
+        if (sv.id == c.value) {
+          m_renaming = sv.id;
+          m_renameText = sv.name;
+        }
+      markEditDirty();
+      return true;
+    case UiControl::SaveDelete:
+      if (m_confirmDelete == c.value) {
+        Config::deleteSave(savesDir(), c.value);
+        m_confirmDelete.clear();
+        refreshSaves();
+      } else {
+        m_confirmDelete = c.value;
+      }
+      markEditDirty();
+      return true;
+    case UiControl::SaveRow:
+      markEditDirty();
+      return true;
     case UiControl::Plus:
       m_galleryOpen = !m_galleryOpen;
-      m_helpOpen = false;
+      m_helpOpen = m_savesOpen = false;
       markEditDirty();
       return true;
     case UiControl::GalleryItem:
@@ -384,7 +473,7 @@ bool App::uiPress(int index, double x) {
       return true;
     case UiControl::Help:
       m_helpOpen = !m_helpOpen;
-      m_galleryOpen = false;
+      m_galleryOpen = m_savesOpen = false;
       markEditDirty();
       return true;
     case UiControl::Done: setEditMode(false); return true;
@@ -455,6 +544,12 @@ bool App::uiScroll(double x, double y, int step) {
   const int hit = uiHit(x, y);
   if (hit < 0) return false;
   const UiControl c = m_ui[static_cast<size_t>(hit)];
+  if (c.value == "saves" || isSaveControl(c.type)) {
+    const int before = m_saveScroll;
+    m_saveScroll = std::clamp(m_saveScroll + step, 0, std::max(0, static_cast<int>(m_saves.size()) - kSaveRows));
+    if (m_saveScroll != before) markEditDirty();
+    return true;
+  }
   Widget* w = m_selected;
   if (w && c.prop >= 0) {
     const auto& schema = schemaFor(w->cfg.type);
@@ -525,6 +620,14 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
   } else if (name == "copy") {
     c.roundRect(cx - 5, cy - 3, 8, 9, 2, Color{0, 0, 0, 0}, 1.4F, col);
     c.roundRect(cx - 2, cy - 6, 8, 9, 2, Color{0, 0, 0, 0}, 1.4F, col);
+  } else if (name == "save") {
+    // a floppy disk
+    c.roundRect(cx - 6.5F, cy - 6.5F, 13, 13, 2.2F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.roundRect(cx - 3.5F, cy - 6.5F, 6.5F, 4.2F, 0.8F, Color{0, 0, 0, 0}, 1.3F, col);
+    c.roundRect(cx - 3.8F, cy + 1.2F, 7.6F, 4.6F, 1, col);
+  } else if (name == "pencil") {
+    c.segment(cx - 4.5F, cy + 4.5F, cx + 4.2F, cy - 4.2F, 2.6F, col);
+    c.triangle(cx - 6.5F, cy + 6.5F, cx - 6.1F, cy + 3.0F, cx - 3.0F, cy + 6.1F, col);
   } else if (name == "trash") {
     c.segment(cx - 6, cy - 4.5F, cx + 6, cy - 4.5F, 1.5F, col);
     c.segment(cx - 2, cy - 6.5F, cx + 2, cy - 6.5F, 1.5F, col);
@@ -593,12 +696,16 @@ void App::drawUi(EditSurface& e) {
       }
       case UiControl::Magnet:
       case UiControl::Grid:
-      case UiControl::Help: {
-        const bool on = c.type == UiControl::Magnet ? m_snapOn : (c.type == UiControl::Grid ? m_gridOn : m_helpOpen);
+      case UiControl::Help:
+      case UiControl::Saves: {
+        const bool on = c.type == UiControl::Magnet ? m_snapOn
+                        : c.type == UiControl::Grid ? m_gridOn
+                        : c.type == UiControl::Help ? m_helpOpen
+                                                    : m_savesOpen;
         if (on) cv.circle(cx, cy, c.r.w / 2, withAlphaC(accent, 0.22F));
         else if (hot) cv.circle(cx, cy, c.r.w / 2, raised);
-        icon(cv, c.type == UiControl::Magnet ? "magnet" : (c.type == UiControl::Grid ? "grid" : "help"), cx, cy,
-             on ? accent : ink);
+        icon(cv, c.type == UiControl::Magnet ? "magnet" : c.type == UiControl::Grid ? "grid" : c.type == UiControl::Help ? "help" : "save",
+             cx, cy, on ? accent : ink);
         break;
       }
       case UiControl::Done: {
@@ -715,6 +822,102 @@ void App::drawUi(EditSurface& e) {
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);
   }
 
+  // ── saved profiles ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "saves") continue;
+    const Rect P = c.r;
+    plateAt(P, 16);
+    cv.roundRect(P.x + 16, P.y + 16, 24, 24, 8, withAlphaC(accent, 0.22F));
+    icon(cv, "save", P.x + 28, P.y + 28, accent);
+    cv.text(es ? "Perfiles guardados" : "Saved profiles", head, P.x + 50, P.y + 18, ink);
+    const std::string wallPath = profileWallpaper();
+    const std::string wall = wallPath.empty() ? "-" : std::filesystem::path(wallPath).filename().string();
+    cv.text(es ? "Cada fondo ya recuerda su disposición por sí solo (este: " + wall + ")."
+               : "Each wallpaper already remembers its own layout (this one: " + wall + ").",
+            label, P.x + 18, P.y + 50, dim);
+    cv.text(es ? "Aquí guardas copias con nombre, para volver a ellas cuando quieras."
+               : "Here you keep named copies to come back to whenever you like.",
+            label, P.x + 18, P.y + 68, dim);
+    const int n = static_cast<int>(m_saves.size());
+    if (n == 0)
+      cv.text(es ? "Aún no hay perfiles. Guarda el primero con el botón de arriba."
+                 : "No profiles yet. Save the first one with the button above.",
+              label, P.x + 18, P.y + kSavesHead + 64, dim);
+    if (n > kSaveRows) {
+      const std::string more = std::format("{}–{} / {}  ·  {}", m_saveScroll + 1, m_saveScroll + std::min(kSaveRows, n - m_saveScroll), n,
+                                           es ? "rueda para ver más" : "scroll for more");
+      auto [mw, mh] = measure(more, label);
+      cv.text(more, label, P.x + (P.w - mw) / 2, P.y + P.h - 24, dim);
+    }
+  }
+  for (const UiControl& c : m_ui) {
+    const bool hot = hovered(c);
+    if (c.type == UiControl::SaveNew) {
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 12, hot ? withAlphaC(accent, 0.32F) : withAlphaC(accent, 0.2F), 1,
+                   withAlphaC(accent, 0.5F));
+      const std::string t = es ? "Guardar lo que hay en pantalla" : "Save what is on screen";
+      auto [tw, th] = measure(t, strong);
+      const float gx = c.r.x + (c.r.w - tw - 24) / 2;
+      icon(cv, "plus", gx + 7, c.r.y + c.r.h / 2, accent);
+      cv.text(t, strong, gx + 24, c.r.y + (c.r.h - th) / 2, ink);
+    } else if (c.type == UiControl::SaveRow) {
+      const SavedLayout* sv = nullptr;
+      for (const auto& s2 : m_saves)
+        if (s2.id == c.value) sv = &s2;
+      if (!sv) continue;
+      const bool cur = sv->id == m_saveCurrent;
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 12, hot ? withAlphaC(ink, 0.09F) : raised, 1,
+                   cur ? withAlphaC(accent, 0.6F) : line);
+      // a thumbnail of the layout on a little screen
+      const float tw = 96, th = 54, tx = c.r.x + 8, ty = c.r.y + (c.r.h - th) / 2;
+      cv.roundRect(tx, ty, tw, th, 6, Color{0, 0, 0, 0.45F}, 1, line);
+      const float sc = std::min(tw / W, th / H);
+      cv.clip(tx, ty, tw, th);
+      for (const auto& wc : sv->widgets) {
+        const Box b = visualBox(wc);
+        const Color col = wc.type == "clock" ? withAlphaC(ink, 0.8F) : wc.type == "now_playing" ? withAlphaC(accent, 0.55F) : accent;
+        cv.roundRect(tx + b.x * sc, ty + b.y * sc, std::max(2.0F, b.w * sc), std::max(2.0F, b.h * sc), 1.5F, withAlphaC(col, 0.85F));
+      }
+      cv.clip();
+      const float textX = tx + tw + 12, textW = c.r.x + c.r.w - 10 - 28 - 32 - 32 - 74 - 8 - textX;
+      if (sv->id == m_renaming) {
+        cv.roundRect(textX - 4, c.r.y + 9, textW + 4, 26, 7, Color{0, 0, 0, 0.35F}, 1.4F, accent);
+        cv.clip(textX, c.r.y + 9, textW - 4, 26);
+        const bool empty = m_renameText.empty();
+        const std::string shown = empty ? sv->name : m_renameText;
+        auto [nw, nh] = measure(shown, strong);
+        const float off = std::max(0.0F, nw - (textW - 14));
+        cv.text(shown, strong, textX + 4 - off, c.r.y + 22 - nh / 2, empty ? dim : ink);
+        cv.segment(textX + 5 + (empty ? 0 : nw - off), c.r.y + 14, textX + 5 + (empty ? 0 : nw - off), c.r.y + 30, 1.6F, accent, false);
+        cv.clip();
+      } else {
+        cv.clip(textX, c.r.y, textW, c.r.h);
+        cv.text(sv->name, strong, textX, c.r.y + 12, ink);
+        cv.clip();
+      }
+      std::string meta = std::format("{}  ·  {}  ·  {} widget{}", sv->created.size() > 5 ? sv->created.substr(5) : sv->created,
+                                     sv->wallpaper.empty() ? "-" : sv->wallpaper, sv->widgets.size(), sv->widgets.size() == 1 ? "" : "s");
+      if (cur) meta = (es ? "en pantalla  ·  " : "on screen  ·  ") + meta;
+      cv.clip(textX, c.r.y, textW, c.r.h);
+      cv.text(meta, label, textX, c.r.y + 40, cur ? withAlphaC(accent, 0.9F) : dim);
+      cv.clip();
+    } else if (c.type == UiControl::SaveLoad) {
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, hot ? accent : withAlphaC(accent, 0.85F));
+      const std::string t = es ? "Cargar" : "Load";
+      auto [tw, th] = measure(t, strong);
+      cv.text(t, strong, c.r.x + (c.r.w - tw) / 2, c.r.y + (c.r.h - th) / 2, onAccent);
+    } else if (c.type == UiControl::SaveOverwrite || c.type == UiControl::SaveRename || c.type == UiControl::SaveDelete) {
+      const bool armed = c.type == UiControl::SaveDelete && c.value == m_confirmDelete;
+      const Color red{0.9F, 0.25F, 0.2F, 1};
+      if (armed) cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, red);
+      else if (hot) cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, c.type == UiControl::SaveDelete ? withAlphaC(red, 0.3F) : withAlphaC(ink, 0.14F));
+      const Color fg = armed ? ink : c.type == UiControl::SaveDelete ? Color{1, 0.62F, 0.57F, 1} : ink;
+      icon(cv, c.type == UiControl::SaveOverwrite ? "save" : c.type == UiControl::SaveRename ? "pencil" : "trash",
+           c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, fg);
+    }
+    if (hot && !tipFor(c.type, es).empty() && isSaveControl(c.type)) tipCtl = &c;
+  }
+
   // ── shortcuts card ──
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::Panel || c.value != "help") continue;
@@ -757,8 +960,9 @@ void App::drawUi(EditSurface& e) {
     const std::string t = tipFor(tipCtl->type, es);
     auto [tw, th] = measure(t, label);
     const float tx = std::clamp(tipCtl->r.x + tipCtl->r.w / 2 - tw / 2 - 10, 8.0F, W - tw - 28);
-    const float ty = kBarY + kBarH + 8;
-    if (!m_galleryOpen && !m_helpOpen) {
+    const bool inPanel = isSaveControl(tipCtl->type);
+    const float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : kBarY + kBarH + 8;
+    if (inPanel || (!m_galleryOpen && !m_helpOpen && !m_savesOpen)) {
       cv.roundRect(tx, ty, tw + 20, th + 12, 8, Color{0.02F, 0.02F, 0.025F, 0.94F});
       cv.text(t, label, tx + 10, ty + 6, ink);
     }

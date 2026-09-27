@@ -120,6 +120,20 @@ time keeps the current layout, so you start from it.
 - `undershell msg status` shows the current profile; `profiles = false` in
   `[general]` turns this off.
 
+### Saved profiles
+
+Besides that automatic memory, you can keep named layouts, like save slots
+in a game: the **floppy** button in the editor's toolbar opens a panel with
+every saved profile (a thumbnail, name, date, wallpaper and widget count).
+**Save what is on screen** creates one and lets you type its name (Enter
+keeps it); each row can be **loaded** (one undo step: Ctrl+Z brings the
+previous layout back), **overwritten**, **renamed** or **deleted** (two
+clicks). Loading a profile also makes it the current wallpaper's layout.
+They live in `~/.config/undershell/saves/`, and the Noctalia panel lists
+them too. From a terminal: `undershell msg saves | save [name] |
+save-load <id> | save-overwrite <id> | save-rename <id> <name> |
+save-delete <id>`.
+
 ## Noctalia bar widget
 
 `integrations/noctalia/undershell` is a Noctalia plugin: a bar button

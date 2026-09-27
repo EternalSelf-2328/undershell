@@ -1,6 +1,6 @@
 id = "eternalself-2328/undershell"
 name = "undershell"
-version = "1.0.0"
+version = "1.1.0"
 plugin_api = 26
 author = "EternalSelf-2328"
 license = "GPL-3.0-or-later"
@@ -16,6 +16,6 @@ entry = "bar.luau"
 id = "panel"
 entry = "panel.luau"
 width = 460
-height = 640
+height = 720
 placement = "attached"
 position = "auto"

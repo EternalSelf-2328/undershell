@@ -22,5 +22,15 @@
   "panel.plane": "Depth plane (higher is nearer)",
   "panel.plane_auto": "plugin",
   "panel.tilt": "Tilt",
-  "panel.no_widgets": "No widgets yet. Open the editor and add one with ＋."
+  "panel.no_widgets": "No widgets yet. Open the editor and add one with ＋.",
+  "saves.title": "Saved profiles",
+  "saves.hint": "Each wallpaper already remembers its own layout. Here you keep named copies to load whenever you like (loading can be undone in the editor with Ctrl+Z).",
+  "saves.placeholder": "Profile name (optional)",
+  "saves.save": "Save",
+  "saves.empty": "No saved profiles yet.",
+  "saves.on_screen": "on screen",
+  "saves.load": "Load",
+  "saves.overwrite": "Overwrite with what is on screen",
+  "saves.delete": "Delete",
+  "saves.confirm": "Click again to delete"
 }

@@ -121,6 +121,28 @@ int main() {
     CHECK(back.widgets.size() == 1 && back.widgets[0].id == "only-b" && back.widgets[0].x == 9);
   }
 
+  // saved layouts (the Profiles panel)
+  {
+    const std::string sdir = dir + "/saves";
+    const std::string blocks = "[[widget]]\nid = \"a\"\ntype = \"clock\"\nx = 4\n";
+    const std::string id = Config::writeSave(sdir, "Mi\nescritorio $1", "w.png", blocks);
+    CHECK(!id.empty());
+    auto saves = Config::listSaves(sdir);
+    CHECK(saves.size() == 1 && saves[0].name == "Mi escritorio $1" && saves[0].wallpaper == "w.png");
+    CHECK(saves[0].widgets.size() == 1 && saves[0].widgets[0].x == 4 && saves[0].blocks == blocks);
+    const std::string id2 = Config::writeSave(sdir, "", "w.png", blocks);  // same second: still unique
+    CHECK(!id2.empty() && id2 != id);
+    CHECK(Config::renameSave(sdir, id, "Noche $&"));
+    CHECK(Config::writeSave(sdir, "", "x.png", "[[widget]]\nid = \"b\"\n", id) == id);  // overwrite keeps the name
+    saves = Config::listSaves(sdir);
+    bool found = false;
+    for (auto& sv : saves)
+      if (sv.id == id) found = sv.name == "Noche $&" && sv.wallpaper == "x.png" && sv.widgets.size() == 1 && sv.widgets[0].id == "b";
+    CHECK(found);
+    CHECK(!Config::deleteSave(sdir, "../config"));  // ids are never paths
+    CHECK(Config::deleteSave(sdir, id2) && Config::listSaves(sdir).size() == 1);
+  }
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }
