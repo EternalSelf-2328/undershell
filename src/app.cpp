@@ -326,6 +326,7 @@ void App::refreshNoctalia() {
     }
     updateDepth();
     checkProfile();
+    checkWallpaperKind();
   }
 }
 
@@ -680,7 +681,7 @@ void App::render(Widget& w) {
         US_ERROR("widget {}: rotated blit failed: {}", w.cfg.id, ex.what());
       }
     }
-    if (w.cfg.depth && w.output) {
+    if (w.cfg.depth && w.output && !m_motion) {  // a moving wallpaper has no mask that fits
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         MaskParams mp;
         mp.texture = m->texture;
@@ -937,6 +938,8 @@ std::string App::handleCommand(const std::string& cmd) {
     std::getline(in, value);
     value.erase(0, value.find_first_not_of(' '));
     if (id.empty() || key.empty() || value.empty()) return "error: usage: set <id|all> <key> <value>";
+    if (m_motion && (key == "depth" || key == "depth_level"))
+      return "error: depth is locked while a video or scene is the wallpaper";
     auto isNumber = [](const std::string& v) {
       char* end = nullptr;
       std::strtod(v.c_str(), &end);
@@ -1018,6 +1021,10 @@ std::string App::handleCommand(const std::string& cmd) {
     return "bye";
   }
   if (cmd == "saves") return savesJson();
+  if (cmd == "wallpaper-check") {  // skwd's hooks call this after each change
+    checkWallpaperKind();
+    return "checking";
+  }
   if (cmd == "save" || cmd.rfind("save ", 0) == 0) {
     const std::string id = saveLayout(cmd.size() > 5 ? cmd.substr(5) : std::string());
     return id.empty() ? "error: could not save" : "saved " + id;
@@ -1063,9 +1070,9 @@ std::string App::handleCommand(const std::string& cmd) {
         mask = mask || m->texture != 0;
       }
     std::string s = std::format(
-        "{{\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
+        "{{\"motion\":{},\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
         "\"depth\":{{\"mask\":{},\"field\":{},\"plugin_threshold\":{:.0f}}},\"widgets\":[",
-        m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, mask, field,
+        m_motion, m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, mask, field,
         m_noctalia.state().depthThreshold * 100);
     bool first = true;
     for (auto& w : m_widgets) {
@@ -1093,6 +1100,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                 m_edit, m_audioOk ? (m_audio.idle() ? "idle" : "active") : "off",
                                 m_noctalia.state().palette.size(), m_noctalia.state().fillMode);
     s += profileStatus() + "\n";
+    if (m_motion) s += "wallpaper: moving (video or scene) — depth off and locked\n";
     for (auto& w : m_widgets) {
       const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
       const bool stale = nowSeconds() - w->markAt > 1.5;
@@ -1175,6 +1183,7 @@ int App::run() {
   m_depth.update(m_noctalia.state(), outputNames());
   loadConfig();
   checkProfile();  // the wallpaper may have changed while undershell was not running
+  checkWallpaperKind();
   m_audioOk = m_audio.start();
   m_media.start();
 

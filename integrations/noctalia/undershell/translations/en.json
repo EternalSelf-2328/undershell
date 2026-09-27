@@ -32,5 +32,8 @@
   "saves.load": "Load",
   "saves.overwrite": "Overwrite with what is on screen",
   "saves.delete": "Delete",
-  "saves.confirm": "Click again to delete"
+  "saves.confirm": "Click again to delete",
+  "panel.locked": "moving wallpaper",
+  "panel.locked_hint": "Depth is off while a video or scene is the wallpaper.",
+  "panel.depth_motion": "A video or scene is on screen: depth is off until a still wallpaper returns"
 }

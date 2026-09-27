@@ -114,7 +114,9 @@ local function profileCard()
   end
   local depth = state.depth or {}
   local depthLine
-  if depth.field == true then
+  if state.motion == true then
+    depthLine = tr("panel.depth_motion")
+  elseif depth.field == true then
     depthLine = tr("panel.depth_field", { level = tostring(depth.plugin_threshold or 0) })
   elseif depth.mask == true then
     depthLine = tr("panel.depth_mask")
@@ -194,6 +196,7 @@ end
 
 local function widgetCard(w)
   local level = w.depth_level or 0
+  local locked = state.motion == true  -- a video or scene: no depth to pass behind
   return ui.column({ key = w.id, gap = 8, padding = 10, radius = 8, fill = "surface_variant/0.35" }, {
     ui.row({ gap = 8, align = "center" }, {
       ui.glyph({ name = typeGlyph(w.type), size = 18, color = "primary" }),
@@ -212,17 +215,19 @@ local function widgetCard(w)
       }),
     }),
     ui.row({ gap = 8, align = "center" }, {
-      ui.label({ text = tr("panel.depth"), fontSize = 12, flexGrow = 1 }),
-      ui.toggle({ checked = w.depth == true, onChange = function(v)
+      ui.label({ text = tr("panel.depth"), fontSize = 12, flexGrow = 1, color = locked and "on_surface_variant" or nil }),
+      ui.label({ text = tr("panel.locked"), fontSize = 11, color = "on_surface_variant", visible = locked }),
+      ui.toggle({ checked = w.depth == true and not locked, enabled = not locked, onChange = function(v)
         send({ "set", w.id, "depth", v == "true" and "true" or "false" })
       end }),
     }),
-    slider(w, "depth_level", tr("panel.plane"), 0, 100, 1, level, function(v)
-      if (v or 0) <= 0 then
-        return tr("panel.plane_auto")
-      end
-      return tostring(math.floor(v + 0.5))
-    end),
+    locked and ui.label({ text = tr("panel.locked_hint"), fontSize = 11, color = "on_surface_variant" })
+      or slider(w, "depth_level", tr("panel.plane"), 0, 100, 1, level, function(v)
+        if (v or 0) <= 0 then
+          return tr("panel.plane_auto")
+        end
+        return tostring(math.floor(v + 0.5))
+      end),
     slider(w, "rotation", tr("panel.tilt"), -45, 45, 0.5, w.rotation or 0, function(v)
       return string.format("%.1f°", v or 0)
     end),

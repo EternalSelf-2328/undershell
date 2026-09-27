@@ -175,6 +175,7 @@ void App::setProp(Widget& w, const std::string& key, const std::string& tomlValu
 
 // writes a value without recording undo (setProp and undo/redo use it)
 void App::applyProp(Widget& w, const std::string& key, const std::string& tomlValue) {
+  if (m_motion && (key == "depth" || key == "depth_level")) return;  // locked under a moving wallpaper
   std::string v = tomlValue;
   if (v.empty())  // "absent before": restore the schema default
     for (const auto& p : schemaFor(w.cfg.type))
@@ -243,7 +244,7 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Grid: return es ? "Cuadrícula" : "Grid";
     case T::Help: return es ? "Atajos de teclado" : "Keyboard shortcuts";
     case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
-    case T::Paint: return es ? "Pincel de profundidad: corrige qué queda delante" : "Depth brush: fix what stands in front";
+    case T::Paint: return es ? "Pincel de profundidad (no disponible con fondos animados)" : "Depth brush (not with moving wallpapers)";
     case T::PaintZoomIn: return es ? "Acercar (rueda o +)" : "Zoom in (wheel or +)";
     case T::PaintZoomOut: return es ? "Alejar (rueda o −)" : "Zoom out (wheel or −)";
     case T::PaintZoomReset: return es ? "Tamaño real (0)" : "Actual size (0)";
@@ -336,11 +337,13 @@ void App::layoutUi(const EditSurface& e) {
         y += kRowH;
       } else if (p.kind == PropSpec::Bool) {
         Rect t{cx + cw - 38, y + 5, 38, 20};
-        if (visible(t)) m_ui.push_back({UiControl::Toggle, t, idx});
+        const bool locked = m_motion && std::string_view(p.key) == "depth";
+        if (visible(t) && !locked) m_ui.push_back({UiControl::Toggle, t, idx});
         y += kRowH;
       } else if (p.kind == PropSpec::Number) {
         Rect sr{cx, y + 5, cw - 46, 20};
-        if (visible(sr)) m_ui.push_back({UiControl::Slider, sr, idx});
+        const bool locked = m_motion && std::string_view(p.key) == "depth_level";
+        if (visible(sr) && !locked) m_ui.push_back({UiControl::Slider, sr, idx});
         y += kRowH;
       } else {
         const auto& sw = colorSwatches();
@@ -443,7 +446,7 @@ bool App::uiPress(int index, double x) {
   if (c.type != UiControl::PaintClear) m_confirmClear = false;
   switch (c.type) {
     case UiControl::Paint:
-      setPaintMode(!m_paintMode);
+      if (!m_motion) setPaintMode(!m_paintMode);  // no depth to paint under a moving wallpaper
       return true;
     case UiControl::PaintTool:
       m_paintTool = std::clamp(std::atoi(c.value.c_str()), 0, 4);
@@ -824,13 +827,14 @@ void App::drawUi(EditSurface& e) {
                                                      : m_paintMode;
         if (on) cv.circle(cx, cy, c.r.w / 2, withAlphaC(accent, 0.22F));
         else if (hot) cv.circle(cx, cy, c.r.w / 2, raised);
+        const bool off = c.type == UiControl::Paint && m_motion;
         icon(cv,
              c.type == UiControl::Magnet ? "magnet"
              : c.type == UiControl::Grid ? "grid"
              : c.type == UiControl::Help ? "help"
              : c.type == UiControl::Saves ? "save"
                                           : "brush",
-             cx, cy, on ? accent : ink);
+             cx, cy, off ? withAlphaC(ink, 0.3F) : on ? accent : ink);
         break;
       }
       case UiControl::Done: {
@@ -878,9 +882,16 @@ void App::drawUi(EditSurface& e) {
     for (const auto& p : schema) {
       const float rowH = p.kind == PropSpec::Color ? kColorRowH : kRowH;
       if (y + rowH >= top && y <= bottom) {
-        cv.text(es ? p.labelEs : p.labelEn, label, P.x + 16, y + 6, dim);
+        const bool locked = m_motion && (std::string_view(p.key) == "depth" || std::string_view(p.key) == "depth_level");
+        cv.text(es ? p.labelEs : p.labelEn, label, P.x + 16, y + 6, locked ? withAlphaC(dim, 0.5F) : dim);
         const std::string v = valueText(w->cfg.options, p);
-        if (p.kind == PropSpec::Enum) {
+        if (locked) {
+          // a moving wallpaper has no depth to pass behind
+          const std::string note = es ? "fondo animado" : "moving wallpaper";
+          auto [nw, nh] = measure(note, label);
+          cv.roundRect(cx + cw - nw - 16, y + 5, nw + 16, 20, 10, withAlphaC(ink, 0.08F));
+          cv.text(note, label, cx + cw - nw - 8, y + 15 - nh / 2, withAlphaC(ink, 0.5F));
+        } else if (p.kind == PropSpec::Enum) {
           cv.roundRect(cx, y + 3, cw, 24, 12, raised, 1, line);
           cv.triangle(cx + 12, y + 15, cx + 17, y + 11, cx + 17, y + 19, dim);
           cv.triangle(cx + cw - 12, y + 15, cx + cw - 17, y + 11, cx + cw - 17, y + 19, dim);

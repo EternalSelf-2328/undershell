@@ -78,6 +78,7 @@ core = static_library('undershell-core',
   'src/saves.cpp',
   'src/text.cpp',
   'src/visualizer.cpp',
+  'src/wallkind.cpp',
   'src/widget.cpp',
   dependencies : deps)
 core_dep = declare_dependency(link_with : core, include_directories : include_directories('src'), dependencies : deps)

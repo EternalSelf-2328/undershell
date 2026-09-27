@@ -104,6 +104,17 @@ nothing covers the widget, at 5 almost everything does. `0` goes back to the
 plugin's mask. The model never runs twice; refining takes under a second
 per wallpaper, off the main thread.
 
+### Moving wallpapers
+
+A depth mask belongs to one still picture. When a video or a Wallpaper
+Engine scene is on screen (undershell asks skwd-wall with `skwd-helm
+current`, and also treats a video file set as the wallpaper as moving),
+depth turns off for every widget and its controls lock — the inspector
+rows, the depth brush, `msg set … depth`, and the Noctalia panel — until a
+still wallpaper returns; the widgets' settings are kept. skwd's hooks can
+call `undershell msg wallpaper-check` after each change for an instant
+update.
+
 ### Fixing the depth by hand
 
 The depth model guesses: an object may come out as a ramp (so a plane cuts

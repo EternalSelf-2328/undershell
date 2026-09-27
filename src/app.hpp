@@ -129,6 +129,10 @@ private:
   void loadConfig();
   void refreshNoctalia();
   void updateDepth();
+  // moving wallpapers turn depth off (wallkind.hpp)
+  void checkWallpaperKind();
+  void setMotion(bool on);
+  [[nodiscard]] bool depthLocked() const { return m_motion; }
   // wallpaper profiles (profiles.cpp)
   void checkProfile();
   std::string profileDir() const;
@@ -280,6 +284,8 @@ private:
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
 
+  bool m_motion = false;          // a video or scene is on screen: no depth
+  bool m_motionCheckBusy = false, m_motionCheckAgain = false;
   std::string m_profileKey, m_profileWall;  // the wallpaper config.toml's layout belongs to
   bool m_edit = false;
   std::vector<std::unique_ptr<EditSurface>> m_editSurfaces;

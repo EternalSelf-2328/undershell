@@ -2,6 +2,7 @@
 #include "check.hpp"
 #include "common.hpp"
 #include "depthfield.hpp"
+#include "wallkind.hpp"
 
 #include <cmath>
 #include <cstring>
@@ -137,6 +138,15 @@ int main() {
     blurredDepth(stepF, none, {28, 10, 36, 20}, 4, blur);
     CHECK(blur[15 * sw + 31] > 0.3F && blur[15 * sw + 31] < 0.6F);
   }
+
+  // moving wallpapers: skwd's report, and video paths
+  const std::string still = R"({"outputs":[{"connected":true,"name":"HDMI-A-1","type":"static"},{"connected":false,"name":"eDP-1","type":"video"}]})";
+  const std::string moving = R"({"outputs":[{"connected":true,"name":"HDMI-A-1","type":"we"}]})";
+  CHECK(!skwdShowsMotion(still, {}));                 // the video is on a disconnected output
+  CHECK(skwdShowsMotion(moving, {}) && skwdShowsMotion(moving, {"HDMI-A-1"}));
+  CHECK(!skwdShowsMotion(moving, {"DP-2"}));          // not one of ours
+  CHECK(!skwdShowsMotion("", {}) && !skwdShowsMotion("not json", {}));
+  CHECK(isVideoPath("/w/rain.MP4") && isVideoPath("a.webm") && !isVideoPath("/w/katana.png") && !isVideoPath("noext"));
 
   std::filesystem::remove_all(dir);
   return TEST_RESULT();

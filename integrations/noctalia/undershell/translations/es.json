@@ -32,5 +32,8 @@
   "saves.load": "Cargar",
   "saves.overwrite": "Sobrescribir con lo que hay en pantalla",
   "saves.delete": "Eliminar",
-  "saves.confirm": "Clic otra vez para eliminar"
+  "saves.confirm": "Clic otra vez para eliminar",
+  "panel.locked": "fondo animado",
+  "panel.locked_hint": "La profundidad se apaga mientras el fondo sea un video o escena.",
+  "panel.depth_motion": "Hay un video o escena de fondo: la profundidad está apagada hasta que vuelva una imagen"
 }

@@ -7,6 +7,7 @@
 // has one; a wallpaper seen for the first time keeps the current layout.
 // Only the [[widget]] blocks move: [general] stays shared.
 #include "app.hpp"
+#include "wallkind.hpp"
 
 #include <filesystem>
 
@@ -83,6 +84,45 @@ void App::checkProfile() {
   m_profileKey = key;
   m_profileWall = wall;
   writeFileAtomic(marker, key + "\n");
+}
+
+// Asks skwd (when it is installed) what each output shows, off the main
+// thread; a video path set by anything else counts too.
+void App::checkWallpaperKind() {
+  if (m_motionCheckBusy) {
+    m_motionCheckAgain = true;
+    return;
+  }
+  std::vector<std::string> outs = outputNames();
+  bool videoPath = false;
+  for (const auto& o : outs) videoPath = videoPath || isVideoPath(m_noctalia.state().wallpaperFor(o));
+  const bool haveSkwd = fs::exists("/usr/bin/skwd-helm") || fs::exists("/usr/local/bin/skwd-helm");
+  if (!haveSkwd) {
+    setMotion(videoPath);
+    return;
+  }
+  m_motionCheckBusy = true;
+  m_jobs.run([this, outs, videoPath]() -> Jobs::Done {
+    const std::string json = runCommand("skwd-helm current --json", 4);
+    const bool motion = videoPath || skwdShowsMotion(json, outs);
+    return [this, motion] {
+      m_motionCheckBusy = false;
+      setMotion(motion);
+      if (m_motionCheckAgain) {
+        m_motionCheckAgain = false;
+        checkWallpaperKind();
+      }
+    };
+  });
+}
+
+void App::setMotion(bool on) {
+  if (on == m_motion) return;
+  m_motion = on;
+  US_INFO("{}", on ? "moving wallpaper on screen: depth off and locked" : "still wallpaper: depth back on");
+  if (on && m_paintMode) setPaintMode(false);
+  for (auto& w : m_widgets) w->needsRender = true;
+  markEditDirty();
 }
 
 std::string App::profileStatus() const {
