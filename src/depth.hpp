@@ -11,6 +11,7 @@
 #include <GLES3/gl3.h>
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -23,11 +24,25 @@ struct DepthMask {
   int width = 0, height = 0;
   GLuint texture = 0;
   std::vector<std::uint8_t> pixels;  // pending upload (R8)
+  // the refined depth field (depthfield.hpp), for widgets with their own plane
+  std::string fieldNpy;
+  int fieldW = 0, fieldH = 0;    // texture size
+  int imageW = 0, imageH = 0;    // the wallpaper's size (sampling maths)
+  GLuint field = 0;
+  std::vector<std::uint16_t> fieldPixels;  // pending upload (R16F)
+  bool fieldStale = false;                 // texture belongs to a previous wallpaper
 };
+
+class Jobs;
 
 class DepthMasks {
 public:
   static std::string maskDir();
+  // depth fields are refined off-thread; `ready` runs (main thread) when one lands
+  void setJobs(Jobs* jobs, std::function<void()> ready) {
+    m_jobs = jobs;
+    m_fieldReady = std::move(ready);
+  }
 
   // Re-resolves which mask belongs to each output. Returns true on change.
   bool update(const NoctaliaState& st, const std::vector<std::string>& outputs);
@@ -51,6 +66,8 @@ private:
   };
   std::map<std::string, HashEntry> m_hashes;
   bool m_missing = false;
+  Jobs* m_jobs = nullptr;
+  std::function<void()> m_fieldReady;
 };
 
 }  // namespace undershell

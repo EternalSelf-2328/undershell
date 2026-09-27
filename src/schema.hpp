@@ -45,6 +45,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "fps", "FPS", "FPS", {}, 15, 144, 15, 60, "", true},
       {K::Number, "rotation", "Rotation °", "Inclinación °", {}, -180, 180, 0.1, 0},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane (0 = plugin)", "Plano prof. (0 = auto)", {}, 0, 100, 1, 0, "", true},
   };
   static const std::vector<PropSpec> clock = {
       {K::Enum, "face", "Face", "Estilo",
@@ -62,6 +63,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.1, 1, 0.05, 1},
       {K::Number, "rotation", "Rotation °", "Inclinación °", {}, -180, 180, 0.1, 0},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane (0 = plugin)", "Plano prof. (0 = auto)", {}, 0, 100, 1, 0, "", true},
   };
   static const std::vector<PropSpec> nowPlaying = {
       {K::Enum, "plate", "Plate", "Fondo", {"cover", "glass", "none"}, 0, 0, 0, 0, "cover"},
@@ -73,6 +75,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "fps", "FPS", "FPS", {}, 15, 60, 15, 30, "", true},
       {K::Number, "rotation", "Rotation °", "Inclinación °", {}, -180, 180, 0.1, 0},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane (0 = plugin)", "Plano prof. (0 = auto)", {}, 0, 100, 1, 0, "", true},
   };
   static const std::vector<PropSpec> none;
   if (type == "visualizer") return visualizer;

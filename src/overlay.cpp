@@ -14,6 +14,21 @@ uniform vec2 u_surfaceOffset;
 uniform vec2 u_outputSize;
 uniform vec2 u_imageSize;
 uniform float u_fillMode;
+uniform sampler2D u_field;
+uniform float u_useField;
+uniform float u_level;
+uniform float u_feather;
+
+float coverageAt(vec2 uv) {
+    if (u_useField > 0.5) {
+        // depth_helper.py: smoothstep(depth, threshold - feather/2, threshold + feather/2)
+        float d = texture(u_field, uv).r;
+        float lo = u_level - u_feather * 0.5, hi = u_level + u_feather * 0.5;
+        if (hi <= lo) return d >= hi ? 1.0 : 0.0;
+        return smoothstep(lo, hi, d);
+    }
+    return texture(u_mask, uv).r;
+}
 
 vec2 calculateWallpaperUV(vec2 uv, float imgWidth, float imgHeight) {
     float sw = u_outputSize.x, sh = u_outputSize.y;
@@ -45,16 +60,17 @@ void main() {
     vec2 maskUV = calculateWallpaperUV(outputPixel / u_outputSize, u_imageSize.x, u_imageSize.y);
     float coverage = 0.0;
     if (u_fillMode > 3.5 && u_fillMode < 4.5) {
-        coverage = texture(u_mask, fract(maskUV)).r;
+        coverage = coverageAt(fract(maskUV));
     } else if (!(maskUV.x < 0.0 || maskUV.x > 1.0 || maskUV.y < 0.0 || maskUV.y > 1.0)) {
-        coverage = texture(u_mask, maskUV).r;
+        coverage = coverageAt(maskUV);
     }
     fragColor = vec4(0.0, 0.0, 0.0, coverage);
 }
 )";
 
 void MaskPass::draw(const MaskParams& p) {
-  if (!p.texture || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
+  const bool useField = p.field && p.level > 0;
+  if ((!p.texture && !useField) || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
   if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kMaskFrag, "mask");
   glUseProgram(m_prog.id());
   glUniform2f(m_prog.uniform("u_surfaceSize"), p.surfaceW, p.surfaceH);
@@ -63,8 +79,12 @@ void MaskPass::draw(const MaskParams& p) {
   glUniform2f(m_prog.uniform("u_imageSize"), p.imageW, p.imageH);
   glUniform1f(m_prog.uniform("u_fillMode"), static_cast<float>(p.fillMode));
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, p.texture);
+  glBindTexture(GL_TEXTURE_2D, useField ? p.field : p.texture);
   glUniform1i(m_prog.uniform("u_mask"), 0);
+  glUniform1i(m_prog.uniform("u_field"), 0);
+  glUniform1f(m_prog.uniform("u_useField"), useField ? 1.0F : 0.0F);
+  glUniform1f(m_prog.uniform("u_level"), p.level);
+  glUniform1f(m_prog.uniform("u_feather"), p.feather);
   // DestinationOut on premultiplied colour: dst *= (1 - coverage)
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);

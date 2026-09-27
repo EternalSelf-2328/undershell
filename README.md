@@ -92,6 +92,18 @@ While editing with no music, the visualizers move with the demo spectrum.
 With the grid on (toolbar), positions snap to it (16 px) on release and are saved to the config,
 without touching the rest of the file.
 
+## Depth planes
+
+With Noctalia's `wallpaper_depth` plugin, widgets pass behind the scenery.
+By default every widget uses the plugin's mask (its threshold). Give a
+widget its own plane with **Plano prof.** in the inspector (or
+`depth_level = 1..100`): undershell reads the depth map the plugin cached,
+refines it against the wallpaper exactly as the plugin does, and cuts each
+widget at its own level on the GPU, live. Higher is nearer: at 95 almost
+nothing covers the widget, at 5 almost everything does. `0` goes back to the
+plugin's mask. The model never runs twice; refining takes under a second
+per wallpaper, off the main thread.
+
 ## A layout per wallpaper
 
 undershell remembers where your widgets were for each wallpaper. Arrange

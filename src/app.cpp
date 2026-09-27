@@ -691,9 +691,17 @@ void App::render(Widget& w) {
         mp.offsetY = w.impl->fullscreen() ? 0.0F : static_cast<float>(b.y);
         mp.outputW = ow;
         mp.outputH = oh;
-        mp.imageW = static_cast<float>(m->width);
-        mp.imageH = static_cast<float>(m->height);
+        mp.imageW = static_cast<float>(m->texture ? m->width : m->imageW);
+        mp.imageH = static_cast<float>(m->texture ? m->height : m->imageH);
         mp.fillMode = m_noctalia.state().fillMode;
+        if (w.cfg.depthLevel > 0 && m->field) {
+          // its own plane: the refined field cut at this widget's level
+          mp.field = m->field;
+          mp.level = static_cast<float>(w.cfg.depthLevel / 100.0);
+          mp.feather = static_cast<float>(m_noctalia.state().depthFeather);
+          mp.imageW = static_cast<float>(m->imageW);
+          mp.imageH = static_cast<float>(m->imageH);
+        }
         try {
           m_maskPass.draw(mp);
         } catch (const std::exception& ex) {
@@ -1064,6 +1072,9 @@ int App::run() {
   if (!initWayland() || !initEgl()) return 1;
 
   m_configPath = Config::defaultPath();
+  m_depth.setJobs(&m_jobs, [this] {
+    for (auto& w : m_widgets) w->needsRender = true;
+  });
   m_noctalia.refresh();
   m_depth.update(m_noctalia.state(), outputNames());
   loadConfig();

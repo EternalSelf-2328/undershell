@@ -184,6 +184,12 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (v.empty()) return;
   storeOption(w.cfg.options, key, v);
   if (key == "depth") w.cfg.depth = v == "true";
+  if (key == "depth_level") {
+    try {
+      w.cfg.depthLevel = std::clamp(std::stod(v), 0.0, 100.0);
+    } catch (const std::exception&) {
+    }
+  }
   if (key == "rotation") {
     try {
       setRotation(w, std::stod(v));

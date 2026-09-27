@@ -104,6 +104,8 @@ Config Config::load(const std::string& path) {
       w.height = static_cast<int>(std::max<int64_t>(24, get<int64_t>(*t, "height", 240)));
       w.enabled = get<bool>(*t, "enabled", true);
       w.depth = get<bool>(*t, "depth", true);
+      w.depthLevel = std::clamp(get<double>(*t, "depth_level", 0.0), 0.0, 100.0);
+      if (auto i = (*t)["depth_level"].value<int64_t>()) w.depthLevel = std::clamp(static_cast<double>(*i), 0.0, 100.0);
       if (auto r = (*t)["rotation"].value<double>()) {
         double d = std::fmod(*r, 360.0);
         w.rotation = d <= -180.0 ? d + 360.0 : (d > 180.0 ? d - 360.0 : d);

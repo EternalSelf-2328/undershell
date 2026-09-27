@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "depth.hpp"
 
+#include "depthfield.hpp"
+#include "jobs.hpp"
+
 #include <cairo.h>
 #include <filesystem>
 #include <fstream>
@@ -93,13 +96,46 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
   m_missing = false;
   for (const auto& out : outputs) {
     std::string wall = st.depthPluginEnabled ? st.wallpaperFor(out) : std::string{};
-    std::string mask;
+    std::string mask, npy;
     if (!wall.empty()) {
       std::string sha = sha256Of(wall);
-      if (!sha.empty()) mask = findMask(sha, st.depthThreshold, st.depthFeather);
+      if (!sha.empty()) {
+        mask = findMask(sha, st.depthThreshold, st.depthFeather);
+        npy = findDepthNpy(sha);
+      }
     }
     if (st.depthPluginEnabled && !wall.empty() && mask.empty()) m_missing = true;
     auto& m = m_masks[out];
+    if (m.fieldNpy != npy) {
+      // a new depth map: refine it against the image off the main thread
+      m.fieldNpy = npy;
+      m.fieldPixels.clear();
+      m.fieldStale = m.field != 0;
+      changed = true;
+      if (!npy.empty() && m_jobs) {
+        m_jobs->run([this, out, wall, npy]() -> Jobs::Done {
+          DepthField raw, refined;
+          int iw = 0, ih = 0;
+          const bool ok = loadNpyF32(npy, raw) && refineDepth(wall, raw, refined, &iw, &ih);
+          auto half = ok ? toHalf(refined.v) : std::vector<std::uint16_t>{};
+          return [this, out, npy, ok, iw, ih, fw = refined.w, fh = refined.h, half = std::move(half)]() mutable {
+            auto it = m_masks.find(out);
+            if (it == m_masks.end() || it->second.fieldNpy != npy) return;  // superseded
+            if (!ok) {
+              US_WARN("could not refine the depth map {}", fs::path(npy).filename().string());
+              return;
+            }
+            it->second.fieldPixels = std::move(half);
+            it->second.fieldW = fw;
+            it->second.fieldH = fh;
+            it->second.imageW = iw;
+            it->second.imageH = ih;
+            US_INFO("depth field for {}: {}x{}", out, fw, fh);
+            if (m_fieldReady) m_fieldReady();
+          };
+        });
+      }
+    }
     if (m.maskPath == mask && m.wallpaper == wall) continue;
     changed = true;
     m.wallpaper = wall;
@@ -125,8 +161,27 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
 
 const DepthMask* DepthMasks::get(const std::string& output) {
   auto it = m_masks.find(output);
-  if (it == m_masks.end() || it->second.maskPath.empty()) return nullptr;
+  if (it == m_masks.end()) return nullptr;
   auto& m = it->second;
+  if (m.fieldStale) {
+    if (m.field) glDeleteTextures(1, &m.field);
+    m.field = 0;
+    m.fieldStale = false;
+  }
+  if (!m.fieldPixels.empty()) {
+    if (!m.field) glGenTextures(1, &m.field);
+    glBindTexture(GL_TEXTURE_2D, m.field);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, m.fieldW, m.fieldH, 0, GL_RED, GL_HALF_FLOAT, m.fieldPixels.data());
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    m.fieldPixels.clear();
+    m.fieldPixels.shrink_to_fit();
+  }
+  if (m.maskPath.empty() && !m.field) return nullptr;
   if (!m.pixels.empty()) {
     if (!m.texture) glGenTextures(1, &m.texture);
     glBindTexture(GL_TEXTURE_2D, m.texture);
@@ -139,13 +194,14 @@ const DepthMask* DepthMasks::get(const std::string& output) {
     m.pixels.clear();
     m.pixels.shrink_to_fit();
   }
-  return m.texture ? &m : nullptr;
+  return (m.texture || m.field) ? &m : nullptr;
 }
 
 void DepthMasks::releaseGl() {
   for (auto& [k, m] : m_masks) {
     if (m.texture) glDeleteTextures(1, &m.texture);
-    m.texture = 0;
+    if (m.field) glDeleteTextures(1, &m.field);
+    m.texture = m.field = 0;
   }
 }
 

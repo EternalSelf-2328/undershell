@@ -182,6 +182,11 @@ int main(int argc, char** argv) {
       mp.fillMode = mode;
       mask.draw(mp);
       CHECK(glcheck("mask"));
+      mp.field = tex;  // a widget with its own depth plane
+      mp.level = 0.4F;
+      mp.feather = 0.1F;
+      mask.draw(mp);
+      CHECK(glcheck("mask (depth field)"));
     }
     glDeleteTextures(1, &tex);
     CHECK(glcheck("cleanup"));

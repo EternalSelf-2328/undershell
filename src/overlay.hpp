@@ -15,6 +15,10 @@ struct MaskParams {
   float outputW = 0, outputH = 0;
   float imageW = 0, imageH = 0;
   int fillMode = 1;
+  // a widget with its own depth plane: cut the refined depth field there
+  // instead of using the plugin's mask (level 0..1, feather 0..1)
+  GLuint field = 0;
+  float level = 0, feather = 0;
 };
 
 // Erases widget pixels under the wallpaper_depth foreground (DestinationOut),
