@@ -301,6 +301,8 @@ bool App::initEgl() {
 // ── config / noctalia / depth ──────────────────────────────────────────────
 
 void App::loadConfig() {
+  // two widgets sharing an id would be edited as one (older duplicates did that)
+  if (const int n = Config::uniquifyIds(m_configPath); n > 0) US_INFO("renamed {} repeated widget id(s)", n);
   try {
     m_config = Config::load(m_configPath);
   } catch (...) {

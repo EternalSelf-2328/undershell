@@ -58,6 +58,12 @@ struct Config {
   // Rewrites only the x/y/width/height lines of widget `id`, keeping the
   // rest of the file (comments, ordering) as the user wrote it.
   static bool saveGeometry(const std::string& path, const WidgetConfig& w);
+  // Every edit finds its widget by id, so ids must be unique: renames repeats
+  // ("visualizer" twice -> "visualizer", "visualizer-2") in place. Returns
+  // how many it renamed.
+  static int uniquifyIds(const std::string& path);
+  // A block's text with its id and position replaced (duplicating a widget).
+  static std::string retargetBlock(const std::string& block, const std::string& id, int x, int y);
   // Sets `key = value` (value already TOML-formatted) inside widget `id`'s
   // block, adding the line if missing. Comments and layout are preserved.
   static bool setKey(const std::string& path, const std::string& id, const std::string& key, const std::string& tomlValue);

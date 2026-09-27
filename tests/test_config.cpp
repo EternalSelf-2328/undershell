@@ -81,6 +81,22 @@ int main() {
   CHECK(Config::tomlText(*tt.get("b")) == "true");
   CHECK(Config::tomlText(*tt.get("i")) == "64");
 
+  // repeated ids (older Duplicate kept the id) are renamed in place, and the
+  // two widgets then load as two
+  writeFileAtomic(path, "[[widget]]\nid = \"visualizer\"\nx = 10\n\n[[widget]]\nid = \"visualizer\" # copy\nx = 20\n\n"
+                        "[[widget]]\nid = \"visualizer-2\"\nx = 30\n");
+  CHECK(Config::uniquifyIds(path) == 1);
+  text = readFile(path);
+  CHECK(text.find("id = \"visualizer-3\" # copy") != std::string::npos);
+  CHECK(Config::uniquifyIds(path) == 0);
+  cfg = Config::load(path);
+  CHECK(cfg.widgets.size() == 3 && cfg.widgets[1].id == "visualizer-3" && cfg.widgets[1].x == 20);
+
+  // duplicating rewrites the copy's id and position, keeping the rest
+  const std::string copy = Config::retargetBlock("[[widget]]\nid = \"clock\"\ntype = \"clock\"\nx = 5\ny = 6 # top\n", "clock-2", 37, 38);
+  CHECK(copy.find("id = \"clock-2\"") != std::string::npos && copy.find("x = 37") != std::string::npos &&
+        copy.find("y = 38 # top") != std::string::npos && copy.find("type = \"clock\"") != std::string::npos);
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }

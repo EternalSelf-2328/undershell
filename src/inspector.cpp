@@ -9,6 +9,7 @@
 #include <climits>
 #include <cmath>
 #include <regex>
+#include <xkbcommon/xkbcommon.h>
 
 namespace undershell {
 
@@ -39,7 +40,8 @@ std::string valueText(const toml::table& opts, const PropSpec& p) {
     case PropSpec::Number: {
       double v = p.def;
       if (n) v = n->value_or(p.def);
-      return p.integer ? std::to_string(static_cast<long>(std::lround(v))) : std::format("{:.2f}", v);
+      if (p.integer) return std::to_string(static_cast<long>(std::lround(v)));
+  return p.step < 0.095 ? std::format("{:.2f}", v) : std::format("{:.1f}", v);  // as many decimals as a step has
     }
   }
   return {};
@@ -60,7 +62,8 @@ void storeOption(toml::table& t, const std::string& key, const std::string& toml
 
 std::string formatNumber(const PropSpec& p, double v) {
   v = std::clamp(std::round((v - p.min) / p.step) * p.step + p.min, p.min, p.max);
-  return p.integer ? std::to_string(static_cast<long>(std::lround(v))) : std::format("{:.2f}", v);
+  if (p.integer) return std::to_string(static_cast<long>(std::lround(v)));
+  return p.step < 0.095 ? std::format("{:.2f}", v) : std::format("{:.1f}", v);  // as many decimals as a step has
 }
 
 const char* typeName(const std::string& type, bool es) {
@@ -124,21 +127,17 @@ void App::removeWidget(Widget& w) {
 void App::duplicateWidget(Widget& w) {
   std::string block = Config::blockText(m_configPath, w.cfg.id);
   if (block.empty()) return;
-  std::string id = w.cfg.id;
+  // "visualizer-2" copies to "visualizer-3", not "visualizer-2-2"
+  const std::string base = std::regex_replace(w.cfg.id, std::regex(R"(-\d+$)"), "");
+  std::string id = base;
   for (int n = 2;; ++n) {
     bool taken = false;
     for (auto& c : m_config.widgets) taken = taken || c.id == id;
     if (!taken) break;
-    id = w.cfg.id + "-" + std::to_string(n);
+    id = base + "-" + std::to_string(n);
   }
   // the copy: new id, offset 32 px so it is visibly separate
-  auto replaceLine = [&](const char* key, const std::string& value) {
-    const std::regex re(std::string("(^|\\n)(\\\\s*") + key + R"(\s*=\s*)[^\n#]*)");
-    block = std::regex_replace(block, re, "$1$2" + value + " ", std::regex_constants::format_first_only);
-  };
-  replaceLine("id", "\"" + id + "\"");
-  replaceLine("x", std::to_string(w.cfg.x + 32));
-  replaceLine("y", std::to_string(w.cfg.y + 32));
+  block = Config::retargetBlock(block, id, w.cfg.x + 32, w.cfg.y + 32);
   if (!Config::appendBlock(m_configPath, block)) return;
   WidgetConfig placeholder;
   placeholder.id = id;
@@ -424,7 +423,12 @@ bool App::uiPress(int index, double x) {
   } else if (c.type == UiControl::Slider) {
     m_drag = Drag::Slider;
     m_sliderControl = index;
-    uiDrag(x);
+    // Shift: nudge from the current value, one step per 4 px, instead of
+    // jumping to where the pointer is
+    m_sliderFine = modActive(XKB_MOD_NAME_SHIFT);
+    m_sliderX = x;
+    m_sliderStart = numberOf(w->cfg.options, p);
+    if (!m_sliderFine) uiDrag(x);
   }
   return true;
 }
@@ -436,7 +440,8 @@ void App::uiDrag(double x) {
   if (c.prop < 0 || c.prop >= static_cast<int>(schema.size())) return;
   const PropSpec& p = schema[static_cast<size_t>(c.prop)];
   const double t = std::clamp((x - c.r.x) / c.r.w, 0.0, 1.0);
-  const std::string v = formatNumber(p, p.min + t * (p.max - p.min));
+  const std::string v = formatNumber(p, m_sliderFine ? m_sliderStart + std::round((x - m_sliderX) / 4.0) * p.step
+                                                     : p.min + t * (p.max - p.min));
   if (v != valueText(m_selected->cfg.options, p)) setProp(*m_selected, p.key, v);
 }
 
@@ -715,13 +720,13 @@ void App::drawUi(EditSurface& e) {
     static const K rows[] = {
         {"Arrastrar", "move", "mover"},
         {"Esquina", "resize", "cambiar tamaño"},
-        {"Asa superior", "turn (15° steps)", "inclinar (pasos de 15°)"},
+        {"Asa superior", "tilt (Shift: fine)", "inclinar (Shift: fino)"},
         {"Rueda", "next look / value", "estilo o valor siguiente"},
         {"Shift", "hold: no magnet", "mantener: sin imán"},
         {"← → ↑ ↓", "nudge 1 px", "ajustar 1 px"},
         {"Shift+←", "nudge 16 px", "ajustar 16 px"},
         {"Alt+←", "resize", "tamaño"},
-        {"Ctrl+← →", "tilt 1° (Shift 15°)", "inclinar 1° (Shift 15°)"},
+        {"Ctrl+← →", "tilt 0.1° (Shift 1°)", "inclinar 0.1° (Shift 1°)"},
         {"Tab", "next widget", "siguiente widget"},
         {"Ctrl+Z", "undo", "deshacer"},
         {"Ctrl+Shift+Z", "redo", "rehacer"},

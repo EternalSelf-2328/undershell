@@ -352,13 +352,11 @@ bool App::keyAction(uint32_t key) {
       return false;
     case KEY_LEFT:
     case KEY_RIGHT:
-      if (ctrl) {  // turn: 1°, Shift 15°
+      if (ctrl) {  // tilt: 0.1°, Shift 1° (held keys repeat)
         Widget* w = target();
         if (w && w->impl && !w->impl->fullscreen()) {
-          const double d = (shift ? 15.0 : 1.0) * (key == KEY_LEFT ? -1 : 1);
-          double a = w->cfg.rotation + d;
-          if (shift) a = std::round(a / 15.0) * 15.0;
-          setProp(*w, "rotation", degreesText(normalizeDegrees(a)));
+          const double d = (shift ? 1.0 : 0.1) * (key == KEY_LEFT ? -1 : 1);
+          setProp(*w, "rotation", degreesText(normalizeDegrees(w->cfg.rotation + d)));
         }
         return true;
       }
@@ -522,10 +520,16 @@ void App::onPointerMotion(double x, double y) {
   const int dx = static_cast<int>(std::lround(x - m_pressX));
   const int dy = static_cast<int>(std::lround(y - m_pressY));
   if (m_drag == Drag::Rotate) {
-    double a = m_rotStart + (angleAt(*w, x, y) - m_rotPressAngle);
-    // magnet: 15° steps (Shift inverts); free turning still lands on whole degrees
-    a = (m_snapOn != modActive(XKB_MOD_NAME_SHIFT)) ? std::round(a / 15.0) * 15.0 : std::round(a);
-    setRotation(*w, a);
+    // follow the pointer's angle in small increments: Shift turns ten times
+    // slower for fine work; the magnet only catches multiples of 15° within 2°
+    const bool fine = modActive(XKB_MOD_NAME_SHIFT);
+    const double now = angleAt(*w, x, y);
+    m_rotAcc += normalizeDegrees(now - m_rotLast) * (fine ? 0.1 : 1.0);
+    m_rotLast = now;
+    double a = m_rotStart + m_rotAcc;
+    const double near15 = std::round(a / 15.0) * 15.0;
+    if (m_snapOn && !fine && std::abs(a - near15) < 2.0) a = near15;
+    setRotation(*w, std::round(a * 10.0) / 10.0);
     return;
   }
   if (m_drag == Drag::Move) {
@@ -609,7 +613,8 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     if (inRotateHandle(*w, m_px, m_py)) {
       m_drag = Drag::Rotate;
       m_rotStart = w->cfg.rotation;
-      m_rotPressAngle = angleAt(*w, m_px, m_py);
+      m_rotLast = angleAt(*w, m_px, m_py);
+      m_rotAcc = 0;
       setCursor("grabbing");
       return;
     }

@@ -79,7 +79,7 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 | Select | click or its chip (empty space: deselect) · **Tab** / Shift+Tab |
 | Move / resize | drag · bottom-right corner |
 | Magnet | snaps to the screen center, the edges and other widgets (guide lines); toggle it in the toolbar; **Shift** inverts it while held |
-| Tilt | drag the **knob** above the selected widget (15° steps with the magnet, Shift = free) · **Ctrl+←/→** 1°, Ctrl+Shift 15° · *Rotation* in the inspector · `rotation = 20` in the config (degrees, clockwise) |
+| Tilt | drag the **knob** above the selected widget (0.1° steps; **Shift** = ten times finer; the magnet catches multiples of 15° within 2°) · **Ctrl+←/→** 0.1°, Ctrl+Shift 1° · Shift-drag any slider to nudge it · *Rotation* in the inspector · `rotation = 20` in the config (degrees, clockwise) |
 | Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
 | Change look | **wheel** over the widget (visualizer style or clock face) |
 | Options | the **inspector** appears next to the selected widget: lists ‹ ›, switches, sliders (drag or wheel) and theme color swatches; you see every change live |

@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <regex>
@@ -228,6 +229,65 @@ bool Config::removeBlock(const std::string& path, const std::string& id, std::st
   std::string out;
   for (auto& l : lines) out += l + "\n";
   return writeFileAtomic(path, out);
+}
+
+int Config::uniquifyIds(const std::string& path) {
+  auto lines = fileLines(path);
+  static const std::regex kHeader(R"(^\s*\[)");
+  static const std::regex kWidget(R"(^\s*\[\[\s*widget\s*\]\]\s*(#.*)?$)");
+  static const std::regex kId(R"re(^(\s*id\s*=\s*)"([^"]*)"(.*)$)re");
+  // every id line, in order
+  std::vector<size_t> at;
+  std::vector<std::string> ids;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (!std::regex_search(lines[i], kWidget)) continue;
+    for (size_t k = i + 1; k < lines.size() && !std::regex_search(lines[k], kHeader); ++k) {
+      std::smatch m;
+      if (std::regex_match(lines[k], m, kId)) {
+        at.push_back(k);
+        ids.push_back(m[2].str());
+        break;
+      }
+    }
+  }
+  int renamed = 0;
+  std::vector<std::string> seen;
+  auto taken = [&](const std::string& id) {
+    return std::find(seen.begin(), seen.end(), id) != seen.end() || std::find(ids.begin(), ids.end(), id) != ids.end();
+  };
+  for (size_t n = 0; n < ids.size(); ++n) {
+    if (std::find(seen.begin(), seen.end(), ids[n]) == seen.end()) {
+      seen.push_back(ids[n]);
+      continue;
+    }
+    std::string id;
+    for (int k = 2;; ++k) {
+      id = ids[n] + "-" + std::to_string(k);
+      if (!taken(id)) break;
+    }
+    std::smatch m;
+    std::regex_match(lines[at[n]], m, kId);
+    lines[at[n]] = m[1].str() + "\"" + id + "\"" + m[3].str();
+    seen.push_back(id);
+    ++renamed;
+  }
+  if (renamed == 0) return 0;
+  std::string out;
+  for (auto& l : lines) out += l + "\n";
+  return writeFileAtomic(path, out) ? renamed : 0;
+}
+
+std::string Config::retargetBlock(const std::string& block, const std::string& id, int x, int y) {
+  std::istringstream in(block);
+  std::vector<std::string> lines;
+  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  size_t end = lines.size();
+  setLine(lines, 0, end, "id", "\"" + id + "\"");
+  setLine(lines, 0, end, "x", std::to_string(x));
+  setLine(lines, 0, end, "y", std::to_string(y));
+  std::string out;
+  for (auto& l : lines) out += l + "\n";
+  return out;
 }
 
 bool Config::appendBlock(const std::string& path, const std::string& block) {

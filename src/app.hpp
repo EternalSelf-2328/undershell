@@ -248,7 +248,9 @@ private:
   Widget* m_pointerWidget = nullptr;     // widget hovered / being dragged
   double m_px = 0, m_py = 0;             // pointer, output coordinates
   enum class Drag { None, Move, Resize, Slider, Rotate } m_drag = Drag::None;
-  double m_rotStart = 0, m_rotPressAngle = 0;  // rotate drag
+  double m_rotStart = 0, m_rotLast = 0, m_rotAcc = 0;  // rotate drag
+  double m_sliderX = 0, m_sliderStart = 0;              // slider drag (Shift: fine)
+  bool m_sliderFine = false;
   double m_anchorX = 0, m_anchorY = 0;         // turned resize: fixed corner
   double m_pressX = 0, m_pressY = 0;     // pointer at press, output coordinates
   int m_startX = 0, m_startY = 0, m_dragW = 0, m_dragH = 0;
