@@ -120,6 +120,22 @@ time keeps the current layout, so you start from it.
 - `undershell msg status` shows the current profile; `profiles = false` in
   `[general]` turns this off.
 
+## Noctalia bar widget
+
+`integrations/noctalia/undershell` is a Noctalia plugin: a bar button
+(click: panel, right click: toggle the editor) and a panel that shows the
+wallpaper profile and depth state, and per widget: behind the scenery on/off,
+depth plane and tilt (committed when a slider is released), and a pencil that
+opens the editor on it. It talks to the daemon with `undershell msg`
+(`msg json` is its state). To use it from a path source:
+
+```sh
+ln -s "$PWD/integrations/noctalia/undershell" ~/.local/share/noctalia/plugins/<your-source>/undershell
+noctalia msg plugins enable <your-source>/undershell
+```
+
+then add the **undershell** widget to a bar in Noctalia's settings.
+
 ## Configuration
 
 `~/.config/undershell/config.toml`: it's created with defaults the first

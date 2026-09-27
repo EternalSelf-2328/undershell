@@ -1,0 +1,21 @@
+id = "eternalself-2328/undershell"
+name = "undershell"
+version = "1.0.0"
+plugin_api = 26
+author = "EternalSelf-2328"
+license = "GPL-3.0-or-later"
+tags = ["desktop", "widgets"]
+icon = "layout-dashboard"
+description = "Control undershell's desktop widgets from the bar: editor, depth planes, tilt and wallpaper layouts."
+
+[[widget]]
+id = "bar"
+entry = "bar.luau"
+
+[[panel]]
+id = "panel"
+entry = "panel.luau"
+width = 460
+height = 640
+placement = "attached"
+position = "auto"

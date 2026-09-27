@@ -944,6 +944,7 @@ std::string App::handleCommand(const std::string& cmd) {
     const std::string id = cmd.substr(7);
     for (auto& w : m_widgets)
       if (w->cfg.id == id) {
+        if (!m_edit) setEditMode(true);  // selecting is for editing
         m_selected = w.get();
         m_inspScroll = 0;
         markEditDirty();
@@ -985,6 +986,48 @@ std::string App::handleCommand(const std::string& cmd) {
     m_running = false;
     return "bye";
   }
+  if (cmd == "json") {
+    // machine-readable state for front ends (the Noctalia bar plugin)
+    auto q = [](const std::string& v) {
+      std::string o = "\"";
+      for (char c : v) {
+        if (c == '"' || c == '\\') o += '\\';
+        if (static_cast<unsigned char>(c) < 0x20) {
+          o += std::format("\\u{:04x}", static_cast<int>(c));
+          continue;
+        }
+        o += c;
+      }
+      return o + "\"";
+    };
+    std::error_code ec;
+    size_t saved = 0;
+    for (const auto& e : fs::directory_iterator(profileDir(), ec))
+      if (e.path().extension() == ".toml" && e.path().stem() != m_profileKey) ++saved;
+    bool field = false, mask = false;
+    for (auto& o : m_outputs)
+      if (const DepthMask* m = m_depth.get(o->name)) {
+        field = field || m->field != 0;
+        mask = mask || m->texture != 0;
+      }
+    std::string s = std::format(
+        "{{\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
+        "\"depth\":{{\"mask\":{},\"field\":{},\"plugin_threshold\":{:.0f}}},\"widgets\":[",
+        m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, mask, field,
+        m_noctalia.state().depthThreshold * 100);
+    bool first = true;
+    for (auto& w : m_widgets) {
+      const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
+                               : w->cfg.type == "clock"    ? w->cfg.options["face"].value_or(std::string("digital"))
+                                                           : w->cfg.type;
+      s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
+                       "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f}}}",
+                       first ? "" : ",", q(w->cfg.id), q(w->cfg.type), q(look), w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height,
+                       w->cfg.rotation, w->cfg.depth, w->cfg.depthLevel, nowSeconds() - w->markAt > 1.5 ? 0.0 : w->fpsMeasured);
+      first = false;
+    }
+    return s + "]}";
+  }
   if (cmd == "status") {
     const MediaState& ms = m_media.state();
     std::string s = std::format("media: {}{}{}\n", ms.present ? (ms.playing ? "playing " : "paused ") : "none",
@@ -1011,7 +1054,7 @@ std::string App::handleCommand(const std::string& cmd) {
     }
     return s;
   }
-  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, gallery, reset, reload, status, quit)";
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, gallery, reset, reload, status, json, quit)";
 }
 
 // ── file watching ───────────────────────────────────────────────────────────
