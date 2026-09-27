@@ -325,6 +325,7 @@ void App::refreshNoctalia() {
       w->needsRender = true;
     }
     updateDepth();
+    checkProfile();
   }
 }
 
@@ -988,6 +989,7 @@ std::string App::handleCommand(const std::string& cmd) {
     s += std::format("widgets={} edit={} audio={} palette_roles={} fill_mode={}\n", m_widgets.size(),
                                 m_edit, m_audioOk ? (m_audio.idle() ? "idle" : "active") : "off",
                                 m_noctalia.state().palette.size(), m_noctalia.state().fillMode);
+    s += profileStatus() + "\n";
     for (auto& w : m_widgets) {
       const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
       const bool stale = nowSeconds() - w->markAt > 1.5;
@@ -1065,6 +1067,7 @@ int App::run() {
   m_noctalia.refresh();
   m_depth.update(m_noctalia.state(), outputNames());
   loadConfig();
+  checkProfile();  // the wallpaper may have changed while undershell was not running
   m_audioOk = m_audio.start();
   m_media.start();
 

@@ -23,6 +23,7 @@ static const char* kDefaultConfig = R"(# undershell: desktop widgets under any s
 grid = 16                 # snap step for the editor, px
 noise_reduction = 0.45    # analyser smoothing (Ryoku's cava used 45)
 monstercat = false        # spread peaks to neighbours (cava's monstercat)
+profiles = true           # remember a widget layout for each wallpaper
 
 [[widget]]
 id = "visualizer"
@@ -84,6 +85,7 @@ Config Config::load(const std::string& path) {
   }
   if (auto* g = root["general"].as_table()) {
     cfg.gridSize = static_cast<int>(get<int64_t>(*g, "grid", 16));
+    cfg.profiles = get<bool>(*g, "profiles", true);
     cfg.noiseReduction = get<double>(*g, "noise_reduction", 0.45);
     cfg.monstercat = get<bool>(*g, "monstercat", false);
   }
@@ -275,6 +277,72 @@ int Config::uniquifyIds(const std::string& path) {
   std::string out;
   for (auto& l : lines) out += l + "\n";
   return writeFileAtomic(path, out) ? renamed : 0;
+}
+
+// splits a config into its [[widget]] blocks and the rest; a block runs from
+// its header to the next header, its trailing blank lines left to the rest
+static void splitWidgets(const std::string& text, std::string& rest, std::string& blocks) {
+  static const std::regex kHeader(R"(^\s*\[)");
+  static const std::regex kWidget(R"(^\s*\[\[\s*widget\s*\]\]\s*(#.*)?$)");
+  std::istringstream in(text);
+  std::vector<std::string> lines;
+  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  std::vector<bool> inWidget(lines.size(), false);
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (!std::regex_search(lines[i], kWidget)) continue;
+    size_t j = i + 1;
+    while (j < lines.size() && !std::regex_search(lines[j], kHeader)) ++j;
+    size_t end = j;
+    trimBlockEnd(lines, i, end);
+    for (size_t k = i; k < end; ++k) inWidget[k] = true;
+    i = j - 1;
+  }
+  rest.clear();
+  blocks.clear();
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (!inWidget[i]) {
+      rest += lines[i] + "\n";
+      continue;
+    }
+    if (i > 0 && !inWidget[i - 1] && !blocks.empty()) blocks += "\n";  // one blank line between blocks
+    blocks += lines[i] + "\n";
+  }
+}
+
+std::string Config::widgetBlocks(const std::string& text) {
+  std::string rest, blocks;
+  splitWidgets(text, rest, blocks);
+  return blocks;
+}
+
+std::string Config::replaceWidgetBlocks(const std::string& text, const std::string& blocks) {
+  std::string rest, old;
+  splitWidgets(text, rest, old);
+  // collapse the blank runs the removed blocks leave behind
+  std::string out;
+  int blanks = 0;
+  std::istringstream in(rest);
+  for (std::string l; std::getline(in, l);) {
+    const bool blank = l.find_first_not_of(" \t") == std::string::npos;
+    blanks = blank ? blanks + 1 : 0;
+    if (blanks <= 1) out += l + "\n";
+  }
+  while (!out.empty() && (out.back() == '\n' || out.back() == ' ')) out.pop_back();
+  if (blocks.empty()) return out + "\n";
+  return out + "\n\n" + blocks + (blocks.ends_with("\n") ? "" : "\n");
+}
+
+int Config::switchProfile(const std::string& path, const std::string& dir, const std::string& fromKey,
+                          const std::string& fromLabel, const std::string& toKey) {
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  const std::string text = readFile(path);
+  const std::string saved = std::format("# undershell layout for {}\n# (restored whenever this wallpaper is shown)\n\n{}",
+                                        fromLabel.empty() ? fromKey : fromLabel, widgetBlocks(text));
+  if (!writeFileAtomic(dir + "/" + fromKey + ".toml", saved)) return -1;
+  const std::string next = dir + "/" + toKey + ".toml";
+  if (!std::filesystem::exists(next, ec)) return 0;
+  return writeFileAtomic(path, replaceWidgetBlocks(text, widgetBlocks(readFile(next)))) ? 1 : -1;
 }
 
 std::string Config::retargetBlock(const std::string& block, const std::string& id, int x, int y) {

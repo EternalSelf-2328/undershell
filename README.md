@@ -92,6 +92,22 @@ While editing with no music, the visualizers move with the demo spectrum.
 With the grid on (toolbar), positions snap to it (16 px) on release and are saved to the config,
 without touching the rest of the file.
 
+## A layout per wallpaper
+
+undershell remembers where your widgets were for each wallpaper. Arrange
+them for one wallpaper; when the wallpaper changes (Noctalia's picker,
+skwd-wall, `noctalia msg wallpaper-set`, a script) the layout on screen is
+filed under the old wallpaper and the new one's comes back: widgets, their
+number, positions, tilt, looks and options. A wallpaper seen for the first
+time keeps the current layout, so you start from it.
+
+- `config.toml` always holds the layout on screen; the others wait in
+  `~/.config/undershell/profiles/<sha256 of the image>.toml` (renaming or
+  moving a wallpaper keeps its layout).
+- Only the `[[widget]]` blocks move; `[general]` is shared.
+- `undershell msg status` shows the current profile; `profiles = false` in
+  `[general]` turns this off.
+
 ## Configuration
 
 `~/.config/undershell/config.toml`: it's created with defaults the first

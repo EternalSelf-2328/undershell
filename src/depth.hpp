@@ -37,9 +37,10 @@ public:
   void releaseGl();
   // true when the plugin is active but some output still has no mask
   [[nodiscard]] bool missing() const { return m_missing; }
+  // sha256 of a file, cached by mtime and size (also keys wallpaper profiles)
+  std::string sha256Of(const std::string& path);
 
 private:
-  std::string sha256Of(const std::string& path);
   static std::string findMask(const std::string& sha, double threshold, double feather);
   static bool loadPng(const std::string& path, DepthMask& out);
 

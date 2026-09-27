@@ -49,6 +49,7 @@ struct Config {
   std::string path;
   std::vector<WidgetConfig> widgets;
   int gridSize = 16;
+  bool profiles = true;  // a widget layout per wallpaper (profiles.cpp)
   // audio analysis
   double noiseReduction = 0.45;  // Ryoku's cava noise_reduction = 45
   bool monstercat = false;
@@ -62,6 +63,17 @@ struct Config {
   // ("visualizer" twice -> "visualizer", "visualizer-2") in place. Returns
   // how many it renamed.
   static int uniquifyIds(const std::string& path);
+  // Every [[widget]] block of a config text, in order (a wallpaper profile).
+  static std::string widgetBlocks(const std::string& text);
+  // `text` with its [[widget]] blocks swapped for `blocks`; everything else
+  // ([general], comments above it) is kept.
+  static std::string replaceWidgetBlocks(const std::string& text, const std::string& blocks);
+  // Files the widget layout in `path` under profile `fromKey` (in `dir`,
+  // labelled `fromLabel`) and, when `toKey` has a saved layout, puts that one
+  // in `path`. Returns 1 when a layout was restored, 0 when `toKey` had none
+  // (the current layout stays), -1 when saving failed (nothing changed).
+  static int switchProfile(const std::string& path, const std::string& dir, const std::string& fromKey,
+                           const std::string& fromLabel, const std::string& toKey);
   // A block's text with its id and position replaced (duplicating a widget).
   static std::string retargetBlock(const std::string& block, const std::string& id, int x, int y);
   // Sets `key = value` (value already TOML-formatted) inside widget `id`'s

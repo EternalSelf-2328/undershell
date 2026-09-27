@@ -97,6 +97,30 @@ int main() {
   CHECK(copy.find("id = \"clock-2\"") != std::string::npos && copy.find("x = 37") != std::string::npos &&
         copy.find("y = 38 # top") != std::string::npos && copy.find("type = \"clock\"") != std::string::npos);
 
+  // wallpaper profiles: only [[widget]] blocks move, [general] stays
+  {
+    const std::string two = "# top\n[general]\ngrid = 8\n\n[[widget]]\nid = \"a\"\nx = 1\n\n[[widget]]\nid = \"b\"\nx = 2\n";
+    const std::string blocks = Config::widgetBlocks(two);
+    CHECK(blocks == "[[widget]]\nid = \"a\"\nx = 1\n\n[[widget]]\nid = \"b\"\nx = 2\n");
+    const std::string swapped = Config::replaceWidgetBlocks(two, "[[widget]]\nid = \"c\"\nx = 3\n");
+    CHECK(swapped == "# top\n[general]\ngrid = 8\n\n[[widget]]\nid = \"c\"\nx = 3\n");
+    CHECK(Config::replaceWidgetBlocks(two, "") == "# top\n[general]\ngrid = 8\n");
+
+    // A -> B (new: keeps A's layout) -> edit on B -> A (restored) -> B (restored)
+    const std::string pdir = dir + "/profiles";
+    writeFileAtomic(path, two);
+    CHECK(Config::switchProfile(path, pdir, "A", "a.png", "B") == 0);
+    CHECK(readFile(path) == two);
+    writeFileAtomic(path, Config::replaceWidgetBlocks(readFile(path), "[[widget]]\nid = \"only-b\"\nx = 9\n"));
+    CHECK(Config::switchProfile(path, pdir, "B", "b.png", "A") == 1);
+    Config back = Config::load(path);
+    CHECK(back.widgets.size() == 2 && back.widgets[0].id == "a" && back.gridSize == 8);
+    CHECK(readFile(pdir + "/A.toml").find("# undershell layout for a.png") == 0);
+    CHECK(Config::switchProfile(path, pdir, "A", "a.png", "B") == 1);
+    back = Config::load(path);
+    CHECK(back.widgets.size() == 1 && back.widgets[0].id == "only-b" && back.widgets[0].x == 9);
+  }
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }

@@ -127,6 +127,12 @@ private:
   void loadConfig();
   void refreshNoctalia();
   void updateDepth();
+  // wallpaper profiles (profiles.cpp)
+  void checkProfile();
+  std::string profileDir() const;
+  std::string profileKeyFor(const std::string& wallpaper);
+  std::string profileWallpaper() const;
+  std::string profileStatus() const;
   void syncWidgets();
   void createSurface(Widget& w);
   void destroySurface(Widget& w);
@@ -242,6 +248,7 @@ private:
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
 
+  std::string m_profileKey, m_profileWall;  // the wallpaper config.toml's layout belongs to
   bool m_edit = false;
   std::vector<std::unique_ptr<EditSurface>> m_editSurfaces;
   EditSurface* m_pointerEdit = nullptr;  // editor surface under the pointer
