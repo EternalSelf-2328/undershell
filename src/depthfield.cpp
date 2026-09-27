@@ -155,7 +155,7 @@ DepthField guidedFilter(const std::vector<float>& guide, const DepthField& coars
 }
 
 bool refineDepth(const std::string& wallpaper, const DepthField& depth, DepthField& out, int* imageW, int* imageH,
-                 std::vector<float>* guideOut) {
+                 std::vector<float>* guideOut, std::vector<std::uint8_t>* rgbaOut) {
   GError* err = nullptr;
   GdkPixbuf* src = gdk_pixbuf_new_from_file(wallpaper.c_str(), &err);
   if (!src) {
@@ -183,6 +183,11 @@ bool refineDepth(const std::string& wallpaper, const DepthField& depth, DepthFie
       const guchar* p = px + static_cast<size_t>(y) * stride + static_cast<size_t>(x) * nch;
       const int l = (p[0] * 299 + p[1] * 587 + p[2] * 114) / 1000;
       guide[static_cast<size_t>(y) * rw + x] = static_cast<float>(l) / 255.0F;
+      if (rgbaOut) {
+        if (rgbaOut->empty()) rgbaOut->resize(static_cast<size_t>(rw) * rh * 4);
+        std::uint8_t* d = rgbaOut->data() + (static_cast<size_t>(y) * rw + x) * 4;
+        d[0] = p[0], d[1] = p[1], d[2] = p[2], d[3] = 255;
+      }
     }
   g_object_unref(small);
   out = guidedFilter(guide, resizeBicubic(depth, rw, rh), kRadius, kEpsilon);
@@ -352,9 +357,10 @@ void stampDab(std::vector<float>& stroke, int w, int h, double cx, double cy, do
   box.add(d.x1 - 1, d.y1 - 1, 0);
 }
 
-void mergeStroke(DepthEdits& e, const std::vector<float>& stroke, DepthTool tool, float value, PixelBox box) {
+void mergeStroke(DepthEdits& e, const std::vector<float>& stroke, DepthTool tool, float value, PixelBox box,
+                 const std::vector<float>* perPixel) {
   box.clip(e.w, e.h);
-  const float t = tool == DepthTool::Front ? 1.0F : tool == DepthTool::Back ? 0.0F : std::clamp(value, 0.0F, 1.0F);
+  const float fixed = tool == DepthTool::Front ? 1.0F : tool == DepthTool::Back ? 0.0F : std::clamp(value, 0.0F, 1.0F);
   for (int y = box.y0; y < box.y1; ++y)
     for (int x = box.x0; x < box.x1; ++x) {
       const size_t i = static_cast<size_t>(y) * e.w + x;
@@ -365,11 +371,170 @@ void mergeStroke(DepthEdits& e, const std::vector<float>& stroke, DepthTool tool
         e.cover[i] = static_cast<std::uint8_t>(std::lround(c * (1 - s) * 255));
         continue;
       }
+      const float t = (tool == DepthTool::Smooth && perPixel) ? std::clamp((*perPixel)[i], 0.0F, 1.0F) : fixed;
       const float nc = c + s * (1 - c);
       const float nt = nc > 0 ? ((e.target[i] / 255.0F) * c * (1 - s) + t * s) / nc : t;
       e.cover[i] = static_cast<std::uint8_t>(std::lround(nc * 255));
       e.target[i] = static_cast<std::uint8_t>(std::lround(std::clamp(nt, 0.0F, 1.0F) * 255));
     }
+}
+
+std::vector<float> regionGrow(const std::vector<float>& guide, const std::vector<float>& depth, int w, int h, int sx,
+                              int sy, float tolerance, PixelBox& box) {
+  std::vector<float> mask(static_cast<size_t>(w) * h, 0.0F);
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) return mask;
+  tolerance = std::clamp(tolerance, 0.01F, 1.0F);
+  // a step between neighbours may be small (ramps are fine); the region as a
+  // whole also stays near the seed's tone, so it cannot leak across a fade
+  const float stepTone = 0.012F + 0.05F * tolerance, stepDepth = 0.006F + 0.03F * tolerance;
+  const float spanTone = 0.08F + 0.45F * tolerance;
+  const size_t seed = static_cast<size_t>(sy) * w + sx;
+  const float g0 = guide[seed];
+  std::vector<std::uint8_t> seen(mask.size(), 0);
+  std::vector<int> queue;
+  queue.reserve(1 << 16);
+  queue.push_back(static_cast<int>(seed));
+  seen[seed] = 1;
+  int minX = sx, maxX = sx, minY = sy, maxY = sy;
+  for (size_t head = 0; head < queue.size(); ++head) {
+    const int i = queue[head];
+    const int x = i % w, y = i / w;
+    mask[static_cast<size_t>(i)] = 1.0F;
+    minX = std::min(minX, x), maxX = std::max(maxX, x), minY = std::min(minY, y), maxY = std::max(maxY, y);
+    const int nb[4][2] = {{x - 1, y}, {x + 1, y}, {x, y - 1}, {x, y + 1}};
+    for (const auto& n : nb) {
+      if (n[0] < 0 || n[1] < 0 || n[0] >= w || n[1] >= h) continue;
+      const size_t j = static_cast<size_t>(n[1]) * w + n[0];
+      if (seen[j]) continue;
+      if (std::abs(guide[j] - guide[static_cast<size_t>(i)]) > stepTone) continue;
+      if (std::abs(depth[j] - depth[static_cast<size_t>(i)]) > stepDepth) continue;
+      if (std::abs(guide[j] - g0) > spanTone) continue;
+      seen[j] = 1;
+      queue.push_back(static_cast<int>(j));
+    }
+  }
+  // Make it one solid piece: close the gaps ink lines leave (dilate, then
+  // erode), fill the holes it encloses, soften the rim.
+  constexpr int kClose = 4;
+  PixelBox b;
+  b.add(minX, minY, kClose * 2 + 3);
+  b.add(maxX, maxY, kClose * 2 + 3);
+  b.clip(w, h);
+  const int bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+  std::vector<float> sub(static_cast<size_t>(bw) * bh);
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x) sub[static_cast<size_t>(y) * bw + x] = mask[static_cast<size_t>(y + b.y0) * w + x + b.x0];
+  auto grown = boxMean(sub, bw, bh, kClose);
+  for (float& v : grown) v = v > 0.01F ? 1.0F : 0.0F;
+  auto closed = boxMean(grown, bw, bh, kClose);
+  for (float& v : closed) v = v > 0.99F ? 1.0F : 0.0F;
+  // holes: the empty pixels the box's border cannot reach
+  std::vector<std::uint8_t> outside(closed.size(), 0);
+  std::vector<int> q;
+  auto push = [&](int x, int y) {
+    const size_t i = static_cast<size_t>(y) * bw + x;
+    if (closed[i] == 0.0F && !outside[i]) {
+      outside[i] = 1;
+      q.push_back(static_cast<int>(i));
+    }
+  };
+  for (int x = 0; x < bw; ++x) push(x, 0), push(x, bh - 1);
+  for (int y = 0; y < bh; ++y) push(0, y), push(bw - 1, y);
+  for (size_t head = 0; head < q.size(); ++head) {
+    const int x = q[head] % bw, y = q[head] / bw;
+    if (x > 0) push(x - 1, y);
+    if (x < bw - 1) push(x + 1, y);
+    if (y > 0) push(x, y - 1);
+    if (y < bh - 1) push(x, y + 1);
+  }
+  for (size_t i = 0; i < closed.size(); ++i)
+    if (!outside[i]) closed[i] = 1.0F;
+  const auto soft = boxMean(closed, bw, bh, 1);
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x)
+      mask[static_cast<size_t>(y + b.y0) * w + x + b.x0] = std::clamp((soft[static_cast<size_t>(y) * bw + x] - 0.2F) / 0.6F, 0.0F, 1.0F);
+  box = b;
+  return mask;
+}
+
+void fillPolygon(std::vector<float>& mask, int w, int h, const std::vector<std::pair<double, double>>& pts, PixelBox& box) {
+  if (pts.size() < 3) return;
+  double minY = pts[0].second, maxY = pts[0].second, minX = pts[0].first, maxX = pts[0].first;
+  for (const auto& [x, y] : pts) {
+    minY = std::min(minY, y), maxY = std::max(maxY, y), minX = std::min(minX, x), maxX = std::max(maxX, x);
+  }
+  const int y0 = std::max(0, static_cast<int>(std::floor(minY))), y1 = std::min(h - 1, static_cast<int>(std::ceil(maxY)));
+  std::vector<double> xs;
+  for (int y = y0; y <= y1; ++y) {
+    const double cy = y + 0.5;
+    xs.clear();
+    for (size_t k = 0; k < pts.size(); ++k) {
+      const auto& a = pts[k];
+      const auto& c = pts[(k + 1) % pts.size()];
+      if ((a.second <= cy) != (c.second <= cy)) xs.push_back(a.first + (cy - a.second) / (c.second - a.second) * (c.first - a.first));
+    }
+    std::sort(xs.begin(), xs.end());
+    for (size_t k = 0; k + 1 < xs.size(); k += 2) {
+      const int xa = std::max(0, static_cast<int>(std::ceil(xs[k] - 0.5))), xb = std::min(w - 1, static_cast<int>(std::floor(xs[k + 1] - 0.5)));
+      for (int x = xa; x <= xb; ++x) mask[static_cast<size_t>(y) * w + x] = 1.0F;
+    }
+  }
+  box.add(static_cast<int>(minX), static_cast<int>(minY), 1);
+  box.add(static_cast<int>(maxX), static_cast<int>(maxY), 1);
+  box.clip(w, h);
+}
+
+void snapMask(const std::vector<float>& guide, std::vector<float>& mask, int w, int h, PixelBox box, int radius) {
+  // Near the outline, each pixel joins the side whose local mean tone it is
+  // closer to: a rough lasso lands on the image's edges.
+  box.add(box.x0, box.y0, radius * 2);
+  box.add(box.x1 - 1, box.y1 - 1, radius * 2);
+  box.clip(w, h);
+  if (box.empty()) return;
+  const int bw = box.x1 - box.x0, bh = box.y1 - box.y0;
+  const size_t n = static_cast<size_t>(bw) * bh;
+  std::vector<float> g(n), m(n), gm(n), inv(n), ginv(n);
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x) {
+      const size_t src = static_cast<size_t>(y + box.y0) * w + (x + box.x0), dst = static_cast<size_t>(y) * bw + x;
+      g[dst] = guide[src];
+      m[dst] = mask[src] > 0.5F ? 1.0F : 0.0F;
+      gm[dst] = g[dst] * m[dst];
+      inv[dst] = 1 - m[dst];
+      ginv[dst] = g[dst] * inv[dst];
+    }
+  const auto cntIn = boxMean(m, bw, bh, radius), sumIn = boxMean(gm, bw, bh, radius);
+  const auto cntOut = boxMean(inv, bw, bh, radius), sumOut = boxMean(ginv, bw, bh, radius);
+  std::vector<float> out(m);
+  for (size_t i = 0; i < n; ++i) {
+    if (cntIn[i] < 0.02F || cntOut[i] < 0.02F) continue;  // not near the outline
+    const float meanIn = sumIn[i] / cntIn[i], meanOut = sumOut[i] / cntOut[i];
+    if (std::abs(meanIn - meanOut) < 0.04F) continue;  // no edge to find here: keep the outline
+    out[i] = std::abs(g[i] - meanIn) <= std::abs(g[i] - meanOut) ? 1.0F : 0.0F;
+  }
+  const auto soft = boxMean(out, bw, bh, 1);
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x)
+      mask[static_cast<size_t>(y + box.y0) * w + (x + box.x0)] = std::clamp((soft[static_cast<size_t>(y) * bw + x] - 0.2F) / 0.6F, 0.0F, 1.0F);
+}
+
+void blurredDepth(const DepthField& base, const DepthEdits& e, PixelBox box, int radius, std::vector<float>& out) {
+  out.resize(base.v.size());
+  PixelBox b = box;
+  b.add(b.x0, b.y0, radius);
+  b.add(b.x1 - 1, b.y1 - 1, radius);
+  b.clip(base.w, base.h);
+  if (b.empty()) return;
+  const int bw = b.x1 - b.x0, bh = b.y1 - b.y0;
+  std::vector<float> sub(static_cast<size_t>(bw) * bh);
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x) {
+      const size_t i = static_cast<size_t>(y + b.y0) * base.w + x + b.x0;
+      sub[static_cast<size_t>(y) * bw + x] = editedDepth(base.v[i], e.target[i], e.cover[i]);
+    }
+  const auto blur = boxMean(sub, bw, bh, radius);
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x) out[static_cast<size_t>(y + b.y0) * base.w + x + b.x0] = blur[static_cast<size_t>(y) * bw + x];
 }
 
 std::vector<std::uint16_t> toHalf(const std::vector<float>& v) {

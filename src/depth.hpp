@@ -38,6 +38,9 @@ struct DepthMask {
   std::vector<float> guide;     // smoothed luma, for the smart brush
   DepthEdits edits;             // hand corrections (depth-edits/<sha>.usde)
   bool hasEdits = false;
+  std::vector<std::uint8_t> colour;  // the wallpaper at the field's size (the brush's zoom)
+  GLuint wallTexture = 0;
+  bool wallStale = false;
 };
 
 class Jobs;
@@ -56,8 +59,10 @@ public:
   DepthMask* paintable(const std::string& output);
   // re-uploads `box` of the field (needs GL), previewing `stroke` if given
   void uploadRect(DepthMask& m, PixelBox box, const std::vector<float>* stroke = nullptr, DepthTool tool = DepthTool::Front,
-                  float value = 0);
+                  float value = 0, const std::vector<float>* perPixel = nullptr);
   bool saveEdits(DepthMask& m);
+  // the wallpaper as a texture, for the zoomed brush view (needs GL)
+  GLuint wallpaperTexture(DepthMask& m);
 
   // Re-resolves which mask belongs to each output. Returns true on change.
   bool update(const NoctaliaState& st, const std::vector<std::string>& outputs);

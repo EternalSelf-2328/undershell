@@ -19,6 +19,9 @@ uniform float u_useField;
 uniform float u_level;
 uniform float u_feather;
 uniform vec4 u_tint;
+uniform vec3 u_view;      // centre (output px) and zoom of the brush view
+uniform sampler2D u_wall;
+uniform float u_wallMode;
 
 float coverageAt(vec2 uv) {
     if (u_useField > 0.5) {
@@ -58,7 +61,14 @@ vec2 calculateWallpaperUV(vec2 uv, float imgWidth, float imgHeight) {
 
 void main() {
     vec2 outputPixel = u_surfaceOffset + v_uv * u_surfaceSize;
+    if (u_view.z > 1.0001) outputPixel = u_view.xy + (outputPixel - u_outputSize * 0.5) / u_view.z;
     vec2 maskUV = calculateWallpaperUV(outputPixel / u_outputSize, u_imageSize.x, u_imageSize.y);
+    if (u_wallMode > 0.5) {
+        bool inside = (u_fillMode > 3.5 && u_fillMode < 4.5) || !(maskUV.x < 0.0 || maskUV.x > 1.0 || maskUV.y < 0.0 || maskUV.y > 1.0);
+        vec2 uv = (u_fillMode > 3.5 && u_fillMode < 4.5) ? fract(maskUV) : maskUV;
+        fragColor = vec4(inside ? texture(u_wall, uv).rgb : vec3(0.0), 1.0);
+        return;
+    }
     float coverage = 0.0;
     if (u_fillMode > 3.5 && u_fillMode < 4.5) {
         coverage = coverageAt(fract(maskUV));
@@ -73,9 +83,7 @@ void main() {
 }
 )";
 
-void MaskPass::draw(const MaskParams& p) {
-  const bool useField = p.field && p.level > 0;
-  if ((!p.texture && !useField) || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
+void MaskPass::setup(const MaskParams& p) {
   if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kMaskFrag, "mask");
   glUseProgram(m_prog.id());
   glUniform2f(m_prog.uniform("u_surfaceSize"), p.surfaceW, p.surfaceH);
@@ -83,14 +91,23 @@ void MaskPass::draw(const MaskParams& p) {
   glUniform2f(m_prog.uniform("u_outputSize"), p.outputW, p.outputH);
   glUniform2f(m_prog.uniform("u_imageSize"), p.imageW, p.imageH);
   glUniform1f(m_prog.uniform("u_fillMode"), static_cast<float>(p.fillMode));
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, useField ? p.field : p.texture);
-  glUniform1i(m_prog.uniform("u_mask"), 0);
-  glUniform1i(m_prog.uniform("u_field"), 0);
-  glUniform1f(m_prog.uniform("u_useField"), useField ? 1.0F : 0.0F);
+  glUniform3f(m_prog.uniform("u_view"), p.viewX, p.viewY, p.zoom);
   glUniform1f(m_prog.uniform("u_level"), p.level);
   glUniform1f(m_prog.uniform("u_feather"), p.feather);
+  glUniform1i(m_prog.uniform("u_mask"), 0);
+  glUniform1i(m_prog.uniform("u_field"), 0);
+  glUniform1i(m_prog.uniform("u_wall"), 1);
+  glUniform1f(m_prog.uniform("u_wallMode"), 0.0F);
   glUniform4f(m_prog.uniform("u_tint"), 0, 0, 0, 0);
+}
+
+void MaskPass::draw(const MaskParams& p) {
+  const bool useField = p.field && p.level > 0;
+  if ((!p.texture && !useField) || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
+  setup(p);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, useField ? p.field : p.texture);
+  glUniform1f(m_prog.uniform("u_useField"), useField ? 1.0F : 0.0F);
   // DestinationOut on premultiplied colour: dst *= (1 - coverage)
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
@@ -100,25 +117,27 @@ void MaskPass::draw(const MaskParams& p) {
 
 void MaskPass::drawTint(const MaskParams& p, Color tint) {
   if (!p.field || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
-  if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kMaskFrag, "mask");
-  glUseProgram(m_prog.id());
-  glUniform2f(m_prog.uniform("u_surfaceSize"), p.surfaceW, p.surfaceH);
-  glUniform2f(m_prog.uniform("u_surfaceOffset"), p.offsetX, p.offsetY);
-  glUniform2f(m_prog.uniform("u_outputSize"), p.outputW, p.outputH);
-  glUniform2f(m_prog.uniform("u_imageSize"), p.imageW, p.imageH);
-  glUniform1f(m_prog.uniform("u_fillMode"), static_cast<float>(p.fillMode));
+  setup(p);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, p.field);
-  glUniform1i(m_prog.uniform("u_mask"), 0);
-  glUniform1i(m_prog.uniform("u_field"), 0);
   glUniform1f(m_prog.uniform("u_useField"), 1.0F);
-  glUniform1f(m_prog.uniform("u_level"), p.level);
-  glUniform1f(m_prog.uniform("u_feather"), p.feather);
   glUniform4f(m_prog.uniform("u_tint"), tint.r, tint.g, tint.b, tint.a);
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
   drawUnitQuad();
   glDisable(GL_BLEND);
+}
+
+void MaskPass::drawWallpaper(const MaskParams& p, GLuint wallpaper) {
+  if (!wallpaper || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
+  setup(p);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, wallpaper);
+  glActiveTexture(GL_TEXTURE0);
+  glUniform1f(m_prog.uniform("u_useField"), 0.0F);
+  glUniform1f(m_prog.uniform("u_wallMode"), 1.0F);
+  glDisable(GL_BLEND);  // opaque: it stands in for the real wallpaper
+  drawUnitQuad();
 }
 
 static const char* kOverlayFrag = R"(#version 300 es

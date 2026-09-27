@@ -110,17 +110,28 @@ The depth model guesses: an object may come out as a ramp (so a plane cuts
 it in two), and the background next to an object often gets a halo of
 false nearness. The **brush** button in the editor's toolbar opens the
 depth brush: the wallpaper is tinted where it would cover the selected
-widget (or, with none selected, the plugin's plane), and you paint over it
-to fix it:
+widget (or, with none selected, the plugin's plane), and you correct it.
 
-- **To front** — always in front of every widget; **To back** — always
-  behind; **Match** — takes the depth where the stroke starts (make one
-  background as far as another); **Erase** — removes corrections.
-- The **smart brush** (on by default) only paints what looks like the spot
-  under its centre, so a stroke stays on its side of the image's edges;
-  turn it off for free painting.
-- The wheel (or the slider) sizes the brush; **Undo stroke** / Ctrl+Z,
-  **Clear all** (two clicks); right click or Esc leaves the brush.
+**Tools** (how you pick an area) — none needs a steady hand except the brush:
+
+- **Brush** — paint; with *Keep to edges* on it only takes what looks like
+  the spot under its centre. Shift+wheel sizes it.
+- **Wand** — one click takes a whole object: the region that continues
+  smoothly in tone and depth, filled solid. Shift+wheel sets the tolerance.
+- **Lasso** — click around an object (no dragging); click the first point,
+  double-click or press Enter to close; Backspace drops the last point, Esc
+  cancels. With *Keep to edges* the outline settles onto nearby edges.
+- **Hand** — drag to move the zoomed view (the middle button and the arrow
+  keys do it with any tool).
+
+**Actions** (what happens there): **To front**, **To back**, **Match** (the
+depth where you start), **Erase** (corrections), **Smooth** (softens
+jagged or abrupt depth).
+
+**Zoom**: the wheel zooms about the pointer up to 8× (also + / − / 0 and the
+panel's buttons); zoomed, the editor shows the wallpaper magnified and the
+brush gets finer by the same factor. **Undo** / Ctrl+Z steps back one
+stroke or selection; **Clear all** asks twice; right click or Esc leaves.
 
 Corrections are kept per wallpaper in `~/.config/undershell/depth-edits/`
 and apply to every widget, including those on the plugin's plane.

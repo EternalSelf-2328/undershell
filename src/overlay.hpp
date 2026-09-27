@@ -19,6 +19,8 @@ struct MaskParams {
   // instead of using the plugin's mask (level 0..1, feather 0..1)
   GLuint field = 0;
   float level = 0, feather = 0;
+  // the brush's zoom: output point shown at the surface centre, and scale
+  float viewX = 0, viewY = 0, zoom = 1;
 };
 
 // Erases widget pixels under the wallpaper_depth foreground (DestinationOut),
@@ -29,8 +31,11 @@ public:
   // the editor's depth preview: `tint` (straight alpha) where the field is
   // nearer than p.level, i.e. what would cover a widget on that plane
   void drawTint(const MaskParams& p, Color tint);
+  // the wallpaper itself through the same maths and view (the zoomed brush)
+  void drawWallpaper(const MaskParams& p, GLuint wallpaper);
 
 private:
+  void setup(const MaskParams& p);
   Program m_prog;
 };
 

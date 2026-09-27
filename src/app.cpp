@@ -856,7 +856,7 @@ void App::renderEdit(EditSurface& e) {
                    m_gridOn ? static_cast<float>(m_config.gridSize) : 0.0F, m_guidesV, m_guidesH, handle);
     if (m_paintMode && e.output) {
       // depth mode: tint what would cover the selected widget
-      if (const DepthMask* m = m_depth.get(e.output->name); m && m->field) {
+      if (DepthMask* m = m_depth.paintable(e.output->name); m && m->field) {
         MaskParams mp;
         mp.surfaceW = static_cast<float>(e.w);
         mp.surfaceH = static_cast<float>(e.h);
@@ -868,6 +868,13 @@ void App::renderEdit(EditSurface& e) {
         mp.field = m->field;
         mp.level = previewPlane();
         mp.feather = static_cast<float>(m_noctalia.state().depthFeather);
+        if (m_zoom > 1.0001) {
+          // zoomed: draw the wallpaper ourselves, magnified, under the tint
+          mp.viewX = static_cast<float>(m_viewX);
+          mp.viewY = static_cast<float>(m_viewY);
+          mp.zoom = static_cast<float>(m_zoom);
+          m_maskPass.drawWallpaper(mp, m_depth.wallpaperTexture(*m));
+        }
         m_maskPass.drawTint(mp, Color{accent.r, accent.g, accent.b, 0.42F});
       }
     }

@@ -32,7 +32,8 @@ DepthField guidedFilter(const std::vector<float>& guide, const DepthField& coars
 // depth_helper.py refine_depth: the depth map aligned to the wallpaper's edges,
 // at the plugin's refinement size (longest side <= 1920). Decodes the image.
 bool refineDepth(const std::string& wallpaper, const DepthField& depth, DepthField& out, int* imageW = nullptr,
-                 int* imageH = nullptr, std::vector<float>* guideOut = nullptr);
+                 int* imageH = nullptr, std::vector<float>* guideOut = nullptr,
+                 std::vector<std::uint8_t>* rgbaOut = nullptr);
 
 // Noctalia's calculateWallpaperUV on the CPU: an output pixel -> image uv
 // (0..1). False when the pixel shows no image (fit/center letterbox).
@@ -64,10 +65,23 @@ float editedDepth(float base, std::uint8_t target, std::uint8_t cover);
 // pixels that look like the one under its centre, so it stops at edges.
 void stampDab(std::vector<float>& stroke, int w, int h, double cx, double cy, double radius, PixelBox& box,
               const std::vector<float>* guide = nullptr, const std::vector<float>* depth = nullptr);
-// the brush tools
-enum class DepthTool { Front = 0, Back = 1, Match = 2, Erase = 3 };
-// lays a stroke over the edits (Match pulls towards `value`, 0..1)
-void mergeStroke(DepthEdits& e, const std::vector<float>& stroke, DepthTool tool, float value, PixelBox box);
+// what a stroke or selection does
+enum class DepthTool { Front = 0, Back = 1, Match = 2, Erase = 3, Smooth = 4 };
+// Lays a stroke over the edits: Match pulls towards `value` (0..1); Smooth
+// towards `perPixel` (a field-size target, e.g. the blurred depth).
+void mergeStroke(DepthEdits& e, const std::vector<float>& stroke, DepthTool tool, float value, PixelBox box,
+                 const std::vector<float>* perPixel = nullptr);
+
+// The magic wand: the region around (sx, sy) that continues smoothly in tone
+// and depth, stopping at edges. `tolerance` 0..1. Returns a field-size mask.
+std::vector<float> regionGrow(const std::vector<float>& guide, const std::vector<float>& depth, int w, int h, int sx,
+                              int sy, float tolerance, PixelBox& box);
+// the lasso: fills a polygon (field pixels) into a mask
+void fillPolygon(std::vector<float>& mask, int w, int h, const std::vector<std::pair<double, double>>& pts, PixelBox& box);
+// pulls a rough outline onto nearby image edges (guided filter by the guide)
+void snapMask(const std::vector<float>& guide, std::vector<float>& mask, int w, int h, PixelBox box, int radius);
+// the depth as edited, blurred over `radius`, within `box` (field-size result)
+void blurredDepth(const DepthField& base, const DepthEdits& e, PixelBox box, int radius, std::vector<float>& out);
 
 // IEEE half floats for an R16F texture
 std::vector<std::uint16_t> toHalf(const std::vector<float>& v);

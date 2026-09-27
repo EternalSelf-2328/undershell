@@ -118,8 +118,9 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
         m_jobs->run([this, out, wall, npy, sha, editsPath]() -> Jobs::Done {
           DepthField raw, refined;
           std::vector<float> guide;
+          std::vector<std::uint8_t> colour;
           int iw = 0, ih = 0;
-          const bool ok = loadNpyF32(npy, raw) && refineDepth(wall, raw, refined, &iw, &ih, &guide);
+          const bool ok = loadNpyF32(npy, raw) && refineDepth(wall, raw, refined, &iw, &ih, &guide, &colour);
           DepthEdits edits;
           bool hasEdits = false;
           std::vector<std::uint16_t> half;
@@ -135,7 +136,7 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
             half = toHalf(applied);
           }
           return [this, out, npy, ok, iw, ih, sha, hasEdits, refined = std::move(refined), guide = std::move(guide),
-                  edits = std::move(edits), half = std::move(half)]() mutable {
+                  edits = std::move(edits), half = std::move(half), colour = std::move(colour)]() mutable {
             auto it = m_masks.find(out);
             if (it == m_masks.end() || it->second.fieldNpy != npy) return;  // superseded
             if (!ok) {
@@ -153,6 +154,8 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
             it->second.guide = std::move(guide);
             it->second.edits = std::move(edits);
             it->second.hasEdits = hasEdits;
+            it->second.colour = std::move(colour);
+            it->second.wallStale = it->second.wallTexture != 0;
             US_INFO("depth field for {}: {}x{}", out, fw, fh);
             if (m_fieldReady) m_fieldReady();
           };
@@ -226,7 +229,27 @@ DepthMask* DepthMasks::paintable(const std::string& output) {
   return &it->second;
 }
 
-void DepthMasks::uploadRect(DepthMask& m, PixelBox box, const std::vector<float>* stroke, DepthTool tool, float value) {
+GLuint DepthMasks::wallpaperTexture(DepthMask& m) {
+  if (m.wallStale && m.wallTexture) {
+    glDeleteTextures(1, &m.wallTexture);
+    m.wallTexture = 0;
+  }
+  m.wallStale = false;
+  if (!m.wallTexture && !m.colour.empty()) {
+    glGenTextures(1, &m.wallTexture);
+    glBindTexture(GL_TEXTURE_2D, m.wallTexture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m.fieldW, m.fieldH, 0, GL_RGBA, GL_UNSIGNED_BYTE, m.colour.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  }
+  return m.wallTexture;
+}
+
+void DepthMasks::uploadRect(DepthMask& m, PixelBox box, const std::vector<float>* stroke, DepthTool tool, float value,
+                            const std::vector<float>* perPixel) {
   box.clip(m.fieldW, m.fieldH);
   if (box.empty() || !m.field) return;
   const int bw = box.x1 - box.x0, bh = box.y1 - box.y0;
@@ -238,7 +261,7 @@ void DepthMasks::uploadRect(DepthMask& m, PixelBox box, const std::vector<float>
     preview.target.resize(vals.size());
     preview.cover.resize(vals.size());
   }
-  std::vector<float> sub(stroke ? vals.size() : 0);
+  std::vector<float> sub(stroke ? vals.size() : 0), subTarget(stroke && perPixel ? vals.size() : 0);
   for (int y = 0; y < bh; ++y)
     for (int x = 0; x < bw; ++x) {
       const size_t src = static_cast<size_t>(y + box.y0) * m.fieldW + (x + box.x0), dst = static_cast<size_t>(y) * bw + x;
@@ -246,9 +269,10 @@ void DepthMasks::uploadRect(DepthMask& m, PixelBox box, const std::vector<float>
         preview.target[dst] = m.edits.target[src];
         preview.cover[dst] = m.edits.cover[src];
         sub[dst] = (*stroke)[src];
+        if (perPixel) subTarget[dst] = (*perPixel)[src];
       }
     }
-  if (stroke) mergeStroke(preview, sub, tool, value, {0, 0, bw, bh});
+  if (stroke) mergeStroke(preview, sub, tool, value, {0, 0, bw, bh}, perPixel ? &subTarget : nullptr);
   for (int y = 0; y < bh; ++y)
     for (int x = 0; x < bw; ++x) {
       const size_t src = static_cast<size_t>(y + box.y0) * m.fieldW + (x + box.x0), dst = static_cast<size_t>(y) * bw + x;
@@ -279,7 +303,8 @@ void DepthMasks::releaseGl() {
   for (auto& [k, m] : m_masks) {
     if (m.texture) glDeleteTextures(1, &m.texture);
     if (m.field) glDeleteTextures(1, &m.field);
-    m.texture = m.field = 0;
+    if (m.wallTexture) glDeleteTextures(1, &m.wallTexture);
+    m.texture = m.field = m.wallTexture = 0;
   }
 }
 

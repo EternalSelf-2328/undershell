@@ -336,6 +336,45 @@ bool App::modActive(const char* name) const {
 // Returns true for keys that auto-repeat while held.
 bool App::keyAction(uint32_t key) {
   if (!m_renaming.empty()) return textKey(key);
+  if (m_paintMode) {
+    const bool ctrlHeld = modActive(XKB_MOD_NAME_CTRL);
+    const Output* o = m_pointerEdit ? m_pointerEdit->output : m_uiOutput;
+    const double cx = o ? o->logicalW() / 2 : 0, cy = o ? o->logicalH() / 2 : 0;
+    const double pan = 90 / m_zoom;
+    switch (key) {
+      case KEY_ESC:
+        if (!m_lasso.empty()) m_lasso.clear();
+        else setPaintMode(false);
+        markEditDirty();
+        return false;
+      case KEY_ENTER:
+      case KEY_KPENTER: lassoClose(); return false;
+      case KEY_BACKSPACE:
+        if (!m_lasso.empty()) m_lasso.pop_back();
+        markEditDirty();
+        return true;
+      case KEY_LEFT: m_viewX -= pan; clampPaintView(o); markEditDirty(); return true;
+      case KEY_RIGHT: m_viewX += pan; clampPaintView(o); markEditDirty(); return true;
+      case KEY_UP: m_viewY -= pan; clampPaintView(o); markEditDirty(); return true;
+      case KEY_DOWN: m_viewY += pan; clampPaintView(o); markEditDirty(); return true;
+      case KEY_EQUAL:
+      case KEY_KPPLUS: paintZoom(1.25, cx, cy); return true;
+      case KEY_MINUS:
+      case KEY_KPMINUS: paintZoom(1 / 1.25, cx, cy); return true;
+      case KEY_0:
+      case KEY_KP0:
+        m_zoom = 1;
+        markEditDirty();
+        return false;
+      case KEY_Z:
+        if (ctrlHeld) {
+          paintUndo();
+          return false;
+        }
+        break;
+      default: break;
+    }
+  }
   const bool shift = modActive(XKB_MOD_NAME_SHIFT);
   const bool ctrl = modActive(XKB_MOD_NAME_CTRL);
   const bool alt = modActive(XKB_MOD_NAME_ALT);
@@ -538,6 +577,13 @@ void App::onPointerMotion(double x, double y) {
     uiDrag(x);
     return;
   }
+  if (m_paintMode && m_panning) {  // dragging the zoomed view
+    m_viewX = m_panViewX - (x - m_panX) / m_zoom;
+    m_viewY = m_panViewY - (y - m_panY) / m_zoom;
+    clampPaintView(m_pointerEdit->output);
+    markEditDirty();
+    return;
+  }
   const int hover = m_drag == Drag::None ? uiHit(x, y) : -1;
   if (hover != m_uiHover) {
     m_uiHover = hover;
@@ -553,10 +599,12 @@ void App::onPointerMotion(double x, double y) {
   }
   if (m_paintMode) {
     // depth mode: the canvas paints, widgets stay put
-    if (m_painting) paintMove(x, y);
+    double wx = 0, wy = 0;
+    paintWorld(m_pointerEdit->output, x, y, wx, wy);
+    if (m_painting) paintMove(wx, wy);
     if (m_pointerWidget) m_pointerWidget = nullptr;
-    setCursor("crosshair");
-    markEditDirty();  // the brush outline follows the pointer
+    setCursor(m_selectTool == 3 ? "grab" : "crosshair");
+    markEditDirty();  // the brush outline / lasso band follows the pointer
     return;
   }
   if (m_drag == Drag::None) {
@@ -651,6 +699,11 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     else setEditMode(false);
     return;
   }
+  if (m_paintMode && button == BTN_MIDDLE) {  // the middle button always pans
+    m_panning = state == WL_POINTER_BUTTON_STATE_PRESSED && m_zoom > 1.0001;
+    m_panX = m_px, m_panY = m_py, m_panViewX = m_viewX, m_panViewY = m_viewY;
+    return;
+  }
   if (button != BTN_LEFT) return;
   if (m_drag == Drag::Slider) {
     if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
@@ -665,11 +718,24 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     return;
   }
   if (m_paintMode) {
+    double wx = 0, wy = 0;
+    paintWorld(m_pointerEdit->output, m_px, m_py, wx, wy);
     if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
       m_confirmClear = false;
-      paintBegin(m_px, m_py);
+      switch (m_selectTool) {
+        case 1: wandAt(wx, wy); break;
+        case 2: lassoClick(m_px, m_py); break;
+        case 3:
+          m_panning = m_zoom > 1.0001;
+          m_panX = m_px, m_panY = m_py, m_panViewX = m_viewX, m_panViewY = m_viewY;
+          setCursor("grabbing");
+          break;
+        default: paintBegin(wx, wy); break;
+      }
     } else {
       paintEnd();
+      if (m_panning) setCursor("grab");
+      m_panning = false;
     }
     return;
   }
@@ -751,9 +817,14 @@ void App::onScroll(double value) {
   const int step = m_scrollAcc > 0 ? 1 : -1;
   m_scrollAcc = 0;
   if (uiScroll(m_px, m_py, step)) return;
-  if (m_paintMode) {  // the wheel sizes the brush
-    m_brush = std::clamp(m_brush * (step > 0 ? 1 / 1.15 : 1.15), 6.0, 320.0);
-    markEditDirty();
+  if (m_paintMode) {
+    if (modActive(XKB_MOD_NAME_SHIFT)) {  // Shift+wheel: brush size / wand tolerance
+      if (m_selectTool == 1) m_wandTolerance = std::clamp(m_wandTolerance + (step > 0 ? -0.05F : 0.05F), 0.02F, 1.0F);
+      else m_brush = std::clamp(m_brush * (step > 0 ? 1 / 1.15 : 1.15), 6.0, 320.0);
+      markEditDirty();
+    } else {
+      paintZoom(step > 0 ? 1 / 1.25 : 1.25, m_px, m_py);  // the wheel zooms about the pointer
+    }
     return;
   }
   if (!m_pointerWidget) return;
@@ -793,8 +864,9 @@ void App::drawEditorText(EditSurface& e) {
   };
   // labels: id · look · size (and position while dragging)
   TextStyle ls{.family = "JetBrains Mono", .size = 12, .weight = 600};
+  const bool zoomed = m_paintMode && m_zoom > 1.0001;  // the labels would sit over the wrong spot
   for (auto& w : m_widgets) {
-    if (w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
+    if (zoomed || w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
     const bool sel = w.get() == m_selected;
     std::string label = std::format("{}  ·  {}  ·  {}×{}", w->cfg.id, lookOf(*w), w->cfg.width, w->cfg.height);
     if (rotated(w->cfg)) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));

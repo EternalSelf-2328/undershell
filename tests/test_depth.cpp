@@ -102,6 +102,42 @@ int main() {
   CHECK(plain[16 * sw + 34] > 0.9F);    // a plain brush spills over the edge
   CHECK(rough[16 * sw + 34] == 0.0F);   // the smart one does not
 
+  // the magic wand: a click on the dark half selects all of it (a gentle
+  // ramp inside is fine) and nothing of the bright half
+  {
+    std::vector<float> dp(static_cast<size_t>(sw) * sh);
+    for (int y = 0; y < sh; ++y)
+      for (int x = 0; x < sw; ++x) dp[static_cast<size_t>(y) * sw + x] = x < 32 ? 0.2F + x * 0.004F : 0.9F;
+    PixelBox wb2;
+    const auto sel = regionGrow(img, dp, sw, sh, 5, 5, 0.3F, wb2);
+    CHECK(sel[10 * sw + 28] == 1.0F && sel[20 * sw + 2] == 1.0F);
+    CHECK(sel[10 * sw + 40] == 0.0F && sel[10 * sw + 60] == 0.0F);
+  }
+  // the lasso: a square polygon fills its inside only
+  {
+    std::vector<float> m(static_cast<size_t>(sw) * sh, 0.0F);
+    PixelBox lb;
+    fillPolygon(m, sw, sh, {{10, 5}, {20, 5}, {20, 15}, {10, 15}}, lb);
+    CHECK(m[10 * sw + 15] == 1.0F && m[10 * sw + 25] == 0.0F && m[2 * sw + 15] == 0.0F && !lb.empty());
+    // a rough outline 3 px past the image edge is pulled back onto it
+    std::vector<float> r2(static_cast<size_t>(sw) * sh, 0.0F);
+    PixelBox rb2;
+    fillPolygon(r2, sw, sh, {{4, 4}, {35, 4}, {35, 28}, {4, 28}}, rb2);
+    snapMask(img, r2, sw, sh, rb2, 6);
+    CHECK(r2[16 * sw + 20] > 0.9F && r2[16 * sw + 34] < 0.1F);
+  }
+  // smoothing pulls a step towards its neighbourhood's mean
+  {
+    DepthField stepF{sw, sh, std::vector<float>(static_cast<size_t>(sw) * sh)};
+    for (int y = 0; y < sh; ++y)
+      for (int x = 0; x < sw; ++x) stepF.v[static_cast<size_t>(y) * sw + x] = x < 32 ? 0.0F : 1.0F;
+    DepthEdits none;
+    none.reset(sw, sh);
+    std::vector<float> blur;
+    blurredDepth(stepF, none, {28, 10, 36, 20}, 4, blur);
+    CHECK(blur[15 * sw + 31] > 0.3F && blur[15 * sw + 31] < 0.6F);
+  }
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }

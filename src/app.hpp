@@ -154,6 +154,15 @@ private:
   void paintUndo();
   void paintClear();
   void setPaintMode(bool on);
+  void paintWorld(const Output* o, double sx, double sy, double& wx, double& wy) const;  // screen -> wallpaper view
+  void paintScreen(const Output* o, double wx, double wy, double& sx, double& sy) const;
+  void paintZoom(double factor, double sx, double sy);  // about a screen point
+  void clampPaintView(const Output* o);
+  void applySelection(DepthMask& m, std::vector<float>& mask, PixelBox box, float matchValue);
+  void wandAt(double wx, double wy);
+  void lassoClick(double sx, double sy);
+  void lassoClose();
+  bool fieldAt(const Output* o, double wx, double wy, int& fx, int& fy);
   void commitRename();
   void syncWidgets();
   void createSurface(Widget& w);
@@ -201,7 +210,7 @@ public:
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
-                PaintSize, PaintSmart, PaintUndo, PaintClear } type = Panel;
+                PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -307,7 +316,15 @@ private:
   std::string m_confirmDelete;            // save armed for deletion (second click)
   int m_saveScroll = 0;                   // first row shown
   bool m_paintMode = false, m_painting = false, m_smartBrush = true, m_confirmClear = false;
-  int m_paintTool = 0;                    // DepthTool
+  int m_paintTool = 0;                    // DepthTool (what a stroke does)
+  int m_selectTool = 0;                   // 0 brush, 1 wand, 2 lasso, 3 hand
+  float m_wandTolerance = 0.25F;
+  double m_zoom = 1, m_viewX = 0, m_viewY = 0;  // brush view: output point at the centre
+  bool m_panning = false;
+  double m_panX = 0, m_panY = 0, m_panViewX = 0, m_panViewY = 0;
+  std::vector<std::pair<double, double>> m_lasso;  // wallpaper-view points
+  double m_lastClickAt = 0;
+  std::vector<float> m_smoothTarget;      // Smooth: the blurred depth under the stroke
   double m_brush = 60;                    // brush radius, output px
   float m_matchValue = 0;
   double m_lastDabX = 0, m_lastDabY = 0;

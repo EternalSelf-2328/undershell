@@ -215,11 +215,13 @@ constexpr float kBarY = 50, kBarH = 46, kBtn = 34, kGap = 6, kSep = 14, kChipH =
 constexpr float kSavesW = 540, kSavesHead = 92, kSaveRowH = 70, kSavePitch = 76;
 constexpr int kSaveRows = 5;
 // the depth brush panel
-constexpr float kPaintW = 300, kPaintH = 372;
-const char* kToolKeys[4][3] = {{"front", "Al frente", "To front"},
+constexpr float kPaintW = 300, kPaintH = 478;
+const char* kToolKeys[5][3] = {{"front", "Al frente", "To front"},
                                {"back", "Al fondo", "To back"},
                                {"match", "Igualar", "Match"},
-                               {"erase", "Borrar", "Erase"}};
+                               {"erase", "Borrar", "Erase"},
+                               {"smooth", "Suavizar", "Smooth"}};
+const char* kSelectKeys[4][3] = {{"brush", "Pincel", "Brush"}, {"wand", "Varita", "Wand"}, {"lasso", "Lazo", "Lasso"}, {"hand", "Mano", "Hand"}};
 
 bool isSaveControl(App::UiControl::Type t) {
   using T = App::UiControl::Type;
@@ -242,6 +244,9 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Help: return es ? "Atajos de teclado" : "Keyboard shortcuts";
     case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
     case T::Paint: return es ? "Pincel de profundidad: corrige qué queda delante" : "Depth brush: fix what stands in front";
+    case T::PaintZoomIn: return es ? "Acercar (rueda o +)" : "Zoom in (wheel or +)";
+    case T::PaintZoomOut: return es ? "Alejar (rueda o −)" : "Zoom out (wheel or −)";
+    case T::PaintZoomReset: return es ? "Tamaño real (0)" : "Actual size (0)";
     case T::SaveOverwrite: return es ? "Sobrescribir con lo que hay en pantalla" : "Overwrite with what is on screen";
     case T::SaveRename: return es ? "Renombrar" : "Rename";
     case T::SaveDelete: return es ? "Eliminar (clic otra vez para confirmar)" : "Delete (click again to confirm)";
@@ -356,14 +361,20 @@ void App::layoutUi(const EditSurface& e) {
   if (m_paintMode) {
     const float px = 24, py = kBarY + kBarH + 14;
     m_ui.push_back({UiControl::Panel, {px, py, kPaintW, kPaintH}, -1, "paint"});
-    const float bw = (kPaintW - 28 - 8) / 2;
+    const float sw4 = (kPaintW - 28 - 18) / 4;
     for (int t = 0; t < 4; ++t)
-      m_ui.push_back({UiControl::PaintTool, {px + 14 + (t % 2) * (bw + 8), py + 64 + (t / 2) * 52, bw, 44}, -1, std::to_string(t)});
-    m_ui.push_back({UiControl::PaintSize, {px + 14, py + 196, kPaintW - 28 - 56, 20}});
-    m_ui.push_back({UiControl::PaintSmart, {px + kPaintW - 14 - 38, py + 234, 38, 20}});
+      m_ui.push_back({UiControl::PaintSelect, {px + 14 + t * (sw4 + 6), py + 84, sw4, 48}, -1, std::to_string(t)});
+    const float aw = (kPaintW - 28 - 12) / 3;
+    for (int t = 0; t < 5; ++t)
+      m_ui.push_back({UiControl::PaintTool, {px + 14 + (t % 3) * (aw + 6), py + 164 + (t / 3) * 40, aw, 34}, -1, std::to_string(t)});
+    if (m_selectTool <= 1) m_ui.push_back({UiControl::PaintSize, {px + 14, py + 272, kPaintW - 28 - 60, 20}});
+    if (m_selectTool == 0 || m_selectTool == 2) m_ui.push_back({UiControl::PaintSmart, {px + kPaintW - 14 - 38, py + 306, 38, 20}});
+    m_ui.push_back({UiControl::PaintZoomOut, {px + 14, py + 340, 34, 30}});
+    m_ui.push_back({UiControl::PaintZoomIn, {px + 14 + 34 + 70, py + 340, 34, 30}});
+    m_ui.push_back({UiControl::PaintZoomReset, {px + kPaintW - 14 - 56, py + 340, 56, 30}});
     const float hb = (kPaintW - 28 - 8) / 2;
-    m_ui.push_back({UiControl::PaintUndo, {px + 14, py + 272, hb, 32}});
-    m_ui.push_back({UiControl::PaintClear, {px + 22 + hb, py + 272, hb, 32}});
+    m_ui.push_back({UiControl::PaintUndo, {px + 14, py + 382, hb, 32}});
+    m_ui.push_back({UiControl::PaintClear, {px + 22 + hb, py + 382, hb, 32}});
   }
 
   // ── popovers last: drawn on top, hit first ──
@@ -435,7 +446,20 @@ bool App::uiPress(int index, double x) {
       setPaintMode(!m_paintMode);
       return true;
     case UiControl::PaintTool:
-      m_paintTool = std::clamp(std::atoi(c.value.c_str()), 0, 3);
+      m_paintTool = std::clamp(std::atoi(c.value.c_str()), 0, 4);
+      markEditDirty();
+      return true;
+    case UiControl::PaintSelect:
+      m_selectTool = std::clamp(std::atoi(c.value.c_str()), 0, 3);
+      m_lasso.clear();
+      markEditDirty();
+      return true;
+    case UiControl::PaintZoomIn:
+    case UiControl::PaintZoomOut:
+      if (m_uiOutput) paintZoom(c.type == UiControl::PaintZoomIn ? 1.5 : 1 / 1.5, m_uiOutput->logicalW() / 2, m_uiOutput->logicalH() / 2);
+      return true;
+    case UiControl::PaintZoomReset:
+      m_zoom = 1;
       markEditDirty();
       return true;
     case UiControl::PaintSize:
@@ -584,7 +608,8 @@ void App::uiDrag(double x) {
   const UiControl& c = m_ui[static_cast<size_t>(m_sliderControl)];
   if (c.type == UiControl::PaintSize) {
     const double t = std::clamp((x - c.r.x) / c.r.w, 0.0, 1.0);
-    m_brush = 6 + t * t * (320 - 6);  // finer control at small sizes
+    if (m_selectTool == 1) m_wandTolerance = static_cast<float>(std::max(0.02, t));
+    else m_brush = 6 + t * t * (320 - 6);  // finer control at small sizes
     markEditDirty();
     return;
   }
@@ -686,6 +711,25 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
   } else if (name == "brush") {
     c.segment(cx + 5.5F, cy - 6.5F, cx - 0.5F, cy + 0.5F, 2.2F, col);
     c.circle(cx - 3.0F, cy + 3.5F, 3.4F, col);
+  } else if (name == "wand") {
+    c.segment(cx - 6, cy + 6, cx + 3, cy - 3, 2.2F, col);
+    c.segment(cx + 5, cy - 8, cx + 5, cy - 4, 1.4F, col);
+    c.segment(cx + 3, cy - 6, cx + 7, cy - 6, 1.4F, col);
+    c.circle(cx + 7.5F, cy + 1.5F, 1.1F, col);
+    c.circle(cx - 1.5F, cy - 7.0F, 1.1F, col);
+  } else if (name == "lasso") {
+    c.circle(cx, cy - 1.5F, 6.5F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.segment(cx - 3.5F, cy + 4, cx - 5.5F, cy + 8, 1.5F, col);
+  } else if (name == "hand") {
+    c.roundRect(cx - 5, cy - 1, 10, 8, 3, Color{0, 0, 0, 0}, 1.5F, col);
+    for (int k = 0; k < 3; ++k) c.segment(cx - 3.5F + k * 3.5F, cy - 1, cx - 3.5F + k * 3.5F, cy - 7 + (k == 1 ? -1.0F : 0.0F), 1.5F, col);
+    c.segment(cx - 5, cy + 2, cx - 8, cy - 1, 1.5F, col);
+  } else if (name == "smooth") {
+    c.circle(cx, cy, 7, withAlphaC(col, 0.25F));
+    c.circle(cx, cy, 4.5F, withAlphaC(col, 0.5F));
+    c.circle(cx, cy, 2.2F, col);
+  } else if (name == "minus") {
+    c.segment(cx - 6, cy, cx + 6, cy, 2.2F, col);
   } else if (name == "front" || name == "back") {
     // two stacked cards, the highlighted one in front or behind
     const bool front = name == "front";
@@ -911,56 +955,113 @@ void App::drawUi(EditSurface& e) {
     cv.roundRect(P.x + 16, P.y + 16, 24, 24, 8, withAlphaC(accent, 0.22F));
     icon(cv, "brush", P.x + 28, P.y + 28, accent);
     cv.text(es ? "Pincel de profundidad" : "Depth brush", head, P.x + 50, P.y + 12, ink);
-    cv.text(es ? "Pinta sobre el fondo para corregirlo" : "Paint over the wallpaper to fix it", label, P.x + 50, P.y + 32, dim);
-    cv.text(es ? "Tamaño" : "Size", label, P.x + 14, P.y + 174, dim);
-    cv.text(es ? "Pincel inteligente (respeta bordes)" : "Smart brush (keeps to edges)", label, P.x + 14, P.y + 234, dim);
+    cv.text(es ? "Corrige qué queda delante" : "Fix what stands in front", label, P.x + 50, P.y + 32, dim);
+    cv.text(es ? "Herramienta" : "Tool", label, P.x + 14, P.y + 62, dim);
+    cv.text(es ? "Acción" : "Action", label, P.x + 14, P.y + 142, dim);
+    if (m_selectTool <= 1)
+      cv.text(m_selectTool == 1 ? (es ? "Tolerancia" : "Tolerance") : (es ? "Tamaño" : "Size"), label, P.x + 14, P.y + 250, dim);
+    if (m_selectTool == 0 || m_selectTool == 2)
+      cv.text(es ? "Ajustar a bordes" : "Keep to edges", label, P.x + 14, P.y + 306, dim);
+    const std::string zoomText = std::format("{:.0f} %", m_zoom * 100);
+    auto [zw, zh] = measure(zoomText, mono);
+    cv.text(zoomText, mono, P.x + 14 + 34 + 35 - zw / 2, P.y + 348, ink);
     const DepthMask* dm = m_uiOutput ? m_depth.paintable(m_uiOutput->name) : nullptr;
-    std::string who = m_selected ? m_selected->cfg.id : (es ? "los widgets" : "the widgets");
+    const std::string who = m_selected ? m_selected->cfg.id : (es ? "los widgets" : "the widgets");
     const int plane = static_cast<int>(std::lround(previewPlane() * 100));
-    const std::string l1 = dm ? (es ? "Teñido: lo que taparía a " + who : "Tinted: what would cover " + who)
-                              : (es ? "Este fondo aún no tiene mapa de profundidad." : "No depth map for this wallpaper yet.");
-    const std::string l2 = dm ? std::format("{} {}  ·  {}", es ? "plano" : "plane", plane,
-                                            es ? "rueda: tamaño · clic der.: salir" : "wheel: size · right click: leave")
-                              : (es ? "Genéralo en Wallpaper Depth." : "Generate it in Wallpaper Depth.");
-    cv.text(l1, label, P.x + 14, P.y + 318, dm ? ink : Color{1, 0.62F, 0.57F, 1});
-    cv.text(l2, label, P.x + 14, P.y + 338, dim);
+    static const char* hintsEs[4] = {"Arrastra para pintar · Shift+rueda: tamaño", "Clic en un objeto: lo toma entero",
+                                     "Clics alrededor · 1.er punto o Enter: cerrar", "Arrastra para mover la vista"};
+    static const char* hintsEn[4] = {"Drag to paint · Shift+wheel: size", "Click an object: takes all of it",
+                                     "Click around · first point or Enter: close", "Drag to move the view"};
+    if (dm) {
+      cv.text(es ? hintsEs[m_selectTool] : hintsEn[m_selectTool], label, P.x + 14, P.y + 426, ink);
+      cv.text(std::format("{} {} {} · {} {} · {}", es ? "Teñido: tapa a" : "Tint: covers", who, "", es ? "plano" : "plane", plane,
+                          es ? "rueda: zoom" : "wheel: zoom"),
+              label, P.x + 14, P.y + 446, dim);
+    } else {
+      cv.text(es ? "Este fondo aún no tiene mapa de profundidad." : "No depth map for this wallpaper yet.", label, P.x + 14,
+              P.y + 426, Color{1, 0.62F, 0.57F, 1});
+      cv.text(es ? "Genéralo en Wallpaper Depth." : "Generate it in Wallpaper Depth.", label, P.x + 14, P.y + 446, dim);
+    }
   }
   for (const UiControl& c : m_ui) {
     const bool hot = hovered(c);
-    if (c.type == UiControl::PaintTool) {
-      const int t = std::clamp(std::atoi(c.value.c_str()), 0, 3);
-      const bool on = t == m_paintTool;
-      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 11, on ? withAlphaC(accent, 0.28F) : (hot ? withAlphaC(ink, 0.12F) : raised), 1,
+    if (c.type == UiControl::PaintSelect || c.type == UiControl::PaintTool) {
+      const bool sel = c.type == UiControl::PaintSelect;
+      const int t = std::clamp(std::atoi(c.value.c_str()), 0, sel ? 3 : 4);
+      const bool on = t == (sel ? m_selectTool : m_paintTool);
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 10, on ? withAlphaC(accent, 0.28F) : (hot ? withAlphaC(ink, 0.12F) : raised), 1,
                    on ? withAlphaC(accent, 0.75F) : line);
-      icon(cv, kToolKeys[t][0], c.r.x + 20, c.r.y + c.r.h / 2, on ? accent : ink);
-      cv.text(es ? kToolKeys[t][1] : kToolKeys[t][2], strong, c.r.x + 38, c.r.y + c.r.h / 2 - 9, on ? ink : dim);
+      const char* const* k = sel ? kSelectKeys[t] : kToolKeys[t];
+      const std::string name = es ? k[1] : k[2];
+      auto [tw, th] = measure(name, label);
+      if (sel) {  // icon above the name
+        icon(cv, k[0], c.r.x + c.r.w / 2, c.r.y + 16, on ? accent : ink);
+        cv.text(name, label, c.r.x + (c.r.w - tw) / 2, c.r.y + 28, on ? ink : dim);
+      } else {
+        icon(cv, k[0], c.r.x + 15, c.r.y + c.r.h / 2, on ? accent : ink);
+        cv.text(name, label, c.r.x + 28, c.r.y + (c.r.h - th) / 2, on ? ink : dim);
+      }
     } else if (c.type == UiControl::PaintSize) {
-      const double t = std::sqrt(std::clamp((m_brush - 6) / (320 - 6), 0.0, 1.0));
+      const bool tol = m_selectTool == 1;
+      const double t = tol ? m_wandTolerance : std::sqrt(std::clamp((m_brush - 6) / (320 - 6), 0.0, 1.0));
       cv.roundRect(c.r.x, c.r.y + 8, c.r.w, 4, 2, withAlphaC(ink, 0.14F));
       cv.roundRect(c.r.x, c.r.y + 8, static_cast<float>(c.r.w * t), 4, 2, accent);
       cv.circle(c.r.x + static_cast<float>(c.r.w * t), c.r.y + 10, 7, ink, 2, accent);
-      cv.text(std::format("{:.0f} px", m_brush), mono, c.r.x + c.r.w + 10, c.r.y + 2, ink);
+      cv.text(tol ? std::format("{:.0f} %", m_wandTolerance * 100) : std::format("{:.0f} px", m_brush), mono, c.r.x + c.r.w + 10,
+              c.r.y + 2, ink);
     } else if (c.type == UiControl::PaintSmart) {
       cv.roundRect(c.r.x, c.r.y, 38, 20, 10, m_smartBrush ? accent : withAlphaC(ink, 0.14F));
       cv.circle(m_smartBrush ? c.r.x + 28 : c.r.x + 10, c.r.y + 10, 7.5F, m_smartBrush ? onAccent : ink);
+    } else if (c.type == UiControl::PaintZoomIn || c.type == UiControl::PaintZoomOut || c.type == UiControl::PaintZoomReset) {
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, hot ? withAlphaC(ink, 0.14F) : raised, 1, line);
+      if (c.type == UiControl::PaintZoomReset) {
+        auto [tw, th] = measure("1:1", mono);
+        cv.text("1:1", mono, c.r.x + (c.r.w - tw) / 2, c.r.y + (c.r.h - th) / 2, ink);
+      } else {
+        icon(cv, c.type == UiControl::PaintZoomIn ? "plus" : "minus", c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, ink);
+      }
+      if (hot) tipCtl = &c;
     } else if (c.type == UiControl::PaintUndo || c.type == UiControl::PaintClear) {
       const bool clr = c.type == UiControl::PaintClear;
       const bool armed = clr && m_confirmClear;
       const bool can = clr ? true : !m_editsUndo.empty();
       const Color red{0.9F, 0.25F, 0.2F, 1};
       cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 10, armed ? red : clr ? withAlphaC(red, hot ? 0.32F : 0.18F) : (hot && can ? withAlphaC(ink, 0.14F) : raised));
-      const std::string t = clr ? (armed ? (es ? "¿Seguro?" : "Sure?") : (es ? "Borrar todo" : "Clear all")) : (es ? "Deshacer trazo" : "Undo stroke");
+      const std::string t = clr ? (armed ? (es ? "¿Seguro?" : "Sure?") : (es ? "Borrar todo" : "Clear all")) : (es ? "Deshacer" : "Undo");
       auto [tw, th] = measure(t, strong);
       cv.text(t, strong, c.r.x + (c.r.w - tw) / 2, c.r.y + (c.r.h - th) / 2,
               armed ? ink : clr ? Color{1, 0.62F, 0.57F, 1} : (can ? ink : withAlphaC(ink, 0.35F)));
     }
   }
-  // the brush outline under the pointer (not over the editor's own chrome)
-  if (m_paintMode && m_pointerEdit && m_pointerEdit->output == e.output && m_uiHover < 0) {
-    cv.circle(static_cast<float>(m_px), static_cast<float>(m_py), static_cast<float>(m_brush), Color{0, 0, 0, 0}, 2.5F,
-              Color{0, 0, 0, 0.45F});
-    cv.circle(static_cast<float>(m_px), static_cast<float>(m_py), static_cast<float>(m_brush), Color{0, 0, 0, 0}, 1.3F, ink);
-    cv.circle(static_cast<float>(m_px), static_cast<float>(m_py), 1.6F, ink);
+  if (m_paintMode && m_pointerEdit && m_pointerEdit->output == e.output) {
+    const float px = static_cast<float>(m_px), py = static_cast<float>(m_py);
+    // the lasso so far, and a band to the pointer
+    if (!m_lasso.empty()) {
+      std::vector<std::pair<float, float>> pts;
+      for (const auto& [wx, wy] : m_lasso) {
+        double sx = 0, sy = 0;
+        paintScreen(e.output, wx, wy, sx, sy);
+        pts.emplace_back(static_cast<float>(sx), static_cast<float>(sy));
+      }
+      for (size_t k = 0; k + 1 < pts.size(); ++k) {
+        cv.segment(pts[k].first, pts[k].second, pts[k + 1].first, pts[k + 1].second, 4, Color{0, 0, 0, 0.5F});
+        cv.segment(pts[k].first, pts[k].second, pts[k + 1].first, pts[k + 1].second, 2, accent);
+      }
+      if (m_uiHover < 0) cv.segment(pts.back().first, pts.back().second, px, py, 1.5F, withAlphaC(ink, 0.7F));
+      const bool closing = pts.size() >= 3 && std::hypot(px - pts.front().first, py - pts.front().second) < 14;
+      for (size_t k = 0; k < pts.size(); ++k)
+        cv.circle(pts[k].first, pts[k].second, k == 0 ? (closing ? 7.0F : 5.0F) : 3.5F, k == 0 && closing ? accent : ink, 1.5F,
+                  Color{0, 0, 0, 0.6F});
+    }
+    if (m_uiHover < 0) {
+      if (m_selectTool == 0) {  // the brush outline under the pointer
+        cv.circle(px, py, static_cast<float>(m_brush), Color{0, 0, 0, 0}, 2.5F, Color{0, 0, 0, 0.45F});
+        cv.circle(px, py, static_cast<float>(m_brush), Color{0, 0, 0, 0}, 1.3F, ink);
+        cv.circle(px, py, 1.6F, ink);
+      } else if (m_selectTool == 1) {
+        icon(cv, "wand", px + 12, py - 12, ink);
+      }
+    }
   }
 
   // ── saved profiles ──
@@ -1101,7 +1202,8 @@ void App::drawUi(EditSurface& e) {
     const std::string t = tipFor(tipCtl->type, es);
     auto [tw, th] = measure(t, label);
     const float tx = std::clamp(tipCtl->r.x + tipCtl->r.w / 2 - tw / 2 - 10, 8.0F, W - tw - 28);
-    const bool inPanel = isSaveControl(tipCtl->type);
+    const bool inPanel = isSaveControl(tipCtl->type) || tipCtl->type == UiControl::PaintZoomIn ||
+                         tipCtl->type == UiControl::PaintZoomOut || tipCtl->type == UiControl::PaintZoomReset;
     const float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : kBarY + kBarH + 8;
     if (inPanel || (!m_galleryOpen && !m_helpOpen && !m_savesOpen)) {
       cv.roundRect(tx, ty, tw + 20, th + 12, 8, Color{0.02F, 0.02F, 0.025F, 0.94F});
