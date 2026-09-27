@@ -26,6 +26,9 @@ struct MaskParams {
 class MaskPass {
 public:
   void draw(const MaskParams& p);
+  // the editor's depth preview: `tint` (straight alpha) where the field is
+  // nearer than p.level, i.e. what would cover a widget on that plane
+  void drawTint(const MaskParams& p, Color tint);
 
 private:
   Program m_prog;

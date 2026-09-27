@@ -18,6 +18,7 @@ uniform sampler2D u_field;
 uniform float u_useField;
 uniform float u_level;
 uniform float u_feather;
+uniform vec4 u_tint;
 
 float coverageAt(vec2 uv) {
     if (u_useField > 0.5) {
@@ -64,6 +65,10 @@ void main() {
     } else if (!(maskUV.x < 0.0 || maskUV.x > 1.0 || maskUV.y < 0.0 || maskUV.y > 1.0)) {
         coverage = coverageAt(maskUV);
     }
+    if (u_tint.a > 0.0) {
+        fragColor = vec4(u_tint.rgb, 1.0) * u_tint.a * coverage;  // premultiplied preview
+        return;
+    }
     fragColor = vec4(0.0, 0.0, 0.0, coverage);
 }
 )";
@@ -85,9 +90,33 @@ void MaskPass::draw(const MaskParams& p) {
   glUniform1f(m_prog.uniform("u_useField"), useField ? 1.0F : 0.0F);
   glUniform1f(m_prog.uniform("u_level"), p.level);
   glUniform1f(m_prog.uniform("u_feather"), p.feather);
+  glUniform4f(m_prog.uniform("u_tint"), 0, 0, 0, 0);
   // DestinationOut on premultiplied colour: dst *= (1 - coverage)
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+  drawUnitQuad();
+  glDisable(GL_BLEND);
+}
+
+void MaskPass::drawTint(const MaskParams& p, Color tint) {
+  if (!p.field || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
+  if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kMaskFrag, "mask");
+  glUseProgram(m_prog.id());
+  glUniform2f(m_prog.uniform("u_surfaceSize"), p.surfaceW, p.surfaceH);
+  glUniform2f(m_prog.uniform("u_surfaceOffset"), p.offsetX, p.offsetY);
+  glUniform2f(m_prog.uniform("u_outputSize"), p.outputW, p.outputH);
+  glUniform2f(m_prog.uniform("u_imageSize"), p.imageW, p.imageH);
+  glUniform1f(m_prog.uniform("u_fillMode"), static_cast<float>(p.fillMode));
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, p.field);
+  glUniform1i(m_prog.uniform("u_mask"), 0);
+  glUniform1i(m_prog.uniform("u_field"), 0);
+  glUniform1f(m_prog.uniform("u_useField"), 1.0F);
+  glUniform1f(m_prog.uniform("u_level"), p.level);
+  glUniform1f(m_prog.uniform("u_feather"), p.feather);
+  glUniform4f(m_prog.uniform("u_tint"), tint.r, tint.g, tint.b, tint.a);
+  glEnable(GL_BLEND);
+  glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
   drawUnitQuad();
   glDisable(GL_BLEND);
 }

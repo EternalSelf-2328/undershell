@@ -55,6 +55,53 @@ int main() {
   const auto h = toHalf({0.0F, 0.5F, 1.0F, 0.3F});
   CHECK(h[0] == 0 && h[1] == 0x3800 && h[2] == 0x3C00 && h[3] == 0x34CD);
 
+  // output -> image uv, as Noctalia samples the wallpaper
+  double u = 0, v = 0;
+  CHECK(wallpaperUv(960, 540, 1920, 1080, 3840, 2160, 1, u, v) && std::abs(u - 0.5) < 1e-9 && std::abs(v - 0.5) < 1e-9);
+  CHECK(wallpaperUv(0, 0, 1920, 1080, 1000, 1000, 1, u, v) && std::abs(u) < 1e-9 && std::abs(v - 0.21875) < 1e-9);  // crop trims top/bottom
+  CHECK(!wallpaperUv(10, 540, 1920, 1080, 1000, 1000, 2, u, v));  // fit: the letterbox shows no image
+
+  // depth edits: a Front stroke pulls depth to 1, Erase takes it back
+  DepthEdits e;
+  e.reset(40, 20);
+  CHECK(e.empty());
+  std::vector<float> stroke(40 * 20, 0.0F);
+  PixelBox box;
+  stampDab(stroke, 40, 20, 10, 10, 5, box);
+  CHECK(!box.empty() && stroke[10 * 40 + 10] == 1.0F && stroke[10 * 40 + 30] == 0.0F);
+  mergeStroke(e, stroke, DepthTool::Front, 0, box);
+  CHECK(!e.empty() && std::abs(editedDepth(0.2F, e.target[10 * 40 + 10], e.cover[10 * 40 + 10]) - 1.0F) < 0.01F);
+  CHECK(editedDepth(0.2F, e.target[10 * 40 + 30], e.cover[10 * 40 + 30]) == 0.2F);  // untouched
+  mergeStroke(e, stroke, DepthTool::Match, 0.4F, box);  // a second stroke over it wins
+  CHECK(std::abs(editedDepth(0.9F, e.target[10 * 40 + 10], e.cover[10 * 40 + 10]) - 0.4F) < 0.01F);
+  // stored and read back (run-length packed)
+  CHECK(saveDepthEdits(dir + "/e.usde", e));
+  DepthEdits back;
+  CHECK(loadDepthEdits(dir + "/e.usde", back) && back.w == 40 && back.target == e.target && back.cover == e.cover);
+  std::vector<float> wide(40 * 20, 0.0F);  // an eraser a bit bigger than the stroke clears it
+  PixelBox wb;
+  stampDab(wide, 40, 20, 10, 10, 8, wb);
+  mergeStroke(e, wide, DepthTool::Erase, 0, wb);
+  CHECK(e.empty());
+
+  // the smart brush: dabs centred on the dark half stop at its edge (x = 32)
+  const int sw = 64, sh = 32;
+  std::vector<float> img(static_cast<size_t>(sw) * sh), dep(static_cast<size_t>(sw) * sh), rough(static_cast<size_t>(sw) * sh, 0.0F),
+      plain(static_cast<size_t>(sw) * sh, 0.0F);
+  for (int y = 0; y < sh; ++y)
+    for (int x = 0; x < sw; ++x) {
+      img[static_cast<size_t>(y) * sw + x] = x < 32 ? 0.05F : 0.95F;
+      dep[static_cast<size_t>(y) * sw + x] = x < 32 ? 0.3F : 0.8F;
+    }
+  PixelBox rb, pb;
+  for (int x = 8; x <= 30; x += 2) {
+    stampDab(rough, sw, sh, x, 16, 7, rb, &img, &dep);
+    stampDab(plain, sw, sh, x, 16, 7, pb);
+  }
+  CHECK(rough[16 * sw + 20] == 1.0F);   // inside the dark half: taken
+  CHECK(plain[16 * sw + 34] > 0.9F);    // a plain brush spills over the edge
+  CHECK(rough[16 * sw + 34] == 0.0F);   // the smart one does not
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }

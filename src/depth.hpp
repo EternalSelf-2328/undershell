@@ -6,6 +6,7 @@
 // with the same sampling maths, so its widgets pass behind the scenery too.
 #pragma once
 
+#include "depthfield.hpp"
 #include "noctalia.hpp"
 
 #include <GLES3/gl3.h>
@@ -31,6 +32,12 @@ struct DepthMask {
   GLuint field = 0;
   std::vector<std::uint16_t> fieldPixels;  // pending upload (R16F)
   bool fieldStale = false;                 // texture belongs to a previous wallpaper
+  // kept for the depth brush (CPU copies at the field's size)
+  std::string sha;
+  DepthField base;              // the refined field, before hand corrections
+  std::vector<float> guide;     // smoothed luma, for the smart brush
+  DepthEdits edits;             // hand corrections (depth-edits/<sha>.usde)
+  bool hasEdits = false;
 };
 
 class Jobs;
@@ -43,6 +50,14 @@ public:
     m_jobs = jobs;
     m_fieldReady = std::move(ready);
   }
+  // where hand corrections are kept (one file per wallpaper)
+  void setEditsDir(std::string dir) { m_editsDir = std::move(dir); }
+  // the depth brush: a mask whose field is loaded, or nullptr
+  DepthMask* paintable(const std::string& output);
+  // re-uploads `box` of the field (needs GL), previewing `stroke` if given
+  void uploadRect(DepthMask& m, PixelBox box, const std::vector<float>* stroke = nullptr, DepthTool tool = DepthTool::Front,
+                  float value = 0);
+  bool saveEdits(DepthMask& m);
 
   // Re-resolves which mask belongs to each output. Returns true on change.
   bool update(const NoctaliaState& st, const std::vector<std::string>& outputs);
@@ -67,6 +82,7 @@ private:
   std::map<std::string, HashEntry> m_hashes;
   bool m_missing = false;
   Jobs* m_jobs = nullptr;
+  std::string m_editsDir;
   std::function<void()> m_fieldReady;
 };
 

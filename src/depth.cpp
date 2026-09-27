@@ -113,23 +113,46 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
       m.fieldStale = m.field != 0;
       changed = true;
       if (!npy.empty() && m_jobs) {
-        m_jobs->run([this, out, wall, npy]() -> Jobs::Done {
+        const std::string sha = sha256Of(wall);
+        const std::string editsPath = m_editsDir.empty() ? std::string() : m_editsDir + "/" + sha + ".usde";
+        m_jobs->run([this, out, wall, npy, sha, editsPath]() -> Jobs::Done {
           DepthField raw, refined;
+          std::vector<float> guide;
           int iw = 0, ih = 0;
-          const bool ok = loadNpyF32(npy, raw) && refineDepth(wall, raw, refined, &iw, &ih);
-          auto half = ok ? toHalf(refined.v) : std::vector<std::uint16_t>{};
-          return [this, out, npy, ok, iw, ih, fw = refined.w, fh = refined.h, half = std::move(half)]() mutable {
+          const bool ok = loadNpyF32(npy, raw) && refineDepth(wall, raw, refined, &iw, &ih, &guide);
+          DepthEdits edits;
+          bool hasEdits = false;
+          std::vector<std::uint16_t> half;
+          if (ok) {
+            guide = boxMean(guide, refined.w, refined.h, 6);  // hatching, ink lines and grain average out
+            if (!editsPath.empty() && loadDepthEdits(editsPath, edits) && edits.w == refined.w && edits.h == refined.h)
+              hasEdits = !edits.empty();
+            else
+              edits.reset(refined.w, refined.h);
+            std::vector<float> applied = refined.v;
+            if (hasEdits)
+              for (size_t i = 0; i < applied.size(); ++i) applied[i] = editedDepth(applied[i], edits.target[i], edits.cover[i]);
+            half = toHalf(applied);
+          }
+          return [this, out, npy, ok, iw, ih, sha, hasEdits, refined = std::move(refined), guide = std::move(guide),
+                  edits = std::move(edits), half = std::move(half)]() mutable {
             auto it = m_masks.find(out);
             if (it == m_masks.end() || it->second.fieldNpy != npy) return;  // superseded
             if (!ok) {
               US_WARN("could not refine the depth map {}", fs::path(npy).filename().string());
               return;
             }
+            const int fw = refined.w, fh = refined.h;
             it->second.fieldPixels = std::move(half);
             it->second.fieldW = fw;
             it->second.fieldH = fh;
             it->second.imageW = iw;
             it->second.imageH = ih;
+            it->second.sha = sha;
+            it->second.base = std::move(refined);
+            it->second.guide = std::move(guide);
+            it->second.edits = std::move(edits);
+            it->second.hasEdits = hasEdits;
             US_INFO("depth field for {}: {}x{}", out, fw, fh);
             if (m_fieldReady) m_fieldReady();
           };
@@ -195,6 +218,61 @@ const DepthMask* DepthMasks::get(const std::string& output) {
     m.pixels.shrink_to_fit();
   }
   return (m.texture || m.field) ? &m : nullptr;
+}
+
+DepthMask* DepthMasks::paintable(const std::string& output) {
+  auto it = m_masks.find(output);
+  if (it == m_masks.end() || !it->second.field || it->second.base.v.empty()) return nullptr;
+  return &it->second;
+}
+
+void DepthMasks::uploadRect(DepthMask& m, PixelBox box, const std::vector<float>* stroke, DepthTool tool, float value) {
+  box.clip(m.fieldW, m.fieldH);
+  if (box.empty() || !m.field) return;
+  const int bw = box.x1 - box.x0, bh = box.y1 - box.y0;
+  std::vector<float> vals(static_cast<size_t>(bw) * bh);
+  DepthEdits preview;  // the stroke merged over a copy of just this box
+  if (stroke) {
+    preview.w = bw;
+    preview.h = bh;
+    preview.target.resize(vals.size());
+    preview.cover.resize(vals.size());
+  }
+  std::vector<float> sub(stroke ? vals.size() : 0);
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x) {
+      const size_t src = static_cast<size_t>(y + box.y0) * m.fieldW + (x + box.x0), dst = static_cast<size_t>(y) * bw + x;
+      if (stroke) {
+        preview.target[dst] = m.edits.target[src];
+        preview.cover[dst] = m.edits.cover[src];
+        sub[dst] = (*stroke)[src];
+      }
+    }
+  if (stroke) mergeStroke(preview, sub, tool, value, {0, 0, bw, bh});
+  for (int y = 0; y < bh; ++y)
+    for (int x = 0; x < bw; ++x) {
+      const size_t src = static_cast<size_t>(y + box.y0) * m.fieldW + (x + box.x0), dst = static_cast<size_t>(y) * bw + x;
+      const std::uint8_t t = stroke ? preview.target[dst] : m.edits.target[src];
+      const std::uint8_t c = stroke ? preview.cover[dst] : m.edits.cover[src];
+      vals[dst] = editedDepth(m.base.v[src], t, c);
+    }
+  const auto half = toHalf(vals);
+  glBindTexture(GL_TEXTURE_2D, m.field);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 2);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, box.x0, box.y0, bw, bh, GL_RED, GL_HALF_FLOAT, half.data());
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+bool DepthMasks::saveEdits(DepthMask& m) {
+  m.hasEdits = !m.edits.empty();
+  if (m_editsDir.empty() || m.sha.empty()) return false;
+  const std::string path = m_editsDir + "/" + m.sha + ".usde";
+  if (!m.hasEdits) {
+    std::error_code ec;
+    fs::remove(path, ec);
+    return true;
+  }
+  return saveDepthEdits(path, m.edits);
 }
 
 void DepthMasks::releaseGl() {

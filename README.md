@@ -104,6 +104,27 @@ nothing covers the widget, at 5 almost everything does. `0` goes back to the
 plugin's mask. The model never runs twice; refining takes under a second
 per wallpaper, off the main thread.
 
+### Fixing the depth by hand
+
+The depth model guesses: an object may come out as a ramp (so a plane cuts
+it in two), and the background next to an object often gets a halo of
+false nearness. The **brush** button in the editor's toolbar opens the
+depth brush: the wallpaper is tinted where it would cover the selected
+widget (or, with none selected, the plugin's plane), and you paint over it
+to fix it:
+
+- **To front** — always in front of every widget; **To back** — always
+  behind; **Match** — takes the depth where the stroke starts (make one
+  background as far as another); **Erase** — removes corrections.
+- The **smart brush** (on by default) only paints what looks like the spot
+  under its centre, so a stroke stays on its side of the image's edges;
+  turn it off for free painting.
+- The wheel (or the slider) sizes the brush; **Undo stroke** / Ctrl+Z,
+  **Clear all** (two clicks); right click or Esc leaves the brush.
+
+Corrections are kept per wallpaper in `~/.config/undershell/depth-edits/`
+and apply to every widget, including those on the plugin's plane.
+
 ## A layout per wallpaper
 
 undershell remembers where your widgets were for each wallpaper. Arrange

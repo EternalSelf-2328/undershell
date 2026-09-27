@@ -343,6 +343,10 @@ bool App::keyAction(uint32_t key) {
   xkb_keysym_t sym = m_xkbState ? xkb_state_key_get_one_sym(m_xkbState, key + 8) : XKB_KEY_NoSymbol;
   switch (key) {
     case KEY_ESC:
+      if (m_paintMode) {
+        setPaintMode(false);
+        return false;
+      }
       if (m_helpOpen || m_galleryOpen || m_savesOpen) {
         m_helpOpen = m_galleryOpen = m_savesOpen = false;
         m_confirmDelete.clear();
@@ -377,6 +381,10 @@ bool App::keyAction(uint32_t key) {
   }
   const bool isZ = sym == XKB_KEY_z || sym == XKB_KEY_Z || (sym == XKB_KEY_NoSymbol && key == KEY_Z);
   const bool isY = sym == XKB_KEY_y || sym == XKB_KEY_Y || (sym == XKB_KEY_NoSymbol && key == KEY_Y);
+  if (ctrl && isZ && m_paintMode) {  // depth mode: undo the last stroke
+    paintUndo();
+    return false;
+  }
   if (ctrl && isZ) {
     shift ? redo() : undo();
     return true;
@@ -543,6 +551,14 @@ void App::onPointerMotion(double x, double y) {
     setCursor(m_ui[static_cast<size_t>(hover)].type == UiControl::Panel ? "default" : "pointer");
     return;
   }
+  if (m_paintMode) {
+    // depth mode: the canvas paints, widgets stay put
+    if (m_painting) paintMove(x, y);
+    if (m_pointerWidget) m_pointerWidget = nullptr;
+    setCursor("crosshair");
+    markEditDirty();  // the brush outline follows the pointer
+    return;
+  }
   if (m_drag == Drag::None) {
     if (m_selected && m_selected->output == m_pointerEdit->output && inRotateHandle(*m_selected, x, y)) {
       if (m_pointerWidget != m_selected) {
@@ -631,7 +647,8 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     return;
   }
   if (button == BTN_RIGHT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
-    setEditMode(false);
+    if (m_paintMode) setPaintMode(false);  // leaves depth mode first
+    else setEditMode(false);
     return;
   }
   if (button != BTN_LEFT) return;
@@ -645,6 +662,15 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   }
   if (state == WL_POINTER_BUTTON_STATE_PRESSED && uiPress(uiHit(m_px, m_py), m_px)) {
     markEditDirty();
+    return;
+  }
+  if (m_paintMode) {
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+      m_confirmClear = false;
+      paintBegin(m_px, m_py);
+    } else {
+      paintEnd();
+    }
     return;
   }
   Widget* w = m_pointerWidget;
@@ -725,6 +751,11 @@ void App::onScroll(double value) {
   const int step = m_scrollAcc > 0 ? 1 : -1;
   m_scrollAcc = 0;
   if (uiScroll(m_px, m_py, step)) return;
+  if (m_paintMode) {  // the wheel sizes the brush
+    m_brush = std::clamp(m_brush * (step > 0 ? 1 / 1.15 : 1.15), 6.0, 320.0);
+    markEditDirty();
+    return;
+  }
   if (!m_pointerWidget) return;
   Widget& w = *m_pointerWidget;
   std::vector<std::string> looks;

@@ -144,6 +144,16 @@ private:
   void replaceLayout(const std::string& blocks, bool record);
   std::string savesJson();
   bool textKey(uint32_t key);  // typing a save's name
+  // the depth brush (depthpaint.cpp)
+  float previewPlane() const;
+  bool paintMap(const Output* o, double x, double y, double& fx, double& fy, double& fr);
+  void paintDab(double x, double y);
+  void paintBegin(double x, double y);
+  void paintMove(double x, double y);
+  void paintEnd();
+  void paintUndo();
+  void paintClear();
+  void setPaintMode(bool on);
   void commitRename();
   void syncWidgets();
   void createSurface(Widget& w);
@@ -190,7 +200,8 @@ public:
   // inspector + gallery (inspector.cpp)
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
-                Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow } type = Panel;
+                Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
+                PaintSize, PaintSmart, PaintUndo, PaintClear } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -295,6 +306,15 @@ private:
   std::string m_renaming, m_renameText;   // save whose name is being typed
   std::string m_confirmDelete;            // save armed for deletion (second click)
   int m_saveScroll = 0;                   // first row shown
+  bool m_paintMode = false, m_painting = false, m_smartBrush = true, m_confirmClear = false;
+  int m_paintTool = 0;                    // DepthTool
+  double m_brush = 60;                    // brush radius, output px
+  float m_matchValue = 0;
+  double m_lastDabX = 0, m_lastDabY = 0;
+  std::string m_paintOutput;
+  std::vector<float> m_stroke;            // the stroke being painted (field size)
+  PixelBox m_strokeBox;
+  std::vector<std::pair<std::string, DepthEdits>> m_editsUndo;
   bool m_snapOn = true;   // magnet (Shift inverts)
   bool m_gridOn = true;   // grid drawn + snapping on release
   int m_uiHover = -1;

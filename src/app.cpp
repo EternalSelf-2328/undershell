@@ -694,10 +694,11 @@ void App::render(Widget& w) {
         mp.imageW = static_cast<float>(m->texture ? m->width : m->imageW);
         mp.imageH = static_cast<float>(m->texture ? m->height : m->imageH);
         mp.fillMode = m_noctalia.state().fillMode;
-        if (w.cfg.depthLevel > 0 && m->field) {
-          // its own plane: the refined field cut at this widget's level
+        if ((w.cfg.depthLevel > 0 || m->hasEdits) && m->field) {
+          // its own plane (or the plugin's, over hand-corrected depth): the
+          // refined field cut at this widget's level
           mp.field = m->field;
-          mp.level = static_cast<float>(w.cfg.depthLevel / 100.0);
+          mp.level = static_cast<float>(w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : m_noctalia.state().depthThreshold);
           mp.feather = static_cast<float>(m_noctalia.state().depthFeather);
           mp.imageW = static_cast<float>(m->imageW);
           mp.imageH = static_cast<float>(m->imageH);
@@ -741,7 +742,10 @@ void App::setEditMode(bool on) {
   m_helpOpen = false;
   m_savesOpen = false;
   m_confirmDelete.clear();
-  if (!on) commitRename();
+  if (!on) {
+    commitRename();
+    setPaintMode(false);
+  }
   m_uiHover = -1;
   m_guidesV.clear();
   m_guidesH.clear();
@@ -850,6 +854,23 @@ void App::renderEdit(EditSurface& e) {
   try {
     m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, selected, accent,
                    m_gridOn ? static_cast<float>(m_config.gridSize) : 0.0F, m_guidesV, m_guidesH, handle);
+    if (m_paintMode && e.output) {
+      // depth mode: tint what would cover the selected widget
+      if (const DepthMask* m = m_depth.get(e.output->name); m && m->field) {
+        MaskParams mp;
+        mp.surfaceW = static_cast<float>(e.w);
+        mp.surfaceH = static_cast<float>(e.h);
+        mp.outputW = e.output->logicalW();
+        mp.outputH = e.output->logicalH();
+        mp.imageW = static_cast<float>(m->imageW);
+        mp.imageH = static_cast<float>(m->imageH);
+        mp.fillMode = m_noctalia.state().fillMode;
+        mp.field = m->field;
+        mp.level = previewPlane();
+        mp.feather = static_cast<float>(m_noctalia.state().depthFeather);
+        m_maskPass.drawTint(mp, Color{accent.r, accent.g, accent.b, 0.42F});
+      }
+    }
     drawEditorText(e);
   } catch (const std::exception& ex) {
     US_ERROR("editor canvas failed: {}", ex.what());
@@ -1139,6 +1160,7 @@ int App::run() {
   if (!initWayland() || !initEgl()) return 1;
 
   m_configPath = Config::defaultPath();
+  m_depth.setEditsDir((fs::path(m_configPath).parent_path() / "depth-edits").string());
   m_depth.setJobs(&m_jobs, [this] {
     for (auto& w : m_widgets) w->needsRender = true;
   });
