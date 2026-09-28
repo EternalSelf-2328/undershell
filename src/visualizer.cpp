@@ -3,10 +3,12 @@
 // from the config, the widget box and the eased levels.
 #include "visualizer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
 #include "halo_shader.inc"
+#include "ring_shader.inc"
 #include "spectrum_shader.inc"
 
 namespace undershell {
@@ -50,7 +52,10 @@ void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noc
 
 void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noct) {
   const toml::table& t = cfg.options;
-  m_haloShape = t["halo_shape"].value_or(std::string("bars"));
+  m_haloShape = t["halo_shape"].value_or(std::string("ring"));
+  m_haloWaves = t["halo_waves"].value_or(true);
+  m_haloWidth = std::clamp(t["halo_width"].value_or(0.02), 0.003, 0.15);
+  m_haloSpread = std::clamp(t["halo_spread"].value_or(0.07), 0.01, 0.4);
   m_haloRing = t["halo_ring"].value_or(false);
   m_haloInner = std::clamp(t["halo_inner"].value_or(0.7), 0.1, 1.4);
   m_haloBloom = std::clamp(t["halo_bloom"].value_or(0.5), 0.0, 2.0);
@@ -64,7 +69,70 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   }
 }
 
+void Visualizer::tickRing(double dt) {
+  const auto& lv = m_motion.levels;
+  if (lv.empty()) return;
+  const size_t nb = std::max<size_t>(2, lv.size() / 6);  // the lowest sixth: kick and bass
+  double bass = 0, all = 0;
+  for (size_t i = 0; i < lv.size(); ++i) {
+    all += lv[i];
+    if (i < nb) bass += lv[i];
+  }
+  bass = std::clamp(bass / static_cast<double>(nb) * m_motion.fade(), 0.0, 1.0);
+  const double energy = std::clamp(all / static_cast<double>(lv.size()) * 1.6 * m_motion.fade(), 0.0, 1.0);
+  // fast attack, slow release: the ring jumps with the kick and settles
+  auto follow = [dt](double& env, double target, double up, double down) {
+    const double tau = target > env ? up : down;
+    env += (target - env) * (1 - std::exp(-dt / tau));
+  };
+  follow(m_bassEnv, bass, 0.03, 0.28);
+  follow(m_energyEnv, energy, 0.08, 0.6);
+  // onsets: bass well above its recent mean sends a shock wave
+  m_sinceBeat += dt;
+  if (bass > m_bassMean + 0.14 && bass > 0.25 && m_sinceBeat > 0.22) {
+    m_sinceBeat = 0;
+    auto slot = std::min_element(m_waveAges.begin(), m_waveAges.end(), [](double a, double b) {
+      return (a < 0 ? 2.0 : -a) < (b < 0 ? 2.0 : -b);  // a free slot, else the oldest wave
+    });
+    *slot = 0;
+  }
+  follow(m_bassMean, bass, 0.4, 0.4);
+  for (double& a : m_waveAges)
+    if (a >= 0) {
+      a += dt / 1.1;  // a wave lives 1.1 s
+      if (a >= 1) a = -1;
+    }
+}
+
+void Visualizer::drawRing(const DrawContext& ctx) {
+  if (!m_ringProg.valid()) m_ringProg.create(kQuadVertexShader, kRingFrag, "ring");
+  glUseProgram(m_ringProg.id());
+  auto U = [&](const char* n) { return m_ringProg.uniform(n); };
+  const float half = std::min(ctx.w, ctx.h) * 0.5F;
+  glUniform2f(U("res"), ctx.w, ctx.h);
+  glUniform3f(U("u_primary"), m_haloA.r, m_haloA.g, m_haloA.b);
+  glUniform3f(U("u_secondary"), m_haloB.r, m_haloB.g, m_haloB.b);
+  glUniform1f(U("u_radius"), static_cast<float>(std::clamp(m_haloInner, 0.1, 1.4) / 2 + 0.2));
+  glUniform1f(U("u_width"), static_cast<float>(m_haloWidth));
+  glUniform1f(U("u_spread"), static_cast<float>(m_haloSpread * (0.5 + m_haloBloom)));
+  glUniform1f(U("u_bass"), static_cast<float>(m_bassEnv));
+  glUniform1f(U("u_energy"), static_cast<float>(m_energyEnv));
+  float ages[4];
+  for (int i = 0; i < 4; ++i) ages[i] = static_cast<float>(m_waveAges[static_cast<size_t>(i)]);
+  glUniform1fv(U("u_waves"), 4, ages);
+  glUniform1f(U("u_waveOn"), m_haloWaves ? 1.0F : 0.0F);
+  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
+  glUniform1f(U("u_fade"), 1.0F);  // the ring rests visible; the music only brightens it
+  glUniform1f(U("u_px"), 1.0F / std::max(1.0F, half * ctx.scale));
+  glDisable(GL_BLEND);
+  drawUnitQuad();
+}
+
 void Visualizer::drawHalo(const DrawContext& ctx) {
+  if (m_haloShape == "ring") {
+    drawRing(ctx);
+    return;
+  }
   if (!m_haloProg.valid()) m_haloProg.create(kQuadVertexShader, kHaloFrag, "halo");
   Motion::resample(m_motion.levels, 32, m_drawLevels);
   glUseProgram(m_haloProg.id());
@@ -90,6 +158,7 @@ void Visualizer::drawHalo(const DrawContext& ctx) {
 void Visualizer::tick(const TickContext& ctx) {
   static const std::vector<float> kEmpty;
   m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);
+  if (m_styleIndex == 12 && m_haloShape == "ring") tickRing(ctx.dt);
 }
 
 void Visualizer::draw(const DrawContext& ctx) {

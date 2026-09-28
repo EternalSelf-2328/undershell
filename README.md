@@ -94,13 +94,16 @@ without touching the rest of the file.
 
 ## Halo
 
-The `halo` look is the outer part of Noctalia's fancy audio visualizer:
-mirrored radial bars and/or a polar wave around an empty centre, graded
-from primary to secondary with its bloom — without the inner rings,
-ripples, particles and grid. Inspector options: **Halo** (bars, wave,
-both), **Inner size**, **Bloom**, **Base ring**; *Thickness* sets the bar
-width, *Spin* turns it, *Colour* picks theme (primary → secondary),
-gradient or custom colours.
+The `halo` look draws, by default, **one even ring** whose glow spreads
+outward with the music, the same at every angle: the line swells and
+brightens with the bass (fast attack, slow release), the outer glow widens
+with the energy, a faint inner glow gives it depth, and each strong beat
+sends a soft shock wave out that widens and fades. Options: **Size**,
+**Line width**, **Glow reach**, **Bloom**, **Beat waves**; colours follow
+the colour mode (theme: primary, with a touch of secondary at the glow's
+edge). **Halo** also offers `bars`, `wave` and `both`: the outer part of
+Noctalia's fancy audio visualizer (radial bars / polar wave, no inner rings;
+*Base ring* adds its circle).
 
 ## Clock structures
 
