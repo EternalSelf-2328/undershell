@@ -704,7 +704,10 @@ static void faceStacked(FaceBuilder& b, const Parts& t, bool es) {
 static void faceGoodNight(FaceBuilder& b, const Parts& t, bool es) {
   const float W0 = 431, H0 = 765, pad = 120, gap = 26;
   const auto elements = clockElements(b.opts(), *clockStructure("goodnight"));
-  const bool glyphDay = b.option("goodnight_day_style", "strokes") != "font";
+  // a font chosen for the weekday means it is set in that font, unless the
+  // drawn strokes were asked for explicitly
+  const bool dayFont = !b.option("goodnight_day_font", "").empty();
+  const bool glyphDay = b.option("goodnight_day_style", dayFont ? "font" : "strokes") != "font";
   auto [good, part] = greeting(t.hours, es);
   auto cased = [](const ClockElement& e, const std::string& s) { return e.upper ? upper(s) : s; };
   // measure first: the card widens for bigger fonts
@@ -746,7 +749,8 @@ static void faceGoodNight(FaceBuilder& b, const Parts& t, bool es) {
         y += z.h;
       }
     } else if (id == "day") {
-      const std::string wk = e.upper ? upper(stripAccents(t.weekdayShort)) : stripAccents(t.weekdayShort);
+      // a font has accents; the drawn alphabet does not
+      const std::string wk = e.upper ? upper(t.weekdayShort) : t.weekdayShort;
       if (glyphDay) {
         const std::string glyphsText = upper(stripAccents(t.weekdayShort));
         const float cell = e.spec->size * e.scale, dgap = e.spacing, lw = 11 * e.scale * (e.weight / 700.0F);

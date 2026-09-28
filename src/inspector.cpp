@@ -100,8 +100,11 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
   head.labelEs = "Elementos";
   s.push_back(head);
   // each structure's own options
-  if (face == "goodnight")
-    s.push_back({K::Enum, "goodnight_day_style", "Weekday drawn as", "Día dibujado con", {"strokes", "font"}, 0, 0, 0, 0, "strokes"});
+  if (face == "goodnight") {
+    const bool dayFont = !w.cfg.options["goodnight_day_font"].value_or(std::string()).empty();
+    s.push_back({K::Enum, "goodnight_day_style", "Weekday drawn as", "Día dibujado con", {"strokes", "font"}, 0, 0, 0, 0,
+                 dayFont ? "font" : "strokes"});
+  }
   if (face == "column") {
     s.push_back({K::Number, "column_leading", "Line overlap", "Interlineado", {}, -0.6, 0.4, 0.01, -0.2});
     s.push_back({K::Enum, "column_align", "Align", "Alineación", {"left", "center", "right"}, 0, 0, 0, 0, "left"});
@@ -595,7 +598,10 @@ bool App::fontKey(uint32_t key) {
   }
   if (key == KEY_ENTER || key == KEY_KPENTER) {
     const auto fonts = filteredFonts();
-    if (!fonts.empty() && m_selected) setProp(*m_selected, m_fontPickFor, "\"" + fonts.front() + "\"");
+    if (!fonts.empty() && m_selected) {
+      setProp(*m_selected, m_fontPickFor, "\"" + fonts.front() + "\"");
+      if (m_fontPickFor == "goodnight_day_font") setProp(*m_selected, "goodnight_day_style", "\"font\"");
+    }
     markEditDirty();
     return false;
   }
@@ -654,7 +660,10 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     case UiControl::FontItem:
-      if (w && !m_fontPickFor.empty()) setProp(*w, m_fontPickFor, "\"" + c.value + "\"");  // "" = the design font
+      if (w && !m_fontPickFor.empty()) {
+        setProp(*w, m_fontPickFor, "\"" + c.value + "\"");  // "" = the design font
+        if (m_fontPickFor == "goodnight_day_font") setProp(*w, "goodnight_day_style", c.value.empty() ? "\"strokes\"" : "\"font\"");
+      }
       markEditDirty();
       return true;
     case UiControl::PaintTool:
