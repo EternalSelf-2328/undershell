@@ -14,6 +14,7 @@ deps = [
   dependency('glib-2.0'),
   dependency('cairo'),
   dependency('pangocairo'),
+  dependency('pangofc'),
   dependency('fontconfig'),
   dependency('xkbcommon'),
   dependency('libsystemd'),

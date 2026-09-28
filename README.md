@@ -104,7 +104,9 @@ the switch hides one (flip keeps its layout). Each structure also has
 options of its own: the card's weekday drawn in strokes or set in a font,
 the column's line overlap and alignment, flip's corners and pulsing
 separator, metal's separator, stacked's alignment, gap and date format.
-Untouched, a structure looks exactly as designed; changes are flat keys
+Fonts you download: put the `.ttf`/`.otf` files in `~/.local/share/fonts`
+(any installed font works too); the picker notices new files the next time
+it opens, no restart needed. Untouched, a structure looks exactly as designed; changes are flat keys
 in the widget (`goodnight_time_font = "Space Grotesk"`,
 `goodnight_order = "rule_top,greeting,time,day,date,rule_bottom"`), so
 they travel with wallpaper profiles and saved layouts. The other faces

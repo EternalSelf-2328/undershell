@@ -46,6 +46,9 @@ public:
   // Registers undershell's bundled fonts with fontconfig (call before any text).
   static void registerBundledFonts();
   static std::string fontsDir();
+  // Picks up fonts installed since startup (~/.local/share/fonts, …):
+  // reloads fontconfig when its directories changed. True when it did.
+  static bool refreshFonts();
 
   // Rasterises (or returns the cached) text. Needs a current GL context.
   const TextImage& get(const std::string& text, const TextStyle& style, int scale);

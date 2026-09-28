@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fontconfig/fontconfig.h>
 #include <pango/pangocairo.h>
+#include <pango/pangofc-fontmap.h>
+#include <sys/stat.h>
 #include <vector>
 
 #ifndef US_SOURCE_DATA_DIR
@@ -31,10 +33,49 @@ std::string TextRenderer::fontsDir() {
   return {};
 }
 
+// the font folders' modification times: a font added, removed or renamed
+// changes its folder's (fontconfig itself only looks every 30 s)
+static std::string fontDirsStamp() {
+  std::string stamp;
+  auto add = [&](FcStrList* list) {
+    if (!list) return;
+    while (FcChar8* d = FcStrListNext(list)) {
+      struct stat sb{};
+      const bool ok = stat(reinterpret_cast<const char*>(d), &sb) == 0;
+      stamp += std::format("{}:{};", reinterpret_cast<const char*>(d), ok ? static_cast<long long>(sb.st_mtime) : -1LL);
+    }
+    FcStrListDone(list);
+  };
+  add(FcConfigGetConfigDirs(nullptr));  // configured folders, even ones that do not exist yet
+  add(FcConfigGetFontDirs(nullptr));    // and every folder fontconfig scanned
+  return stamp;
+}
+
+bool TextRenderer::refreshFonts() {
+  static std::string last = fontDirsStamp();
+  const std::string now = fontDirsStamp();
+  if (now == last) return false;
+  last = now;
+  // a new current config: register the bundled fonts on it again, and tell
+  // Pango's font map so layouts see the new families
+  if (!FcInitReinitialize()) return false;
+  if (const std::string dir = fontsDir(); !dir.empty())
+    FcConfigAppFontAddDir(FcConfigGetCurrent(), reinterpret_cast<const FcChar8*>(dir.c_str()));
+  PangoFontMap* map = pango_cairo_font_map_get_default();
+  if (PANGO_IS_FC_FONT_MAP(map)) {
+    pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(map), FcConfigGetCurrent());
+    pango_fc_font_map_config_changed(PANGO_FC_FONT_MAP(map));
+  }
+  last = fontDirsStamp();  // the new config may scan more folders
+  US_INFO("fonts changed on disk: reloaded");
+  return true;
+}
+
 void TextRenderer::registerBundledFonts() {
   static bool done = false;
   if (done) return;
   done = true;
+  (void)refreshFonts();  // first call: note how the font folders look at startup
   const std::string dir = fontsDir();
   if (dir.empty()) {
     US_WARN("bundled fonts not found; falling back to system fonts");

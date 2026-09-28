@@ -556,7 +556,7 @@ void App::layoutUi(const EditSurface& e) {
     m_ui.push_back({UiControl::Panel, {fx, top, fw, fh}, -1, "fonts"});
     m_ui.push_back({UiControl::FontClose, {fx + fw - 40, top + 12, 28, 28}});
     const auto fonts = filteredFonts();
-    const int rows = std::max(1, static_cast<int>((fh - 100) / 34));
+    const int rows = std::max(1, static_cast<int>((fh - 132) / 34));  // room for the hint at the bottom
     m_fontScroll = std::clamp(m_fontScroll, 0, std::max(0, static_cast<int>(fonts.size()) + 1 - rows));
     float y = top + 92;
     for (int k = 0; k < rows; ++k) {
@@ -834,6 +834,15 @@ bool App::uiPress(int index, double x) {
     return true;
   }
   if (c.type == UiControl::FontPick) {
+    // fonts installed since last time show up without a restart
+    if (TextRenderer::refreshFonts()) {
+      m_fontList.clear();
+      m_text.collect(0);  // drop text drawn with the old fallbacks
+      for (auto& ww : m_widgets) {
+        if (ww->impl) ww->impl->configure(ww->cfg, m_noctalia.state());
+        ww->needsRender = true;
+      }
+    }
     if (m_fontList.empty()) {
       // every installed family, once (the bundled ones are registered too)
       FcPattern* pat = FcPatternCreate();
@@ -1505,6 +1514,8 @@ void App::drawUi(EditSurface& e) {
     auto [sw2, sh2] = measure(shown, label);
     cv.text(shown, label, P.x + 24, P.y + 63 - sh2 / 2, empty ? dim : ink);
     if (!empty) cv.segment(P.x + 26 + sw2, P.y + 54, P.x + 26 + sw2, P.y + 72, 1.5F, accent, false);
+    cv.text(es ? "Tus fuentes: ~/.local/share/fonts" : "Your fonts: ~/.local/share/fonts", label, P.x + 16, P.y + P.h - 26,
+            withAlphaC(dim, 0.8F));
     const std::string count = std::format("{}", filteredFonts().size());
     auto [cw2, ch2] = measure(count, mono);
     cv.text(count, mono, P.x + P.w - 24 - cw2, P.y + 63 - ch2 / 2, dim);
