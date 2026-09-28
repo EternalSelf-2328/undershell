@@ -43,6 +43,7 @@ struct WidgetConfig {
   bool depth = true;   // pass behind the wallpaper_depth foreground
   double rotation = 0;  // degrees, clockwise, about the box centre
   double depthLevel = 0;  // own depth plane 1..100 (0: the plugin's mask)
+  int layer = 0;          // stacking among widgets: higher is in front (then depth decides)
   toml::table options;  // the whole [[widget]] table
 };
 

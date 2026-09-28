@@ -175,6 +175,7 @@ private:
   void createSurface(Widget& w);
   void destroySurface(Widget& w);
   void placeLayer(Widget& w);  // layer size + margin from the (turned) box
+  void restack();              // surfaces in stacking order: nearer widgets on top
   void applyInputRegion(Widget& w);
   void render(Widget& w);
   void setEditMode(bool on);
@@ -288,6 +289,7 @@ private:
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
 
+  std::vector<const Widget*> m_mapped;    // widget surfaces, bottom to top, in the order they were made
   bool m_motion = false;          // a video or scene is on screen: no depth
   bool m_motionCheckBusy = false, m_motionCheckAgain = false;
   std::string m_profileKey, m_profileWall;  // the wallpaper config.toml's layout belongs to

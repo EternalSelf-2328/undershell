@@ -106,6 +106,7 @@ Config Config::load(const std::string& path) {
       w.enabled = get<bool>(*t, "enabled", true);
       w.depth = get<bool>(*t, "depth", true);
       w.depthLevel = std::clamp(get<double>(*t, "depth_level", 0.0), 0.0, 100.0);
+      w.layer = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "layer", 0), -10, 10));
       if (auto i = (*t)["depth_level"].value<int64_t>()) w.depthLevel = std::clamp(static_cast<double>(*i), 0.0, 100.0);
       if (auto r = (*t)["rotation"].value<double>()) {
         double d = std::fmod(*r, 360.0);

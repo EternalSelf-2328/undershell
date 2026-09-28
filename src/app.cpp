@@ -327,7 +327,31 @@ void App::refreshNoctalia() {
     updateDepth();
     checkProfile();
     checkWallpaperKind();
+    restack();  // the plugin's plane may have moved
   }
+}
+
+// Layer-shell surfaces on one layer stack in the order they were mapped, so
+// the widgets are kept bottom-to-top by (layer, depth): a widget nearer the
+// viewer is drawn over a farther one where they overlap. Recreating surfaces
+// is only done when that order changes.
+void App::restack() {
+  auto depthOf = [&](const Widget& w) {
+    if (!w.cfg.depth || m_motion) return 2.0;  // not behind the scenery at all: in front of every plane
+    return w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : m_noctalia.state().depthThreshold;
+  };
+  std::stable_sort(m_widgets.begin(), m_widgets.end(), [&](const auto& a, const auto& b) {
+    if (a->cfg.layer != b->cfg.layer) return a->cfg.layer < b->cfg.layer;
+    return depthOf(*a) < depthOf(*b);
+  });
+  std::vector<const Widget*> want;
+  for (auto& w : m_widgets)
+    if (w->surface) want.push_back(w.get());
+  if (want == m_mapped) return;
+  for (auto& w : m_widgets) destroySurface(*w);
+  for (auto& w : m_widgets)
+    if (w->output) createSurface(*w);
+  US_DEBUG("restacked widgets");
 }
 
 void App::updateDepth() {
@@ -396,6 +420,7 @@ void App::syncWidgets() {
   for (auto& old : m_widgets)
     if (old) destroySurface(*old);
   m_widgets = std::move(next);
+  restack();
   if (!m_pendingSelect.empty())
     for (auto& w : m_widgets)
       if (w->cfg.id == m_pendingSelect) {
@@ -409,6 +434,7 @@ void App::syncWidgets() {
 
 void App::createSurface(Widget& w) {
   if (!w.output) return;
+  m_mapped.push_back(&w);
   w.surface = wl_compositor_create_surface(m_compositor);
   w.scale = w.output->scale;
   wl_surface_set_buffer_scale(w.surface, w.scale);
@@ -454,6 +480,7 @@ void App::placeLayer(Widget& w) {
 }
 
 void App::destroySurface(Widget& w) {
+  std::erase(m_mapped, &w);
   if (w.eglSurface != EGL_NO_SURFACE || w.rtFbo) {
     eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
     if (w.rtFbo) glDeleteFramebuffers(1, &w.rtFbo);

@@ -121,7 +121,10 @@ widget its own plane with **Plano prof.** in the inspector (or
 refines it against the wallpaper exactly as the plugin does, and cuts each
 widget at its own level on the GPU, live. Higher is nearer: at 95 almost
 nothing covers the widget, at 5 almost everything does. `0` goes back to the
-plugin's mask. The model never runs twice; refining takes under a second
+plugin's mask. Where widgets overlap, the nearer one is drawn on top
+(a widget with depth off counts as nearest); **Layer** in the inspector
+(`layer = -10..10`, higher in front) overrides that, e.g. for two widgets
+on the same plane. The model never runs twice; refining takes under a second
 per wallpaper, off the main thread.
 
 ### Moving wallpapers
