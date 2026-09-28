@@ -1,6 +1,7 @@
 // Config loading and in-place editing (comments, hex colours, missing keys).
 #include "check.hpp"
 #include "common.hpp"
+#include "clockparts.hpp"
 #include "config.hpp"
 
 #include <filesystem>
@@ -141,6 +142,29 @@ int main() {
     CHECK(found);
     CHECK(!Config::deleteSave(sdir, "../config"));  // ids are never paths
     CHECK(Config::deleteSave(sdir, id2) && Config::listSaves(sdir).size() == 1);
+  }
+
+  // clock structures: order and overrides, defaults from the design
+  {
+    const auto* card = clockStructure("goodnight");
+    CHECK(card && !clockStructure("digital"));
+    auto t = toml::parse(R"(
+      goodnight_order = "time, bogus, date,time"
+      goodnight_date_font = "Fraunces 144pt"
+      goodnight_date_weight = "black"
+      goodnight_date_case = "normal"
+      goodnight_greeting_show = false
+      goodnight_time_size = 2.5
+    )");
+    const auto els = clockElements(t, *card);
+    CHECK(els.size() == card->elements.size());
+    CHECK(std::string(els[0].spec->id) == "time" && std::string(els[1].spec->id) == "date");  // then the rest, in design order
+    CHECK(std::string(els[2].spec->id) == "rule_top");
+    CHECK(els[1].family == "Fraunces 144pt" && els[1].weight == 900 && !els[1].upper);
+    CHECK(els[0].scale == 2.5F && els[0].family == "Inter Display");
+    for (const auto& e : els)
+      if (std::string(e.spec->id) == "greeting") CHECK(!e.show);
+    CHECK(weightName(600) == "semibold" && weightValue("light") == 300);
   }
 
   std::filesystem::remove_all(dir);

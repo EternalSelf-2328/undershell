@@ -142,10 +142,17 @@ Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noc
   });
 }
 
-Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime) {
+Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime, const toml::table* options) {
   ClockWidget::setFixedTime(static_cast<std::time_t>(fixedTime));
   ClockWidget clock;
-  clock.configure(cfg, noct);
+  if (options) {
+    WidgetConfig wc;
+    wc.type = "clock";
+    wc.options = *options;
+    clock.configure(wc, noct);
+  } else {
+    clock.configure(cfg, noct);
+  }
   TextRenderer tr;
   TickContext tc;
   tc.now = 1000;

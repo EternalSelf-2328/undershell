@@ -3,6 +3,8 @@
 // (GPL-3.0): sizes, weights, spacing and colours are Ryoku's at clockScale 1.
 #include "clock.hpp"
 
+#include "clockparts.hpp"
+
 #include <array>
 #include <cmath>
 #include <glib.h>
@@ -233,10 +235,12 @@ const std::vector<std::string>& ClockWidget::faces() {
 
 void ClockWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(ClockConfig::fromTable(cfg.options), noct);
+  m_opts = cfg.options;
 }
 
 void ClockWidget::configure(const ClockConfig& cfg, const NoctaliaState& noct) {
   m_cfg = cfg;
+  m_opts = toml::table{};
   m_noct = noct;
   m_ink = noct.color(cfg.ink, Color::fromHex("#f4f1ea"));
   if (cfg.accent == "brand") m_accent = Color::fromHex("#e2342a");
@@ -274,6 +278,21 @@ struct FaceBuilder {
     return s;
   }
   Canvas::Size size(const std::string& t, const TextStyle& s) { return w.measure(t, s); }
+  // an element's colour: the face's inks by name, else a palette role / #hex
+  Color colorOf(const std::string& name) const {
+    if (name == "ink") return ink;
+    if (name == "accent") return accent;
+    if (name == "dim") return inkDim;
+    if (name == "soft") return inkSoft;
+    return w.m_noct.color(name, ink);
+  }
+  TextStyle st(const ClockElement& e) { return st(e.family.c_str(), e.spec->size * e.scale, e.weight, e.spacing); }
+  const toml::table& opts() const { return w.m_opts; }
+  std::string option(const std::string& key, const std::string& def) const {
+    if (const toml::node* n = w.m_opts.get(key))
+      if (auto v = n->value<std::string>(); v && !v->empty()) return *v;
+    return def;
+  }
   void text(const std::string& t, const TextStyle& s, float x, float y, Color c, float opacity = 1, float sy = 1,
             float blur = 0) {
     ClockWidget::Item it;
@@ -554,47 +573,94 @@ static void faceMetal(FaceBuilder& b, const Parts& t, bool es) {
   b.sc.h = tz.h + 12 + mz.h;
 }
 
-// good night: a greeting card; the weekday in the angular faux-kana alphabet
+// good night (the card): a greeting card; the weekday in the angular faux-kana
+// alphabet, or in a font. An editable structure: every element's font, size,
+// colour, case and place come from clockparts (defaults = Ryoku's design).
 static void faceGoodNight(FaceBuilder& b, const Parts& t, bool es) {
-  const float W = 431, H = 765;
-  const Color ruleC = withAlpha(b.ink, 0.85F);
+  const float W0 = 431, H0 = 765, pad = 120, gap = 26;
+  const auto elements = clockElements(b.opts(), *clockStructure("goodnight"));
+  const bool glyphDay = b.option("goodnight_day_style", "strokes") != "font";
   auto [good, part] = greeting(t.hours, es);
-  auto gs = b.st(INTER, 26, 500, 10), ds = b.st(INTER, 22, 600, 4), tsS = b.st(INTER, 22, 500, 3);
-  float y = 120;
-  b.rect(W / 2 - 1, y, 2, 70, 0, ruleC);
-  y += 70 + 26;
-  for (const std::string& word : {upper(good), upper(part)}) {
-    auto z = b.size(word, gs);
-    b.text(word, gs, (W - z.w) / 2, y, b.ink);
-    y += z.h + 12;
+  auto cased = [](const ClockElement& e, const std::string& s) { return e.upper ? upper(s) : s; };
+  // measure first: the card widens for bigger fonts
+  float maxW = 0;
+  for (const auto& e : elements) {
+    if (!e.show) continue;
+    if (e.spec->kind == ClockElementSpec::Text) {
+      auto s = b.st(e);
+      if (std::string_view(e.spec->id) == "greeting") {
+        maxW = std::max({maxW, b.size(cased(e, good), s).w, b.size(cased(e, part), s).w});
+      } else if (std::string_view(e.spec->id) == "date") {
+        maxW = std::max(maxW, b.size(cased(e, pad2(t.mday) + " " + t.month), s).w);
+      } else {
+        maxW = std::max(maxW, b.size(cased(e, t.hh + ":" + t.mm + (b.cfg.clock24 ? "" : " " + t.ampm)), s).w);
+      }
+    }
   }
-  y += 26 - 12;
-  const std::string wk = upper(stripAccents(t.weekdayShort));
-  const float cell = 62, gap = 20, lw = 11;
-  const float kw = wk.size() * cell + (wk.size() - 1) * gap;
-  float kx = (W - kw) / 2;
-  const auto& glyphs = kanaGlyphs();
-  for (char c : wk) {
-    auto it = glyphs.find(c);
-    if (it != glyphs.end())
-      for (const Stroke& s : it->second)
-        for (size_t i = 1; i < s.size(); ++i)
-          b.segment(kx + s[i - 1][0] * cell, y + 6 + s[i - 1][1] * cell, kx + s[i][0] * cell, y + 6 + s[i][1] * cell, lw,
-                    b.ink, false);
-    kx += cell + gap;
+  const float W = std::max(W0, maxW + 40);
+  float y = pad;
+  bool first = true;
+  for (const auto& e : elements) {
+    if (!e.show) continue;
+    if (!first) y += gap;
+    first = false;
+    const Color c = b.colorOf(e.color);
+    const std::string_view id = e.spec->id;
+    if (e.spec->kind == ClockElementSpec::Rule) {
+      const float len = e.spec->size * e.scale;
+      b.rect(W / 2 - e.thickness / 2, y, e.thickness, len, 0, withAlpha(c, 0.85F));
+      y += len;
+    } else if (id == "greeting") {
+      auto s = b.st(e);
+      bool firstLine = true;
+      for (const std::string& word : {cased(e, good), cased(e, part)}) {
+        if (!firstLine) y += 12;
+        firstLine = false;
+        auto z = b.size(word, s);
+        b.text(word, s, (W - z.w) / 2, y, c);
+        y += z.h;
+      }
+    } else if (id == "day") {
+      const std::string wk = e.upper ? upper(stripAccents(t.weekdayShort)) : stripAccents(t.weekdayShort);
+      if (glyphDay) {
+        const std::string glyphsText = upper(stripAccents(t.weekdayShort));
+        const float cell = e.spec->size * e.scale, dgap = e.spacing, lw = 11 * e.scale * (e.weight / 700.0F);
+        const float kw = glyphsText.size() * cell + (glyphsText.size() - 1) * dgap;
+        float kx = (W - kw) / 2;
+        const auto& glyphs = kanaGlyphs();
+        for (char ch : glyphsText) {
+          auto it = glyphs.find(ch);
+          if (it != glyphs.end())
+            for (const Stroke& st : it->second)
+              for (size_t i = 1; i < st.size(); ++i)
+                b.segment(kx + st[i - 1][0] * cell, y + 6 + st[i - 1][1] * cell, kx + st[i][0] * cell, y + 6 + st[i][1] * cell, lw,
+                          c, false);
+          kx += cell + dgap;
+        }
+        y += cell + 12;
+      } else {
+        // the weekday set in a font, sized to match the drawn one
+        auto s = b.st(e.family.c_str(), e.spec->size * e.scale * 1.15F, e.weight, e.spacing * 0.5F);
+        auto z = b.size(wk, s);
+        b.text(wk, s, (W - z.w) / 2, y, c);
+        y += z.h;
+      }
+    } else if (id == "date") {
+      const std::string date = cased(e, pad2(t.mday) + " " + t.month);
+      auto s = b.st(e);
+      auto z = b.size(date, s);
+      b.text(date, s, (W - z.w) / 2, y, c);
+      y += z.h;
+    } else if (id == "time") {
+      const std::string time = cased(e, t.hh + ":" + t.mm + (b.cfg.clock24 ? "" : " " + t.ampm));
+      auto s = b.st(e);
+      auto z = b.size(time, s);
+      b.text(time, s, (W - z.w) / 2, y, c);
+      y += z.h;
+    }
   }
-  y += cell + 12 + 26;
-  const std::string date = pad2(t.mday) + " " + upper(t.month);
-  auto dz = b.size(date, ds);
-  b.text(date, ds, (W - dz.w) / 2, y, b.ink);
-  y += dz.h + 26;
-  const std::string time = t.hh + ":" + t.mm + (b.cfg.clock24 ? "" : " " + t.ampm);
-  auto tz = b.size(time, tsS);
-  b.text(time, tsS, (W - tz.w) / 2, y, b.ink);
-  y += tz.h + 26;
-  b.rect(W / 2 - 1, y, 2, 70, 0, ruleC);
   b.sc.w = W;
-  b.sc.h = H;
+  b.sc.h = std::max(H0, y + pad);
 }
 
 // grand: one giant time in the display serif; accent colon

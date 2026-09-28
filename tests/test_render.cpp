@@ -141,6 +141,39 @@ int main(int argc, char** argv) {
     }
   }
 
+  // an edited card: the weekday in a font, other fonts and sizes, a new order
+  {
+    auto opts = toml::parse(R"(
+      face = "goodnight"
+      language = "en"
+      weather = false
+      goodnight_day_style = "font"
+      goodnight_day_font = "Fraunces 144pt"
+      goodnight_day_size = 1.2
+      goodnight_time_font = "JetBrains Mono"
+      goodnight_time_size = 2.0
+      goodnight_date_case = "normal"
+      goodnight_greeting_show = false
+      goodnight_order = "rule_top,time,day,date,rule_bottom"
+    )");
+    setenv("TZ", "UTC", 1);
+    tzset();
+    Image img = renderClock(ClockConfig{}, 240, 400, pal, 1790456862, &opts);
+    size_t lit = 0;
+    for (size_t i = 3; i < img.rgba.size(); i += 4) lit += img.rgba[i] > 8;
+    CHECK(lit > 400);
+    const std::string path = golden + "/clock-card-edited.png";
+    if (update) {
+      writePng(img, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(img, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "edited card differs from golden: %.3f\n", d);
+      CHECK(d >= 0 && d <= 1.5);
+    }
+  }
+
   // every auxiliary pass compiles and draws (a GLSL error must fail here,
   // never in the running daemon)
   while (glGetError() != GL_NO_ERROR) {}

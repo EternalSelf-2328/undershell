@@ -5,6 +5,8 @@
 
 #include "noctalia.hpp"
 
+#include <toml++/toml.hpp>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -35,7 +37,10 @@ NoctaliaState testPalette();
 Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noct);
 // Renders a clock face at a fixed wall-clock time (needs Headless).
 struct ClockConfig;
-Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime);
+// With `options`, the clock is configured from that widget table instead
+// (editable structures read their element overrides from it).
+Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime,
+                  const toml::table* options = nullptr);
 // Renders the now-playing card for a given media state (needs Headless).
 struct MediaState;
 Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now);

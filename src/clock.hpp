@@ -66,6 +66,7 @@ private:
   std::time_t currentTime() const;
 
   ClockConfig m_cfg;
+  toml::table m_opts;  // the widget's table: element overrides of editable structures
   NoctaliaState m_noct;
   Color m_ink, m_accent;
   Canvas m_canvas;
