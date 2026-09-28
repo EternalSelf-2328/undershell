@@ -301,6 +301,8 @@ Widget* App::target() {
 }
 
 void App::cycleSelection(int step) {
+  m_fontPickFor.clear();
+  m_elExpanded.clear();
   std::vector<Widget*> list;
   for (auto& w : m_widgets)
     if (w->impl && w->surface) list.push_back(w.get());  // fullscreen ones too (inspector only)
@@ -336,6 +338,7 @@ bool App::modActive(const char* name) const {
 // Returns true for keys that auto-repeat while held.
 bool App::keyAction(uint32_t key) {
   if (!m_renaming.empty()) return textKey(key);
+  if (!m_fontPickFor.empty()) return fontKey(key);
   if (m_paintMode) {
     const bool ctrlHeld = modActive(XKB_MOD_NAME_CTRL);
     const Output* o = m_pointerEdit ? m_pointerEdit->output : m_uiOutput;
@@ -744,6 +747,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_galleryOpen = false;
     m_helpOpen = false;
     m_savesOpen = false;
+    m_fontPickFor.clear();
     m_confirmDelete.clear();
     commitRename();
     if (w != m_selected) m_inspScroll = 0;

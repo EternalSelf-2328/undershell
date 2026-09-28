@@ -8,6 +8,12 @@
 
 #include <climits>
 #include <cmath>
+#include "clockparts.hpp"
+
+#include <fontconfig/fontconfig.h>
+#include <glib.h>
+#include <linux/input-event-codes.h>
+#include <cstring>
 #include <filesystem>
 #include <regex>
 #include <xkbcommon/xkbcommon.h>
@@ -36,7 +42,11 @@ std::string valueText(const toml::table& opts, const PropSpec& p) {
   const toml::node* n = opts.get(p.key);
   switch (p.kind) {
     case PropSpec::Enum:
-    case PropSpec::Color: return n && n->is_string() ? n->value_or(p.defText) : p.defText;
+    case PropSpec::Color:
+    case PropSpec::Font: {
+      const std::string v = n && n->is_string() ? n->value_or(p.defText) : p.defText;
+      return v.empty() ? p.defText : v;  // "" = the design default
+    }
     case PropSpec::Bool: return (n && n->is_boolean() ? n->value_or(p.def != 0) : p.def != 0) ? "true" : "false";
     case PropSpec::Number: {
       double v = p.def;
@@ -65,6 +75,67 @@ std::string formatNumber(const PropSpec& p, double v) {
   v = std::clamp(std::round((v - p.min) / p.step) * p.step + p.min, p.min, p.max);
   if (p.integer) return std::to_string(static_cast<long>(std::lround(v)));
   return p.step < 0.095 ? std::format("{:.2f}", v) : std::format("{:.1f}", v);  // as many decimals as a step has
+}
+
+// The inspector's rows for a widget: its type's options, and for a clock on
+// an editable structure an "Elements" section: one row per element (show,
+// order, open) and the open element's own options. `expanded` "*" opens all
+// (used to find any key's default).
+std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expanded) {
+  using K = PropSpec::Kind;
+  std::vector<PropSpec> s = schemaFor(w.cfg.type);
+  if (w.cfg.type != "clock") return s;
+  const std::string face = w.cfg.options["face"].value_or(std::string("digital"));
+  const ClockStructure* cs = clockStructure(face);
+  PropSpec head;
+  head.kind = K::Header;
+  head.key = "_elements";
+  if (!cs) {
+    head.labelEn = "Classic face: no editable parts";
+    head.labelEs = "Cara clásica: sin partes editables";
+    s.push_back(head);
+    return s;
+  }
+  head.labelEn = "Elements";
+  head.labelEs = "Elementos";
+  s.push_back(head);
+  if (face == "goodnight")
+    s.push_back({K::Enum, "goodnight_day_style", "Weekday drawn as", "Día dibujado con", {"strokes", "font"}, 0, 0, 0, 0, "strokes"});
+  static const std::vector<std::string> inks = {"ink", "accent", "primary", "secondary", "tertiary", "on_surface",
+                                                "#e2342a", "#f5c96b", "#7fc8ff", "#ffffff"};
+  for (const ClockElement& e : clockElements(w.cfg.options, *cs)) {
+    PropSpec row;
+    row.kind = K::Element;
+    row.key = e.spec->id;
+    row.labelEn = e.spec->labelEn;
+    row.labelEs = e.spec->labelEs;
+    row.face = face;
+    s.push_back(row);
+    if (expanded != "*" && expanded != e.spec->id) continue;
+    auto key = [&](const char* prop) { return elementKey(face, e.spec->id, prop); };
+    auto add = [&](PropSpec p) {
+      p.indent = true;
+      s.push_back(std::move(p));
+    };
+    if (e.spec->kind == ClockElementSpec::Rule) {
+      add({K::Number, key("size"), "Length ×", "Largo ×", {}, 0.2, 4, 0.05, 1});
+      add({K::Number, key("thickness"), "Thickness", "Grosor", {}, 0.5, 12, 0.5, 2});
+    } else {
+      PropSpec font;
+      font.kind = K::Font;
+      font.key = key("font");
+      font.labelEn = "Font";
+      font.labelEs = "Fuente";
+      font.defText = e.spec->family;
+      add(font);
+      add({K::Number, key("size"), "Size ×", "Tamaño ×", {}, 0.2, 4, 0.05, 1});
+      add({K::Enum, key("weight"), "Weight", "Peso", weightNames(), 0, 0, 0, 0, weightName(e.spec->weight)});
+      add({K::Number, key("spacing"), "Spacing", "Espaciado", {}, -10, 40, 0.5, e.spec->spacing});
+      add({K::Enum, key("case"), "Capitals", "Mayúsculas", {"auto", "upper", "normal"}, 0, 0, 0, 0, "auto"});
+    }
+    add({K::Color, key("color"), "Colour", "Color", inks, 0, 0, 0, 0, e.spec->color});
+  }
+  return s;
 }
 
 const char* typeName(const std::string& type, bool es) {
@@ -178,11 +249,24 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (m_motion && (key == "depth" || key == "depth_level")) return;  // locked under a moving wallpaper
   std::string v = tomlValue;
   if (v.empty())  // "absent before": restore the schema default
-    for (const auto& p : schemaFor(w.cfg.type))
+    for (const auto& p : inspectorSchema(w, "*"))
       if (key == p.key)
         v = p.kind == PropSpec::Number ? formatNumber(p, p.def)
             : p.kind == PropSpec::Bool ? (p.def != 0 ? "true" : "false")
                                        : "\"" + p.defText + "\"";
+  if (v.empty() && w.cfg.type == "clock") {
+    // a structure's own keys that are not options: order and visibility
+    const std::string face = w.cfg.options["face"].value_or(std::string("digital"));
+    if (const ClockStructure* cs = clockStructure(face)) {
+      if (key == face + "_order") {
+        std::string order;
+        for (const auto& e : cs->elements) order += (order.empty() ? "" : ",") + std::string(e.id);
+        v = "\"" + order + "\"";
+      } else if (key.size() > 5 && key.ends_with("_show")) {
+        v = "true";
+      }
+    }
+  }
   if (v.empty()) return;
   storeOption(w.cfg.options, key, v);
   if (key == "depth") w.cfg.depth = v == "true";
@@ -303,7 +387,8 @@ void App::layoutUi(const EditSurface& e) {
   // ── inspector of the selected widget ──
   Widget* w = m_selected;
   if (w && w->output == e.output && w->impl) {
-    const auto& schema = schemaFor(w->cfg.type);
+    m_inspSchema = inspectorSchema(*w, m_elExpanded);
+    const auto& schema = m_inspSchema;
     float contentH = kHeadH + kFootH;
     for (const auto& p : schema) contentH += p.kind == PropSpec::Color ? kColorRowH : kRowH;
     const float top = kBarY + kBarH + 14;
@@ -345,8 +430,23 @@ void App::layoutUi(const EditSurface& e) {
         const bool locked = m_motion && std::string_view(p.key) == "depth_level";
         if (visible(sr) && !locked) m_ui.push_back({UiControl::Slider, sr, idx});
         y += kRowH;
+      } else if (p.kind == PropSpec::Header) {
+        y += kRowH;
+      } else if (p.kind == PropSpec::Element) {
+        Rect show{cx + cw - 38, y + 5, 38, 20};
+        if (visible(show)) {
+          m_ui.push_back({UiControl::ElemExpand, {px + 8, y, kLabelW + cw - 104, kRowH}, idx});
+          m_ui.push_back({UiControl::ElemUp, {cx + cw - 38 - 58, y + 4, 24, 22}, idx});
+          m_ui.push_back({UiControl::ElemDown, {cx + cw - 38 - 32, y + 4, 24, 22}, idx});
+          m_ui.push_back({UiControl::ElemShow, show, idx});
+        }
+        y += kRowH;
+      } else if (p.kind == PropSpec::Font) {
+        Rect f{cx, y + 3, cw, 24};
+        if (visible(f)) m_ui.push_back({UiControl::FontPick, f, idx});
+        y += kRowH;
       } else {
-        const auto& sw = colorSwatches();
+        const auto& sw = p.options.empty() ? colorSwatches() : p.options;
         const float size = 20, gap = (kPanelW - 28 - sw.size() * size) / (sw.size() - 1);
         for (size_t k = 0; k < sw.size(); ++k) {
           Rect r{px + 14 + k * (size + gap), y + 26, size, size};
@@ -417,6 +517,27 @@ void App::layoutUi(const EditSurface& e) {
       ry += kSavePitch;
     }
   }
+  if (!m_fontPickFor.empty() && m_selected) {
+    Rect insp;
+    for (const UiControl& c : m_ui)
+      if (c.type == UiControl::Panel && c.value == "inspector") insp = c.r;
+    const float fw = 340, top = kBarY + kBarH + 14;
+    const float fh = std::min(540.0F, H - top - 16);
+    float fx = insp.x - 12 - fw;
+    if (fx < 12) fx = std::min(W - fw - 12, insp.x + insp.w + 12);
+    m_ui.push_back({UiControl::Panel, {fx, top, fw, fh}, -1, "fonts"});
+    m_ui.push_back({UiControl::FontClose, {fx + fw - 40, top + 12, 28, 28}});
+    const auto fonts = filteredFonts();
+    const int rows = std::max(1, static_cast<int>((fh - 100) / 34));
+    m_fontScroll = std::clamp(m_fontScroll, 0, std::max(0, static_cast<int>(fonts.size()) + 1 - rows));
+    float y = top + 92;
+    for (int k = 0; k < rows; ++k) {
+      const int i = m_fontScroll + k - 1;  // row 0: the design font
+      if (i >= static_cast<int>(fonts.size())) break;
+      m_ui.push_back({UiControl::FontItem, {fx + 10, y, fw - 20, 32}, -1, i < 0 ? std::string() : fonts[static_cast<size_t>(i)]});
+      y += 34;
+    }
+  }
   if (m_helpOpen) {
     const float hw = 580, hh = 334;
     m_ui.push_back({UiControl::Panel, {std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh}, -1, "help"});
@@ -424,6 +545,61 @@ void App::layoutUi(const EditSurface& e) {
 }
 
 void App::layoutGallery(float, float) {}
+
+// the families whose name contains the search text (any case)
+std::vector<std::string> App::filteredFonts() const {
+  if (m_fontFilter.empty()) return m_fontList;
+  gchar* needle = g_utf8_casefold(m_fontFilter.c_str(), -1);
+  std::vector<std::string> out;
+  for (const auto& f : m_fontList) {
+    gchar* hay = g_utf8_casefold(f.c_str(), -1);
+    if (std::strstr(hay, needle)) out.push_back(f);
+    g_free(hay);
+  }
+  g_free(needle);
+  return out;
+}
+
+// typing while the font picker is open searches it; Enter takes the first
+// match, Esc closes
+bool App::fontKey(uint32_t key) {
+  if (key == KEY_ESC) {
+    m_fontPickFor.clear();
+    markEditDirty();
+    return false;
+  }
+  if (key == KEY_ENTER || key == KEY_KPENTER) {
+    const auto fonts = filteredFonts();
+    if (!fonts.empty() && m_selected) setProp(*m_selected, m_fontPickFor, "\"" + fonts.front() + "\"");
+    markEditDirty();
+    return false;
+  }
+  if (key == KEY_BACKSPACE) {
+    while (!m_fontFilter.empty()) {
+      const unsigned char c = static_cast<unsigned char>(m_fontFilter.back());
+      m_fontFilter.pop_back();
+      if ((c & 0xC0) != 0x80) break;
+    }
+    m_fontScroll = 0;
+    markEditDirty();
+    return true;
+  }
+  if (key == KEY_UP || key == KEY_DOWN) {
+    m_fontScroll = std::max(0, m_fontScroll + (key == KEY_UP ? -1 : 1));
+    markEditDirty();
+    return true;
+  }
+  if (!m_xkbState || modActive(XKB_MOD_NAME_CTRL)) return false;
+  char buf[16] = {};
+  const int n = xkb_state_key_get_utf8(m_xkbState, key + 8, buf, sizeof buf);
+  if (n > 0 && static_cast<unsigned char>(buf[0]) >= 0x20 && buf[0] != 0x7f && m_fontFilter.size() < 40) {
+    m_fontFilter += std::string(buf, static_cast<size_t>(n));
+    m_fontScroll = 0;
+    markEditDirty();
+    return true;
+  }
+  return false;
+}
 
 int App::uiHit(double x, double y) const {
   // last matching control wins (controls are listed after their plate)
@@ -447,6 +623,14 @@ bool App::uiPress(int index, double x) {
   switch (c.type) {
     case UiControl::Paint:
       if (!m_motion) setPaintMode(!m_paintMode);  // no depth to paint under a moving wallpaper
+      return true;
+    case UiControl::FontClose:
+      m_fontPickFor.clear();
+      markEditDirty();
+      return true;
+    case UiControl::FontItem:
+      if (w && !m_fontPickFor.empty()) setProp(*w, m_fontPickFor, "\"" + c.value + "\"");  // "" = the design font
+      markEditDirty();
       return true;
     case UiControl::PaintTool:
       m_paintTool = std::clamp(std::atoi(c.value.c_str()), 0, 4);
@@ -558,12 +742,17 @@ bool App::uiPress(int index, double x) {
     case UiControl::Chip:
       for (auto& ww : m_widgets)
         if (ww->cfg.id == c.value) {
-          if (m_selected != ww.get()) m_inspScroll = 0;
+          if (m_selected != ww.get()) {
+            m_inspScroll = 0;
+            m_fontPickFor.clear();
+            m_elExpanded.clear();
+          }
           m_selected = ww.get();
         }
       markEditDirty();
       return true;
     case UiControl::Panel:
+      if (c.value == "fonts") return true;  // the search field lives on the plate
       if (c.value == "help") {  // a click on the card closes it
         m_helpOpen = false;
         markEditDirty();
@@ -578,9 +767,63 @@ bool App::uiPress(int index, double x) {
     default: break;
   }
   if (!w || c.prop < 0) return true;
-  const auto& schema = schemaFor(w->cfg.type);
+  const auto& schema = m_inspSchema;
   if (c.prop >= static_cast<int>(schema.size())) return true;
-  const PropSpec& p = schema[static_cast<size_t>(c.prop)];
+  const PropSpec p = schema[static_cast<size_t>(c.prop)];  // a copy: setProp may regenerate the list
+  if (c.type == UiControl::ElemExpand) {
+    m_elExpanded = m_elExpanded == p.key ? std::string() : p.key;
+    m_fontPickFor.clear();
+    markEditDirty();
+    return true;
+  }
+  if (c.type == UiControl::ElemShow || c.type == UiControl::ElemUp || c.type == UiControl::ElemDown) {
+    const ClockStructure* cs = clockStructure(p.face);
+    if (!cs) return true;
+    const auto els = clockElements(w->cfg.options, *cs);
+    std::vector<std::string> ids;
+    bool shown = true;
+    for (const auto& e : els) {
+      ids.push_back(e.spec->id);
+      if (p.key == e.spec->id) shown = e.show;
+    }
+    if (c.type == UiControl::ElemShow) {
+      setProp(*w, elementKey(p.face, p.key, "show"), shown ? "false" : "true");
+      return true;
+    }
+    const auto it = std::find(ids.begin(), ids.end(), p.key);
+    const long i = it - ids.begin(), j = c.type == UiControl::ElemUp ? i - 1 : i + 1;
+    if (it == ids.end() || j < 0 || j >= static_cast<long>(ids.size())) return true;
+    std::swap(ids[static_cast<size_t>(i)], ids[static_cast<size_t>(j)]);
+    std::string order;
+    for (const auto& id : ids) order += (order.empty() ? "" : ",") + id;
+    setProp(*w, p.face + "_order", "\"" + order + "\"");
+    return true;
+  }
+  if (c.type == UiControl::FontPick) {
+    if (m_fontList.empty()) {
+      // every installed family, once (the bundled ones are registered too)
+      FcPattern* pat = FcPatternCreate();
+      FcObjectSet* os = FcObjectSetBuild(FC_FAMILY, nullptr);
+      if (FcFontSet* fs = FcFontList(nullptr, pat, os)) {
+        for (int k = 0; k < fs->nfont; ++k) {
+          FcChar8* fam = nullptr;
+          if (FcPatternGetString(fs->fonts[k], FC_FAMILY, 0, &fam) == FcResultMatch && fam) m_fontList.emplace_back(reinterpret_cast<char*>(fam));
+        }
+        FcFontSetDestroy(fs);
+      }
+      FcObjectSetDestroy(os);
+      FcPatternDestroy(pat);
+      std::sort(m_fontList.begin(), m_fontList.end(), [](const std::string& a, const std::string& b) {
+        return g_ascii_strcasecmp(a.c_str(), b.c_str()) < 0;
+      });
+      m_fontList.erase(std::unique(m_fontList.begin(), m_fontList.end()), m_fontList.end());
+    }
+    m_fontPickFor = m_fontPickFor == p.key ? std::string() : p.key;
+    m_fontFilter.clear();
+    m_fontScroll = 0;
+    markEditDirty();
+    return true;
+  }
   if (c.type == UiControl::Prev || c.type == UiControl::Next) {
     const std::string cur = valueText(w->cfg.options, p);
     int i = 0;
@@ -617,7 +860,7 @@ void App::uiDrag(double x) {
     return;
   }
   if (!m_selected) return;
-  const auto& schema = schemaFor(m_selected->cfg.type);
+  const auto& schema = m_inspSchema;
   if (c.prop < 0 || c.prop >= static_cast<int>(schema.size())) return;
   const PropSpec& p = schema[static_cast<size_t>(c.prop)];
   const double t = std::clamp((x - c.r.x) / c.r.w, 0.0, 1.0);
@@ -637,9 +880,13 @@ bool App::uiScroll(double x, double y, int step) {
     return true;
   }
   Widget* w = m_selected;
-  if (w && c.prop >= 0) {
-    const auto& schema = schemaFor(w->cfg.type);
-    const PropSpec& p = schema[static_cast<size_t>(c.prop)];
+  if (c.value == "fonts" || c.type == UiControl::FontItem || c.type == UiControl::FontClose) {
+    m_fontScroll = std::max(0, m_fontScroll + step * 3);
+    markEditDirty();
+    return true;
+  }
+  if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
+    const PropSpec p = m_inspSchema[static_cast<size_t>(c.prop)];
     if (p.kind == PropSpec::Number) {
       setProp(*w, p.key, formatNumber(p, numberOf(w->cfg.options, p) + (step > 0 ? -p.step : p.step)));
       return true;
@@ -874,7 +1121,7 @@ void App::drawUi(EditSurface& e) {
     cv.text(w->cfg.id, mono, P.x + 44, P.y + 32, dim);
     cv.segment(P.x + 14, P.y + kHeadH + 4, P.x + P.w - 14, P.y + kHeadH + 4, 1, line, false);
 
-    const auto& schema = schemaFor(w->cfg.type);
+    const auto& schema = m_inspSchema;
     float y = P.y + kHeadH - m_inspScroll + 6;
     const float cx = P.x + kLabelW + 14, cw = kPanelW - kLabelW - 28;
     const float top = P.y + kHeadH, bottom = P.y + P.h - kFootH + 2;
@@ -883,9 +1130,42 @@ void App::drawUi(EditSurface& e) {
       const float rowH = p.kind == PropSpec::Color ? kColorRowH : kRowH;
       if (y + rowH >= top && y <= bottom) {
         const bool locked = m_motion && (std::string_view(p.key) == "depth" || std::string_view(p.key) == "depth_level");
-        cv.text(es ? p.labelEs : p.labelEn, label, P.x + 16, y + 6, locked ? withAlphaC(dim, 0.5F) : dim);
-        const std::string v = valueText(w->cfg.options, p);
-        if (locked) {
+        const bool plainLabel = p.kind != PropSpec::Header && p.kind != PropSpec::Element;
+        if (plainLabel)
+          cv.text(es ? p.labelEs : p.labelEn, label, P.x + 16 + (p.indent ? 16 : 0), y + 6,
+                  locked ? withAlphaC(dim, 0.5F) : (p.indent ? withAlphaC(dim, 0.85F) : dim));
+        const std::string v = plainLabel ? valueText(w->cfg.options, p) : std::string();
+        if (p.kind == PropSpec::Header) {
+          cv.segment(P.x + 14, y + 4, P.x + P.w - 14, y + 4, 1, line, false);
+          cv.text(es ? p.labelEs : p.labelEn, strong, P.x + 16, y + 10, withAlphaC(ink, 0.9F));
+        } else if (p.kind == PropSpec::Element) {
+          // ▸ name ............ ↑ ↓ [on]
+          const bool open = m_elExpanded == p.key;
+          bool shown = true;
+          if (const ClockStructure* cs = clockStructure(p.face))
+            for (const auto& el : clockElements(w->cfg.options, *cs))
+              if (p.key == el.spec->id) shown = el.show;
+          const float ax = P.x + 20, ay = y + 15;
+          if (open) cv.triangle(ax - 4, ay - 2, ax + 4, ay - 2, ax, ay + 3, accent);
+          else cv.triangle(ax - 2, ay - 4, ax - 2, ay + 4, ax + 3, ay, dim);
+          cv.text(es ? p.labelEs : p.labelEn, open ? strong : label, P.x + 32, y + 6,
+                  !shown ? withAlphaC(ink, 0.35F) : (open ? ink : withAlphaC(ink, 0.8F)));
+          const float ux = cx + cw - 38 - 58 + 12, dx = cx + cw - 38 - 32 + 12;
+          cv.triangle(ux - 4, y + 18, ux + 4, y + 18, ux, y + 12, dim);
+          cv.triangle(dx - 4, y + 12, dx + 4, y + 12, dx, y + 18, dim);
+          const float tx = cx + cw - 38;
+          cv.roundRect(tx, y + 5, 38, 20, 10, shown ? accent : withAlphaC(ink, 0.14F));
+          cv.circle(shown ? tx + 28 : tx + 10, y + 15, 7.5F, shown ? onAccent : ink);
+        } else if (p.kind == PropSpec::Font) {
+          const bool picking = m_fontPickFor == p.key;
+          cv.roundRect(cx, y + 3, cw, 24, 8, picking ? withAlphaC(accent, 0.2F) : raised, 1, picking ? accent : line);
+          const TextStyle fs{.family = v, .size = 13, .weight = 500};
+          cv.clip(cx + 6, y + 3, cw - 24, 24);
+          auto [fw, fh] = measure(v, fs);
+          cv.text(v, fs, cx + 8, y + 15 - fh / 2, ink);
+          cv.clip(P.x, top + 2, P.w, bottom - top - 4);  // back to the inspector's own clip
+          cv.triangle(cx + cw - 14, y + 13, cx + cw - 6, y + 13, cx + cw - 10, y + 18, dim);
+        } else if (locked) {
           // a moving wallpaper has no depth to pass behind
           const std::string note = es ? "fondo animado" : "moving wallpaper";
           auto [nw, nh] = measure(note, label);
@@ -910,14 +1190,18 @@ void App::drawUi(EditSurface& e) {
           cv.circle(cx + static_cast<float>(sw * t), y + 15, 7, ink, 2, accent);
           cv.text(v, mono, cx + sw + 10, y + 7, ink);
         } else {
-          const auto& sws = colorSwatches();
+          const auto& sws = p.options.empty() ? colorSwatches() : p.options;
           const float size = 20, gap = (kPanelW - 28 - sws.size() * size) / (sws.size() - 1);
           bool listed = false;
           for (size_t k = 0; k < sws.size(); ++k) {
             const float sx = P.x + 14 + k * (size + gap), sy = y + 26;
             listed = listed || sws[k] == v;
             if (sws[k] == v) cv.circle(sx + size / 2, sy + size / 2, size / 2 + 3, Color{0, 0, 0, 0}, 1.8F, ink);
-            cv.circle(sx + size / 2, sy + size / 2, size / 2, m_noctalia.state().color(sws[k]), 1, line);
+            // a clock's own inks by name, else the palette
+            const Color sc = sws[k] == "accent" ? w->impl->accent()
+                             : sws[k] == "ink"  ? m_noctalia.state().color(w->cfg.options["ink"].value_or(std::string("on_surface")))
+                                                : m_noctalia.state().color(sws[k]);
+            cv.circle(sx + size / 2, sy + size / 2, size / 2, sc, 1, line);
           }
           if (!listed) cv.text(v, mono, cx + cw - 70, y + 6, ink);
         }
@@ -1169,6 +1453,53 @@ void App::drawUi(EditSurface& e) {
            c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, fg);
     }
     if (hot && !tipFor(c.type, es).empty() && isSaveControl(c.type)) tipCtl = &c;
+  }
+
+  // ── font picker ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "fonts") continue;
+    const Rect P = c.r;
+    plateAt(P, 16);
+    cv.text(es ? "Fuente" : "Font", head, P.x + 16, P.y + 14, ink);
+    // the search field: typing goes straight into it
+    cv.roundRect(P.x + 12, P.y + 46, P.w - 24, 34, 10, Color{0, 0, 0, 0.3F}, 1.4F, withAlphaC(accent, 0.8F));
+    const bool empty = m_fontFilter.empty();
+    const std::string shown = empty ? (es ? "Escribe para buscar…" : "Type to search…") : m_fontFilter;
+    auto [sw2, sh2] = measure(shown, label);
+    cv.text(shown, label, P.x + 24, P.y + 63 - sh2 / 2, empty ? dim : ink);
+    if (!empty) cv.segment(P.x + 26 + sw2, P.y + 54, P.x + 26 + sw2, P.y + 72, 1.5F, accent, false);
+    const std::string count = std::format("{}", filteredFonts().size());
+    auto [cw2, ch2] = measure(count, mono);
+    cv.text(count, mono, P.x + P.w - 24 - cw2, P.y + 63 - ch2 / 2, dim);
+  }
+  {
+    std::string current;
+    if (m_selected && !m_fontPickFor.empty())
+      for (const auto& p : m_inspSchema)
+        if (p.key == m_fontPickFor) current = valueText(m_selected->cfg.options, p);
+    for (const UiControl& c : m_ui) {
+      const bool hot = hovered(c);
+      if (c.type == UiControl::FontClose) {
+        if (hot) cv.circle(c.r.x + 14, c.r.y + 14, 14, withAlphaC(ink, 0.12F));
+        cv.segment(c.r.x + 9, c.r.y + 9, c.r.x + 19, c.r.y + 19, 1.8F, ink);
+        cv.segment(c.r.x + 19, c.r.y + 9, c.r.x + 9, c.r.y + 19, 1.8F, ink);
+      } else if (c.type == UiControl::FontItem) {
+        std::string design;
+        for (const auto& p : m_inspSchema)
+          if (p.key == m_fontPickFor) design = p.defText;
+        const bool isDefault = c.value.empty();
+        const bool on = isDefault ? current == design : current == c.value;
+        cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 8, on ? withAlphaC(accent, 0.25F) : (hot ? withAlphaC(ink, 0.1F) : Color{0, 0, 0, 0}));
+        // each family shown in itself
+        const std::string fam = isDefault ? design : c.value;
+        const TextStyle fs{.family = fam, .size = 17, .weight = 500};
+        cv.clip(c.r.x + 8, c.r.y, c.r.w - 16, c.r.h);
+        const std::string text = isDefault ? (es ? "Del diseño · " : "Design · ") + design : c.value;
+        auto [tw, th] = measure(text, fs);
+        cv.text(text, fs, c.r.x + 10, c.r.y + (c.r.h - th) / 2, on ? ink : withAlphaC(ink, 0.88F));
+        cv.clip();
+      }
+    }
   }
 
   // ── shortcuts card ──

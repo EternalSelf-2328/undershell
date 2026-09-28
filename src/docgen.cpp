@@ -28,6 +28,7 @@ std::string valuesOf(const PropSpec& p) {
       for (const auto& o : p.options) s += (s.empty() ? "" : ", ") + ("`" + o + "`");
       return s;
     }
+    default: break;
   }
   return {};
 }

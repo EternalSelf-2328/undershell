@@ -10,6 +10,7 @@
 #include "media.hpp"
 #include "noctalia.hpp"
 #include "overlay.hpp"
+#include "schema.hpp"
 #include "canvas.hpp"
 #include "text.hpp"
 #include "widget.hpp"
@@ -148,6 +149,8 @@ private:
   void replaceLayout(const std::string& blocks, bool record);
   std::string savesJson();
   bool textKey(uint32_t key);  // typing a save's name
+  bool fontKey(uint32_t key);  // typing in the font picker's search
+  std::vector<std::string> filteredFonts() const;
   // the depth brush (depthpaint.cpp)
   float previewPlane() const;
   bool paintMap(const Output* o, double x, double y, double& fx, double& fy, double& fr);
@@ -214,7 +217,8 @@ public:
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
-                PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset } type = Panel;
+                PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -321,6 +325,11 @@ private:
   std::string m_renaming, m_renameText;   // save whose name is being typed
   std::string m_confirmDelete;            // save armed for deletion (second click)
   int m_saveScroll = 0;                   // first row shown
+  std::vector<PropSpec> m_inspSchema;     // the inspector's rows (generated for clock structures)
+  std::string m_elExpanded;               // clock element whose options are open
+  std::string m_fontPickFor, m_fontFilter;  // the font picker: key being set, search text
+  int m_fontScroll = 0;
+  std::vector<std::string> m_fontList;    // installed families (loaded once)
   bool m_paintMode = false, m_painting = false, m_smartBrush = true, m_confirmClear = false;
   int m_paintTool = 0;                    // DepthTool (what a stroke does)
   int m_selectTool = 0;                   // 0 brush, 1 wand, 2 lasso, 3 hand

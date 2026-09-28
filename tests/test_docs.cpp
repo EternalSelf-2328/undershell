@@ -15,7 +15,7 @@ int main() {
   // every option has both labels and a sane range
   for (const char* t : {"visualizer", "clock", "now_playing"})
     for (const auto& p : schemaFor(t)) {
-      CHECK(p.labelEn && *p.labelEn && p.labelEs && *p.labelEs);
+      CHECK(!p.labelEn.empty() && !p.labelEs.empty());
       if (p.kind == PropSpec::Number) CHECK(p.min < p.max && p.step > 0 && p.def >= p.min && p.def <= p.max);
       if (p.kind == PropSpec::Enum) {
         bool found = false;

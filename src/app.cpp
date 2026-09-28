@@ -742,6 +742,7 @@ void App::setEditMode(bool on) {
   m_galleryOpen = false;
   m_helpOpen = false;
   m_savesOpen = false;
+  m_fontPickFor.clear();
   m_confirmDelete.clear();
   if (!on) {
     commitRename();

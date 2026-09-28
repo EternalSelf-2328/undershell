@@ -10,14 +10,18 @@
 namespace undershell {
 
 struct PropSpec {
-  enum Kind { Enum, Bool, Number, Color } kind = Enum;
-  const char* key;
-  const char* labelEn;
-  const char* labelEs;
-  std::vector<std::string> options;  // Enum
+  // Header, Element and Font rows only appear in the inspector's generated
+  // list (clock structures); the config documents the four value kinds
+  enum Kind { Enum, Bool, Number, Color, Header, Element, Font } kind = Enum;
+  std::string key;
+  std::string labelEn;
+  std::string labelEs;
+  std::vector<std::string> options;  // Enum; Color: its swatches (empty = the standard ones)
   double min = 0, max = 1, step = 0.05, def = 0;  // Number (def also for Bool: 0/1)
-  std::string defText;                             // Enum / Color default
+  std::string defText;                             // Enum / Color / Font default
   bool integer = false;
+  bool indent = false;  // an element's own option, under its row
+  std::string face;     // Element: the structure it belongs to
 };
 
 inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
