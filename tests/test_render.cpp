@@ -174,6 +174,59 @@ int main(int argc, char** argv) {
     }
   }
 
+  // the other structures, edited
+  {
+    struct Edited {
+      const char* name;
+      const char* toml;
+      int w, h;
+    };
+    const Edited edits[] = {
+        {"clock-column-edited", R"(
+          face = "column"
+          column_align = "center"
+          column_leading = -0.05
+          column_minutes_color = "ink"
+          column_hours_font = "Fraunces 144pt"
+          column_minutes_font = "Fraunces 144pt")", 240, 400},
+        {"clock-flip-edited", R"(
+          face = "flip"
+          flip_radius = 0.5
+          flip_pulse = false
+          flip_cards_color = "#e2342a"
+          flip_digits_color = "#ffffff"
+          flip_digits_font = "Space Grotesk")", 480, 160},
+        {"clock-metal-edited", R"(
+          face = "metal"
+          weather = false
+          metal_separator = "dot"
+          metal_date_show = true
+          metal_weekday_color = "accent"
+          metal_order = "weekday,date,time")", 480, 240},
+        {"clock-stacked-edited", R"(
+          face = "stacked"
+          stacked_align = "left"
+          stacked_date_format = "short"
+          stacked_day_font = "Fraunces 144pt"
+          stacked_time_size = 3.0
+          stacked_order = "time,day,date")", 480, 300},
+    };
+    for (const auto& ed : edits) {
+      auto opts = toml::parse(std::string("language = \"en\"\ndate = \"none\"\n") + ed.toml);
+      Image img = renderClock(ClockConfig{}, ed.w, ed.h, pal, 1790456862, &opts);
+      const std::string path = golden + "/" + ed.name + ".png";
+      if (update) {
+        writePng(img, path, false);
+        continue;
+      }
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(img, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "%s differs from golden: %.3f\n", ed.name, d);
+      CHECK(d >= 0 && d <= 1.5);
+    }
+  }
+
   // every auxiliary pass compiles and draws (a GLSL error must fail here,
   // never in the running daemon)
   while (glGetError() != GL_NO_ERROR) {}

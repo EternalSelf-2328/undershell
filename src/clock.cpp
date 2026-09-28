@@ -109,6 +109,12 @@ Parts partsOf(std::time_t t, bool clock24, const std::string& lang) {
     p.weekdayShort = capitalize(strftimeLocal("%a", tm));
     p.month = capitalize(strftimeLocal("%B", tm));
   }
+  // the first three letters of the month ("Sep", "Sep"), accents kept
+  {
+    const gchar* end = p.month.c_str();
+    for (int i = 0; i < 3 && *end; ++i) end = g_utf8_next_char(end);
+    p.monthShort = std::string(p.month.c_str(), end);
+  }
   return p;
 }
 
@@ -229,7 +235,7 @@ ClockConfig ClockConfig::fromTable(const toml::table& t) {
 
 const std::vector<std::string>& ClockWidget::faces() {
   static const std::vector<std::string> f = {"digital", "minimal", "analog", "flip",  "rings",   "bighour",
-                                             "metal",   "goodnight", "grand", "column", "outline", "banner"};
+                                             "metal",   "goodnight", "grand", "column", "outline", "banner", "stacked"};
   return f;
 }
 
@@ -284,10 +290,27 @@ struct FaceBuilder {
     if (name == "accent") return accent;
     if (name == "dim") return inkDim;
     if (name == "soft") return inkSoft;
+    if (name == "card") return Color{0.02F, 0.02F, 0.025F, 0.86F};  // flip's dark cards
     return w.m_noct.color(name, ink);
   }
   TextStyle st(const ClockElement& e) { return st(e.family.c_str(), e.spec->size * e.scale, e.weight, e.spacing); }
   const toml::table& opts() const { return w.m_opts; }
+  double number(const std::string& key, double def) const {
+    if (const toml::node* n = w.m_opts.get(key))
+      if (auto v = n->value<double>()) return *v;
+    return def;
+  }
+  bool flag(const std::string& key, bool def) const {
+    if (const toml::node* n = w.m_opts.get(key))
+      if (auto v = n->value<bool>()) return *v;
+    return def;
+  }
+  // the element `id` of a structure's resolved list
+  static const ClockElement* find(const std::vector<ClockElement>& els, const char* id) {
+    for (const auto& e : els)
+      if (std::string_view(e.spec->id) == id) return &e;
+    return nullptr;
+  }
   std::string option(const std::string& key, const std::string& def) const {
     if (const toml::node* n = w.m_opts.get(key))
       if (auto v = n->value<std::string>(); v && !v->empty()) return *v;
@@ -493,27 +516,39 @@ static void faceRings(FaceBuilder& b, const Parts& t, const NoctaliaState& noct)
 
 // flip: split-flap cards that fold edge-on, swap and unfold when a digit changes
 static void faceFlip(FaceBuilder& b, const Parts& t, const std::vector<std::pair<std::string, float>>& cards, double now) {
-  const float ch = 104, cw = std::round(ch * 0.72F), gap = 7;
-  const Color card{0.02F, 0.02F, 0.025F, 0.86F};
-  auto ds = b.st(MONO, std::round(ch * 0.64F), 700);
-  auto cs = b.st(MONO, std::round(ch * 0.5F), 700);
+  const auto els = clockElements(b.opts(), *clockStructure("flip"));
+  const ClockElement& cardEl = *FaceBuilder::find(els, "cards");
+  const ClockElement& digitEl = *FaceBuilder::find(els, "digits");
+  const ClockElement& colonEl = *FaceBuilder::find(els, "colon");
+  const float ch = 104 * cardEl.scale, cw = std::round(ch * 0.72F), gap = 7 * cardEl.scale;
+  const Color card = b.colorOf(cardEl.color);
+  const float radius = std::round(ch * static_cast<float>(std::clamp(b.number("flip_radius", 0.16), 0.0, 0.5)));
+  auto ds = b.st(digitEl.family.c_str(), std::round(ch * 0.64F) * digitEl.scale, digitEl.weight, digitEl.spacing);
+  auto cs = b.st(colonEl.family.c_str(), std::round(ch * 0.5F) * colonEl.scale, colonEl.weight, colonEl.spacing);
+  const Color digitC = b.colorOf(digitEl.color), colonC = b.colorOf(colonEl.color);
   float x = 0;
   auto drawCard = [&](size_t i) {
     const float sy = cards[i].second;
     const float h = std::max(1.0F, ch * sy);
-    b.rect(x, (ch - h) / 2, cw, h, std::round(ch * 0.16F) * std::min(1.0F, sy * 1.4F), card, 1, withAlpha(b.accent, 0.24F));
-    auto d = b.size(cards[i].first, ds);
-    b.text(cards[i].first, ds, x + (cw - d.w) / 2, (ch - d.h) / 2, b.ink, 1, sy);
+    if (cardEl.show)
+      b.rect(x, (ch - h) / 2, cw, h, radius * std::min(1.0F, sy * 1.4F), card, 1, withAlpha(b.accent, 0.24F));
+    if (digitEl.show) {
+      auto d = b.size(cards[i].first, ds);
+      b.text(cards[i].first, ds, x + (cw - d.w) / 2, (ch - d.h) / 2, digitC, 1, sy);
+    }
     // the fold seam across the middle
-    b.rect(x, ch / 2 - 1, cw, 2, 0, Color{0, 0, 0, 0.4F});
+    if (cardEl.show) b.rect(x, ch / 2 - 1, cw, 2, 0, Color{0, 0, 0, 0.4F});
     x += cw + gap;
   };
   auto colon = [&](float opacity) {
+    if (!colonEl.show) return;
     auto z = b.size(":", cs);
-    b.text(":", cs, x, (ch - z.h) / 2, b.accent, opacity);
+    b.text(":", cs, x, (ch - z.h) / 2, colonC, opacity);
     x += z.w + gap;
   };
-  const float pulse = 0.65F + 0.35F * static_cast<float>(std::cos(std::fmod(now, 1.24) / 1.24 * 2 * std::numbers::pi));
+  const float pulse = b.flag("flip_pulse", true)
+                          ? 0.65F + 0.35F * static_cast<float>(std::cos(std::fmod(now, 1.24) / 1.24 * 2 * std::numbers::pi))
+                          : 1.0F;
   drawCard(0);
   drawCard(1);
   colon(pulse);
@@ -557,20 +592,110 @@ static void faceBigHour(FaceBuilder& b, const Parts& t) {
   b.sc.h = H;
 }
 
-// metal: a heavy condensed time over one meta line
+// metal: a heavy condensed time over one line of details (AM/PM, weekday,
+// date, weather), each piece its own element, joined by a separator
 static void faceMetal(FaceBuilder& b, const Parts& t, bool es) {
-  auto ts = b.st(INTER, 132, 900, -2), ms = b.st(INTER, 25, 700, 0.5F);
-  std::string meta = (b.cfg.clock24 ? "" : t.ampm + "  |  ") + t.weekday;
-  if (b.cfg.weather) {
-    const std::string wx = weatherClause(es, b.cfg.fahrenheit);
-    if (!wx.empty()) meta += "  |  " + wx;
+  const auto els = clockElements(b.opts(), *clockStructure("metal"));
+  const std::string sepName = b.option("metal_separator", "bar");
+  const std::string sep = sepName == "dot" ? "  ·  " : sepName == "slash" ? "  /  " : sepName == "dash" ? "  —  "
+                        : sepName == "space" ? "     " : "  |  ";
+  struct Piece {
+    std::string text;
+    TextStyle style;
+    Color color;
+  };
+  std::vector<std::vector<Piece>> lines;  // the time is a line of its own; details gather between
+  bool lastWasTime = true;
+  for (const auto& e : els) {
+    if (!e.show) continue;
+    const std::string_view id = e.spec->id;
+    std::string text;
+    if (id == "time") text = t.hh + ":" + t.mm;
+    else if (id == "ampm") text = b.cfg.clock24 ? "" : t.ampm;
+    else if (id == "weekday") text = t.weekday;
+    else if (id == "date") text = std::to_string(t.mday) + " " + t.month;
+    else if (id == "weather" && b.cfg.weather) text = weatherClause(es, b.cfg.fahrenheit);
+    if (text.empty()) continue;
+    if (e.upper) text = upper(text);
+    Piece piece{text, b.st(e), b.colorOf(e.color)};
+    if (id == "time") {
+      lines.push_back({piece});
+      lastWasTime = true;
+    } else {
+      if (lastWasTime) lines.emplace_back();
+      lines.back().push_back(piece);
+      lastWasTime = false;
+    }
   }
-  const std::string time = t.hh + ":" + t.mm;
-  auto tz = b.size(time, ts), mz = b.size(meta, ms);
-  b.text(time, ts, 0, 0, b.ink);
-  b.text(meta, ms, 0, tz.h + 12, b.ink);
-  b.sc.w = std::max(tz.w, mz.w);
-  b.sc.h = tz.h + 12 + mz.h;
+  float y = 0, maxW = 0;
+  bool first = true;
+  for (const auto& line : lines) {
+    if (!first) y += 12;
+    first = false;
+    float x = 0, h = 0;
+    for (size_t i = 0; i < line.size(); ++i) {
+      if (i > 0) {
+        auto z = b.size(sep, line[i].style);
+        b.text(sep, line[i].style, x, y, line[i].color);
+        x += z.w;
+      }
+      auto z = b.size(line[i].text, line[i].style);
+      b.text(line[i].text, line[i].style, x, y, line[i].color);
+      x += z.w;
+      h = std::max(h, z.h);
+    }
+    maxW = std::max(maxW, x);
+    y += h;
+  }
+  b.sc.w = maxW;
+  b.sc.h = y;
+}
+
+// stacked (the Modern Clock plugin): a big weekday, the date and the time,
+// one per line
+static void faceStacked(FaceBuilder& b, const Parts& t, bool es) {
+  const auto els = clockElements(b.opts(), *clockStructure("stacked"));
+  const std::string align = b.option("stacked_align", "center"), fmt = b.option("stacked_date_format", "long");
+  const float gap = static_cast<float>(b.number("stacked_gap", 5));
+  auto lower = [](const std::string& s) {
+    gchar* l = g_utf8_strdown(s.c_str(), -1);
+    std::string out(l);
+    g_free(l);
+    return out;
+  };
+  struct Line {
+    std::string text;
+    TextStyle style;
+    Color color;
+    float w, h;
+  };
+  std::vector<Line> lines;
+  for (const auto& e : els) {
+    if (!e.show) continue;
+    const std::string_view id = e.spec->id;
+    std::string text;
+    if (id == "day") text = t.weekday;
+    else if (id == "time") text = t.hh + ":" + t.mm + (b.cfg.clock24 ? "" : " " + t.ampm);
+    else if (fmt == "numeric") text = es ? std::format("{:02d}/{:02d}/{}", t.mday, t.mon + 1, t.year) : std::format("{:02d}/{:02d}/{}", t.mon + 1, t.mday, t.year);
+    else if (fmt == "short") text = es ? std::format("{} {}", t.mday, lower(t.monthShort)) : std::format("{} {}", t.monthShort, t.mday);
+    else text = es ? std::format("{} de {}, {}", t.mday, lower(t.month), t.year) : std::format("{} {}, {}", t.month, t.mday, t.year);
+    if (e.upper) text = upper(text);
+    auto st = b.st(e);
+    auto z = b.size(text, st);
+    lines.push_back({text, st, b.colorOf(e.color), z.w, z.h});
+  }
+  float W = 0;
+  for (const auto& l : lines) W = std::max(W, l.w);
+  float y = 0;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    if (i > 0) y += gap;
+    const auto& l = lines[i];
+    const float x = align == "left" ? 0 : align == "right" ? W - l.w : (W - l.w) / 2;
+    b.text(l.text, l.style, x, y, l.color);
+    y += l.h;
+  }
+  b.sc.w = W;
+  b.sc.h = y;
 }
 
 // good night (the card): a greeting card; the weekday in the angular faux-kana
@@ -693,33 +818,67 @@ static void faceGrand(FaceBuilder& b, const Parts& t) {
 
 // column: the hour stacked over the minute, huge and tight; accent minute
 static void faceColumn(FaceBuilder& b, const Parts& t) {
-  const float px = 150;
-  auto big = b.st(FONT, px, 700, -2);
-  auto h1 = b.size(t.hh, big), h2 = b.size(t.mm, big);
-  const float step = std::round(-0.2F * px);
-  b.text(t.hh, big, 0, 0, b.ink);
-  float y = h1.h + step;
-  b.text(t.mm, big, 0, y, b.accent);
-  y += h2.h;
-  float w = std::max(h1.w, h2.w);
-  if (b.cfg.seconds || !b.cfg.clock24) {
-    y += std::round(0.1F * px) + step;
-    auto sm = b.st(FONT, std::round(px * 0.2F), 600), ap = b.st(FONT, std::round(px * 0.2F), 600, 2);
-    float x = 0, rowH = 0;
-    if (b.cfg.seconds) {
-      b.text(t.ss, sm, x, y, b.inkDim);
-      x += b.size(t.ss, sm).w + 8;
-      rowH = b.size(t.ss, sm).h;
+  const auto els = clockElements(b.opts(), *clockStructure("column"));
+  const ClockElement* hoursEl = FaceBuilder::find(els, "hours");
+  const float px = hoursEl->spec->size * hoursEl->scale;
+  const float step = std::round(static_cast<float>(b.number("column_leading", -0.2)) * px);
+  const std::string align = b.option("column_align", "left");
+  struct Run {
+    std::string text;
+    TextStyle style;
+    Color color;
+    float x, w;
+  };
+  struct Row {
+    std::vector<Run> runs;
+    float y, w, h;
+  };
+  std::vector<Row> rows;
+  float y = 0;
+  for (const auto& e : els) {
+    if (!e.show) continue;
+    const std::string_view id = e.spec->id;
+    Row row;
+    const Color c = b.colorOf(e.color);
+    auto st = b.st(e);
+    if (id == "extra") {
+      if (!b.cfg.seconds && b.cfg.clock24) continue;
+      auto ap = b.st(e.family.c_str(), e.spec->size * e.scale, e.weight, e.spacing + 2);
+      float x = 0, h = 0;
+      if (b.cfg.seconds) {
+        auto z = b.size(t.ss, st);
+        row.runs.push_back({t.ss, st, c, x, z.w});
+        x += z.w + 8;
+        h = z.h;
+      }
+      if (!b.cfg.clock24) {
+        auto z = b.size(t.ampm, ap);
+        row.runs.push_back({t.ampm, ap, c, x, z.w});
+        x += z.w;
+        h = std::max(h, z.h);
+      }
+      row.w = x;
+      row.h = h;
+      if (!rows.empty()) y += std::round(0.1F * px) + step;
+    } else {
+      const std::string text = id == "hours" ? t.hh : t.mm;
+      auto z = b.size(text, st);
+      row.runs.push_back({text, st, c, 0, z.w});
+      row.w = z.w;
+      row.h = z.h;
+      if (!rows.empty()) y += step;
     }
-    if (!b.cfg.clock24) {
-      b.text(t.ampm, ap, x, y, b.inkDim);
-      x += b.size(t.ampm, ap).w;
-      rowH = std::max(rowH, b.size(t.ampm, ap).h);
-    }
-    y += rowH;
-    w = std::max(w, x);
+    row.y = y;
+    y += row.h;
+    rows.push_back(std::move(row));
   }
-  b.sc.w = w;
+  float W = 0;
+  for (const auto& r : rows) W = std::max(W, r.w);
+  for (const auto& r : rows) {
+    const float ox = align == "right" ? W - r.w : align == "center" ? (W - r.w) / 2 : 0;
+    for (const auto& run : r.runs) b.text(run.text, run.style, ox + run.x, r.y, run.color);
+  }
+  b.sc.w = W;
   b.sc.h = y;
 }
 
@@ -863,13 +1022,14 @@ ClockWidget::Scene ClockWidget::build(std::time_t now) {
   } else if (f == "bighour") faceBigHour(b, t);
   else if (f == "metal") faceMetal(b, t, es);
   else if (f == "goodnight") faceGoodNight(b, t, es);
+  else if (f == "stacked") faceStacked(b, t, es);
   else if (f == "grand") faceGrand(b, t);
   else if (f == "column") faceColumn(b, t);
   else if (f == "outline") faceOutline(b, t);
   else if (f == "banner") faceBanner(b, t);
   else faceDigital(b, t);
 
-  if (m_cfg.date == "none") return face;
+  if (m_cfg.date == "none" || f == "stacked") return face;  // stacked carries its own date
   Scene date;
   dateStrip(b, t, date);
   // the date strip centred under the face, 14 apart

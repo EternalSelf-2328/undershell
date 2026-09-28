@@ -9,6 +9,8 @@ namespace undershell {
 
 namespace {
 const char* INTER = "Inter Display";
+const char* FONT = "Space Grotesk";
+const char* MONO = "JetBrains Mono";
 }
 
 const ClockStructure* clockStructure(const std::string& face) {
@@ -24,7 +26,39 @@ const ClockStructure* clockStructure(const std::string& face) {
                                        {K::Text, "time", "Hora", "Time", INTER, 22, 500, 3, "ink", false},
                                        {K::Rule, "rule_bottom", "Línea inferior", "Bottom rule", "", 70, 400, 0, "ink", false},
                                    }};
-  if (face == card.face) return &card;
+  // column: hours over minutes, seconds and AM/PM small underneath
+  static const ClockStructure column{"column",
+                                     {
+                                         {K::Text, "hours", "Horas", "Hours", FONT, 150, 700, -2, "ink", false},
+                                         {K::Text, "minutes", "Minutos", "Minutes", FONT, 150, 700, -2, "accent", false},
+                                         {K::Text, "extra", "Segundos y AM/PM", "Seconds & AM/PM", FONT, 30, 600, 0, "dim", false},
+                                     }};
+  // flip: split-flap cards; the layout is fixed, the parts restyle
+  static const ClockStructure flip{"flip",
+                                   {
+                                       {K::Box, "cards", "Tarjetas", "Cards", "", 104, 400, 0, "card", false},
+                                       {K::Text, "digits", "Dígitos", "Digits", MONO, 67, 700, 0, "ink", false},
+                                       {K::Text, "colon", "Separador", "Separator", MONO, 52, 700, 0, "accent", false},
+                                   },
+                                   false};
+  // metal: a heavy time over one line of details
+  static const ClockStructure metal{"metal",
+                                    {
+                                        {K::Text, "time", "Hora", "Time", INTER, 132, 900, -2, "ink", false},
+                                        {K::Text, "ampm", "AM/PM", "AM/PM", INTER, 25, 700, 0.5F, "ink", false},
+                                        {K::Text, "weekday", "Día", "Weekday", INTER, 25, 700, 0.5F, "ink", false},
+                                        {K::Text, "date", "Fecha", "Date", INTER, 25, 700, 0.5F, "ink", false, false},
+                                        {K::Text, "weather", "Clima", "Weather", INTER, 25, 700, 0.5F, "ink", false},
+                                    }};
+  // stacked: the Modern Clock plugin — a big weekday, the date, the time
+  static const ClockStructure stacked{"stacked",
+                                      {
+                                          {K::Text, "day", "Día", "Weekday", FONT, 70, 700, 0, "secondary", true},
+                                          {K::Text, "date", "Fecha", "Date", FONT, 20, 400, 0, "ink", false},
+                                          {K::Text, "time", "Hora", "Time", FONT, 20, 200, 0, "accent", false},
+                                      }};
+  for (const ClockStructure* s : {&card, &column, &flip, &metal, &stacked})
+    if (face == s->face) return s;
   return nullptr;
 }
 
@@ -51,6 +85,7 @@ std::string weightName(int weight) {
 ClockElement resolveElement(const toml::table& opts, const std::string& face, const ClockElementSpec& spec) {
   ClockElement e;
   e.spec = &spec;
+  e.show = spec.shown;
   auto num = [&](const char* prop, double def) {
     const toml::node* n = opts.get(elementKey(face, spec.id, prop));
     if (!n) return def;

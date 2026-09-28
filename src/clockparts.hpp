@@ -14,7 +14,7 @@
 namespace undershell {
 
 struct ClockElementSpec {
-  enum Kind { Text, Rule, Glyphs } kind = Text;  // Glyphs: the drawn weekday of the card
+  enum Kind { Text, Rule, Glyphs, Box } kind = Text;  // Glyphs: the card's drawn weekday; Box: flip's cards
   const char* id;
   const char* labelEs;
   const char* labelEn;
@@ -24,11 +24,13 @@ struct ClockElementSpec {
   float spacing;
   const char* color;   // ink | accent | dim | soft, or a palette role / #hex
   bool upper;          // design case
+  bool shown = true;   // shown by default
 };
 
 struct ClockStructure {
   const char* face;
   std::vector<ClockElementSpec> elements;
+  bool orderable = true;  // flip's layout is fixed: its elements only restyle
 };
 
 // the editable structure behind a face, or nullptr for the classic faces

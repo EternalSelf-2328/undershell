@@ -53,7 +53,8 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   };
   static const std::vector<PropSpec> clock = {
       {K::Enum, "face", "Face", "Estilo",
-       {"digital", "minimal", "analog", "flip", "rings", "bighour", "metal", "goodnight", "grand", "column", "outline", "banner"},
+       {"digital", "minimal", "analog", "flip", "rings", "bighour", "metal", "goodnight", "grand", "column", "outline", "banner",
+        "stacked"},
        0, 0, 0, 0, "digital"},
       {K::Enum, "date", "Date", "Fecha", {"none", "inline", "badge", "stacked"}, 0, 0, 0, 0, "inline"},
       {K::Bool, "clock_24h", "24-hour", "24 horas", {}, 0, 1, 1, 1},

@@ -99,8 +99,24 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
   head.labelEn = "Elements";
   head.labelEs = "Elementos";
   s.push_back(head);
+  // each structure's own options
   if (face == "goodnight")
     s.push_back({K::Enum, "goodnight_day_style", "Weekday drawn as", "Día dibujado con", {"strokes", "font"}, 0, 0, 0, 0, "strokes"});
+  if (face == "column") {
+    s.push_back({K::Number, "column_leading", "Line overlap", "Interlineado", {}, -0.6, 0.4, 0.01, -0.2});
+    s.push_back({K::Enum, "column_align", "Align", "Alineación", {"left", "center", "right"}, 0, 0, 0, 0, "left"});
+  }
+  if (face == "flip") {
+    s.push_back({K::Number, "flip_radius", "Card corners", "Esquinas", {}, 0, 0.5, 0.01, 0.16});
+    s.push_back({K::Bool, "flip_pulse", "Pulsing separator", "Separador que late", {}, 0, 1, 1, 1});
+  }
+  if (face == "metal")
+    s.push_back({K::Enum, "metal_separator", "Separator", "Separador", {"bar", "dot", "slash", "dash", "space"}, 0, 0, 0, 0, "bar"});
+  if (face == "stacked") {
+    s.push_back({K::Enum, "stacked_align", "Align", "Alineación", {"center", "left", "right"}, 0, 0, 0, 0, "center"});
+    s.push_back({K::Number, "stacked_gap", "Line gap", "Separación", {}, 0, 60, 1, 5, "", true});
+    s.push_back({K::Enum, "stacked_date_format", "Date format", "Formato de fecha", {"long", "short", "numeric"}, 0, 0, 0, 0, "long"});
+  }
   static const std::vector<std::string> inks = {"ink", "accent", "primary", "secondary", "tertiary", "on_surface",
                                                 "#e2342a", "#f5c96b", "#7fc8ff", "#ffffff"};
   for (const ClockElement& e : clockElements(w.cfg.options, *cs)) {
@@ -110,6 +126,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     row.labelEn = e.spec->labelEn;
     row.labelEs = e.spec->labelEs;
     row.face = face;
+    if (!cs->orderable) row.options = {"fixed"};  // no order arrows
     s.push_back(row);
     if (expanded != "*" && expanded != e.spec->id) continue;
     auto key = [&](const char* prop) { return elementKey(face, e.spec->id, prop); };
@@ -120,6 +137,12 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     if (e.spec->kind == ClockElementSpec::Rule) {
       add({K::Number, key("size"), "Length ×", "Largo ×", {}, 0.2, 4, 0.05, 1});
       add({K::Number, key("thickness"), "Thickness", "Grosor", {}, 0.5, 12, 0.5, 2});
+    } else if (e.spec->kind == ClockElementSpec::Box) {
+      add({K::Number, key("size"), "Size ×", "Tamaño ×", {}, 0.3, 3, 0.05, 1});
+      add({K::Color, key("color"), "Colour", "Color",
+           {"card", "ink", "accent", "primary", "secondary", "tertiary", "on_surface", "#e2342a", "#1c1c22", "#ffffff"}, 0, 0, 0, 0,
+           e.spec->color});
+      continue;
     } else {
       PropSpec font;
       font.kind = K::Font;
@@ -436,8 +459,10 @@ void App::layoutUi(const EditSurface& e) {
         Rect show{cx + cw - 38, y + 5, 38, 20};
         if (visible(show)) {
           m_ui.push_back({UiControl::ElemExpand, {px + 8, y, kLabelW + cw - 104, kRowH}, idx});
-          m_ui.push_back({UiControl::ElemUp, {cx + cw - 38 - 58, y + 4, 24, 22}, idx});
-          m_ui.push_back({UiControl::ElemDown, {cx + cw - 38 - 32, y + 4, 24, 22}, idx});
+          if (p.options.empty()) {  // "fixed": the structure keeps its layout
+            m_ui.push_back({UiControl::ElemUp, {cx + cw - 38 - 58, y + 4, 24, 22}, idx});
+            m_ui.push_back({UiControl::ElemDown, {cx + cw - 38 - 32, y + 4, 24, 22}, idx});
+          }
           m_ui.push_back({UiControl::ElemShow, show, idx});
         }
         y += kRowH;
@@ -1151,8 +1176,10 @@ void App::drawUi(EditSurface& e) {
           cv.text(es ? p.labelEs : p.labelEn, open ? strong : label, P.x + 32, y + 6,
                   !shown ? withAlphaC(ink, 0.35F) : (open ? ink : withAlphaC(ink, 0.8F)));
           const float ux = cx + cw - 38 - 58 + 12, dx = cx + cw - 38 - 32 + 12;
-          cv.triangle(ux - 4, y + 18, ux + 4, y + 18, ux, y + 12, dim);
-          cv.triangle(dx - 4, y + 12, dx + 4, y + 12, dx, y + 18, dim);
+          if (p.options.empty()) {
+            cv.triangle(ux - 4, y + 18, ux + 4, y + 18, ux, y + 12, dim);
+            cv.triangle(dx - 4, y + 12, dx + 4, y + 12, dx, y + 18, dim);
+          }
           const float tx = cx + cw - 38;
           cv.roundRect(tx, y + 5, 38, 20, 10, shown ? accent : withAlphaC(ink, 0.14F));
           cv.circle(shown ? tx + 28 : tx + 10, y + 15, 7.5F, shown ? onAccent : ink);
@@ -1198,7 +1225,8 @@ void App::drawUi(EditSurface& e) {
             listed = listed || sws[k] == v;
             if (sws[k] == v) cv.circle(sx + size / 2, sy + size / 2, size / 2 + 3, Color{0, 0, 0, 0}, 1.8F, ink);
             // a clock's own inks by name, else the palette
-            const Color sc = sws[k] == "accent" ? w->impl->accent()
+            const Color sc = sws[k] == "card"   ? Color{0.02F, 0.02F, 0.025F, 1}
+                             : sws[k] == "accent" ? w->impl->accent()
                              : sws[k] == "ink"  ? m_noctalia.state().color(w->cfg.options["ink"].value_or(std::string("on_surface")))
                                                 : m_noctalia.state().color(sws[k]);
             cv.circle(sx + size / 2, sy + size / 2, size / 2, sc, 1, line);

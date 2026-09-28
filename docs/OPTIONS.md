@@ -60,7 +60,7 @@ Ryoku's clock faces and date strips.
 
 | Key | Values | Default | |
 |---|---|---|---|
-| `face` | `digital`, `minimal`, `analog`, `flip`, `rings`, `bighour`, `metal`, `goodnight`, `grand`, `column`, `outline`, `banner` | `"digital"` | Face |
+| `face` | `digital`, `minimal`, `analog`, `flip`, `rings`, `bighour`, `metal`, `goodnight`, `grand`, `column`, `outline`, `banner`, `stacked` | `"digital"` | Face |
 | `date` | `none`, `inline`, `badge`, `stacked` | `"inline"` | Date |
 | `clock_24h` | `true` / `false` | `true` | 24-hour |
 | `seconds` | `true` / `false` | `false` | Seconds |

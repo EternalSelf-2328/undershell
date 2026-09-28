@@ -92,6 +92,24 @@ While editing with no music, the visualizers move with the demo spectrum.
 With the grid on (toolbar), positions snap to it (16 px) on release and are saved to the config,
 without touching the rest of the file.
 
+## Clock structures
+
+Five clock faces are **editable structures**: `goodnight` (the card),
+`column`, `flip`, `metal` and `stacked` (the Modern Clock layout: a big
+weekday, the date, the time). Select the clock in the editor: the
+inspector's **Elements** section lists its parts — open one to set its
+**font** (every installed family, each shown in itself; type to search),
+size, weight, spacing, capitals and colour; the arrows reorder parts and
+the switch hides one (flip keeps its layout). Each structure also has
+options of its own: the card's weekday drawn in strokes or set in a font,
+the column's line overlap and alignment, flip's corners and pulsing
+separator, metal's separator, stacked's alignment, gap and date format.
+Untouched, a structure looks exactly as designed; changes are flat keys
+in the widget (`goodnight_time_font = "Space Grotesk"`,
+`goodnight_order = "rule_top,greeting,time,day,date,rule_bottom"`), so
+they travel with wallpaper profiles and saved layouts. The other faces
+stay as classics.
+
 ## Depth planes
 
 With Noctalia's `wallpaper_depth` plugin, widgets pass behind the scenery.
