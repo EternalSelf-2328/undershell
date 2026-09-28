@@ -92,6 +92,16 @@ While editing with no music, the visualizers move with the demo spectrum.
 With the grid on (toolbar), positions snap to it (16 px) on release and are saved to the config,
 without touching the rest of the file.
 
+## Halo
+
+The `halo` look is the outer part of Noctalia's fancy audio visualizer:
+mirrored radial bars and/or a polar wave around an empty centre, graded
+from primary to secondary with its bloom — without the inner rings,
+ripples, particles and grid. Inspector options: **Halo** (bars, wave,
+both), **Inner size**, **Bloom**, **Base ring**; *Thickness* sets the bar
+width, *Spin* turns it, *Colour* picks theme (primary → secondary),
+gradient or custom colours.
+
 ## Clock structures
 
 Five clock faces are **editable structures**: `goodnight` (the card),

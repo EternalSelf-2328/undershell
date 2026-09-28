@@ -116,7 +116,11 @@ Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noc
   vc.peaks = look == "bars" || look == "segments";
   const bool frame = look == "frame";
   Visualizer viz;
-  viz.configure(vc, noct);
+  WidgetConfig wc;
+  wc.type = "visualizer";
+  wc.options.insert_or_assign("style", look);
+  wc.options.insert_or_assign("peaks", vc.peaks);
+  viz.configure(wc, noct);
   std::vector<float> raw(64);
   for (int step = 0; step < 90; ++step) {
     const double t = step / 60.0;

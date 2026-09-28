@@ -6,23 +6,25 @@
 #include <cmath>
 #include <numbers>
 
+#include "halo_shader.inc"
 #include "spectrum_shader.inc"
 
 namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                                "curtain", "line", "frame", "radial", "orb", "spiral"};
+                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);
+  configureHalo(cfg, noct);
 }
 
 void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noct) {
   m_cfg = cfg;
   m_styleIndex = 0;
-  for (int i = 0; i < 12; ++i)
+  for (int i = 0; i < 13; ++i)
     if (cfg.style == kStyles[i]) m_styleIndex = i;
-  const bool polar = m_styleIndex >= 9;
+  const bool polar = m_styleIndex >= 9;  // radial, orb, spiral, halo
   m_motion.gain = cfg.gain;
   m_motion.smoothing = cfg.smoothing;
   m_motion.mirror = cfg.mirror && !polar && m_styleIndex != 8;
@@ -46,12 +48,55 @@ void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noc
   }
 }
 
+void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noct) {
+  const toml::table& t = cfg.options;
+  m_haloShape = t["halo_shape"].value_or(std::string("bars"));
+  m_haloRing = t["halo_ring"].value_or(false);
+  m_haloInner = std::clamp(t["halo_inner"].value_or(0.7), 0.1, 1.4);
+  m_haloBloom = std::clamp(t["halo_bloom"].value_or(0.5), 0.0, 2.0);
+  // Noctalia's fancy visualizer grades primary -> secondary
+  if (m_cfg.colorMode == "theme") {
+    m_haloA = noct.color("primary");
+    m_haloB = noct.color("secondary");
+  } else {
+    m_haloA = noct.color(m_cfg.color);
+    m_haloB = noct.color(m_cfg.colorMode == "gradient" ? m_cfg.color2 : m_cfg.color);
+  }
+}
+
+void Visualizer::drawHalo(const DrawContext& ctx) {
+  if (!m_haloProg.valid()) m_haloProg.create(kQuadVertexShader, kHaloFrag, "halo");
+  Motion::resample(m_motion.levels, 32, m_drawLevels);
+  glUseProgram(m_haloProg.id());
+  auto U = [&](const char* n) { return m_haloProg.uniform(n); };
+  glUniform1fv(U("u_lv"), 32, m_drawLevels.data());
+  glUniform2f(U("res"), ctx.w, ctx.h);
+  glUniform3f(U("u_primary"), m_haloA.r, m_haloA.g, m_haloA.b);
+  glUniform3f(U("u_secondary"), m_haloB.r, m_haloB.g, m_haloB.b);
+  glUniform1f(U("u_turn"), static_cast<float>(m_motion.spinDeg * std::numbers::pi / 180.0));
+  glUniform1f(U("u_sensitivity"), 1.5F);
+  glUniform1f(U("u_barWidth"), static_cast<float>(std::clamp(m_cfg.thickness, 0.05, 1.0)) / 0.58F * 0.6F);
+  glUniform1f(U("u_bloom"), static_cast<float>(m_haloBloom));
+  glUniform1f(U("u_inner"), static_cast<float>(m_haloInner));
+  glUniform1f(U("u_waveThick"), 1.0F);
+  glUniform1f(U("u_shape"), m_haloShape == "wave" ? 1.0F : m_haloShape == "both" ? 2.0F : 0.0F);
+  glUniform1f(U("u_ring"), m_haloRing ? 1.0F : 0.0F);
+  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
+  glUniform1f(U("u_fade"), static_cast<float>(m_motion.fade()));
+  glDisable(GL_BLEND);
+  drawUnitQuad();
+}
+
 void Visualizer::tick(const TickContext& ctx) {
   static const std::vector<float> kEmpty;
   m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);
 }
 
 void Visualizer::draw(const DrawContext& ctx) {
+  if (m_styleIndex == 12) {
+    drawHalo(ctx);
+    return;
+  }
   const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;
   if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kSpectrumFrag, "spectrum");
 

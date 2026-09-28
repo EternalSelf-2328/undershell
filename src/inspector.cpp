@@ -84,6 +84,16 @@ std::string formatNumber(const PropSpec& p, double v) {
 std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expanded) {
   using K = PropSpec::Kind;
   std::vector<PropSpec> s = schemaFor(w.cfg.type);
+  if (w.cfg.type == "visualizer" && w.cfg.options["style"].value_or(std::string()) == "halo") {
+    // the halo's own options, right after the look
+    std::vector<PropSpec> halo = {
+        {K::Enum, "halo_shape", "Halo", "Halo", {"bars", "wave", "both"}, 0, 0, 0, 0, "bars"},
+        {K::Number, "halo_inner", "Inner size", "Tamaño interior", {}, 0.1, 1.4, 0.05, 0.7},
+        {K::Number, "halo_bloom", "Bloom", "Resplandor", {}, 0, 2, 0.05, 0.5},
+        {K::Bool, "halo_ring", "Base ring", "Anillo base", {}, 0, 1, 1, 0},
+    };
+    s.insert(s.begin() + 1, halo.begin(), halo.end());
+  }
   if (w.cfg.type != "clock") return s;
   const std::string face = w.cfg.options["face"].value_or(std::string("digital"));
   const ClockStructure* cs = clockStructure(face);

@@ -28,7 +28,16 @@ public:
   [[nodiscard]] const VisualizerConfig& config() const { return m_cfg; }
 
 private:
+  void configureHalo(const WidgetConfig& cfg, const NoctaliaState& noct);
+  void drawHalo(const DrawContext& ctx);
+
   VisualizerConfig m_cfg;
+  // halo (Noctalia's fancy visualizer, outer part only)
+  Program m_haloProg;
+  std::string m_haloShape = "bars";
+  bool m_haloRing = false;
+  double m_haloInner = 0.7, m_haloBloom = 0.5;
+  Color m_haloA, m_haloB;
   Motion m_motion;
   std::array<Color, 8> m_ramp{};
   int m_styleIndex = 0;
