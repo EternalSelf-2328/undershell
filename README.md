@@ -130,7 +130,9 @@ spin: the energy speeds it up on a spring and each kick gives a burst that
 brakes by itself. **Mode**: `inward` (arms outside the ring, drawn in),
 `outward` (outside, pouring out — a white hole), `inside` (a tunnel inside
 the ring, sinking to the centre; only the halo's glow outside) and
-`inside_out` (the tunnel welling up from the centre). Options: Mode, Horizon size, Reach, Arms, Twist, Turbulence,
+`inside_out` (the tunnel welling up from the centre). **Ring** dims the
+horizon ring down to 0 (arms only; their inner end then dissolves softly).
+Options: Mode, Ring, Horizon size, Reach, Arms, Twist, Turbulence,
 Spin speed, Clockwise, Horizon line, Glow strength, and the halo's music
 options. Colour 1 lights the horizon, Colour 2 the outer arms.
 

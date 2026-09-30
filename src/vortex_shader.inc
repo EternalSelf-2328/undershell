@@ -26,6 +26,7 @@ uniform float u_dir;        // 1 counter-clockwise, -1 clockwise
 uniform float u_inside;     // 1: the swirl lives inside the ring (a tunnel)
 uniform float u_flowSign;   // +1 toward the ring's inside, -1 away from it
 uniform float u_intensity;
+uniform float u_ring;       // 0..1: the horizon ring's light (0 = arms only)
 uniform float u_breath;
 uniform float u_pump;
 uniform float u_hit;
@@ -90,8 +91,8 @@ void main() {
     float far = clamp(x / span, 0.0, 1.0);  // toward the arms' far end, on either side
     vec3 armC = mix(u_primary, second, clamp(far * 1.3 + u_tone * 0.3, 0.0, 1.0));
     vec3 hot = mix(u_primary, vec3(1.0), 0.5);
-    vec3 light = u_primary * (ringGlow * u_intensity * level + innerGlow * level * 0.6) +
-                 armC * arms * u_intensity * (0.35 + 0.65 * level) + hot * core * (1.2 + 1.2 * u_hit);
+    vec3 light = u_primary * (ringGlow * u_intensity * level + innerGlow * level * 0.6) * u_ring +
+                 armC * arms * u_intensity * (0.35 + 0.65 * level) + hot * core * (1.2 + 1.2 * u_hit) * u_ring;
 
     // shock waves rolling out along the arms' reach
     for (int i = 0; i < 4; ++i) {

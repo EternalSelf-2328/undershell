@@ -96,6 +96,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
         {K::Number, "vortex_turbulence", "Turbulence", "Turbulencia", {}, 0, 1, 0.05, 0.45},
         {K::Number, "vortex_speed", "Spin speed", "Velocidad de giro", {}, 0, 3, 0.05, 0.35},
         {K::Bool, "vortex_clockwise", "Clockwise", "Sentido horario", {}, 0, 1, 1, 0},
+        {K::Number, "vortex_ring", "Ring (0 = arms only)", "Anillo (0 = solo brazos)", {}, 0, 1, 0.05, 1},
         {K::Number, "halo_width", "Horizon line", "Línea del horizonte", {}, 0.003, 0.15, 0.001, 0.012},
         {K::Number, "halo_bloom", "Glow strength", "Intensidad", {}, 0, 2, 0.05, 0.8},
         {K::Number, "halo_pulse", "Pulse (groove)", "Pulso (ritmo)", {}, 0, 1, 0.05, 0.7},

@@ -68,6 +68,7 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   m_vTurb = std::clamp(t["vortex_turbulence"].value_or(0.45), 0.0, 1.0);
   m_vClockwise = t["vortex_clockwise"].value_or(false);
   m_vMode = t["vortex_mode"].value_or(std::string("inward"));
+  m_vRing = std::clamp(t["vortex_ring"].value_or(1.0), 0.0, 1.0);
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -203,6 +204,7 @@ void Visualizer::drawVortex(const DrawContext& ctx) {
   glUniform1f(U("u_inside"), inside ? 1.0F : 0.0F);
   glUniform1f(U("u_flowSign"), towardCentre ? 1.0F : -1.0F);
   glUniform1f(U("u_intensity"), static_cast<float>(m_haloBloom));
+  glUniform1f(U("u_ring"), static_cast<float>(m_vRing));
   glUniform1f(U("u_breath"), static_cast<float>(m_breath));
   glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
   glUniform1f(U("u_hit"), static_cast<float>(m_hit));
