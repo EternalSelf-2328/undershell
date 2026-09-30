@@ -44,6 +44,8 @@ public:
 
   // called from the stream's process callback (same thread as dispatch())
   void feed(const float* mono, int count, bool nonZero);
+  // offline analysis (tools, tests): one frame from what was fed, no clock
+  void analyseFrame() { processFrame(); }
   void setSampleRate(int rate);
 
   struct Stream;

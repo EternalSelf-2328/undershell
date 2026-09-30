@@ -59,6 +59,7 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   m_haloBreathe = std::clamp(t["halo_breathe"].value_or(0.6), 0.0, 1.0);
   m_haloHits = std::clamp(t["halo_hits"].value_or(0.7), 0.0, 1.0);
   m_haloAurora = std::clamp(t["halo_aurora"].value_or(0.0), 0.0, 1.0);
+  m_haloPulse = std::clamp(t["halo_pulse"].value_or(0.7), 0.0, 1.0);
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -68,44 +69,78 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   }
 }
 
+// Keeps a signal's recent range (floor .. peak) and maps it to 0..1, so a
+// quiet song and a loud one both use the full movement: the peak jumps up and
+// sinks over `span` seconds; the floor drops at once and rises slowly.
+static double normalise(double x, double& floor, double& peak, double dt, double span) {
+  peak = std::max(x, peak * std::exp(-dt / span));
+  floor = x < floor ? x : floor + (x - floor) * (1 - std::exp(-dt / (span * 0.5)));
+  const double range = std::max(peak - floor, 0.05);  // silence is not stretched into noise
+  return std::clamp((x - floor) / range, 0.0, 1.0);
+}
+
 // The halo's motion, from the raw spectrum (the bars' smoothing would make
-// kicks late): energy -> a critically damped spring (the breath); bass
-// spectral flux over an adaptive threshold -> kicks (a flash + a wave);
-// the spectral centroid -> the tone.
+// kicks late), every signal normalised to the song's own recent range:
+//   pump  - the bass envelope (fast up, slower down): the light pulses with the groove
+//   breath - the energy relative to its recent level, on a damped spring: the size
+//            swells with the phrasing
+//   kicks - bass spectral flux over mean + 1.6 sd of itself: a flash, and a wave
+//   tone  - the spectral centroid: the colour drifts toward the secondary
 void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
   m_ringTime += dt;
   const bool live = raw && !raw->empty() && m_motion.fade() > 0.01;
   const size_t n = live ? raw->size() : 0;
   double energy = 0, bass = 0, centroid = 0, sum = 0;
-  const size_t nb = std::max<size_t>(2, n / 8);  // the lowest eighth: kick drum and bass
+  const size_t nb = std::max<size_t>(3, n / 6);  // the lowest sixth: kick drum, 808s and bass
   for (size_t i = 0; i < n; ++i) {
     const double v = std::clamp(static_cast<double>((*raw)[i]) * m_cfg.gain, 0.0, 1.5);
     energy += v;
-    if (i < nb) bass += v;
-    centroid += v * static_cast<double>(i) / std::max<size_t>(1, n - 1);
+    if (i < nb) bass += v * (1.0 - 0.5 * static_cast<double>(i) / static_cast<double>(nb));  // lowest weigh most
+    centroid += v * static_cast<double>(i) / static_cast<double>(std::max<size_t>(1, n - 1));
     sum += v;
   }
   if (n) {
-    energy = std::clamp(energy / static_cast<double>(n) * 1.8, 0.0, 1.0);
-    bass /= static_cast<double>(nb);
+    energy /= static_cast<double>(n);
+    bass /= static_cast<double>(nb) * 0.75;
   }
-  // the breath: a critically damped spring, no overshoot, ~0.35 s to settle
-  const double omega = 9.0 + 6.0 * (1 - m_cfg.smoothing);
-  const double target = energy * m_haloBreathe;
-  const double acc = omega * omega * (target - m_breath) - 2 * omega * m_breathVel;
-  m_breathVel += acc * dt;
+  const double bassN = live ? normalise(bass, m_bassFloor, m_bassPeak, dt, 6.0) : 0.0;
+  const double energyN = live ? normalise(energy, m_energyFloor, m_energyPeak, dt, 8.0) : 0.0;
+  auto follow = [dt](double& env, double target, double up, double down) {
+    env += (target - env) * (1 - std::exp(-dt / (target > env ? up : down)));
+  };
+  // how loud the song really is (normalising alone would make a ballad
+  // jump like a club track): calm music keeps calmer reactions
+  follow(m_loud, std::clamp(m_bassPeak / 0.55, 0.0, 1.0), 1.5, 4.0);
+  // warm-up: the first second and a half of sound (a new song, after a
+  // pause) eases in while the ranges settle, instead of jumping
+  m_liveTime = live ? m_liveTime + dt : 0.0;
+  const double warm = std::clamp(m_liveTime / 1.5, 0.0, 1.0);
+  const double loud = (0.4 + 0.6 * m_loud) * warm * warm;
+  // the pump: the groove in the light, on a soft curve so sustained bass
+  // does not pin it at the top
+  const double pumpTarget = bassN * bassN * (3 - 2 * bassN) * 0.85 * loud;
+  follow(m_pump, pumpTarget, 0.025, 0.16 + 0.25 * m_cfg.smoothing);
+  // the breath: a critically damped spring, no overshoot
+  follow(m_energySlow, energyN, 0.6, 0.6);
+  const double target = std::clamp(0.55 * energyN + 0.45 * m_energySlow, 0.0, 1.0) * m_haloBreathe * warm;
+  const double omega = 7.0 + 6.0 * (1 - m_cfg.smoothing);
+  m_breathVel += (omega * omega * (target - m_breath) - 2 * omega * m_breathVel) * dt;
   m_breath = std::clamp(m_breath + m_breathVel * dt, 0.0, 1.2);
-  // kicks: positive change of the bass (spectral flux) above its own
-  // running mean plus a margin, at most every 180 ms
-  const double flux = std::max(0.0, bass - m_prevBass);
-  m_prevBass = bass;
-  m_fluxMean += (flux - m_fluxMean) * (1 - std::exp(-dt / 0.5));
+  // kicks: the normalised bass rising faster than it usually does
+  const double flux = std::max(0.0, bassN - m_prevBass);
+  m_prevBass = bassN;
+  const double k = 1 - std::exp(-dt / 0.8);
+  m_fluxMean += (flux - m_fluxMean) * k;
+  m_fluxVar += ((flux - m_fluxMean) * (flux - m_fluxMean) - m_fluxVar) * k;
+  const double threshold = m_fluxMean + 1.6 * std::sqrt(m_fluxVar) + 0.03;
   m_sinceBeat += dt;
-  if (live && flux > m_fluxMean * 2.2 + 0.035 && bass > 0.18 && m_sinceBeat > 0.18) {
+  m_trace = {energyN, bassN, flux, threshold, m_breath, m_hit, m_tone, false};
+  if (live && warm > 0.6 && flux > threshold && bassN > 0.35 && m_sinceBeat > 0.15) {
+    m_trace.kick = true;
     m_sinceBeat = 0;
-    const double strength = std::clamp(flux * 5.0, 0.35, 1.0);
-    m_hit = std::max(m_hit, strength * m_haloHits);
-    if (m_haloWaves && m_haloHits > 0 && strength > 0.55) {  // only the strong hits send a wave
+    const double strength = std::clamp((flux - threshold) / std::max(threshold, 0.02) * 0.5 + 0.5, 0.3, 1.0);
+    m_hit = std::max(m_hit, strength * m_haloHits * loud);
+    if (m_haloWaves && m_haloHits > 0 && strength * loud > 0.55) {  // only the strong hits send a wave
       size_t slot = 0;
       for (size_t i = 1; i < m_waveAges.size(); ++i)
         if (m_waveAges[i] < 0 || (m_waveAges[slot] >= 0 && m_waveAges[i] > m_waveAges[slot])) slot = i;
@@ -113,16 +148,21 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
       m_waveGain[slot] = strength;
     }
   }
-  m_hit *= std::exp(-dt / 0.28);  // the flash dies in about a quarter second
+  m_hit *= std::exp(-dt / 0.22);  // the flash dies in about a fifth of a second
   if (m_hit < 0.002) m_hit = 0;
+  if (!live) {
+    m_pump *= std::exp(-dt / 0.4);
+    m_energySlow *= std::exp(-dt / 0.8);
+  }
   // the tone: slow, so colour drifts rather than flickers
-  const double tone = sum > 0.02 ? std::clamp((centroid / sum - 0.15) / 0.35, 0.0, 1.0) : m_tone;
+  const double tone = sum > 0.02 ? std::clamp((centroid / sum - 0.12) / 0.3, 0.0, 1.0) : m_tone;
   m_tone += (tone - m_tone) * (1 - std::exp(-dt / 1.6));
   for (double& a : m_waveAges)
     if (a >= 0) {
       a += dt / 0.9;
       if (a >= 1) a = -1;
     }
+  m_trace.pump = m_pump;
 }
 
 void Visualizer::drawRing(const DrawContext& ctx) {
@@ -139,6 +179,7 @@ void Visualizer::drawRing(const DrawContext& ctx) {
   glUniform1f(U("u_intensity"), static_cast<float>(m_haloBloom));
   glUniform1f(U("u_breath"), static_cast<float>(m_breath));
   glUniform1f(U("u_hit"), static_cast<float>(m_hit));
+  glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
   glUniform1f(U("u_tone"), static_cast<float>(m_tone));
   glUniform1f(U("u_aurora"), static_cast<float>(m_haloAurora));
   glUniform1f(U("u_time"), static_cast<float>(std::fmod(m_ringTime, 3600.0)));

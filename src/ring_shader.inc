@@ -20,6 +20,7 @@ uniform float u_spread;     // glow reach
 uniform float u_intensity;  // glow strength (the "bloom" option)
 uniform float u_breath;     // spring-smoothed energy 0..1
 uniform float u_hit;        // kick flash 0..1, decaying
+uniform float u_pump;       // the bass envelope, normalised to the song: the groove
 uniform float u_tone;       // 0 dark music .. 1 bright music
 uniform float u_aurora;     // 0..1
 uniform float u_time;
@@ -36,10 +37,10 @@ void main() {
     float d = length(q);
     float theta = atan(q.y, q.x);
 
-    float r = u_radius * (1.0 + 0.035 * u_breath);
-    float w = u_width * (1.0 + 0.25 * u_hit);
+    float r = u_radius * (1.0 + 0.045 * u_breath + 0.012 * u_pump);
+    float w = u_width * (1.0 + 0.35 * u_pump + 0.25 * u_hit);
     float t = d - r;
-    float reach = u_spread * (0.7 + 0.45 * u_breath + 0.35 * u_hit);
+    float reach = u_spread * (0.65 + 0.35 * u_breath + 0.45 * u_pump + 0.3 * u_hit);
 
     // the aurora: a slow, smooth brightness drift along the ring (the shape stays round)
     float aur = 1.0;
@@ -54,7 +55,7 @@ void main() {
     float core = 1.0 - smoothstep(w * 0.5 - u_px, w * 0.5 + u_px, abs(t));
     float side = t > 0.0 ? 1.0 : 0.45;
     float bloom = g(t, w * 1.6 + u_px) * 0.9 + g(t, reach * 0.45 * side) * 0.55 + g(t, reach * 1.6 * side) * 0.28;
-    float level = 0.55 + 0.35 * u_breath + 0.9 * u_hit;  // how bright the light burns
+    float level = 0.45 + 0.2 * u_breath + 0.75 * u_pump + 0.8 * u_hit;  // how bright the light burns
     float glowI = bloom * u_intensity * level * aur;
 
     // colour: the tone drifts toward the secondary with bright music; far

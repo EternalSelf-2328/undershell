@@ -98,17 +98,24 @@ The `halo` look is one perfectly round ring of light. Its glow is built
 like real bloom (a tight, a medium and a wide falloff summed as light, then
 tone mapped, so the core turns white-hot instead of clipping):
 
-- **Breathing** — the size follows the music's energy on a critically
-  damped spring: it swells and settles smoothly, never jitters.
+- **Every song fills the range** — each signal is normalised to the song's
+  own recent range (a few seconds), so trap, swing and a ballad all move;
+  how loud the song really is still counts, so calm music stays calmer.
+  The first second and a half of sound eases in.
+- **Pulse** — the bass envelope, on a soft curve: the light and the glow's
+  reach pump with the groove.
+- **Breathing** — the size follows the energy relative to its recent level
+  on a critically damped spring: it swells with the phrasing and settles
+  smoothly, never jitters.
 - **Beat flash** — kicks, found by spectral flux on the bass (how fast it
-  *rises*, over an adaptive threshold, not how loud it is), flash the light
+  *rises*, over its own mean plus 1.6 deviations, not how loud it is), flash the light
   for about a quarter second; strong ones send a soft **wave** of light out.
 - **Tone** — the colour drifts slowly from the primary toward the secondary
   as the music gets brighter (more treble).
 - **Aurora** (off by default) — a slow brightness drift along the ring; the
   shape stays round.
 
-Options: Size, Line width, Glow reach, Glow strength, Breathing, Beat flash,
+Options: Size, Line width, Glow reach, Glow strength, Pulse, Breathing, Beat flash,
 Beat waves, Aurora; *Smoothing* sets how soft the breathing is, *Gain* the
 sensitivity, *Colour* the colours (theme: primary → secondary).
 

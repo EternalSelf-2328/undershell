@@ -91,6 +91,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
         {K::Number, "halo_width", "Line width", "Grosor de línea", {}, 0.003, 0.15, 0.001, 0.012},
         {K::Number, "halo_spread", "Glow reach", "Alcance del halo", {}, 0.01, 0.4, 0.01, 0.09},
         {K::Number, "halo_bloom", "Glow strength", "Intensidad del halo", {}, 0, 2, 0.05, 0.8},
+        {K::Number, "halo_pulse", "Pulse (groove)", "Pulso (ritmo)", {}, 0, 1, 0.05, 0.7},
         {K::Number, "halo_breathe", "Breathing", "Respiración", {}, 0, 1, 0.05, 0.6},
         {K::Number, "halo_hits", "Beat flash", "Destello al golpe", {}, 0, 1, 0.05, 0.7},
         {K::Bool, "halo_waves", "Beat waves", "Ondas al golpe", {}, 0, 1, 1, 1},
