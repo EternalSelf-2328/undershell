@@ -8,12 +8,13 @@
 #include <numbers>
 
 #include "ring_shader.inc"
+#include "vortex_shader.inc"
 #include "spectrum_shader.inc"
 
 namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo"};
+                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);
@@ -23,9 +24,9 @@ void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
 void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noct) {
   m_cfg = cfg;
   m_styleIndex = 0;
-  for (int i = 0; i < 13; ++i)
+  for (int i = 0; i < 14; ++i)
     if (cfg.style == kStyles[i]) m_styleIndex = i;
-  const bool polar = m_styleIndex >= 9;  // radial, orb, spiral, halo
+  const bool polar = m_styleIndex >= 9;  // radial, orb, spiral, halo, vortex
   m_motion.gain = cfg.gain;
   m_motion.smoothing = cfg.smoothing;
   m_motion.mirror = cfg.mirror && !polar && m_styleIndex != 8;
@@ -60,6 +61,12 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   m_haloHits = std::clamp(t["halo_hits"].value_or(0.7), 0.0, 1.0);
   m_haloAurora = std::clamp(t["halo_aurora"].value_or(0.0), 0.0, 1.0);
   m_haloPulse = std::clamp(t["halo_pulse"].value_or(0.7), 0.0, 1.0);
+  m_vArms = std::clamp(t["vortex_arms"].value_or(int64_t{3}), int64_t{1}, int64_t{12});
+  m_vTwist = std::clamp(t["vortex_twist"].value_or(3.4), 0.0, 8.0);
+  m_vReach = std::clamp(t["vortex_reach"].value_or(1.9), 1.1, 6.0);
+  m_vSpeed = std::clamp(t["vortex_speed"].value_or(0.35), 0.0, 3.0);
+  m_vTurb = std::clamp(t["vortex_turbulence"].value_or(0.45), 0.0, 1.0);
+  m_vClockwise = t["vortex_clockwise"].value_or(false);
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -163,6 +170,47 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
       if (a >= 1) a = -1;
     }
   m_trace.pump = m_pump;
+  // the vortex turns faster with the music; a kick gives a burst that brakes
+  if (m_trace.kick) m_vBurst = std::min(1.5, m_vBurst + 0.8 * m_haloHits);
+  m_vBurst *= std::exp(-dt / 0.6);
+  const double spin = m_vSpeed * (0.35 + 0.65 * m_breath + 0.5 * m_pump + m_vBurst);
+  m_vPhase = std::fmod(m_vPhase + dt * spin, 2 * std::numbers::pi * 1000);
+  m_vFlow = std::fmod(m_vFlow + dt * (1.2 + 2.5 * m_pump + 2.0 * m_vBurst) * (0.3 + m_vSpeed), 2 * std::numbers::pi * 1000);
+}
+
+void Visualizer::drawVortex(const DrawContext& ctx) {
+  if (!m_vortexProg.valid()) m_vortexProg.create(kQuadVertexShader, kVortexFrag, "vortex");
+  glUseProgram(m_vortexProg.id());
+  auto U = [&](const char* nm) { return m_vortexProg.uniform(nm); };
+  const float half = std::min(ctx.w, ctx.h) * 0.5F;
+  glUniform2f(U("res"), ctx.w, ctx.h);
+  glUniform3f(U("u_primary"), m_haloA.r, m_haloA.g, m_haloA.b);
+  glUniform3f(U("u_secondary"), m_haloB.r, m_haloB.g, m_haloB.b);
+  glUniform1f(U("u_radius"), static_cast<float>(m_haloInner / 2 + 0.2));  // the same ring as the halo
+  glUniform1f(U("u_width"), static_cast<float>(m_haloWidth));
+  glUniform1f(U("u_reach"), static_cast<float>(m_vReach));
+  glUniform1f(U("u_arms"), static_cast<float>(m_vArms));
+  glUniform1f(U("u_twist"), static_cast<float>(m_vTwist));
+  glUniform1f(U("u_turb"), static_cast<float>(m_vTurb));
+  glUniform1f(U("u_phase"), static_cast<float>(m_vPhase));
+  glUniform1f(U("u_flow"), static_cast<float>(m_vFlow));
+  glUniform1f(U("u_dir"), m_vClockwise ? -1.0F : 1.0F);
+  glUniform1f(U("u_intensity"), static_cast<float>(m_haloBloom));
+  glUniform1f(U("u_breath"), static_cast<float>(m_breath));
+  glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
+  glUniform1f(U("u_hit"), static_cast<float>(m_hit));
+  glUniform1f(U("u_tone"), static_cast<float>(m_tone));
+  float ages[4], gains[4];
+  for (size_t i = 0; i < 4; ++i) {
+    ages[i] = static_cast<float>(m_waveAges[i]);
+    gains[i] = static_cast<float>(m_waveGain[i]);
+  }
+  glUniform1fv(U("u_waves"), 4, ages);
+  glUniform1fv(U("u_waveGain"), 4, gains);
+  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
+  glUniform1f(U("u_px"), 1.0F / std::max(1.0F, half * ctx.scale));
+  glDisable(GL_BLEND);
+  drawUnitQuad();
 }
 
 void Visualizer::drawRing(const DrawContext& ctx) {
@@ -199,12 +247,16 @@ void Visualizer::drawRing(const DrawContext& ctx) {
 void Visualizer::tick(const TickContext& ctx) {
   static const std::vector<float> kEmpty;
   m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);
-  if (m_styleIndex == 12) tickRing(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? nullptr : ctx.audio.bands);
+  if (m_styleIndex >= 12) tickRing(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? nullptr : ctx.audio.bands);
 }
 
 void Visualizer::draw(const DrawContext& ctx) {
   if (m_styleIndex == 12) {
     drawRing(ctx);
+    return;
+  }
+  if (m_styleIndex == 13) {
+    drawVortex(ctx);
     return;
   }
   const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;

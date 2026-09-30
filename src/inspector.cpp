@@ -84,7 +84,27 @@ std::string formatNumber(const PropSpec& p, double v) {
 std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expanded) {
   using K = PropSpec::Kind;
   std::vector<PropSpec> s = schemaFor(w.cfg.type);
-  if (w.cfg.type == "visualizer" && w.cfg.options["style"].value_or(std::string()) == "halo") {
+  const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
+  if (look == "vortex") {
+    // the vortex's shape, then the halo's music (it shares the halo's motion)
+    std::vector<PropSpec> v = {
+        {K::Number, "halo_inner", "Horizon size", "Tamaño del horizonte", {}, 0.1, 1.4, 0.05, 0.7},
+        {K::Number, "vortex_reach", "Reach", "Alcance", {}, 1.1, 6, 0.1, 1.9},
+        {K::Number, "vortex_arms", "Arms", "Brazos", {}, 1, 12, 1, 3, "", true},
+        {K::Number, "vortex_twist", "Twist", "Torsión", {}, 0, 8, 0.1, 3.4},
+        {K::Number, "vortex_turbulence", "Turbulence", "Turbulencia", {}, 0, 1, 0.05, 0.45},
+        {K::Number, "vortex_speed", "Spin speed", "Velocidad de giro", {}, 0, 3, 0.05, 0.35},
+        {K::Bool, "vortex_clockwise", "Clockwise", "Sentido horario", {}, 0, 1, 1, 0},
+        {K::Number, "halo_width", "Horizon line", "Línea del horizonte", {}, 0.003, 0.15, 0.001, 0.012},
+        {K::Number, "halo_bloom", "Glow strength", "Intensidad", {}, 0, 2, 0.05, 0.8},
+        {K::Number, "halo_pulse", "Pulse (groove)", "Pulso (ritmo)", {}, 0, 1, 0.05, 0.7},
+        {K::Number, "halo_breathe", "Breathing", "Respiración", {}, 0, 1, 0.05, 0.6},
+        {K::Number, "halo_hits", "Beat flash", "Destello al golpe", {}, 0, 1, 0.05, 0.7},
+        {K::Bool, "halo_waves", "Beat waves", "Ondas al golpe", {}, 0, 1, 1, 1},
+    };
+    s.insert(s.begin() + 1, v.begin(), v.end());
+  }
+  if (look == "halo") {
     // the halo's own options, right after the look
     std::vector<PropSpec> halo = {
         {K::Number, "halo_inner", "Size", "Tamaño", {}, 0.1, 1.4, 0.05, 0.7},

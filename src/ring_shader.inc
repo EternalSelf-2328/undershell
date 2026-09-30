@@ -35,6 +35,10 @@ void main() {
     vec2 px = v_uv * res;
     vec2 q = (px - res * 0.5) / (min(res.x, res.y) * 0.5);
     float d = length(q);
+    if (d > 1.0) {  // the glow is gone by here: stop early
+        fragColor = vec4(0.0);
+        return;
+    }
     float theta = atan(q.y, q.x);
 
     float r = u_radius * (1.0 + 0.045 * u_breath + 0.012 * u_pump);

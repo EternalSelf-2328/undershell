@@ -119,6 +119,18 @@ Options: Size, Line width, Glow reach, Glow strength, Pulse, Breathing, Beat fla
 Beat waves, Aurora; *Smoothing* sets how soft the breathing is, *Gain* the
 sensitivity, *Colour* the colours (theme: primary → secondary).
 
+## Vortex
+
+The `vortex` look takes the halo's ring as an event horizon and winds arms
+of gaseous light around it in a logarithmic spiral, streaming inward like
+water down a drain; the centre stays empty (put it around something on your
+wallpaper and let depth keep that in front). It shares the halo's music —
+pulse, breathing, beat flash and waves, all normalised per song — and adds
+spin: the energy speeds it up on a spring and each kick gives a burst that
+brakes by itself. Options: Horizon size, Reach, Arms, Twist, Turbulence,
+Spin speed, Clockwise, Horizon line, Glow strength, and the halo's music
+options. Colour 1 lights the horizon, Colour 2 the outer arms.
+
 ## Clock structures
 
 Five clock faces are **editable structures**: `goodnight` (the card),

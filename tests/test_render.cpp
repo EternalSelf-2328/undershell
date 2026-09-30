@@ -26,9 +26,9 @@ int main(int argc, char** argv) {
   const std::string golden = std::string(US_SOURCE_DIR) + "/tests/golden";
   const NoctaliaState pal = testPalette();
   for (const char* look : {"bars", "split", "dots", "segments", "wave", "ribbon", "curtain", "line", "frame", "radial", "orb", "spiral",
-                           "halo"}) {
+                           "halo", "vortex"}) {
     const bool polar = !std::strcmp(look, "radial") || !std::strcmp(look, "orb") || !std::strcmp(look, "spiral") ||
-                       !std::strcmp(look, "halo");
+                       !std::strcmp(look, "halo") || !std::strcmp(look, "vortex");
     const int w = !std::strcmp(look, "frame") ? 480 : (polar ? 240 : 480);
     const int h = !std::strcmp(look, "frame") ? 270 : (polar ? 240 : 160);
     Image img = renderLook(look, w, h, pal);
