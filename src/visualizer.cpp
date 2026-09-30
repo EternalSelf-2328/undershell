@@ -7,7 +7,6 @@
 #include <cmath>
 #include <numbers>
 
-#include "halo_shader.inc"
 #include "ring_shader.inc"
 #include "spectrum_shader.inc"
 
@@ -52,14 +51,14 @@ void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noc
 
 void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noct) {
   const toml::table& t = cfg.options;
-  m_haloShape = t["halo_shape"].value_or(std::string("ring"));
   m_haloWaves = t["halo_waves"].value_or(true);
-  m_haloWidth = std::clamp(t["halo_width"].value_or(0.02), 0.003, 0.15);
-  m_haloSpread = std::clamp(t["halo_spread"].value_or(0.07), 0.01, 0.4);
-  m_haloRing = t["halo_ring"].value_or(false);
+  m_haloWidth = std::clamp(t["halo_width"].value_or(0.012), 0.003, 0.15);
+  m_haloSpread = std::clamp(t["halo_spread"].value_or(0.09), 0.01, 0.4);
   m_haloInner = std::clamp(t["halo_inner"].value_or(0.7), 0.1, 1.4);
-  m_haloBloom = std::clamp(t["halo_bloom"].value_or(0.5), 0.0, 2.0);
-  // Noctalia's fancy visualizer grades primary -> secondary
+  m_haloBloom = std::clamp(t["halo_bloom"].value_or(0.8), 0.0, 2.0);
+  m_haloBreathe = std::clamp(t["halo_breathe"].value_or(0.6), 0.0, 1.0);
+  m_haloHits = std::clamp(t["halo_hits"].value_or(0.7), 0.0, 1.0);
+  m_haloAurora = std::clamp(t["halo_aurora"].value_or(0.0), 0.0, 1.0);
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -69,37 +68,59 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   }
 }
 
-void Visualizer::tickRing(double dt) {
-  const auto& lv = m_motion.levels;
-  if (lv.empty()) return;
-  const size_t nb = std::max<size_t>(2, lv.size() / 6);  // the lowest sixth: kick and bass
-  double bass = 0, all = 0;
-  for (size_t i = 0; i < lv.size(); ++i) {
-    all += lv[i];
-    if (i < nb) bass += lv[i];
+// The halo's motion, from the raw spectrum (the bars' smoothing would make
+// kicks late): energy -> a critically damped spring (the breath); bass
+// spectral flux over an adaptive threshold -> kicks (a flash + a wave);
+// the spectral centroid -> the tone.
+void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
+  m_ringTime += dt;
+  const bool live = raw && !raw->empty() && m_motion.fade() > 0.01;
+  const size_t n = live ? raw->size() : 0;
+  double energy = 0, bass = 0, centroid = 0, sum = 0;
+  const size_t nb = std::max<size_t>(2, n / 8);  // the lowest eighth: kick drum and bass
+  for (size_t i = 0; i < n; ++i) {
+    const double v = std::clamp(static_cast<double>((*raw)[i]) * m_cfg.gain, 0.0, 1.5);
+    energy += v;
+    if (i < nb) bass += v;
+    centroid += v * static_cast<double>(i) / std::max<size_t>(1, n - 1);
+    sum += v;
   }
-  bass = std::clamp(bass / static_cast<double>(nb) * m_motion.fade(), 0.0, 1.0);
-  const double energy = std::clamp(all / static_cast<double>(lv.size()) * 1.6 * m_motion.fade(), 0.0, 1.0);
-  // fast attack, slow release: the ring jumps with the kick and settles
-  auto follow = [dt](double& env, double target, double up, double down) {
-    const double tau = target > env ? up : down;
-    env += (target - env) * (1 - std::exp(-dt / tau));
-  };
-  follow(m_bassEnv, bass, 0.03, 0.28);
-  follow(m_energyEnv, energy, 0.08, 0.6);
-  // onsets: bass well above its recent mean sends a shock wave
+  if (n) {
+    energy = std::clamp(energy / static_cast<double>(n) * 1.8, 0.0, 1.0);
+    bass /= static_cast<double>(nb);
+  }
+  // the breath: a critically damped spring, no overshoot, ~0.35 s to settle
+  const double omega = 9.0 + 6.0 * (1 - m_cfg.smoothing);
+  const double target = energy * m_haloBreathe;
+  const double acc = omega * omega * (target - m_breath) - 2 * omega * m_breathVel;
+  m_breathVel += acc * dt;
+  m_breath = std::clamp(m_breath + m_breathVel * dt, 0.0, 1.2);
+  // kicks: positive change of the bass (spectral flux) above its own
+  // running mean plus a margin, at most every 180 ms
+  const double flux = std::max(0.0, bass - m_prevBass);
+  m_prevBass = bass;
+  m_fluxMean += (flux - m_fluxMean) * (1 - std::exp(-dt / 0.5));
   m_sinceBeat += dt;
-  if (bass > m_bassMean + 0.14 && bass > 0.25 && m_sinceBeat > 0.22) {
+  if (live && flux > m_fluxMean * 2.2 + 0.035 && bass > 0.18 && m_sinceBeat > 0.18) {
     m_sinceBeat = 0;
-    auto slot = std::min_element(m_waveAges.begin(), m_waveAges.end(), [](double a, double b) {
-      return (a < 0 ? 2.0 : -a) < (b < 0 ? 2.0 : -b);  // a free slot, else the oldest wave
-    });
-    *slot = 0;
+    const double strength = std::clamp(flux * 5.0, 0.35, 1.0);
+    m_hit = std::max(m_hit, strength * m_haloHits);
+    if (m_haloWaves && m_haloHits > 0 && strength > 0.55) {  // only the strong hits send a wave
+      size_t slot = 0;
+      for (size_t i = 1; i < m_waveAges.size(); ++i)
+        if (m_waveAges[i] < 0 || (m_waveAges[slot] >= 0 && m_waveAges[i] > m_waveAges[slot])) slot = i;
+      m_waveAges[slot] = 0;
+      m_waveGain[slot] = strength;
+    }
   }
-  follow(m_bassMean, bass, 0.4, 0.4);
+  m_hit *= std::exp(-dt / 0.28);  // the flash dies in about a quarter second
+  if (m_hit < 0.002) m_hit = 0;
+  // the tone: slow, so colour drifts rather than flickers
+  const double tone = sum > 0.02 ? std::clamp((centroid / sum - 0.15) / 0.35, 0.0, 1.0) : m_tone;
+  m_tone += (tone - m_tone) * (1 - std::exp(-dt / 1.6));
   for (double& a : m_waveAges)
     if (a >= 0) {
-      a += dt / 1.1;  // a wave lives 1.1 s
+      a += dt / 0.9;
       if (a >= 1) a = -1;
     }
 }
@@ -107,50 +128,29 @@ void Visualizer::tickRing(double dt) {
 void Visualizer::drawRing(const DrawContext& ctx) {
   if (!m_ringProg.valid()) m_ringProg.create(kQuadVertexShader, kRingFrag, "ring");
   glUseProgram(m_ringProg.id());
-  auto U = [&](const char* n) { return m_ringProg.uniform(n); };
+  auto U = [&](const char* nm) { return m_ringProg.uniform(nm); };
   const float half = std::min(ctx.w, ctx.h) * 0.5F;
   glUniform2f(U("res"), ctx.w, ctx.h);
   glUniform3f(U("u_primary"), m_haloA.r, m_haloA.g, m_haloA.b);
   glUniform3f(U("u_secondary"), m_haloB.r, m_haloB.g, m_haloB.b);
-  glUniform1f(U("u_radius"), static_cast<float>(std::clamp(m_haloInner, 0.1, 1.4) / 2 + 0.2));
+  glUniform1f(U("u_radius"), static_cast<float>(m_haloInner / 2 + 0.2));
   glUniform1f(U("u_width"), static_cast<float>(m_haloWidth));
-  glUniform1f(U("u_spread"), static_cast<float>(m_haloSpread * (0.5 + m_haloBloom)));
-  glUniform1f(U("u_bass"), static_cast<float>(m_bassEnv));
-  glUniform1f(U("u_energy"), static_cast<float>(m_energyEnv));
-  float ages[4];
-  for (int i = 0; i < 4; ++i) ages[i] = static_cast<float>(m_waveAges[static_cast<size_t>(i)]);
-  glUniform1fv(U("u_waves"), 4, ages);
-  glUniform1f(U("u_waveOn"), m_haloWaves ? 1.0F : 0.0F);
-  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
-  glUniform1f(U("u_fade"), 1.0F);  // the ring rests visible; the music only brightens it
-  glUniform1f(U("u_px"), 1.0F / std::max(1.0F, half * ctx.scale));
-  glDisable(GL_BLEND);
-  drawUnitQuad();
-}
-
-void Visualizer::drawHalo(const DrawContext& ctx) {
-  if (m_haloShape == "ring") {
-    drawRing(ctx);
-    return;
+  glUniform1f(U("u_spread"), static_cast<float>(m_haloSpread));
+  glUniform1f(U("u_intensity"), static_cast<float>(m_haloBloom));
+  glUniform1f(U("u_breath"), static_cast<float>(m_breath));
+  glUniform1f(U("u_hit"), static_cast<float>(m_hit));
+  glUniform1f(U("u_tone"), static_cast<float>(m_tone));
+  glUniform1f(U("u_aurora"), static_cast<float>(m_haloAurora));
+  glUniform1f(U("u_time"), static_cast<float>(std::fmod(m_ringTime, 3600.0)));
+  float ages[4], gains[4];
+  for (size_t i = 0; i < 4; ++i) {
+    ages[i] = static_cast<float>(m_waveAges[i]);
+    gains[i] = static_cast<float>(m_waveGain[i]);
   }
-  if (!m_haloProg.valid()) m_haloProg.create(kQuadVertexShader, kHaloFrag, "halo");
-  Motion::resample(m_motion.levels, 32, m_drawLevels);
-  glUseProgram(m_haloProg.id());
-  auto U = [&](const char* n) { return m_haloProg.uniform(n); };
-  glUniform1fv(U("u_lv"), 32, m_drawLevels.data());
-  glUniform2f(U("res"), ctx.w, ctx.h);
-  glUniform3f(U("u_primary"), m_haloA.r, m_haloA.g, m_haloA.b);
-  glUniform3f(U("u_secondary"), m_haloB.r, m_haloB.g, m_haloB.b);
-  glUniform1f(U("u_turn"), static_cast<float>(m_motion.spinDeg * std::numbers::pi / 180.0));
-  glUniform1f(U("u_sensitivity"), 1.5F);
-  glUniform1f(U("u_barWidth"), static_cast<float>(std::clamp(m_cfg.thickness, 0.05, 1.0)) / 0.58F * 0.6F);
-  glUniform1f(U("u_bloom"), static_cast<float>(m_haloBloom));
-  glUniform1f(U("u_inner"), static_cast<float>(m_haloInner));
-  glUniform1f(U("u_waveThick"), 1.0F);
-  glUniform1f(U("u_shape"), m_haloShape == "wave" ? 1.0F : m_haloShape == "both" ? 2.0F : 0.0F);
-  glUniform1f(U("u_ring"), m_haloRing ? 1.0F : 0.0F);
+  glUniform1fv(U("u_waves"), 4, ages);
+  glUniform1fv(U("u_waveGain"), 4, gains);
   glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
-  glUniform1f(U("u_fade"), static_cast<float>(m_motion.fade()));
+  glUniform1f(U("u_px"), 1.0F / std::max(1.0F, half * ctx.scale));
   glDisable(GL_BLEND);
   drawUnitQuad();
 }
@@ -158,12 +158,12 @@ void Visualizer::drawHalo(const DrawContext& ctx) {
 void Visualizer::tick(const TickContext& ctx) {
   static const std::vector<float> kEmpty;
   m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);
-  if (m_styleIndex == 12 && m_haloShape == "ring") tickRing(ctx.dt);
+  if (m_styleIndex == 12) tickRing(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? nullptr : ctx.audio.bands);
 }
 
 void Visualizer::draw(const DrawContext& ctx) {
   if (m_styleIndex == 12) {
-    drawHalo(ctx);
+    drawRing(ctx);
     return;
   }
   const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;

@@ -94,16 +94,23 @@ without touching the rest of the file.
 
 ## Halo
 
-The `halo` look draws, by default, **one even ring** whose glow spreads
-outward with the music, the same at every angle: the line swells and
-brightens with the bass (fast attack, slow release), the outer glow widens
-with the energy, a faint inner glow gives it depth, and each strong beat
-sends a soft shock wave out that widens and fades. Options: **Size**,
-**Line width**, **Glow reach**, **Bloom**, **Beat waves**; colours follow
-the colour mode (theme: primary, with a touch of secondary at the glow's
-edge). **Halo** also offers `bars`, `wave` and `both`: the outer part of
-Noctalia's fancy audio visualizer (radial bars / polar wave, no inner rings;
-*Base ring* adds its circle).
+The `halo` look is one perfectly round ring of light. Its glow is built
+like real bloom (a tight, a medium and a wide falloff summed as light, then
+tone mapped, so the core turns white-hot instead of clipping):
+
+- **Breathing** — the size follows the music's energy on a critically
+  damped spring: it swells and settles smoothly, never jitters.
+- **Beat flash** — kicks, found by spectral flux on the bass (how fast it
+  *rises*, over an adaptive threshold, not how loud it is), flash the light
+  for about a quarter second; strong ones send a soft **wave** of light out.
+- **Tone** — the colour drifts slowly from the primary toward the secondary
+  as the music gets brighter (more treble).
+- **Aurora** (off by default) — a slow brightness drift along the ring; the
+  shape stays round.
+
+Options: Size, Line width, Glow reach, Glow strength, Breathing, Beat flash,
+Beat waves, Aurora; *Smoothing* sets how soft the breathing is, *Gain* the
+sensitivity, *Colour* the colours (theme: primary → secondary).
 
 ## Clock structures
 
