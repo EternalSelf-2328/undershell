@@ -55,6 +55,7 @@ private:
   int64_t m_vArms = 3;
   double m_vTwist = 3.4, m_vReach = 1.9, m_vSpeed = 0.35, m_vTurb = 0.45, m_vPhase = 0, m_vFlow = 0, m_vBurst = 0;
   bool m_vClockwise = false;
+  std::string m_vMode = "inward";
   double m_breath = 0, m_breathVel = 0, m_hit = 0, m_tone = 0.3, m_prevBass = 0, m_fluxMean = 0, m_fluxVar = 0, m_sinceBeat = 1,
          m_ringTime = 0, m_pump = 0, m_energySlow = 0, m_loud = 0.5, m_liveTime = 0;
   double m_bassFloor = 0, m_bassPeak = 0, m_energyFloor = 0, m_energyPeak = 0;  // recent ranges

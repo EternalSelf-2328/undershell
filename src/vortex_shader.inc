@@ -23,6 +23,8 @@ uniform float u_turb;       // 0..1, how gaseous the streaks are
 uniform float u_phase;      // rotation (radians), integrated on the CPU
 uniform float u_flow;       // inward streaming, integrated on the CPU
 uniform float u_dir;        // 1 counter-clockwise, -1 clockwise
+uniform float u_inside;     // 1: the swirl lives inside the ring (a tunnel)
+uniform float u_flowSign;   // +1 toward the ring's inside, -1 away from it
 uniform float u_intensity;
 uniform float u_breath;
 uniform float u_pump;
@@ -56,32 +58,36 @@ void main() {
     float side = t > 0.0 ? 1.0 : 0.45;
     float ringGlow = g(t, w * 1.6 + u_px) * 0.9 + g(t, r * 0.08 * side) * 0.5 + g(t, r * 0.25 * side) * 0.22;
 
-    // --- the arms: a logarithmic spiral, streaming inward ---
+    // --- the arms: a logarithmic spiral ---
+    // x: 0 on the horizon, growing away from it on the arms' side (outside
+    // the ring, or inside it for the tunnel)
+    float x = u_inside > 0.5 ? -lr : lr;
     float arms = 0.0;
-    if (lr > -0.05) {
+    if (x > -0.05) {
         float s = u_arms * (theta + u_twist * lr - u_phase);
         float band = 0.5 + 0.5 * cos(s);
         band = pow(band, 3.0 - 1.8 * u_turb);                   // thin filaments .. broad gas
         band = band * 0.85 + 0.15;                             // a haze between the arms
-        // gaseous streaks along the spiral, moving inward with the flow
-        float f = u_flow;
+        // gaseous streaks along the spiral; +flow moves them toward x = 0
+        float f = u_flow * u_flowSign * (u_inside > 0.5 ? -1.0 : 1.0);
         // whole multiples of the angle only, so the pattern closes on itself
         // all the way round (no seam)
-        float n = 0.55 * sin(s + lr * 9.0 + f) + 0.3 * sin(2.0 * s - lr * 15.0 + f * 1.6 + 1.3) +
-                  0.15 * sin(theta * 11.0 + lr * 23.0 + f * 2.2 + 4.0);
+        float n = 0.55 * sin(s + x * 9.0 + f) + 0.3 * sin(2.0 * s - x * 15.0 + f * 1.6 + 1.3) +
+                  0.15 * sin(theta * 11.0 + x * 23.0 + f * 2.2 + 4.0);
         float streak = clamp(0.62 + u_turb * 0.45 * n, 0.0, 1.4);
-        // brightest by the horizon, thinning out toward the reach
-        float along = clamp(lr / span, 0.0, 1.0);
-        float fall = exp(-along * 2.2) * smoothstep(1.0, 0.6, along) * smoothstep(-0.05, 0.08, lr);
+        // brightest by the horizon, thinning out toward the reach (outside)
+        // or toward the empty centre (inside)
+        float along = clamp(x / span, 0.0, 1.0);
+        float fall = exp(-along * 2.2) * smoothstep(1.0, 0.6, along) * smoothstep(-0.05, 0.08, x);
         arms = band * streak * fall * 2.2;
     }
 
-    // --- inside the horizon: dark, a faint inner glow ---
-    float innerGlow = d < r ? exp((d - r) / (r * 0.12)) * 0.35 : 0.0;
+    // --- the other side of the horizon: dark, a faint glow ---
+    float innerGlow = (u_inside < 0.5 && d < r) ? exp((d - r) / (r * 0.12)) * 0.35 : 0.0;
 
     float level = 0.45 + 0.2 * u_breath + 0.75 * u_pump + 0.8 * u_hit;
     vec3 second = max(u_secondary, u_primary * 0.6);
-    float far = clamp(lr / span, 0.0, 1.0);
+    float far = clamp(x / span, 0.0, 1.0);  // toward the arms' far end, on either side
     vec3 armC = mix(u_primary, second, clamp(far * 1.3 + u_tone * 0.3, 0.0, 1.0));
     vec3 hot = mix(u_primary, vec3(1.0), 0.5);
     vec3 light = u_primary * (ringGlow * u_intensity * level + innerGlow * level * 0.6) +
@@ -91,7 +97,8 @@ void main() {
     for (int i = 0; i < 4; ++i) {
         float age = u_waves[i];
         if (age < 0.0) continue;
-        float wr = r + (outer - r) * 0.8 * (1.0 - (1.0 - age) * (1.0 - age));
+        float ease = 1.0 - (1.0 - age) * (1.0 - age);
+        float wr = u_inside > 0.5 ? r - (r - r / u_reach) * 0.8 * ease : r + (outer - r) * 0.8 * ease;
         float life = 1.0 - age;
         light += armC * g(d - wr, (0.03 + 0.08 * age) * r) * life * life * life * 0.35 * u_waveGain[i];
     }

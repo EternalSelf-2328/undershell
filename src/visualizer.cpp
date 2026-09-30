@@ -67,6 +67,7 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   m_vSpeed = std::clamp(t["vortex_speed"].value_or(0.35), 0.0, 3.0);
   m_vTurb = std::clamp(t["vortex_turbulence"].value_or(0.45), 0.0, 1.0);
   m_vClockwise = t["vortex_clockwise"].value_or(false);
+  m_vMode = t["vortex_mode"].value_or(std::string("inward"));
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -195,6 +196,12 @@ void Visualizer::drawVortex(const DrawContext& ctx) {
   glUniform1f(U("u_phase"), static_cast<float>(m_vPhase));
   glUniform1f(U("u_flow"), static_cast<float>(m_vFlow));
   glUniform1f(U("u_dir"), m_vClockwise ? -1.0F : 1.0F);
+  // inward: outside the ring, drawn in; outward: outside, pouring out;
+  // inside: a tunnel inside the ring, sinking to the centre; inside_out: welling up from it
+  const bool inside = m_vMode == "inside" || m_vMode == "inside_out";
+  const bool towardCentre = m_vMode == "inward" || m_vMode == "inside";
+  glUniform1f(U("u_inside"), inside ? 1.0F : 0.0F);
+  glUniform1f(U("u_flowSign"), towardCentre ? 1.0F : -1.0F);
   glUniform1f(U("u_intensity"), static_cast<float>(m_haloBloom));
   glUniform1f(U("u_breath"), static_cast<float>(m_breath));
   glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));

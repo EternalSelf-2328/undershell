@@ -88,6 +88,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
   if (look == "vortex") {
     // the vortex's shape, then the halo's music (it shares the halo's motion)
     std::vector<PropSpec> v = {
+        {K::Enum, "vortex_mode", "Mode", "Modo", {"inward", "outward", "inside", "inside_out"}, 0, 0, 0, 0, "inward"},
         {K::Number, "halo_inner", "Horizon size", "Tamaño del horizonte", {}, 0.1, 1.4, 0.05, 0.7},
         {K::Number, "vortex_reach", "Reach", "Alcance", {}, 1.1, 6, 0.1, 1.9},
         {K::Number, "vortex_arms", "Arms", "Brazos", {}, 1, 12, 1, 3, "", true},

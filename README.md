@@ -127,7 +127,10 @@ water down a drain; the centre stays empty (put it around something on your
 wallpaper and let depth keep that in front). It shares the halo's music —
 pulse, breathing, beat flash and waves, all normalised per song — and adds
 spin: the energy speeds it up on a spring and each kick gives a burst that
-brakes by itself. Options: Horizon size, Reach, Arms, Twist, Turbulence,
+brakes by itself. **Mode**: `inward` (arms outside the ring, drawn in),
+`outward` (outside, pouring out — a white hole), `inside` (a tunnel inside
+the ring, sinking to the centre; only the halo's glow outside) and
+`inside_out` (the tunnel welling up from the centre). Options: Mode, Horizon size, Reach, Arms, Twist, Turbulence,
 Spin speed, Clockwise, Horizon line, Glow strength, and the halo's music
 options. Colour 1 lights the horizon, Colour 2 the outer arms.
 
