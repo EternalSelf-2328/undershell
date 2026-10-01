@@ -286,6 +286,7 @@ private:
   DepthMasks m_depth;
   MaskPass m_maskPass;
   RotatedBlit m_blit;
+  PerspectiveBlit m_warpBlit;
   TextRenderer m_text;
   OverlayPass m_overlay;
   IpcServer m_ipc;

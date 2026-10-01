@@ -60,5 +60,30 @@ int main() {
   CHECK(!insideWidget(c, 102, 202));
   CHECK(normalizeDegrees(190) == -170 && normalizeDegrees(-180) == 180 && normalizeDegrees(540) == 180);
 
+  // perspective: the mapping is exact both ways; leaning back narrows the top
+  {
+    WidgetConfig w3;
+    w3.x = 100, w3.y = 100, w3.width = 400, w3.height = 200;
+    w3.tiltX = 30;
+    w3.rotation = 10;
+    CHECK(warped(w3) && rotated(w3));
+    double qx[4], qy[4];
+    w3.rotation = 0;
+    widgetCorners(w3, qx, qy);
+    CHECK(qx[1] - qx[0] < qx[2] - qx[3]);   // top edge shorter than the bottom
+    CHECK(qy[3] - qy[0] < 200);             // and the box shorter
+    w3.rotation = 10;
+    w3.skewX = 15;
+    double ox = 0, oy = 0, lx = 0, ly = 0;
+    toOutput(w3, 37, 151, ox, oy);
+    toLocal(w3, ox, oy, lx, ly);
+    CHECK(std::abs(lx - 37) < 1e-6 && std::abs(ly - 151) < 1e-6);
+    widgetCorners(w3, qx, qy);
+    toOutput(w3, 400, 200, ox, oy);         // the homography lands on the corners
+    CHECK(std::abs(ox - qx[2]) < 1e-6 && std::abs(oy - qy[2]) < 1e-6);
+    const Box vb = visualBox(w3);
+    for (int i = 0; i < 4; ++i) CHECK(qx[i] >= vb.x && qx[i] <= vb.x + vb.w && qy[i] >= vb.y && qy[i] <= vb.y + vb.h);
+  }
+
   return TEST_RESULT();
 }

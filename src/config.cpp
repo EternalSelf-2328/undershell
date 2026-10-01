@@ -109,6 +109,13 @@ Config Config::load(const std::string& path) {
       w.enabled = get<bool>(*t, "enabled", true);
       w.depth = get<bool>(*t, "depth", true);
       w.depthLevel = std::clamp(get<double>(*t, "depth_level", 0.0), 0.0, 100.0);
+      w.tiltX = std::clamp(get<double>(*t, "tilt_x", 0.0), -70.0, 70.0);
+      w.tiltY = std::clamp(get<double>(*t, "tilt_y", 0.0), -70.0, 70.0);
+      w.skewX = std::clamp(get<double>(*t, "skew", 0.0), -60.0, 60.0);
+      w.perspective = std::clamp(get<double>(*t, "perspective", 2.5), 1.2, 20.0);
+      if (auto i = (*t)["tilt_x"].value<int64_t>()) w.tiltX = std::clamp(static_cast<double>(*i), -70.0, 70.0);
+      if (auto i = (*t)["tilt_y"].value<int64_t>()) w.tiltY = std::clamp(static_cast<double>(*i), -70.0, 70.0);
+      if (auto i = (*t)["skew"].value<int64_t>()) w.skewX = std::clamp(static_cast<double>(*i), -60.0, 60.0);
       w.layer = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "layer", 0), -10, 10));
       if (auto i = (*t)["depth_level"].value<int64_t>()) w.depthLevel = std::clamp(static_cast<double>(*i), 0.0, 100.0);
       if (auto r = (*t)["rotation"].value<double>()) {

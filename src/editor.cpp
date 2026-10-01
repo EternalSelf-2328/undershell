@@ -801,8 +801,11 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     pushUndo(*w, "drag");
     m_gripCorner = gripAt(*w, m_px, m_py);
     m_drag = m_gripCorner >= 0 ? Drag::Resize : Drag::Move;
-    if (m_gripCorner >= 0)  // the opposite corner, which stays put
-      toOutput(w->cfg, (m_gripCorner & 1) ? 0.0 : w->cfg.width, (m_gripCorner & 2) ? 0.0 : w->cfg.height, m_anchorX, m_anchorY);
+    if (m_gripCorner >= 0) {  // the opposite corner, which stays put (on the box before perspective)
+      WidgetConfig flat = w->cfg;
+      flat.tiltX = flat.tiltY = flat.skewX = 0;
+      toOutput(flat, (m_gripCorner & 1) ? 0.0 : w->cfg.width, (m_gripCorner & 2) ? 0.0 : w->cfg.height, m_anchorX, m_anchorY);
+    }
     m_pressX = m_px;
     m_pressY = m_py;
     m_startX = w->cfg.x;

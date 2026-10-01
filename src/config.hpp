@@ -42,6 +42,10 @@ struct WidgetConfig {
   bool enabled = true;
   bool depth = true;   // pass behind the wallpaper_depth foreground
   double rotation = 0;  // degrees, clockwise, about the box centre
+  // perspective (geom.hpp): the box leans back in 3D and is seen in perspective
+  double tiltX = 0, tiltY = 0;  // degrees: + top leans back / + right side leans back
+  double skewX = 0;             // degrees: a parallelogram (+ top to the right)
+  double perspective = 2.5;     // camera distance, in box sizes (smaller = stronger)
   double depthLevel = 0;  // own depth plane 1..100 (0: the plugin's mask)
   int layer = 0;          // stacking among widgets: higher is in front (then depth decides)
   toml::table options;  // the whole [[widget]] table

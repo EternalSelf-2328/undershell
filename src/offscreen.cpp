@@ -110,6 +110,34 @@ Image renderRotated(const Image& src, double degrees) {
   return img;
 }
 
+Image renderWarped(const Image& src, double tiltX, double tiltY, double skew, double degrees) {
+  GLuint tex = 0;
+  glGenTextures(1, &tex);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  std::vector<std::uint8_t> flipped(src.rgba.size());
+  const size_t row = static_cast<size_t>(src.w) * 4;
+  for (int y = 0; y < src.h; ++y)
+    std::copy_n(src.rgba.data() + static_cast<size_t>(src.h - 1 - y) * row, row, flipped.data() + static_cast<size_t>(y) * row);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, src.w, src.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  WidgetConfig c;
+  c.width = src.w;
+  c.height = src.h;
+  c.tiltX = tiltX;
+  c.tiltY = tiltY;
+  c.skewX = skew;
+  c.rotation = degrees;
+  const Box b = surfaceBox(c);
+  const Homography toUv = surfaceToUv(c);
+  PerspectiveBlit blit;
+  Image img = renderToImage(b.w, b.h, [&] { blit.draw(tex, static_cast<float>(b.w), static_cast<float>(b.h), toUv.m); });
+  glDeleteTextures(1, &tex);
+  return img;
+}
+
 Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noct) {
   VisualizerConfig vc;
   vc.style = look;

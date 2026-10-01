@@ -39,6 +39,17 @@ private:
   Program m_prog;
 };
 
+// Lays a widget rendered off-screen onto any quad in perspective: each
+// surface pixel is mapped back into the texture by `toUv` (surface px ->
+// texture uv, a 3x3 row-major homography), soft-edged.
+class PerspectiveBlit {
+public:
+  void draw(GLuint texture, float surfaceW, float surfaceH, const double toUv[9]);
+
+private:
+  Program m_prog;
+};
+
 struct EditRect {
   float x, y, w, h;
   float angle = 0;  // degrees, about the centre

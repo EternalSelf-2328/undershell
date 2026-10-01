@@ -85,6 +85,9 @@ std::string formatNumber(const PropSpec& p, double v) {
 // (its look, face, colour mode…): the inspector hides the rest.
 bool optionApplies(const Widget& w, const std::string& key) {
   const toml::table& o = w.cfg.options;
+  if (key == "perspective") return std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01;  // only a tilt is seen in depth
+  if (key == "tilt_x" || key == "tilt_y" || key == "skew")
+    return !(w.cfg.type == "visualizer" && o["style"].value_or(std::string()) == "frame");
   auto in = [](const std::string& v, std::initializer_list<const char*> list) {
     for (const char* x : list)
       if (v == x) return true;
@@ -126,7 +129,13 @@ bool optionApplies(const Widget& w, const std::string& key) {
 std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded) {
   using K = PropSpec::Kind;
   std::vector<PropSpec> s;
-  for (const auto& p : schemaFor(w.cfg.type))
+  std::vector<PropSpec> all = schemaFor(w.cfg.type);
+  // perspective, for every widget
+  all.push_back({K::Number, "tilt_x", "Tilt back °", "Inclinación atrás °", {}, -70, 70, 0.5, 0});
+  all.push_back({K::Number, "tilt_y", "Tilt sideways °", "Inclinación lateral °", {}, -70, 70, 0.5, 0});
+  all.push_back({K::Number, "skew", "Skew °", "Sesgo °", {}, -60, 60, 0.5, 0});
+  all.push_back({K::Number, "perspective", "Perspective depth", "Profundidad de perspectiva", {}, 1.2, 20, 0.1, 2.5});
+  for (const auto& p : all)
     if (expanded == "*" || optionApplies(w, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
   if (w.cfg.type == "visualizer") {
@@ -288,12 +297,14 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
+    if (in(k, {"tilt_x", "tilt_y", "skew", "perspective"})) return 5;
     return 0;  // the look and its shape
   };
-  static const char* titles[5][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
-                                     {"Time & data", "Hora y datos"}, {"Placement", "Colocación"}};
+  static const char* titles[6][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
+                                     {"Time & data", "Hora y datos"}, {"Placement", "Colocación"},
+                                     {"Perspective", "Perspectiva"}};
   std::vector<PropSpec> out;
-  for (int sec = 0; sec < 5; ++sec) {
+  for (int sec = 0; sec < 6; ++sec) {
     std::vector<PropSpec> part;
     for (size_t i = 0; i < split; ++i)
       if (section(rows[i].key) == sec) part.push_back(rows[i]);
@@ -451,6 +462,17 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (key == "depth_level") {
     try {
       w.cfg.depthLevel = std::clamp(std::stod(v), 0.0, 100.0);
+    } catch (const std::exception&) {
+    }
+  }
+  if (key == "tilt_x" || key == "tilt_y" || key == "skew" || key == "perspective") {
+    try {
+      const double d = std::stod(v);
+      if (key == "tilt_x") w.cfg.tiltX = std::clamp(d, -70.0, 70.0);
+      else if (key == "tilt_y") w.cfg.tiltY = std::clamp(d, -70.0, 70.0);
+      else if (key == "skew") w.cfg.skewX = std::clamp(d, -60.0, 60.0);
+      else w.cfg.perspective = std::clamp(d, 1.2, 20.0);
+      placeLayer(w);
     } catch (const std::exception&) {
     }
   }
@@ -1254,6 +1276,32 @@ void App::drawUi(EditSurface& e) {
     cv.roundRect(r.x, r.y + 3, r.w, r.h, radius, Color{0, 0, 0, 0.28F});  // soft drop shadow
     cv.roundRect(r.x, r.y, r.w, r.h, radius, plate, 1, line);
   };
+
+  // ── widgets in perspective: their quad, corner grips and the rotation knob ──
+  for (auto& wp : m_widgets) {
+    Widget& ww = *wp;
+    if (ww.output != e.output || !ww.impl || !ww.surface || ww.impl->fullscreen() || !warped(ww.cfg)) continue;
+    const bool sel = &ww == m_selected, hot = &ww == m_pointerWidget;
+    const Color wa = ww.impl->accent();
+    double qx[4], qy[4];
+    widgetCorners(ww.cfg, qx, qy);
+    const float lw = sel ? 2.2F : (hot ? 1.8F : 1.2F);
+    const Color lc = withAlphaC(wa, sel ? 1.0F : (hot ? 0.85F : 0.5F));
+    for (int i = 0; i < 4; ++i) {
+      const int j = (i + 1) % 4;
+      cv.segment(static_cast<float>(qx[i]), static_cast<float>(qy[i]), static_cast<float>(qx[j]), static_cast<float>(qy[j]), lw, lc);
+    }
+    if (sel || hot)
+      for (int i = 0; i < 4; ++i) cv.circle(static_cast<float>(qx[i]), static_cast<float>(qy[i]), 5, withAlphaC(wa, 0.95F), 1.5F, ink);
+    if (sel) {  // the rotation knob, where inRotateHandle looks for it
+      double kx = 0, ky = 0, tx = 0, ty = 0;
+      toOutput(ww.cfg, ww.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
+      toOutput(ww.cfg, ww.cfg.width / 2.0, 0, tx, ty);
+      cv.segment(static_cast<float>(tx), static_cast<float>(ty), static_cast<float>(kx), static_cast<float>(ky), 1.4F, withAlphaC(wa, 0.8F));
+      cv.circle(static_cast<float>(kx), static_cast<float>(ky), OverlayPass::kHandleR, Color{0, 0, 0, 0}, 1.8F, wa);
+      cv.circle(static_cast<float>(kx), static_cast<float>(ky), OverlayPass::kHandleR - 3, wa);
+    }
+  }
 
   // ── toolbar ──
   for (const UiControl& c : m_ui)

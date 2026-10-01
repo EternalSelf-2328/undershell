@@ -229,6 +229,26 @@ int main(int argc, char** argv) {
     }
   }
 
+  // perspective: no warp reproduces the picture; a tilt and a skew match their golden
+  {
+    const Image src = renderLook("bars", 480, 160, pal);
+    const Image same = renderWarped(src, 0, 0, 0);
+    const double d0 = imageDiff(same, src);
+    if (d0 < 0 || d0 > 0.5) std::fprintf(stderr, "unwarped blit differs from its source: %.3f\n", d0);
+    CHECK(d0 >= 0 && d0 <= 0.5);
+    const Image tilted = renderWarped(src, 35, -20, 12);
+    const std::string path = golden + "/warped-bars.png";
+    if (update) {
+      writePng(tilted, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(tilted, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "warped bars differ from golden: %.3f\n", d);
+      CHECK(d >= 0 && d <= 1.5);
+    }
+  }
+
   // every auxiliary pass compiles and draws (a GLSL error must fail here,
   // never in the running daemon)
   while (glGetError() != GL_NO_ERROR) {}

@@ -47,6 +47,8 @@ Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaStat
 // Lays `src` (a rendered widget) on a surface at `degrees` the way the daemon
 // draws a turned widget; the result is the turned box's surface (needs Headless).
 Image renderRotated(const Image& src, double degrees);
+// ... and in perspective (tilt and skew, degrees), as the daemon draws it
+Image renderWarped(const Image& src, double tiltX, double tiltY, double skew, double degrees = 0);
 // Renders one line of text in white (needs Headless).
 Image renderText(const std::string& text, const std::string& family, float size, int weight);
 

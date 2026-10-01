@@ -385,7 +385,9 @@ void App::syncWidgets() {
     }
     const bool geomChanged = w->cfg.x != wc.x || w->cfg.y != wc.y || w->cfg.width != wc.width ||
                              w->cfg.height != wc.height || w->cfg.output != wc.output ||
-                             std::abs(w->cfg.rotation - wc.rotation) > 1e-6;
+                             std::abs(w->cfg.rotation - wc.rotation) > 1e-6 || std::abs(w->cfg.tiltX - wc.tiltX) > 1e-6 ||
+                             std::abs(w->cfg.tiltY - wc.tiltY) > 1e-6 || std::abs(w->cfg.skewX - wc.skewX) > 1e-6 ||
+                             std::abs(w->cfg.perspective - wc.perspective) > 1e-6;
     w->cfg = wc;
     for (auto& o : m_outputs)
       if (wc.output.empty() || o->name == wc.output) {
@@ -744,6 +746,10 @@ void App::render(Widget& w) {
       glClear(GL_COLOR_BUFFER_BIT);
       const Box b = surfaceBox(w.cfg);
       try {
+        if (warped(w.cfg)) {
+          const Homography toUv = surfaceToUv(w.cfg);
+          m_warpBlit.draw(w.rtTex, static_cast<float>(w.w), static_cast<float>(w.h), toUv.m);
+        } else
         m_blit.draw(w.rtTex, static_cast<float>(w.w), static_cast<float>(w.h),
                     static_cast<float>(w.cfg.x + w.cfg.width / 2.0 - b.x), static_cast<float>(w.cfg.y + w.cfg.height / 2.0 - b.y),
                     static_cast<float>(w.cfg.width), static_cast<float>(w.cfg.height), static_cast<float>(w.cfg.rotation));
@@ -912,6 +918,7 @@ void App::renderEdit(EditSurface& e) {
       }
       continue;
     }
+    if (warped(w->cfg)) continue;  // drawn as its quad by drawUi (perspective)
     const int idx = static_cast<int>(rects.size());
     if (w.get() == m_pointerWidget) (m_drag != Drag::None ? active : hover) = idx;
     if (w.get() == m_selected) selected = handle = idx;

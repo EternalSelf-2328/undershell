@@ -353,4 +353,43 @@ void RotatedBlit::draw(GLuint texture, float surfaceW, float surfaceH, float cen
   glDisable(GL_BLEND);
 }
 
+static const char* kWarpFrag = R"(#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_tex;
+uniform vec2 u_surface;
+uniform mat3 u_toUv;
+void main() {
+    vec3 p = u_toUv * vec3(v_uv * u_surface, 1.0);
+    if (p.z <= 0.0) { fragColor = vec4(0.0); return; }
+    vec2 uv = p.xy / p.z;
+    // distance to the box's edge, in output pixels, for a soft 1 px edge
+    float e = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    float fw = max(fwidth(uv.x), fwidth(uv.y));
+    float a = clamp(e / max(fw, 1e-6) + 0.5, 0.0, 1.0);
+    if (a <= 0.0) { fragColor = vec4(0.0); return; }
+    fragColor = texture(u_tex, vec2(uv.x, 1.0 - uv.y)) * a;  // off-screen targets are bottom-up
+}
+)";
+
+void PerspectiveBlit::draw(GLuint texture, float surfaceW, float surfaceH, const double toUv[9]) {
+  if (!texture || surfaceW <= 0 || surfaceH <= 0) return;
+  if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kWarpFrag, "warp-blit");
+  glUseProgram(m_prog.id());
+  // GLSL matrices are column-major: transpose the row-major homography
+  const float m[9] = {static_cast<float>(toUv[0]), static_cast<float>(toUv[3]), static_cast<float>(toUv[6]),
+                      static_cast<float>(toUv[1]), static_cast<float>(toUv[4]), static_cast<float>(toUv[7]),
+                      static_cast<float>(toUv[2]), static_cast<float>(toUv[5]), static_cast<float>(toUv[8])};
+  glUniformMatrix3fv(m_prog.uniform("u_toUv"), 1, GL_FALSE, m);
+  glUniform2f(m_prog.uniform("u_surface"), surfaceW, surfaceH);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glUniform1i(m_prog.uniform("u_tex"), 0);
+  glEnable(GL_BLEND);
+  glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  drawUnitQuad();
+  glDisable(GL_BLEND);
+}
+
 }  // namespace undershell
