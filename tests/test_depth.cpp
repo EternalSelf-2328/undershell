@@ -3,6 +3,7 @@
 #include "common.hpp"
 #include "depthfield.hpp"
 #include "wallkind.hpp"
+#include "m3shapes.hpp"
 
 #include <cmath>
 #include <cstring>
@@ -147,6 +148,26 @@ int main() {
   CHECK(!skwdShowsMotion(moving, {"DP-2"}));          // not one of ours
   CHECK(!skwdShowsMotion("", {}) && !skwdShowsMotion("not json", {}));
   CHECK(isVideoPath("/w/rain.MP4") && isVideoPath("a.webm") && !isVideoPath("/w/katana.png") && !isVideoPath("noext"));
+
+  // Material 3 shapes: a circle is round, a 12-sided cookie has 12 lobes,
+  // every shape stays within its box
+  {
+    CHECK(m3ShapeNames().size() == 18);
+    const auto circ = m3ShapeRadii("circle", 360);
+    float lo = 9, hi = 0;
+    for (float r : circ) lo = std::min(lo, r), hi = std::max(hi, r);
+    CHECK(hi - lo < 0.02F && hi <= 1.001F);
+    const auto cookie = m3ShapeRadii("cookie12Sided", 720);
+    int peaks = 0;
+    for (size_t i = 0; i < cookie.size(); ++i) {
+      const float a = cookie[(i + cookie.size() - 1) % cookie.size()], b = cookie[i], c = cookie[(i + 1) % cookie.size()];
+      peaks += b > a && b >= c;
+    }
+    CHECK(peaks == 12);
+    for (const auto& name : m3ShapeNames())
+      for (float r : m3ShapeRadii(name, 256)) CHECK(r > 0.05F && r <= 1.5F);
+    CHECK(m3ShapeRadii("none", 16)[3] == 1.0F);
+  }
 
   std::filesystem::remove_all(dir);
   return TEST_RESULT();

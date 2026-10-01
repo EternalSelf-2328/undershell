@@ -200,6 +200,13 @@ uniform vec4 u_uv;        // uv origin + size (cover crop)
 uniform float u_radius;
 uniform float u_opacity;
 uniform vec2 u_blur;      // uv radius
+uniform float u_shapeR[128];
+uniform float u_shaped;
+float shapeAt(float a01) {
+    float idx = fract(a01) * 128.0;
+    int i = int(floor(idx));
+    return mix(u_shapeR[i & 127], u_shapeR[(i + 1) & 127], fract(idx));
+}
 float roundBox(vec2 p, vec2 b, float r) {
     r = min(r, min(b.x, b.y));
     vec2 q = abs(p) - b + r;
@@ -222,14 +229,24 @@ void main() {
     } else {
         c = texture(u_tex, uv);
     }
-    float d = roundBox(v_px - (u_rect.xy + u_rect.zw * 0.5), u_rect.zw * 0.5, u_radius);
+    vec2 pc = v_px - (u_rect.xy + u_rect.zw * 0.5);
+    float d = roundBox(pc, u_rect.zw * 0.5, u_radius);
+    if (u_shaped > 0.5) {
+        // a Material shape: distance to its outline, square to the edge
+        float halfSide = min(u_rect.z, u_rect.w) * 0.5;
+        float a01 = atan(pc.y, pc.x) / 6.28318530718;
+        float k = shapeAt(a01);
+        float dk = (shapeAt(a01 + 1.0 / 512.0) - shapeAt(a01 - 1.0 / 512.0)) / (2.0 * 6.28318530718 / 512.0);
+        float slope = dk / max(k, 1e-3);
+        d = (length(pc) - halfSide * k) / sqrt(1.0 + slope * slope);
+    }
     float a = (1.0 - smoothstep(-0.6, 0.6, d)) * c.a * u_opacity;
     fragColor = vec4(c.rgb * a, a);
 }
 )";
 
 void Canvas::image(GLuint texture, int texW, int texH, float x, float y, float w, float h, float radius, float opacity,
-                   float blur) {
+                   float blur, const float* shape) {
   if (!texture || texW <= 0 || texH <= 0 || w <= 0 || h <= 0) return;
   if (!m_image.valid()) m_image.create(kShapeVert, kImageFrag, "canvas-image");
   const float X = m_ox + x * m_scale, Y = m_oy + y * m_scale, W = w * m_scale, H = h * m_scale;
@@ -245,6 +262,8 @@ void Canvas::image(GLuint texture, int texW, int texH, float x, float y, float w
   glUniform4f(m_image.uniform("u_uv"), (1 - uw) / 2, (1 - uh) / 2, uw, uh);
   glUniform1f(m_image.uniform("u_radius"), radius * m_scale);
   glUniform1f(m_image.uniform("u_opacity"), opacity);
+  glUniform1f(m_image.uniform("u_shaped"), shape ? 1.0F : 0.0F);
+  if (shape) glUniform1fv(m_image.uniform("u_shapeR"), 128, shape);
   glUniform2f(m_image.uniform("u_blur"), blur > 0 ? blur * m_scale / W * uw : 0.0F, blur > 0 ? blur * m_scale / H * uh : 0.0F);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, texture);

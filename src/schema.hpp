@@ -76,6 +76,10 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   };
   static const std::vector<PropSpec> nowPlaying = {
       {K::Enum, "plate", "Plate", "Fondo", {"cover", "glass", "none"}, 0, 0, 0, 0, "cover"},
+      {K::Enum, "cover_shape", "Cover shape", "Forma de portada",
+       {"rounded", "cycle", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided", "cookie4Sided", "flower",
+        "clover8Leaf", "clover4Leaf", "softBurst", "burst", "sunny", "verySunny", "puffyDiamond", "pentagon", "pill", "square", "oval"},
+       0, 0, 0, 0, "rounded"},
       {K::Bool, "show_lyrics", "Lyrics", "Letra", {}, 0, 1, 1, 1},
       {K::Enum, "viz", "Spectrum", "Espectro", {"bars", "wave"}, 0, 0, 0, 0, "bars"},
       {K::Enum, "accent_source", "Accent", "Acento", {"album", "theme"}, 0, 0, 0, 0, "album"},

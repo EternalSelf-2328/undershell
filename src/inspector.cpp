@@ -9,6 +9,7 @@
 #include <climits>
 #include <cmath>
 #include "clockparts.hpp"
+#include "m3shapes.hpp"
 
 #include <fontconfig/fontconfig.h>
 #include <glib.h>
@@ -183,6 +184,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   if (look == "halo") {
     // the halo's own options, right after the look
     std::vector<PropSpec> halo = {
+        {K::Enum, "halo_form", "Shape", "Forma", m3ShapeNames(), 0, 0, 0, 0, "circle"},
         {K::Number, "halo_inner", "Size", "Tamaño", {}, 0.1, 1.4, 0.05, 0.7},
         {K::Number, "halo_width", "Line width", "Grosor de línea", {}, 0.003, 0.15, 0.001, 0.012},
         {K::Number, "halo_spread", "Glow reach", "Alcance del halo", {}, 0.01, 0.4, 0.01, 0.09},

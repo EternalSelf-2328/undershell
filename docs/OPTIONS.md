@@ -84,6 +84,7 @@ Ryoku's now-playing card.
 | Key | Values | Default | |
 |---|---|---|---|
 | `plate` | `cover`, `glass`, `none` | `"cover"` | Plate |
+| `cover_shape` | `rounded`, `cycle`, `circle`, `cookie12Sided`, `cookie9Sided`, `cookie7Sided`, `cookie6Sided`, `cookie4Sided`, `flower`, `clover8Leaf`, `clover4Leaf`, `softBurst`, `burst`, `sunny`, `verySunny`, `puffyDiamond`, `pentagon`, `pill`, `square`, `oval` | `"rounded"` | Cover shape |
 | `show_lyrics` | `true` / `false` | `true` | Lyrics |
 | `viz` | `bars`, `wave` | `"bars"` | Spectrum |
 | `accent_source` | `album`, `theme` | `"album"` | Accent |

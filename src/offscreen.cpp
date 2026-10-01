@@ -203,17 +203,25 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
   return img;
 }
 
-Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now) {
+Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now, const toml::table* options,
+                       int settleSteps) {
   Jobs jobs(1);
   MediaService media(jobs);
   if (state) media.setStateForTest(*state);
   NowPlayingWidget np;
-  np.configure(NowPlayingConfig{}, noct);
+  if (options) {
+    WidgetConfig wc;
+    wc.type = "now_playing";
+    wc.options = *options;
+    np.configure(wc, noct);
+  } else {
+    np.configure(NowPlayingConfig{}, noct);
+  }
   TextRenderer tr;
   // settle the spectrum and the lyric glide
   std::vector<float> bands(64);
   for (int i = 0; i < 64; ++i) bands[static_cast<size_t>(i)] = 0.15F + 0.7F * std::exp(-i / 20.0F) * (0.6F + 0.4F * std::sin(i * 0.7F));
-  for (int step = 0; step < 60; ++step) {
+  for (int step = 0; step < settleSteps; ++step) {
     TickContext tc;
     tc.now = now - 1 + step / 60.0;
     tc.dt = 1.0 / 60;

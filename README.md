@@ -93,6 +93,13 @@ While editing with no music, the visualizers move with the demo spectrum.
 With the grid on (toolbar), positions snap to it (16 px) on release and are saved to the config,
 without touching the rest of the file.
 
+## Music card
+
+**Cover shape** cuts the cover to a Material 3 shape (`cover_shape`: any of
+the 18 names), or `cycle`: each song gets its own shape (the same song, the
+same shape) and the cover morphs into it on Material's expressive spring,
+overshooting a little. `rounded` keeps the rounded square.
+
 ## With nothing playing
 
 `idle` in `[general]` sets what every visualizer does as soon as the sound
@@ -126,7 +133,11 @@ tone mapped, so the core turns white-hot instead of clipping):
 - **Aurora** (off by default) — a slow brightness drift along the ring; the
   shape stays round.
 
-Options: Size, Line width, Glow reach, Glow strength, Pulse, Breathing, Beat flash,
+**Shape** turns the ring into any of Material 3's 18 shapes (cookies,
+flower, clovers, bursts, sunny, puffy diamond…), its line and glow kept even
+along every curve.
+
+Options: Shape, Size, Line width, Glow reach, Glow strength, Pulse, Breathing, Beat flash,
 Beat waves, Aurora; *Smoothing* sets how soft the breathing is, *Gain* the
 sensitivity, *Colour* the colours (theme: primary → secondary).
 

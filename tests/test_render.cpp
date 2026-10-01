@@ -4,6 +4,8 @@
 #include "clock.hpp"
 #include "media.hpp"
 #include "offscreen.hpp"
+#include "canvas.hpp"
+#include "m3shapes.hpp"
 #include "overlay.hpp"
 #include "text.hpp"
 
@@ -277,6 +279,15 @@ int main(int argc, char** argv) {
     CHECK(glcheck("overlay"));
     ov.drawPill(10, 10, 120, 30, 9, Color{0, 0, 0, 0.7F}, 320, 200);
     CHECK(glcheck("pill"));
+    {
+      // a cover cut to a Material shape, and the plain one
+      Canvas cv;
+      cv.begin(320, 200, 1, nullptr);
+      const auto flower = m3ShapeRadii("flower", 128);
+      cv.image(tex, 2, 2, 10, 10, 100, 100, 10, 1, 0, flower.data());
+      cv.image(tex, 2, 2, 120, 10, 100, 100, 10, 1, 0);
+      CHECK(glcheck("shaped image"));
+    }
     MaskPass mask;
     for (int mode = 0; mode < 6; ++mode) {
       MaskParams mp;

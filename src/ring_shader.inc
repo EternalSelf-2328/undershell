@@ -28,6 +28,14 @@ uniform float u_waves[4];   // shock wave ages 0..1, < 0 = none
 uniform float u_waveGain[4];
 uniform float u_opacity;
 uniform float u_px;         // one pixel, same units
+uniform float u_shapeR[128];  // a Material 3 shape's radius by angle (m3shapes)
+uniform float u_shaped;
+
+float shapeAt(float a01) {
+    float idx = fract(a01) * 128.0;
+    int i = int(floor(idx));
+    return mix(u_shapeR[i & 127], u_shapeR[(i + 1) & 127], fract(idx));
+}
 
 float g(float x, float s) { return exp(-(x * x) / (s * s)); }
 
@@ -43,7 +51,17 @@ void main() {
 
     float r = u_radius * (1.0 + 0.045 * u_breath + 0.012 * u_pump);
     float w = u_width * (1.0 + 0.35 * u_pump + 0.25 * u_hit);
-    float t = d - r;
+    // along the outline: the shape's radius here, and the distance to its edge
+    // measured square to it (the ray's distance shrunk by the edge's slope),
+    // so the line and the glow keep their width on every lobe
+    float shapeK = 1.0, slope = 0.0;
+    if (u_shaped > 0.5) {
+        float a01 = theta / 6.28318530718;
+        shapeK = shapeAt(a01);
+        float dK = (shapeAt(a01 + 1.0 / 512.0) - shapeAt(a01 - 1.0 / 512.0)) / (2.0 * 6.28318530718 / 512.0);
+        slope = dK / max(shapeK, 1e-3);
+    }
+    float t = (d - r * shapeK) / sqrt(1.0 + slope * slope);
     float reach = u_spread * (0.65 + 0.35 * u_breath + 0.45 * u_pump + 0.3 * u_hit);
 
     // the aurora: a slow, smooth brightness drift along the ring (the shape stays round)
@@ -77,7 +95,7 @@ void main() {
         float wr = r + (1.0 - r) * 0.85 * (1.0 - (1.0 - age) * (1.0 - age));  // eases out
         // wide and soft: a breath of light rolling out, not a drawn circle
         float life = 1.0 - age;
-        float k = g(d - wr, 0.03 + 0.08 * age) * life * life * life * 0.32 * u_waveGain[i];
+        float k = g(d - wr * shapeK, 0.03 + 0.08 * age) * life * life * life * 0.32 * u_waveGain[i];
         light += glowC * k;
     }
 

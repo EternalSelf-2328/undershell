@@ -3,6 +3,8 @@
 // MusicLyrics, MusicViz, MusicSeek, MusicTransport, MusicPulse}.qml (GPL-3.0).
 #include "nowplaying.hpp"
 
+#include "m3shapes.hpp"
+
 #include "media.hpp"
 #include "motion.hpp"
 
@@ -71,6 +73,7 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   c.ink = t["ink"].value_or(c.ink);
   c.opacity = std::clamp(t["opacity"].value_or(c.opacity), 0.0, 1.0);
   c.fps = static_cast<int>(std::clamp<int64_t>(t["fps"].value_or(int64_t{30}), 5, 120));
+  c.coverShape = t["cover_shape"].value_or(c.coverShape);
   return c;
 }
 
@@ -86,6 +89,19 @@ void NowPlayingWidget::configure(const NowPlayingConfig& cfg, const NoctaliaStat
   m_accent = m_theme;
   m_measures.clear();
   if (m_viz.empty()) m_viz.assign(40, 0.0F);
+  if (cfg.coverShape != "rounded" && cfg.coverShape != "cycle") setCoverShape(cfg.coverShape, !m_shapeNow.empty());
+  m_shapeTrack.clear();  // "cycle" picks again
+}
+
+// Starts a morph from the shape on screen to `name` (or jumps there).
+void NowPlayingWidget::setCoverShape(const std::string& name, bool animate) {
+  if (name == m_shapeName && !m_shapeNow.empty()) return;
+  m_shapeName = name;
+  m_shapeTo = m3ShapeRadii(name, 128);
+  m_shapeFrom = m_shapeNow.empty() || !animate ? m_shapeTo : m_shapeNow;
+  m_morph = animate ? 0 : 1;
+  m_morphVel = 0;
+  if (m_shapeNow.empty()) m_shapeNow = m_shapeTo;
 }
 
 Canvas::Size NowPlayingWidget::measure(const std::string& text, const TextStyle& st) {
@@ -110,12 +126,30 @@ void NowPlayingWidget::tick(const TickContext& ctx) {
   // lyric glide toward the sung line (Theme.slow)
   const float kg = static_cast<float>(1 - std::exp(-dt / 0.12));
   m_glide += (0 - m_glide) * kg;
+  // "cycle": each song gets its own shape (the same song, the same shape)
+  if (m_cfg.coverShape == "cycle" && m_media && m_media->state().present && m_media->state().trackKey != m_shapeTrack) {
+    m_shapeTrack = m_media->state().trackKey;
+    static const char* kCycle[] = {"cookie12Sided", "flower", "clover8Leaf", "softBurst", "cookie9Sided", "sunny",
+                                   "puffyDiamond", "cookie6Sided", "clover4Leaf", "cookie7Sided", "pentagon", "verySunny"};
+    const size_t pick = std::hash<std::string>{}(m_shapeTrack) % std::size(kCycle);
+    setCoverShape(kCycle[pick], !m_shapeNow.empty());
+  }
+  // the morph: Material's expressive spatial spring (it overshoots a little)
+  if (!m_shapeTo.empty() && (m_morph < 1 || std::abs(m_morphVel) > 1e-4)) {
+    const double omega = 11.0, zeta = 0.62;
+    m_morphVel += (omega * omega * (1 - m_morph) - 2 * zeta * omega * m_morphVel) * dt;
+    m_morph += m_morphVel * dt;
+    if (std::abs(1 - m_morph) < 1e-3 && std::abs(m_morphVel) < 1e-3) m_morph = 1, m_morphVel = 0;
+    m_shapeNow.resize(m_shapeTo.size());
+    for (size_t i = 0; i < m_shapeTo.size(); ++i)
+      m_shapeNow[i] = std::clamp(m_shapeFrom[i] + (m_shapeTo[i] - m_shapeFrom[i]) * static_cast<float>(m_morph), 0.05F, 1.15F);
+  }
 }
 
 bool NowPlayingWidget::animating(const TickContext& ctx) const {
   const MediaService* m = ctx.media;
   const bool playing = m && m->state().present && m->state().playing;
-  return playing || std::abs(m_glide) > 0.5F;
+  return playing || std::abs(m_glide) > 0.5F || m_morph < 1 || std::abs(m_morphVel) > 1e-4;
 }
 
 void NowPlayingWidget::layoutTargets(bool seekable) {
@@ -215,7 +249,8 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
 
   // ── the sleeve ──
   if (s.cover && s.coverW > 0) {
-    c.image(s.cover, s.coverW, s.coverH, PAD, PAD, COVER, COVER, 10, op);
+    const bool shaped = m_cfg.coverShape != "rounded" && m_shapeNow.size() == 128;
+    c.image(s.cover, s.coverW, s.coverH, PAD, PAD, COVER, COVER, 10, op, 0, shaped ? m_shapeNow.data() : nullptr);
   } else {
     c.roundRect(PAD, PAD, COVER, COVER, 10, A(m_noct.color("surface_variant", surface)));
     noteGlyph(c, PAD + COVER / 2, PAD + COVER / 2, 40, A(dim));

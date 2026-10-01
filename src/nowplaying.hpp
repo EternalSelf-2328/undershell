@@ -23,6 +23,7 @@ struct NowPlayingConfig {
   std::string ink = "on_surface";
   double opacity = 1.0;
   int fps = 30;
+  std::string coverShape = "rounded";  // rounded | cycle (a new Material shape each song) | a shape name
 
   static NowPlayingConfig fromTable(const toml::table& t);
 };
@@ -66,6 +67,11 @@ private:
   std::vector<float> m_viz;           // 40 eased bands
   std::unordered_map<std::string, Canvas::Size> m_measures;
   bool m_wasPlaying = false;
+  // the cover's Material shape and its morph (a spring) between songs
+  std::vector<float> m_shapeFrom, m_shapeTo, m_shapeNow;
+  double m_morph = 1, m_morphVel = 0;
+  std::string m_shapeTrack, m_shapeName;
+  void setCoverShape(const std::string& name, bool animate);
 };
 
 }  // namespace undershell

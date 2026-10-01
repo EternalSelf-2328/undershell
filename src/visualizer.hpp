@@ -77,6 +77,8 @@ private:
   std::array<double, 4> m_waveAges{-1, -1, -1, -1}, m_waveGain{0, 0, 0, 0};
   bool m_haloWaves = true;
   double m_haloWidth = 0.012, m_haloSpread = 0.09, m_haloInner = 0.7, m_haloBloom = 0.8;
+  std::string m_haloForm = "circle";
+  std::vector<float> m_haloFormR = std::vector<float>(128, 1.0F);
   double m_haloBreathe = 0.6, m_haloHits = 0.7, m_haloAurora = 0, m_haloPulse = 0.7;
   Color m_haloA, m_haloB;
   Motion m_motion;

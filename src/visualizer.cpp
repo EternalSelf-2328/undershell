@@ -3,6 +3,8 @@
 // from the config, the widget box and the eased levels.
 #include "visualizer.hpp"
 
+#include "m3shapes.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -62,6 +64,8 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   m_haloHits = std::clamp(t["halo_hits"].value_or(0.7), 0.0, 1.0);
   m_haloAurora = std::clamp(t["halo_aurora"].value_or(0.0), 0.0, 1.0);
   m_haloPulse = std::clamp(t["halo_pulse"].value_or(0.7), 0.0, 1.0);
+  m_haloForm = t["halo_form"].value_or(std::string("circle"));
+  m_haloFormR = m3ShapeRadii(m_haloForm, 128);
   m_vArms = std::clamp(t["vortex_arms"].value_or(int64_t{3}), int64_t{1}, int64_t{12});
   m_vTwist = std::clamp(t["vortex_twist"].value_or(3.4), 0.0, 8.0);
   m_vReach = std::clamp(t["vortex_reach"].value_or(1.9), 1.1, 6.0);
@@ -278,6 +282,8 @@ void Visualizer::drawRing(const DrawContext& ctx) {
   glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
   glUniform1f(U("u_tone"), static_cast<float>(m_tone));
   glUniform1f(U("u_aurora"), static_cast<float>(m_haloAurora));
+  glUniform1fv(U("u_shapeR"), 128, m_haloFormR.data());
+  glUniform1f(U("u_shaped"), m_haloForm != "circle" && m_haloForm != "none" ? 1.0F : 0.0F);
   glUniform1f(U("u_time"), static_cast<float>(std::fmod(m_ringTime, 3600.0)));
   float ages[4], gains[4];
   for (size_t i = 0; i < 4; ++i) {

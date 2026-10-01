@@ -29,8 +29,10 @@ public:
   // a sine stroke from x0 to x1 around baseline y: amplitude, wavelength, phase (px)
   void wave(float x0, float x1, float y, float amplitude, float wavelength, float phase, float thickness, Color color);
   // an RGBA texture drawn "cover"-fitted into a rounded rect; blur in design px
+  // `shape`: 128 radii of a Material 3 shape (m3shapes) to cut the image to
+  // instead of a rounded rectangle
   void image(GLuint texture, int texW, int texH, float x, float y, float w, float h, float radius, float opacity = 1,
-             float blur = 0);
+             float blur = 0, const float* shape = nullptr);
   // clip subsequent drawing to a rect (design units); clip() with no args ends it
   void clip(float x, float y, float w, float h);
   void clip();

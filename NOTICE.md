@@ -18,3 +18,11 @@ undershell is free software under the **GNU GPL v3 or later** (see `LICENSE`).
   static instances of Inter's variable font at opsz 32).
 - Lyrics come from **LRCLIB** (<https://lrclib.net>); weather from Noctalia's
   own cache.
+
+## Sung
+
+`src/m3shapes.cpp` ports the Material 3 shape library from Sung
+(https://github.com/yappologistic/Sung, `src/m3shape.cpp`), MIT licence,
+Copyright (c) yappologistic — itself a port of androidx.graphics.shapes'
+RoundedPolygon and MaterialShapes.kt (Apache-2.0, The Android Open Source
+Project).
