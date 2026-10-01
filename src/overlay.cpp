@@ -20,6 +20,7 @@ uniform float u_level;
 uniform float u_feather;
 uniform vec4 u_tint;
 uniform vec3 u_view;      // centre (output px) and zoom of the brush view
+uniform vec2 u_viewAt;    // where that centre shows on the surface
 uniform sampler2D u_wall;
 uniform float u_wallMode;
 
@@ -61,7 +62,7 @@ vec2 calculateWallpaperUV(vec2 uv, float imgWidth, float imgHeight) {
 
 void main() {
     vec2 outputPixel = u_surfaceOffset + v_uv * u_surfaceSize;
-    if (u_view.z > 1.0001) outputPixel = u_view.xy + (outputPixel - u_outputSize * 0.5) / u_view.z;
+    if (u_view.z > 1.0001) outputPixel = u_view.xy + (outputPixel - u_viewAt) / u_view.z;
     vec2 maskUV = calculateWallpaperUV(outputPixel / u_outputSize, u_imageSize.x, u_imageSize.y);
     if (u_wallMode > 0.5) {
         bool inside = (u_fillMode > 3.5 && u_fillMode < 4.5) || !(maskUV.x < 0.0 || maskUV.x > 1.0 || maskUV.y < 0.0 || maskUV.y > 1.0);
@@ -92,6 +93,7 @@ void MaskPass::setup(const MaskParams& p) {
   glUniform2f(m_prog.uniform("u_imageSize"), p.imageW, p.imageH);
   glUniform1f(m_prog.uniform("u_fillMode"), static_cast<float>(p.fillMode));
   glUniform3f(m_prog.uniform("u_view"), p.viewX, p.viewY, p.zoom);
+  glUniform2f(m_prog.uniform("u_viewAt"), p.viewAtX >= 0 ? p.viewAtX : p.outputW * 0.5F, p.viewAtY >= 0 ? p.viewAtY : p.outputH * 0.5F);
   glUniform1f(m_prog.uniform("u_level"), p.level);
   glUniform1f(m_prog.uniform("u_feather"), p.feather);
   glUniform1i(m_prog.uniform("u_mask"), 0);

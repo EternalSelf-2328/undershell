@@ -2,6 +2,7 @@
 #include "config.hpp"
 
 #include "common.hpp"
+#include "geom.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -116,6 +117,16 @@ Config Config::load(const std::string& path) {
       if (auto i = (*t)["tilt_x"].value<int64_t>()) w.tiltX = std::clamp(static_cast<double>(*i), -70.0, 70.0);
       if (auto i = (*t)["tilt_y"].value<int64_t>()) w.tiltY = std::clamp(static_cast<double>(*i), -70.0, 70.0);
       if (auto i = (*t)["skew"].value<int64_t>()) w.skewX = std::clamp(static_cast<double>(*i), -60.0, 60.0);
+      if (get<bool>(*t, "pin_corners", false)) {
+        if (const toml::array* a = (*t)["pin"].as_array(); a && a->size() == 8) {
+          for (size_t k = 0; k < 8; ++k) w.pin[k] = (*a)[k].value_or(0.0);
+        } else {  // turned on without points: start from where the box is drawn
+          double qx[4], qy[4];
+          widgetCorners(w, qx, qy);
+          for (int k = 0; k < 4; ++k) w.pin[2 * k] = qx[k], w.pin[2 * k + 1] = qy[k];
+        }
+        w.pinned = true;
+      }
       w.layer = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "layer", 0), -10, 10));
       if (auto i = (*t)["depth_level"].value<int64_t>()) w.depthLevel = std::clamp(static_cast<double>(*i), 0.0, 100.0);
       if (auto r = (*t)["rotation"].value<double>()) {
@@ -151,7 +162,8 @@ static bool findBlock(const std::vector<std::string>& lines, const std::string& 
 
 static void setLine(std::vector<std::string>& lines, size_t start, size_t& end, const std::string& key,
                     const std::string& value) {
-  const std::regex re("^(\\s*" + key + R"(\s*=\s*)("(?:[^"\\]|\\.)*"|[^#\s]*)(\s*#.*)?\s*$)");
+  // a value: a string, an array (corner pins), or a bare token
+  const std::regex re("^(\\s*" + key + R"(\s*=\s*)("(?:[^"\\]|\\.)*"|\[[^\]]*\]|[^#\s]*)(\s*#.*)?\s*$)");
   for (size_t k = start + 1; k < end; ++k) {
     std::smatch m;
     if (std::regex_match(lines[k], m, re)) {

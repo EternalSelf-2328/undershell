@@ -935,6 +935,7 @@ void App::renderEdit(EditSurface& e) {
                    m_gridOn ? static_cast<float>(m_config.gridSize) : 0.0F, m_guidesV, m_guidesH, handle);
     if (m_paintMode && e.output) {
       // depth mode: tint what would cover the selected widget
+      m_depth.get(e.output->name);
       if (DepthMask* m = m_depth.paintable(e.output->name); m && m->field) {
         MaskParams mp;
         mp.surfaceW = static_cast<float>(e.w);
@@ -955,6 +956,39 @@ void App::renderEdit(EditSurface& e) {
           m_maskPass.drawWallpaper(mp, m_depth.wallpaperTexture(*m));
         }
         m_maskPass.drawTint(mp, Color{accent.r, accent.g, accent.b, 0.42F});
+      }
+    }
+    // placing a pinned corner: a loupe of the wallpaper under it
+    m_loupe = {};
+    if (m_drag == Drag::Pin && m_selected && m_selected->cfg.pinned && m_pinCorner >= 0 && e.output == m_selected->output) {
+      m_depth.get(e.output->name);  // uploads the field and image even when no widget uses depth
+      if (DepthMask* m = m_depth.paintable(e.output->name); m && m->field) {
+        const float cx = static_cast<float>(m_selected->cfg.pin[2 * m_pinCorner]);
+        const float cy = static_cast<float>(m_selected->cfg.pin[2 * m_pinCorner + 1]);
+        const float L = 190;
+        // beside the pointer, away from the screen edge
+        float lx = cx + 40, ly = cy - 40 - L;
+        if (lx + L > e.w - 8) lx = cx - 40 - L;
+        if (ly < 8) ly = cy + 40;
+        m_loupe = {lx, ly, L, L};
+        MaskParams mp;
+        mp.surfaceW = static_cast<float>(e.w);
+        mp.surfaceH = static_cast<float>(e.h);
+        mp.outputW = e.output->logicalW();
+        mp.outputH = e.output->logicalH();
+        mp.imageW = static_cast<float>(m->imageW);
+        mp.imageH = static_cast<float>(m->imageH);
+        mp.fillMode = m_noctalia.state().fillMode;
+        mp.viewX = cx;
+        mp.viewY = cy;
+        mp.zoom = 5;
+        mp.viewAtX = lx + L / 2;
+        mp.viewAtY = ly + L / 2;
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(static_cast<GLint>(lx * e.scale), static_cast<GLint>((e.h - ly - L) * e.scale), static_cast<GLsizei>(L * e.scale),
+                  static_cast<GLsizei>(L * e.scale));
+        m_maskPass.drawWallpaper(mp, m_depth.wallpaperTexture(*m));
+        glDisable(GL_SCISSOR_TEST);
       }
     }
     drawEditorText(e);

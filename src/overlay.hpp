@@ -21,6 +21,7 @@ struct MaskParams {
   float level = 0, feather = 0;
   // the brush's zoom: output point shown at the surface centre, and scale
   float viewX = 0, viewY = 0, zoom = 1;
+  float viewAtX = -1, viewAtY = -1;  // where the view's centre shows (default: the surface's centre)
 };
 
 // Erases widget pixels under the wallpaper_depth foreground (DestinationOut),

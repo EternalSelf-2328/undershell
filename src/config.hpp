@@ -46,6 +46,10 @@ struct WidgetConfig {
   double tiltX = 0, tiltY = 0;  // degrees: + top leans back / + right side leans back
   double skewX = 0;             // degrees: a parallelogram (+ top to the right)
   double perspective = 2.5;     // camera distance, in box sizes (smaller = stronger)
+  // corner pin: the box's corners placed on four output points (top-left,
+  // top-right, bottom-right, bottom-left), replacing tilt, skew and rotation
+  bool pinned = false;
+  double pin[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   double depthLevel = 0;  // own depth plane 1..100 (0: the plugin's mask)
   int layer = 0;          // stacking among widgets: higher is in front (then depth decides)
   toml::table options;  // the whole [[widget]] table

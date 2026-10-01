@@ -20,7 +20,7 @@ struct Box {
 };
 
 inline bool warped(const WidgetConfig& c) {
-  return std::abs(c.tiltX) > 0.01 || std::abs(c.tiltY) > 0.01 || std::abs(c.skewX) > 0.01;
+  return c.pinned || std::abs(c.tiltX) > 0.01 || std::abs(c.tiltY) > 0.01 || std::abs(c.skewX) > 0.01;
 }
 inline bool turnedOnly(const WidgetConfig& c) { return std::abs(c.rotation) > 0.01; }
 // turned or warped: drawn off-screen and laid on its surface
@@ -72,6 +72,10 @@ inline Homography squareToQuad(const double qx[4], const double qy[4]) {
 // The box's four corners on the output (top-left, top-right, bottom-right,
 // bottom-left), after skew, tilt, perspective and rotation.
 inline void widgetCorners(const WidgetConfig& c, double qx[4], double qy[4]) {
+  if (c.pinned) {  // placed by hand on four points
+    for (int i = 0; i < 4; ++i) qx[i] = c.pin[2 * i], qy[i] = c.pin[2 * i + 1];
+    return;
+  }
   const double w = c.width, h = c.height, cx = c.x + w / 2.0, cy = c.y + h / 2.0;
   const double d2r = std::numbers::pi / 180.0;
   const double tx = c.tiltX * d2r, ty = c.tiltY * d2r, sk = std::tan(c.skewX * d2r), rz = c.rotation * d2r;

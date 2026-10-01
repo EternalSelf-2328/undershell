@@ -15,6 +15,7 @@
 #include <glib.h>
 #include <linux/input-event-codes.h>
 #include <cstring>
+#include <array>
 #include <filesystem>
 #include <regex>
 #include <xkbcommon/xkbcommon.h>
@@ -66,6 +67,14 @@ double numberOf(const toml::table& opts, const PropSpec& p) {
 
 // stores a TOML-formatted value into an options table
 void storeOption(toml::table& t, const std::string& key, const std::string& tomlValue) {
+  if (!tomlValue.empty() && tomlValue.front() == '[') {  // an array (corner pin points)
+    try {
+      auto parsed = toml::parse("v = " + tomlValue);
+      if (auto* a = parsed["v"].as_array()) t.insert_or_assign(key, *a);
+    } catch (const std::exception&) {
+    }
+    return;
+  }
   if (tomlValue.size() >= 2 && tomlValue.front() == '"') t.insert_or_assign(key, tomlValue.substr(1, tomlValue.size() - 2));
   else if (tomlValue == "true" || tomlValue == "false") t.insert_or_assign(key, tomlValue == "true");
   else if (tomlValue.find_first_of(".eE") != std::string::npos) t.insert_or_assign(key, std::stod(tomlValue));
@@ -86,6 +95,8 @@ std::string formatNumber(const PropSpec& p, double v) {
 // (its look, face, colour mode…): the inspector hides the rest.
 bool optionApplies(const Widget& w, const std::string& key) {
   const toml::table& o = w.cfg.options;
+  if (w.cfg.pinned && (key == "perspective" || key == "tilt_x" || key == "tilt_y" || key == "skew" || key == "rotation"))
+    return false;  // the pinned corners decide the shape
   if (key == "perspective") return std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01;  // only a tilt is seen in depth
   if (key == "tilt_x" || key == "tilt_y" || key == "skew")
     return !(w.cfg.type == "visualizer" && o["style"].value_or(std::string()) == "frame");
@@ -132,6 +143,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   std::vector<PropSpec> s;
   std::vector<PropSpec> all = schemaFor(w.cfg.type);
   // perspective, for every widget
+  all.push_back({K::Bool, "pin_corners", "Pin corners", "Fijar esquinas", {}, 0, 1, 1, 0});
   all.push_back({K::Number, "tilt_x", "Tilt back °", "Inclinación atrás °", {}, -70, 70, 0.5, 0});
   all.push_back({K::Number, "tilt_y", "Tilt sideways °", "Inclinación lateral °", {}, -70, 70, 0.5, 0});
   all.push_back({K::Number, "skew", "Skew °", "Sesgo °", {}, -60, 60, 0.5, 0});
@@ -299,7 +311,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
-    if (in(k, {"tilt_x", "tilt_y", "skew", "perspective"})) return 5;
+    if (in(k, {"pin_corners", "tilt_x", "tilt_y", "skew", "perspective"})) return 5;
     return 0;  // the look and its shape
   };
   static const char* titles[6][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
@@ -467,6 +479,37 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
     } catch (const std::exception&) {
     }
   }
+  if (key == "pin_corners") {
+    const bool on = v == "true";
+    if (on && !w.cfg.pinned) {
+      // start from where the widget is now drawn
+      double qx[4], qy[4];
+      widgetCorners(w.cfg, qx, qy);
+      const toml::array* a = w.cfg.options["pin"].as_array();
+      if (!a || a->size() != 8) {
+        std::string text = "[";
+        for (int i = 0; i < 4; ++i) text += std::format("{}{:.1f}, {:.1f}", i ? ", " : "", qx[i], qy[i]);
+        text += "]";
+        storeOption(w.cfg.options, "pin", text);
+        Config::setKey(m_configPath, w.cfg.id, "pin", text);
+        for (int i = 0; i < 4; ++i) w.cfg.pin[2 * i] = qx[i], w.cfg.pin[2 * i + 1] = qy[i];
+      } else {
+        for (size_t k = 0; k < 8; ++k) w.cfg.pin[k] = (*a)[k].value_or(0.0);
+      }
+    }
+    w.cfg.pinned = on;
+    m_pinCorner = -1;
+    placeLayer(w);
+  }
+  if (key == "pin") {
+    try {
+      auto parsed = toml::parse("v = " + v);
+      if (const toml::array* a = parsed["v"].as_array(); a && a->size() == 8)
+        for (size_t k = 0; k < 8; ++k) w.cfg.pin[k] = (*a)[k].value_or(0.0);
+      if (w.cfg.pinned) placeLayer(w);
+    } catch (const std::exception&) {
+    }
+  }
   if (key == "tilt_x" || key == "tilt_y" || key == "skew" || key == "perspective") {
     try {
       const double d = std::stod(v);
@@ -602,10 +645,23 @@ void App::layoutUi(const EditSurface& e) {
       px = W - kPanelW - 24;
       py = top;
     } else {
-      px = static_cast<float>(w->cfg.x + w->cfg.width) + 16;
-      if (px + kPanelW > W - 12) px = static_cast<float>(w->cfg.x) - 16 - kPanelW;
+      // beside what is seen (turned, warped or pinned), never over it
+      const Box vb = visualBox(w->cfg);
+      px = static_cast<float>(vb.x + vb.w) + 16;
+      if (px + kPanelW > W - 12) px = static_cast<float>(vb.x) - 16 - kPanelW;
       if (px < 12) px = W - kPanelW - 16;
-      py = std::clamp(static_cast<float>(w->cfg.y), top, std::max(top, H - panelH - 16));
+      py = std::clamp(static_cast<float>(vb.y), top, std::max(top, H - panelH - 16));
+      if (w->cfg.pinned) {
+        // a pin under the panel could not be grabbed: take the far side of the screen instead
+        auto covers = [&](float x0) {
+          for (int i = 0; i < 4; ++i)
+            if (w->cfg.pin[2 * i] > x0 - 20 && w->cfg.pin[2 * i] < x0 + kPanelW + 20 && w->cfg.pin[2 * i + 1] > py - 20 &&
+                w->cfg.pin[2 * i + 1] < py + panelH + 20)
+              return true;
+          return false;
+        };
+        if (covers(px)) px = (vb.x + vb.w / 2.0F > W / 2) ? 16 : W - kPanelW - 16;
+      }
     }
     if (auto it = m_panelPos.find("inspector"); it != m_panelPos.end()) {  // where the user put it
       px = std::clamp(it->second.first, 0.0F, W - kPanelW);
@@ -1293,9 +1349,18 @@ void App::drawUi(EditSurface& e) {
       const int j = (i + 1) % 4;
       cv.segment(static_cast<float>(qx[i]), static_cast<float>(qy[i]), static_cast<float>(qx[j]), static_cast<float>(qy[j]), lw, lc);
     }
-    if (sel || hot)
+    if (ww.cfg.pinned && sel) {
+      // pins: rings you can grab; the one the arrows move is filled
+      for (int i = 0; i < 4; ++i) {
+        const bool act = i == m_pinCorner;
+        cv.circle(static_cast<float>(qx[i]), static_cast<float>(qy[i]), 9, act ? withAlphaC(wa, 0.9F) : Color{0, 0, 0, 0.35F}, 2,
+                  act ? ink : wa);
+        cv.circle(static_cast<float>(qx[i]), static_cast<float>(qy[i]), 1.8F, ink);
+      }
+    } else if (sel || hot) {
       for (int i = 0; i < 4; ++i) cv.circle(static_cast<float>(qx[i]), static_cast<float>(qy[i]), 5, withAlphaC(wa, 0.95F), 1.5F, ink);
-    if (sel) {  // the rotation knob, where inRotateHandle looks for it
+    }
+    if (sel && !ww.cfg.pinned) {  // the rotation knob, where inRotateHandle looks for it
       double kx = 0, ky = 0, tx = 0, ty = 0;
       toOutput(ww.cfg, ww.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
       toOutput(ww.cfg, ww.cfg.width / 2.0, 0, tx, ty);
@@ -1303,6 +1368,19 @@ void App::drawUi(EditSurface& e) {
       cv.circle(static_cast<float>(kx), static_cast<float>(ky), OverlayPass::kHandleR, Color{0, 0, 0, 0}, 1.8F, wa);
       cv.circle(static_cast<float>(kx), static_cast<float>(ky), OverlayPass::kHandleR - 3, wa);
     }
+  }
+
+  if (m_loupe.w > 0) {
+    const Rect L = m_loupe;
+    cv.roundRect(L.x, L.y, L.w, L.h, 6, Color{0, 0, 0, 0}, 2.5F, Color{0, 0, 0, 0.6F});
+    cv.roundRect(L.x, L.y, L.w, L.h, 6, Color{0, 0, 0, 0}, 1.4F, ink);
+    const float mx = L.x + L.w / 2, my = L.y + L.h / 2;
+    for (const auto& [ax, ay, bx, by] : {std::array<float, 4>{mx - 18, my, mx - 5, my}, {mx + 5, my, mx + 18, my}, {mx, my - 18, mx, my - 5},
+                                         {mx, my + 5, mx, my + 18}}) {
+      cv.segment(ax, ay, bx, by, 3, Color{0, 0, 0, 0.6F});
+      cv.segment(ax, ay, bx, by, 1.3F, ink);
+    }
+    cv.text(es ? "Shift: fino · flechas: 1 px" : "Shift: fine · arrows: 1 px", label, L.x + 8, L.y + L.h - 22, ink);
   }
 
   // ── toolbar ──

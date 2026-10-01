@@ -167,6 +167,16 @@ int main() {
     CHECK(weightName(600) == "semibold" && weightValue("light") == 300);
   }
 
+  // an array value (corner pins) is replaced in place, never repeated
+  {
+    writeFileAtomic(path, "[[widget]]\nid = \"p\"\npin_corners = true\npin = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]\n");
+    CHECK(Config::setKey(path, "p", "pin", "[9.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]"));
+    const std::string t2 = readFile(path);
+    CHECK(t2.find("pin = [9.0") != std::string::npos && t2.find("pin = [1.0") == std::string::npos);
+    const Config pc = Config::load(path);
+    CHECK(pc.widgets.size() == 1 && pc.widgets[0].pinned && pc.widgets[0].pin[0] == 9.0);
+  }
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }

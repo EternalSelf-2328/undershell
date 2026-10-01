@@ -32,6 +32,7 @@ const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
 // The resize grip under the pointer: 0 top-left, 1 top-right, 2 bottom-left,
 // 3 bottom-right, -1 none (the grips turn with the widget)
 int gripAt(const Widget& w, double x, double y) {
+  if (w.cfg.pinned) return -1;  // its corners are pins, not resize grips
   double lx = 0, ly = 0;
   toLocal(w.cfg, x, y, lx, ly);
   const double gs = std::min({26.0, w.cfg.width / 2.0, w.cfg.height / 2.0});
@@ -91,8 +92,39 @@ Widget* App::widgetAt(const Output* o, double x, double y) {
 }
 
 // the knob above the selected widget's (turned) top edge
+int App::pinAt(const Widget& w, double x, double y) const {
+  if (!w.cfg.pinned || &w != m_selected) return -1;
+  int best = -1;
+  double bestD = 14;
+  for (int i = 0; i < 4; ++i) {
+    const double d = std::hypot(x - w.cfg.pin[2 * i], y - w.cfg.pin[2 * i + 1]);
+    if (d < bestD) bestD = d, best = i;
+  }
+  return best;
+}
+
+// The points go to the config as one undo step; the box (the widget's own
+// resolution) follows the quad's size so it renders crisp, at its real aspect.
+void App::commitPin(Widget& w) {
+  std::string text = "[";
+  for (int i = 0; i < 8; ++i) text += std::format("{}{:.1f}", i ? ", " : "", w.cfg.pin[i]);
+  text += "]";
+  m_lastOpKind.clear();
+  setProp(w, "pin", text);
+  const double* q = w.cfg.pin;
+  auto len = [&](int a, int b) { return std::hypot(q[2 * a] - q[2 * b], q[2 * a + 1] - q[2 * b + 1]); };
+  const int nw = std::max(48, static_cast<int>(std::lround((len(0, 1) + len(3, 2)) / 2)));
+  const int nh = std::max(32, static_cast<int>(std::lround((len(0, 3) + len(1, 2)) / 2)));
+  if (nw != w.cfg.width || nh != w.cfg.height) {
+    w.cfg.width = nw;
+    w.cfg.height = nh;
+    placeLayer(w);
+    persist(w);
+  }
+}
+
 bool App::inRotateHandle(const Widget& w, double x, double y) const {
-  if (&w != m_selected || !w.impl || w.impl->fullscreen()) return false;
+  if (&w != m_selected || !w.impl || w.impl->fullscreen() || w.cfg.pinned) return false;
   double kx = 0, ky = 0;
   toOutput(w.cfg, w.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
   return std::hypot(x - kx, y - ky) <= OverlayPass::kHandleR + 6;
@@ -321,6 +353,7 @@ Widget* App::target() {
 }
 
 void App::cycleSelection(int step) {
+  m_pinCorner = -1;
   m_fontPickFor.clear();
   m_elExpanded.clear();
   std::vector<Widget*> list;
@@ -337,6 +370,20 @@ void App::cycleSelection(int step) {
 void App::nudge(int dx, int dy, bool resize) {
   Widget* w = target();
   if (!w) return;
+  if (w->cfg.pinned) {
+    // the last corner moved, or all four: one pixel at a time for precision
+    for (int i = 0; i < 4; ++i)
+      if (m_pinCorner < 0 || m_pinCorner == i) {
+        w->cfg.pin[2 * i] += dx;
+        w->cfg.pin[2 * i + 1] += dy;
+      }
+    placeLayer(*w);
+    commitPin(*w);
+    m_lastOpKind = "prop:pin";  // a burst of arrows is one undo step
+    m_lastOpId = w->cfg.id;
+    markEditDirty();
+    return;
+  }
   pushUndo(*w, "nudge");
   if (resize) {
     WidgetConfig c = w->cfg;
@@ -650,6 +697,14 @@ void App::onPointerMotion(double x, double y) {
       m_pointerWidget = hit;
       markEditDirty();
     }
+    if (m_selected && m_selected->output == m_pointerEdit->output && pinAt(*m_selected, x, y) >= 0) {
+      if (m_pointerWidget != m_selected) {
+        m_pointerWidget = m_selected;
+        markEditDirty();
+      }
+      setCursor("crosshair");
+      return;
+    }
     setCursor(!hit ? "default" : gripCursor(gripAt(*hit, x, y)));
     return;
   }
@@ -668,6 +723,24 @@ void App::onPointerMotion(double x, double y) {
     const double near15 = std::round(a / 15.0) * 15.0;
     if (m_snapOn && !fine && std::abs(a - near15) < 2.0) a = near15;
     setRotation(*w, std::round(a * 10.0) / 10.0);
+    return;
+  }
+  if (m_drag == Drag::Pin && w->cfg.pinned && m_pinCorner >= 0) {
+    // one corner follows the pointer; Shift moves it a quarter as fast
+    const double k = modActive(XKB_MOD_NAME_SHIFT) ? 0.25 : 1.0;
+    w->cfg.pin[2 * m_pinCorner] = m_pinStart[2 * m_pinCorner] + (x - m_pressX) * k;
+    w->cfg.pin[2 * m_pinCorner + 1] = m_pinStart[2 * m_pinCorner + 1] + (y - m_pressY) * k;
+    placeLayer(*w);
+    markEditDirty();
+    return;
+  }
+  if (m_drag == Drag::Move && w->cfg.pinned) {  // all four corners together
+    for (int i = 0; i < 4; ++i) {
+      w->cfg.pin[2 * i] = m_pinStart[2 * i] + (x - m_pressX);
+      w->cfg.pin[2 * i + 1] = m_pinStart[2 * i + 1] + (y - m_pressY);
+    }
+    placeLayer(*w);
+    markEditDirty();
     return;
   }
   if (m_drag == Drag::Move) {
@@ -786,10 +859,24 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_fontPickFor.clear();
     m_confirmDelete.clear();
     commitRename();
-    if (w != m_selected) m_inspScroll = 0;
+    if (w != m_selected) {
+      m_inspScroll = 0;
+      m_pinCorner = -1;
+    }
     m_selected = w;  // clicking empty space clears the selection
     markEditDirty();
     if (!w) return;
+    if (w->cfg.pinned) {
+      // a corner pin: a corner moves alone, anywhere else moves the four
+      const int corner = pinAt(*w, m_px, m_py);
+      std::copy(std::begin(w->cfg.pin), std::end(w->cfg.pin), m_pinStart);
+      m_pressX = m_px;
+      m_pressY = m_py;
+      if (corner >= 0) m_pinCorner = corner;
+      m_drag = corner >= 0 ? Drag::Pin : Drag::Move;
+      setCursor(corner >= 0 ? "crosshair" : "grabbing");
+      return;
+    }
     if (inRotateHandle(*w, m_px, m_py)) {
       m_drag = Drag::Rotate;
       m_rotStart = w->cfg.rotation;
@@ -813,6 +900,13 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_dragW = w->cfg.width;
     m_dragH = w->cfg.height;
     setCursor(m_drag == Drag::Resize ? gripCursor(m_gripCorner) : "grabbing");
+  } else if ((m_drag == Drag::Pin || m_drag == Drag::Move) && w && w->cfg.pinned) {
+    m_drag = Drag::None;
+    bool moved = false;
+    for (int i = 0; i < 8; ++i) moved = moved || std::abs(w->cfg.pin[i] - m_pinStart[i]) > 0.05;
+    if (moved) commitPin(*w);
+    setCursor("grab");
+    markEditDirty();
   } else if (m_drag == Drag::Rotate && w) {
     m_drag = Drag::None;
     const double a = w->cfg.rotation;

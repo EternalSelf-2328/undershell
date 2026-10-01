@@ -243,6 +243,8 @@ private:
   void moveWidget(Widget& w, int x, int y);
   void resizeWidget(Widget& w, int width, int height);
   bool inRotateHandle(const Widget& w, double x, double y) const;
+  int pinAt(const Widget& w, double x, double y) const;  // a pinned widget's corner under the pointer
+  void commitPin(Widget& w);                            // store the points (one undo step) and fit the box
   void setRotation(Widget& w, double degrees);  // live, not persisted
   void clampToOutput(WidgetConfig& c, const Output* o) const;
   void persist(Widget& w);
@@ -303,7 +305,10 @@ private:
   EditSurface* m_pointerEdit = nullptr;  // editor surface under the pointer
   Widget* m_pointerWidget = nullptr;     // widget hovered / being dragged
   double m_px = 0, m_py = 0;             // pointer, output coordinates
-  enum class Drag { None, Move, Resize, Slider, Rotate, Panel } m_drag = Drag::None;
+  enum class Drag { None, Move, Resize, Slider, Rotate, Panel, Pin } m_drag = Drag::None;
+  int m_pinCorner = -1;          // corner pin: the corner being moved (or last moved, for the arrows)
+  double m_pinStart[8] = {};     // the points when the drag began
+  Rect m_loupe;                  // the magnifier while placing a corner (output px)
   std::map<std::string, std::pair<float, float>> m_panelPos;  // panels the user moved (top-left)
   std::string m_panelDrag;                                    // the panel being dragged
   float m_panelGrabX = 0, m_panelGrabY = 0;
