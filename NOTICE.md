@@ -26,3 +26,10 @@ undershell is free software under the **GNU GPL v3 or later** (see `LICENSE`).
 Copyright (c) yappologistic — itself a port of androidx.graphics.shapes'
 RoundedPolygon and MaterialShapes.kt (Apache-2.0, The Android Open Source
 Project).
+
+## Google Sans Flex
+
+`data/fonts/GoogleSansFlex.ttf` is Google Sans Flex (variable: wght, wdth,
+ROND, slnt, opsz, GRAD), Copyright 2015 The Google Sans Flex Authors, under
+the SIL Open Font License 1.1 (`data/fonts/OFL-GoogleSansFlex.txt`). The
+poster lyric line follows Sung's `qml/PosterLine.qml` (MIT, (c) yappologistic).

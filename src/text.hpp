@@ -24,6 +24,7 @@ struct TextStyle {
   float maxWidth = 0;        // > 0: wrap (maxLines > 1) or ellipsize at this width
   int maxLines = 1;
   int align = 0;             // 0 left, 1 centre, 2 right (within maxWidth)
+  std::string variations;    // variable-font axes, e.g. "wght=700,wdth=120,ROND=100"
 };
 
 struct TextImage {

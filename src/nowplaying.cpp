@@ -20,6 +20,7 @@ constexpr float PAD = 16, GAP = 14, COVER = 168, INFO_H = 42, SEEK_H = 38;
 const char* FONT = "Space Grotesk";
 const char* MONO = "JetBrains Mono";
 const char* DISPLAY = "Fraunces 144pt";
+const char* POSTER = "Google Sans Flex";
 
 Color withAlpha(Color c, float a) {
   c.a *= a;
@@ -74,6 +75,7 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   c.opacity = std::clamp(t["opacity"].value_or(c.opacity), 0.0, 1.0);
   c.fps = static_cast<int>(std::clamp<int64_t>(t["fps"].value_or(int64_t{30}), 5, 120));
   c.coverShape = t["cover_shape"].value_or(c.coverShape);
+  c.lyricsStyle = t["lyrics_style"].value_or(c.lyricsStyle);
   return c;
 }
 
@@ -105,8 +107,8 @@ void NowPlayingWidget::setCoverShape(const std::string& name, bool animate) {
 }
 
 Canvas::Size NowPlayingWidget::measure(const std::string& text, const TextStyle& st) {
-  const std::string key = std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", text, st.family, st.size, st.weight, st.maxWidth,
-                                      st.maxLines);
+  const std::string key = std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}\x1f{}", text, st.family, st.size, st.weight, st.maxWidth,
+                                      st.maxLines, st.variations);
   auto it = m_measures.find(key);
   if (it != m_measures.end()) return it->second;
   if (m_measures.size() > 1024) m_measures.clear();
@@ -126,6 +128,8 @@ void NowPlayingWidget::tick(const TickContext& ctx) {
   // lyric glide toward the sung line (Theme.slow)
   const float kg = static_cast<float>(1 - std::exp(-dt / 0.12));
   m_glide += (0 - m_glide) * kg;
+  // the poster line eases in (critically damped: type never overshoots)
+  if (m_posterP < 1) m_posterP = std::min(1.0, m_posterP + (1 - m_posterP) * (1 - std::exp(-dt / 0.14)) + dt * 0.02);
   // "cycle": each song gets its own shape (the same song, the same shape)
   if (m_cfg.coverShape == "cycle" && m_media && m_media->state().present && m_media->state().trackKey != m_shapeTrack) {
     m_shapeTrack = m_media->state().trackKey;
@@ -149,7 +153,99 @@ void NowPlayingWidget::tick(const TickContext& ctx) {
 bool NowPlayingWidget::animating(const TickContext& ctx) const {
   const MediaService* m = ctx.media;
   const bool playing = m && m->state().present && m->state().playing;
-  return playing || std::abs(m_glide) > 0.5F || m_morph < 1 || std::abs(m_morphVel) > 1e-4;
+  return playing || std::abs(m_glide) > 0.5F || m_morph < 1 || std::abs(m_morphVel) > 1e-4 || m_posterP < 0.999;
+}
+
+// The sung line as a poster (after Sung's PosterLine, MIT): broken where the
+// plain lyric wraps, every word takes its own weight, roundness and slant in
+// Google Sans Flex, and each row is set on the width axis until it fills the
+// column from edge to edge (a short row is set larger instead, up to half as
+// large again). At p = 0 it is the plain line exactly; p eases it into the
+// poster as the line arrives.
+NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, float width, float base, int plainWeight,
+                                                     float p) {
+  Poster out;
+  // the plain line's own breaks: greedy, at the plain style
+  const TextStyle plain{.family = POSTER, .size = base, .weight = plainWeight, .variations = std::format("wght={}", plainWeight)};
+  std::vector<std::string> words;
+  for (size_t i = 0; i < text.size();) {
+    const size_t j = text.find(' ', i);
+    const std::string w = text.substr(i, j == std::string::npos ? std::string::npos : j - i);
+    if (!w.empty()) words.push_back(w);
+    if (j == std::string::npos) break;
+    i = j + 1;
+  }
+  if (words.empty()) return out;
+  const float space = measure(" ", plain).w;
+  std::vector<std::vector<std::string>> rows(1);
+  float lineW = 0;
+  for (const auto& w : words) {
+    const float ww = measure(w, plain).w;
+    if (!rows.back().empty() && lineW + space + ww > width) {
+      rows.emplace_back();
+      lineW = 0;
+    }
+    lineW += (rows.back().empty() ? 0 : space) + ww;
+    rows.back().push_back(w);
+  }
+  // four word styles, two of them fully rounded (Material pairs the font's
+  // roundness with its rounded shapes); a word keeps its style by its text
+  struct WordStyle {
+    int wght;
+    float rond, slnt;
+  };
+  static const WordStyle kStyles[] = {{820, 100, 0}, {340, 0, -10}, {620, 0, 0}, {920, 100, -6}};
+  const auto mix = [p](float a, float b) { return a + (b - a) * p; };
+  auto styleOf = [&](const std::string& w, float wdth, float size) {
+    const WordStyle& ws = kStyles[std::hash<std::string>{}(w) % std::size(kStyles)];
+    TextStyle t{.family = POSTER, .size = size, .weight = static_cast<int>(mix(plainWeight, ws.wght))};
+    t.variations = std::format("wght={},wdth={:.0f},ROND={:.0f},slnt={:.1f}", t.weight, mix(100, wdth), mix(0, ws.rond), mix(0, ws.slnt));
+    return t;
+  };
+  float y = 0;
+  for (const auto& row : rows) {
+    // the width (25..151) that makes the row fill the column, by bisection
+    auto rowWidth = [&](float wdth, float size) {
+      float total = 0;
+      for (size_t k = 0; k < row.size(); ++k) total += measure(row[k], styleOf(row[k], wdth, size)).w + (k ? space : 0);
+      return total;
+    };
+    float lo = 25, hi = 151, wdth = 100, size = base;
+    if (rowWidth(hi, base) < width) {
+      wdth = 151;  // still short at the widest: set it larger
+      float slo = base, shi = base * 1.5F;
+      for (int it = 0; it < 8; ++it) {
+        const float mid = (slo + shi) / 2;
+        (rowWidth(151, mid) < width ? slo : shi) = mid;
+      }
+      size = slo;
+    } else {
+      for (int it = 0; it < 8; ++it) {
+        const float mid = (lo + hi) / 2;
+        (rowWidth(mid, base) < width ? lo : hi) = mid;
+      }
+      wdth = lo;
+    }
+    const float sz = mix(base, size);
+    float used = 0, rowH = 0;
+    std::vector<float> ws;
+    for (const auto& w : row) {
+      const auto z = measure(w, styleOf(w, wdth, sz));
+      ws.push_back(z.w);
+      used += z.w;
+      rowH = std::max(rowH, z.h);
+    }
+    // the gaps take up the last pixels, so the row meets the measure exactly
+    const float gap = row.size() > 1 ? mix(space, std::max(space * 0.4F, (width - used) / (row.size() - 1))) : 0;
+    float x = 0;
+    for (size_t k = 0; k < row.size(); ++k) {
+      out.words.push_back({row[k], styleOf(row[k], wdth, sz), x, y});
+      x += ws[k] + gap;
+    }
+    y += rowH * 0.92F;
+  }
+  out.h = y;
+  return out;
 }
 
 void NowPlayingWidget::layoutTargets(bool seekable) {
@@ -279,7 +375,10 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
       if (s.lines[i].ms <= ms) idx = static_cast<int>(i);
     const float base = 15, lift = 2, spacing = 6;
     auto styleFor = [&](int i) {
-      TextStyle t{.family = FONT, .size = i == idx ? base + lift : base, .weight = i == idx ? 600 : 500};
+      // in poster mode every line is set in the poster's font, so the sung one
+      // only changes shape, never typeface
+      TextStyle t{.family = m_cfg.lyricsStyle == "poster" ? POSTER : FONT, .size = i == idx ? base + lift : base,
+                  .weight = i == idx ? 600 : 500};
       t.maxWidth = sw;
       t.maxLines = 3;
       return t;
@@ -294,16 +393,29 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
         m_glide += idx > m_lyricIndex ? delta : -delta;
       }
       m_lyricIndex = idx;
+      m_posterP = 0;  // the new line eases into its poster shape
     }
     c.clip(sx, PAD, sw, COVER);
     const int centre = std::max(idx, 0);
-    const auto cz = measure(textFor(centre), styleFor(centre));
+    auto cz = measure(textFor(centre), styleFor(centre));
+    // the sung line as a poster, eased in (quantised so the text cache can keep up)
+    const bool poster = m_cfg.lyricsStyle == "poster" && idx >= 0;
+    Poster pst;
+    if (poster) {
+      const float q = std::round(static_cast<float>(m_posterP) * 16) / 16;
+      pst = posterFor(textFor(idx), sw, base + lift, 600, q);
+      cz.h = std::max(cz.h, pst.h);
+    }
     float yTop = sy + sh / 2 - cz.h / 2 + m_glide;
     // the sung line and its neighbours, fading with distance
     auto drawLine = [&](int i, float y) {
       const int d = std::abs(i - idx);
       const float o = idx < 0 ? 0.52F : (d == 0 ? 1.0F : (d > 4 ? 0.0F : std::max(0.10F, 0.52F - (d - 1) * 0.14F)));
       if (o <= 0) return;
+      if (poster && i == idx) {
+        for (const auto& wd : pst.words) c.text(wd.text, wd.style, sx + wd.x, y + wd.y, A(m_accent), o);
+        return;
+      }
       c.text(textFor(i), styleFor(i), sx, y, i == idx ? A(m_accent) : A(ink), o);
     };
     drawLine(centre, yTop);

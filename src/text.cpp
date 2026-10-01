@@ -95,6 +95,7 @@ static PangoLayout* makeLayout(cairo_t* cr, const std::string& text, const TextS
   pango_font_description_set_family(fd, st.family.c_str());
   pango_font_description_set_absolute_size(fd, st.size * PANGO_SCALE);
   pango_font_description_set_weight(fd, static_cast<PangoWeight>(std::clamp(st.weight, 100, 1000)));
+  if (!st.variations.empty()) pango_font_description_set_variations(fd, st.variations.c_str());
   if (st.italic) pango_font_description_set_style(fd, PANGO_STYLE_ITALIC);
   pango_layout_set_font_description(layout, fd);
   pango_font_description_free(fd);
@@ -141,9 +142,9 @@ void TextRenderer::releaseGl() {
 
 const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st, int scale) {
   registerBundledFonts();
-  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}\x1f{:.1f}\x1f{}\x1f{}", text, st.family,
-                                      st.size, st.weight, st.letterSpacing, st.italic ? 1 : 0, scale, st.stroke,
-                                      st.maxWidth, st.maxLines, st.align);
+  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}\x1f{:.1f}\x1f{}\x1f{}\x1f{}", text,
+                                      st.family, st.size, st.weight, st.letterSpacing, st.italic ? 1 : 0, scale, st.stroke,
+                                      st.maxWidth, st.maxLines, st.align, st.variations);
   auto it = m_cache.find(key);
   if (it != m_cache.end()) {
     it->second.lastUse = nowSeconds();

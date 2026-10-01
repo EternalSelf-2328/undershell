@@ -23,7 +23,8 @@ struct NowPlayingConfig {
   std::string ink = "on_surface";
   double opacity = 1.0;
   int fps = 30;
-  std::string coverShape = "rounded";  // rounded | cycle (a new Material shape each song) | a shape name
+  std::string coverShape = "rounded";
+  std::string lyricsStyle = "plain";   // plain | poster (Google Sans Flex, every word its own shape)  // rounded | cycle (a new Material shape each song) | a shape name
 
   static NowPlayingConfig fromTable(const toml::table& t);
 };
@@ -72,6 +73,18 @@ private:
   double m_morph = 1, m_morphVel = 0;
   std::string m_shapeTrack, m_shapeName;
   void setCoverShape(const std::string& name, bool animate);
+  // the poster lyric line
+  struct Poster {
+    struct Word {
+      std::string text;
+      TextStyle style;
+      float x, y;
+    };
+    std::vector<Word> words;
+    float h = 0;
+  };
+  Poster posterFor(const std::string& text, float width, float base, int plainWeight, float p);
+  double m_posterP = 1;
 };
 
 }  // namespace undershell

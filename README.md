@@ -100,6 +100,12 @@ the 18 names), or `cycle`: each song gets its own shape (the same song, the
 same shape) and the cover morphs into it on Material's expressive spring,
 overshooting a little. `rounded` keeps the rounded square.
 
+**Lyrics style** `poster` sets the sung line as a poster in Google Sans Flex
+(bundled): each word takes its own weight, roundness and slant, each row is
+set on the font's width axis until it fills the column from edge to edge (a
+short one is set larger instead), and the line eases into that shape as it
+arrives. `plain` keeps the plain lines.
+
 ## With nothing playing
 
 `idle` in `[general]` sets what every visualizer does as soon as the sound
