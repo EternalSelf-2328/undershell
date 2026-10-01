@@ -229,7 +229,7 @@ void Visualizer::drawVortex(const DrawContext& ctx) {
   }
   glUniform1fv(U("u_waves"), 4, ages);
   glUniform1fv(U("u_waveGain"), 4, gains);
-  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
+  glUniform1f(U("u_opacity"), opacityNow());
   glUniform1f(U("u_px"), 1.0F / std::max(1.0F, half * ctx.scale));
   glDisable(GL_BLEND);
   drawUnitQuad();
@@ -256,7 +256,7 @@ void Visualizer::drawFire(const DrawContext& ctx) {
   glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
   glUniform1f(U("u_hit"), static_cast<float>(m_hit));
   glUniform1f(U("u_flare"), static_cast<float>(m_fFlare));
-  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
+  glUniform1f(U("u_opacity"), opacityNow());
   glDisable(GL_BLEND);
   drawUnitQuad();
 }
@@ -286,13 +286,16 @@ void Visualizer::drawRing(const DrawContext& ctx) {
   }
   glUniform1fv(U("u_waves"), 4, ages);
   glUniform1fv(U("u_waveGain"), 4, gains);
-  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
+  glUniform1f(U("u_opacity"), opacityNow());
   glUniform1f(U("u_px"), 1.0F / std::max(1.0F, half * ctx.scale));
   glDisable(GL_BLEND);
   drawUnitQuad();
 }
 
 void Visualizer::tick(const TickContext& ctx) {
+  // hiding with nothing playing: a smooth fade either way
+  m_hideFade += ((m_hidden ? 0.0 : 1.0) - m_hideFade) * (1 - std::exp(-ctx.dt / (m_hidden ? 0.7 : 0.25)));
+  if (std::abs(m_hideFade - (m_hidden ? 0.0 : 1.0)) < 0.002) m_hideFade = m_hidden ? 0.0 : 1.0;
   static const std::vector<float> kEmpty;
   m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);
   if (m_styleIndex >= 12) tickRing(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? nullptr : ctx.audio.bands);
@@ -399,7 +402,7 @@ void Visualizer::draw(const DrawContext& ctx) {
   glUniform1f(U("energy"), static_cast<float>(std::clamp(m_motion.maxLevel, 0.0, 1.0)));
   glUniform1f(U("fade"), fade);
   glUniform1f(U("aa"), 0.85F);
-  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
+  glUniform1f(U("u_opacity"), opacityNow());
   glDisable(GL_BLEND);
   drawUnitQuad();
 }

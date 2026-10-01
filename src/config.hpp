@@ -60,6 +60,7 @@ struct Config {
   std::vector<WidgetConfig> widgets;
   int gridSize = 16;
   bool profiles = true;  // a widget layout per wallpaper (profiles.cpp)
+  std::string idle = "show";  // visualizers with nothing playing: show | hide | demo
   // audio analysis
   double noiseReduction = 0.45;  // Ryoku's cava noise_reduction = 45
   bool monstercat = false;

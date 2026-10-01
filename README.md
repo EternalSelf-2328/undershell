@@ -92,6 +92,16 @@ While editing with no music, the visualizers move with the demo spectrum.
 With the grid on (toolbar), positions snap to it (16 px) on release and are saved to the config,
 without touching the rest of the file.
 
+## With nothing playing
+
+`idle` in `[general]` sets what every visualizer does when no sound has
+played for 2.5 s (so the gap between two songs does not count): `show`
+(as is, the default), `hide` (a smooth fade out; a hidden visualizer stops
+drawing, so it costs nothing) or `demo` (it moves on a demo spectrum). Each
+visualizer's **With no music** option (`idle = "auto" | "show" | "hide" |
+"demo"`) follows the general one on `auto` or overrides it. Music brings
+them back at once; while editing they are always shown.
+
 ## Halo
 
 The `halo` look is one perfectly round ring of light. Its glow is built

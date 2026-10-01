@@ -66,6 +66,7 @@ struct Widget {
   bool needsRender = true;
   bool drewEmpty = false;
   bool surfaceFullscreen = false;  // how the current surface was created
+  int idleState = 0;               // 0 normal, 1 hidden, 2 demo (nothing playing)
   double lastTick = 0, lastRender = 0;
   bool hovered = false;
   // the surface position pointer events are currently relative to: updated
@@ -247,7 +248,9 @@ private:
   void setCursor(const char* name);
   Widget* widgetBySurface(wl_surface* s);
   int computeTimeout();
-  AudioFrame audioFrame();
+  AudioFrame audioFrame(const Widget* w = nullptr);
+  std::string idleModeOf(const Widget& w) const;  // show | hide | demo
+  void updateIdle(double now);
   void handleInotify();
   std::string handleCommand(const std::string& cmd);
   std::vector<std::string> outputNames() const;
@@ -358,6 +361,8 @@ private:
   std::string m_pendingSelect;  // select this id once the reload creates it
   bool m_running = true;
   bool m_demo = false;
+  bool m_nothingPlaying = false;  // silent for longer than the grace period
+  double m_silentSince = -1;
   double m_demoT = 0;
   std::vector<float> m_demoBands;
 };

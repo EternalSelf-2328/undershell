@@ -79,6 +79,9 @@ public:
   [[nodiscard]] virtual bool usesAudio() const { return false; }
   [[nodiscard]] virtual Color accent() const { return Color::fromHex("#e2342a"); }
   virtual void rest() {}
+  // nothing is playing (after a grace period) and this widget should hide:
+  // fade out and stop drawing; false brings it back
+  virtual void setHidden(bool hidden) { (void)hidden; }
 
   // Input. Widgets are click-through except inside inputRects() (surface
   // logical px), where the App forwards pointer events. Return true from

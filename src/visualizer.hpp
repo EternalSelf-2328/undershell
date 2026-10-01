@@ -20,11 +20,14 @@ public:
   void draw(const DrawContext& ctx) override;
 
   [[nodiscard]] bool animating(const TickContext& ctx) const override {
+    if (m_hidden && m_hideFade < 0.003) return false;
+    if (m_hidden || m_hideFade < 0.997) return true;  // fading
     return m_motion.animating(ctx.audio.energy) || m_breath > 0.003 || std::abs(m_breathVel) > 0.003 || m_hit > 0 || m_pump > 0.003 ||
            (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
            m_waveAges[3] >= 0;
   }
   [[nodiscard]] bool visible() const override {
+    if (m_hidden && m_hideFade < 0.003) return false;  // faded out: nothing to draw, no frames spent
     return m_styleIndex >= 12 || m_motion.fade() > 0.002;  // halo, vortex and fire rest visible
   }
   [[nodiscard]] int fps() const override { return m_cfg.fps; }
@@ -32,6 +35,7 @@ public:
   [[nodiscard]] bool usesAudio() const override { return true; }
   [[nodiscard]] Color accent() const override { return m_ramp[4]; }
   void rest() override { m_motion.rest(); }
+  void setHidden(bool hidden) override { m_hidden = hidden; }
   [[nodiscard]] const VisualizerConfig& config() const { return m_cfg; }
   // the halo's inner signals, for tuning tools
   struct HaloTrace {
@@ -50,6 +54,9 @@ private:
 
   VisualizerConfig m_cfg;
   HaloTrace m_trace{};
+  bool m_hidden = false;
+  double m_hideFade = 1;  // 1 shown .. 0 hidden
+  [[nodiscard]] float opacityNow() const { return static_cast<float>(m_cfg.opacity * m_hideFade * m_hideFade * (3 - 2 * m_hideFade)); }
   // the halo: one ring of light
   Program m_ringProg, m_vortexProg;
   // the vortex: shape, and its motion integrated from the halo's signals

@@ -85,6 +85,12 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
   using K = PropSpec::Kind;
   std::vector<PropSpec> s = schemaFor(w.cfg.type);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
+  if (w.cfg.type == "visualizer") {
+    // with nothing playing: follow [general] idle, or its own choice
+    std::vector<PropSpec> idle = {
+        {K::Enum, "idle", "With no music", "Sin música", {"auto", "show", "hide", "demo"}, 0, 0, 0, 0, "auto"}};
+    s.insert(s.begin() + 1, idle.begin(), idle.end());
+  }
   if (look == "fire") {
     std::vector<PropSpec> f = {
         {K::Enum, "fire_shape", "Shape", "Forma", {"bonfire", "wall"}, 0, 0, 0, 0, "bonfire"},

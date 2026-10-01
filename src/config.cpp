@@ -24,6 +24,7 @@ static const char* kDefaultConfig = R"(# undershell: desktop widgets under any s
 grid = 16                 # snap step for the editor, px
 noise_reduction = 0.45    # analyser smoothing (Ryoku's cava used 45)
 monstercat = false        # spread peaks to neighbours (cava's monstercat)
+idle = "show"             # visualizers with nothing playing: show | hide | demo
 profiles = true           # remember a widget layout for each wallpaper
 
 [[widget]]
@@ -89,6 +90,8 @@ Config Config::load(const std::string& path) {
     cfg.profiles = get<bool>(*g, "profiles", true);
     cfg.noiseReduction = get<double>(*g, "noise_reduction", 0.45);
     cfg.monstercat = get<bool>(*g, "monstercat", false);
+    cfg.idle = get<std::string>(*g, "idle", "show");
+    if (cfg.idle != "hide" && cfg.idle != "demo") cfg.idle = "show";
   }
   if (auto* arr = root["widget"].as_array()) {
     int n = 0;

@@ -615,12 +615,15 @@ void App::onFrameDone(Widget* w) {
 }
 
 // The shared audio input: analyser bands normalised to 0..1 (or the demo).
-AudioFrame App::audioFrame() {
+AudioFrame App::audioFrame(const Widget* w) {
   static std::vector<float> bands;
   AudioFrame f;
-  // while editing in silence the looks move on the demo spectrum
-  const bool demo = m_demo || (m_edit && (!m_audioOk || m_audio.idle()));
-  const bool silent = !demo && (!m_audioOk || m_audio.idle());
+  // while editing in silence the looks move on the demo spectrum; so does a
+  // visualizer whose "nothing playing" mode is demo
+  const bool audioIdle = !m_audioOk || m_audio.idle();
+  const bool idleDemo = w && m_nothingPlaying && idleModeOf(*w) == "demo";
+  const bool demo = m_demo || (m_edit && audioIdle) || idleDemo;
+  const bool silent = !demo && audioIdle;
   const auto& vals = demo ? m_demoBands : m_audio.values();
   bands.resize(vals.size());
   for (size_t i = 0; i < vals.size(); ++i) bands[i] = silent ? 0.0F : vals[i] / 0.9F;
@@ -628,6 +631,42 @@ AudioFrame App::audioFrame() {
   f.silent = silent;
   f.energy = silent ? 0.0 : (demo ? 0.3 : m_audio.energy());
   return f;
+}
+
+// a visualizer's behaviour with nothing playing: its own "idle" option, or
+// [general] idle when that is "auto" (or unset)
+std::string App::idleModeOf(const Widget& w) const {
+  if (!w.impl || !w.impl->usesAudio()) return "show";
+  const std::string own = w.cfg.options["idle"].value_or(std::string("auto"));
+  return own == "show" || own == "hide" || own == "demo" ? own : m_config.idle;
+}
+
+// "Nothing playing" = no sound for 2.5 s (the gap between two songs is not
+// it); sound brings everything back at once. Hidden visualizers fade out and
+// stop drawing; editing always shows them.
+void App::updateIdle(double now) {
+  const bool silentNow = !m_audioOk || m_audio.idle();
+  if (!silentNow) m_silentSince = -1;
+  else if (m_silentSince < 0) m_silentSince = now;
+  const bool nothing = silentNow && now - m_silentSince > 2.5;
+  if (nothing != m_nothingPlaying) {
+    m_nothingPlaying = nothing;
+    US_DEBUG("{}", nothing ? "nothing playing" : "music back");
+  }
+  for (auto& w : m_widgets) {
+    if (!w->impl || !w->impl->usesAudio()) continue;
+    const std::string mode = idleModeOf(*w);
+    const bool hide = m_nothingPlaying && mode == "hide" && !m_edit && !m_demo;
+    const int state = hide ? 1 : (m_nothingPlaying && mode == "demo") ? 2 : 0;
+    w->impl->setHidden(hide);
+    if (state != w->idleState) {
+      // a nudge on the change only: the fade (or the demo) then keeps the
+      // frames coming by itself, and a faded-out widget stops drawing
+      w->idleState = state;
+      w->needsRender = true;
+      w->drewEmpty = false;
+    }
+  }
 }
 
 void App::render(Widget& w) {
@@ -639,7 +678,7 @@ void App::render(Widget& w) {
   TickContext tctx;
   tctx.now = now;
   tctx.dt = dt;
-  tctx.audio = audioFrame();
+  tctx.audio = audioFrame(&w);
   tctx.media = &m_media;
   w.impl->tick(tctx);
 
@@ -1171,6 +1210,13 @@ int App::computeTimeout() {
   for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt})
     if (t > 0) next = std::min(next, t);
   if (!m_noctalia.ready()) next = std::min(next, m_noctRetryAt);
+  // wake when the silence becomes "nothing playing", if a visualizer cares
+  if (m_silentSince >= 0 && !m_nothingPlaying)
+    for (auto& w : m_widgets)
+      if (idleModeOf(*w) != "show") {
+        next = std::min(next, m_silentSince + 2.5 + 0.01);
+        break;
+      }
   for (auto& w : m_widgets) {
     if (!w->configured || !w->impl) continue;
     if (!w->needsRender) {
@@ -1185,7 +1231,10 @@ int App::computeTimeout() {
     if (e->needsRender && !e->frameCb) next = now;
   if (m_edit && m_repeatKey) next = std::min(next, m_repeatNext);
   int timeout = next >= 1e8 ? -1 : std::max(0, static_cast<int>(std::ceil((next - now) * 1000)));
-  if (m_demo || (m_edit && (!m_audioOk || m_audio.idle()))) timeout = timeout < 0 ? 16 : std::min(timeout, 16);
+  bool idleDemo = false;
+  if (m_nothingPlaying)
+    for (auto& w : m_widgets) idleDemo = idleDemo || idleModeOf(*w) == "demo";
+  if (m_demo || idleDemo || (m_edit && (!m_audioOk || m_audio.idle()))) timeout = timeout < 0 ? 16 : std::min(timeout, 16);
   if (const int mt = m_media.pollTimeoutMs(now); mt >= 0) timeout = timeout < 0 ? mt : std::min(timeout, mt);
   if (m_audioOk) {
     int a = m_audio.pollTimeoutMs();
@@ -1294,7 +1343,11 @@ int App::run() {
           w->drewEmpty = false;
         }
     }
-    if (m_demo || m_edit) {
+    updateIdle(now);
+    bool idleDemo = false;
+    if (m_nothingPlaying)
+      for (auto& w : m_widgets) idleDemo = idleDemo || idleModeOf(*w) == "demo";
+    if (m_demo || m_edit || idleDemo) {
       // a synthetic spectrum: a bass beat under drifting mids and a little noise
       m_demoT = now;
       const int n = 64;
@@ -1307,7 +1360,9 @@ int App::run() {
                    0.05 * (0.5 + 0.5 * std::sin(now * 17.0 + i * 2.1));
         m_demoBands[static_cast<size_t>(i)] = static_cast<float>(std::clamp(v, 0.0, 1.0) * 0.9);
       }
-      for (auto& w : m_widgets) w->needsRender = true;
+      // only the widgets that are playing the demo
+      for (auto& w : m_widgets)
+        if (m_demo || m_edit || w->idleState == 2) w->needsRender = true;
     }
     for (auto& w : m_widgets) {
       // a live option change (inspector) may turn a boxed look fullscreen
