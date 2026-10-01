@@ -21,11 +21,11 @@ public:
 
   [[nodiscard]] bool animating(const TickContext& ctx) const override {
     return m_motion.animating(ctx.audio.energy) || m_breath > 0.003 || std::abs(m_breathVel) > 0.003 || m_hit > 0 || m_pump > 0.003 ||
-           (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
+           (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
            m_waveAges[3] >= 0;
   }
   [[nodiscard]] bool visible() const override {
-    return m_styleIndex >= 12 || m_motion.fade() > 0.002;  // the halo and the vortex rest visible
+    return m_styleIndex >= 12 || m_motion.fade() > 0.002;  // halo, vortex and fire rest visible
   }
   [[nodiscard]] int fps() const override { return m_cfg.fps; }
   [[nodiscard]] bool fullscreen() const override { return m_cfg.style == "frame"; }
@@ -45,6 +45,7 @@ private:
   void configureHalo(const WidgetConfig& cfg, const NoctaliaState& noct);
   void drawRing(const DrawContext& ctx);
   void drawVortex(const DrawContext& ctx);
+  void drawFire(const DrawContext& ctx);
   void tickRing(double dt, const std::vector<float>* raw);
 
   VisualizerConfig m_cfg;
@@ -57,6 +58,12 @@ private:
   bool m_vClockwise = false;
   std::string m_vMode = "inward";
   double m_vRing = 1.0;
+  // fire
+  Program m_fireProg;
+  std::string m_fShape = "bonfire";
+  double m_fHeight = 0.6, m_fTurb = 0.55, m_fSpectrum = 0.5, m_fSparks = 0.6, m_fSpeed = 1.0;
+  double m_fTime = 0, m_fSparkTime = 0, m_fFlare = 0;
+  bool m_fTheme = false;
   double m_breath = 0, m_breathVel = 0, m_hit = 0, m_tone = 0.3, m_prevBass = 0, m_fluxMean = 0, m_fluxVar = 0, m_sinceBeat = 1,
          m_ringTime = 0, m_pump = 0, m_energySlow = 0, m_loud = 0.5, m_liveTime = 0;
   double m_bassFloor = 0, m_bassPeak = 0, m_energyFloor = 0, m_energyPeak = 0;  // recent ranges

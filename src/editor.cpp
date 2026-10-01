@@ -27,7 +27,7 @@ namespace {
 constexpr double kSnapPx = 8.0;
 constexpr double kCoalesceSec = 0.8;
 const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                        "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex"};
+                        "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire"};
 
 bool inGrip(const Widget& w, double x, double y) {
   double lx = 0, ly = 0;

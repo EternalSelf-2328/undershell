@@ -85,6 +85,21 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
   using K = PropSpec::Kind;
   std::vector<PropSpec> s = schemaFor(w.cfg.type);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
+  if (look == "fire") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "fire_shape", "Shape", "Forma", {"bonfire", "wall"}, 0, 0, 0, 0, "bonfire"},
+        {K::Enum, "fire_colors", "Colours", "Colores", {"fire", "theme"}, 0, 0, 0, 0, "fire"},
+        {K::Number, "fire_height", "Height", "Altura", {}, 0.1, 1, 0.05, 0.6},
+        {K::Number, "fire_turbulence", "Turbulence", "Turbulencia", {}, 0, 1, 0.05, 0.55},
+        {K::Number, "fire_spectrum", "Spectrum shape", "Forma del espectro", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "fire_sparks", "Sparks", "Chispas", {}, 0, 1, 0.05, 0.6},
+        {K::Number, "fire_speed", "Speed", "Velocidad", {}, 0.1, 3, 0.05, 1},
+        {K::Number, "halo_pulse", "Pulse (groove)", "Pulso (ritmo)", {}, 0, 1, 0.05, 0.7},
+        {K::Number, "halo_breathe", "Breathing", "Respiración", {}, 0, 1, 0.05, 0.6},
+        {K::Number, "halo_hits", "Beat flare", "Llamarada al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
+  }
   if (look == "vortex") {
     // the vortex's shape, then the halo's music (it shares the halo's motion)
     std::vector<PropSpec> v = {

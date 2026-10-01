@@ -136,6 +136,19 @@ Options: Mode, Ring, Horizon size, Reach, Arms, Twist, Turbulence,
 Spin speed, Clockwise, Horizon line, Glow strength, and the halo's music
 options. Colour 1 lights the horizon, Colour 2 the outer arms.
 
+## Fire
+
+The `fire` look is a fire rising from the bottom of its box: flames torn
+into tongues by noise that erodes the silhouette more as it rises, with a
+textured, hot core and sparks that climb out of it and die. The music feeds
+it like the halo (per-song normalisation): the energy sets the height, the
+**spectrum** shapes it across the width (bass in the middle), the bass pulse
+stokes the core, a kick throws a **flare** and a burst of sparks, and the
+flames rise faster when the music is busy. Options: Shape (`bonfire`, a
+cone; `wall`, full width), Colours (`fire`, a black-body ramp; `theme`,
+Colour 1 for the core and Colour 2 for the tongues), Height, Turbulence,
+Spectrum shape, Sparks, Speed, Pulse, Breathing, Beat flare.
+
 ## Clock structures
 
 Five clock faces are **editable structures**: `goodnight` (the card),

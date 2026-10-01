@@ -9,12 +9,13 @@
 
 #include "ring_shader.inc"
 #include "vortex_shader.inc"
+#include "fire_shader.inc"
 #include "spectrum_shader.inc"
 
 namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex"};
+                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);
@@ -24,9 +25,9 @@ void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
 void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noct) {
   m_cfg = cfg;
   m_styleIndex = 0;
-  for (int i = 0; i < 14; ++i)
+  for (int i = 0; i < 15; ++i)
     if (cfg.style == kStyles[i]) m_styleIndex = i;
-  const bool polar = m_styleIndex >= 9;  // radial, orb, spiral, halo, vortex
+  const bool polar = m_styleIndex >= 9 && m_styleIndex <= 13;  // radial, orb, spiral, halo, vortex
   m_motion.gain = cfg.gain;
   m_motion.smoothing = cfg.smoothing;
   m_motion.mirror = cfg.mirror && !polar && m_styleIndex != 8;
@@ -69,6 +70,13 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   m_vClockwise = t["vortex_clockwise"].value_or(false);
   m_vMode = t["vortex_mode"].value_or(std::string("inward"));
   m_vRing = std::clamp(t["vortex_ring"].value_or(1.0), 0.0, 1.0);
+  m_fShape = t["fire_shape"].value_or(std::string("bonfire"));
+  m_fHeight = std::clamp(t["fire_height"].value_or(0.6), 0.1, 1.0);
+  m_fTurb = std::clamp(t["fire_turbulence"].value_or(0.55), 0.0, 1.0);
+  m_fSpectrum = std::clamp(t["fire_spectrum"].value_or(0.5), 0.0, 1.0);
+  m_fSparks = std::clamp(t["fire_sparks"].value_or(0.6), 0.0, 1.0);
+  m_fSpeed = std::clamp(t["fire_speed"].value_or(1.0), 0.1, 3.0);
+  m_fTheme = t["fire_colors"].value_or(std::string("fire")) == "theme";
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -178,6 +186,11 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
   const double spin = m_vSpeed * (0.35 + 0.65 * m_breath + 0.5 * m_pump + m_vBurst);
   m_vPhase = std::fmod(m_vPhase + dt * spin, 2 * std::numbers::pi * 1000);
   m_vFlow = std::fmod(m_vFlow + dt * (1.2 + 2.5 * m_pump + 2.0 * m_vBurst) * (0.3 + m_vSpeed), 2 * std::numbers::pi * 1000);
+  // fire: a kick throws a flare that falls back; flames rise faster with energy
+  if (m_trace.kick) m_fFlare = std::min(1.0, m_fFlare + 0.7 * m_haloHits);
+  m_fFlare *= std::exp(-dt / 0.45);
+  m_fTime = std::fmod(m_fTime + dt * m_fSpeed * (0.9 + 0.8 * m_breath + 0.6 * m_pump), 1000.0);
+  m_fSparkTime = std::fmod(m_fSparkTime + dt * m_fSpeed * (0.8 + 0.6 * m_breath + 0.8 * m_fFlare), 1000.0);
 }
 
 void Visualizer::drawVortex(const DrawContext& ctx) {
@@ -218,6 +231,32 @@ void Visualizer::drawVortex(const DrawContext& ctx) {
   glUniform1fv(U("u_waveGain"), 4, gains);
   glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
   glUniform1f(U("u_px"), 1.0F / std::max(1.0F, half * ctx.scale));
+  glDisable(GL_BLEND);
+  drawUnitQuad();
+}
+
+void Visualizer::drawFire(const DrawContext& ctx) {
+  if (!m_fireProg.valid()) m_fireProg.create(kQuadVertexShader, kFireFrag, "fire");
+  Motion::resample(m_motion.levels, 32, m_drawLevels);
+  glUseProgram(m_fireProg.id());
+  auto U = [&](const char* nm) { return m_fireProg.uniform(nm); };
+  glUniform2f(U("res"), ctx.w, ctx.h);
+  glUniform1fv(U("u_lv"), 32, m_drawLevels.data());
+  glUniform3f(U("u_c1"), m_haloA.r, m_haloA.g, m_haloA.b);
+  glUniform3f(U("u_c2"), m_haloB.r, m_haloB.g, m_haloB.b);
+  glUniform1f(U("u_theme"), m_fTheme ? 1.0F : 0.0F);
+  glUniform1f(U("u_shape"), m_fShape == "wall" ? 1.0F : 0.0F);
+  glUniform1f(U("u_height"), static_cast<float>(m_fHeight));
+  glUniform1f(U("u_turb"), static_cast<float>(m_fTurb));
+  glUniform1f(U("u_spectrum"), static_cast<float>(m_fSpectrum));
+  glUniform1f(U("u_sparks"), static_cast<float>(m_fSparks));
+  glUniform1f(U("u_time"), static_cast<float>(m_fTime));
+  glUniform1f(U("u_sparkTime"), static_cast<float>(m_fSparkTime));
+  glUniform1f(U("u_breath"), static_cast<float>(m_breath));
+  glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
+  glUniform1f(U("u_hit"), static_cast<float>(m_hit));
+  glUniform1f(U("u_flare"), static_cast<float>(m_fFlare));
+  glUniform1f(U("u_opacity"), static_cast<float>(m_cfg.opacity));
   glDisable(GL_BLEND);
   drawUnitQuad();
 }
@@ -266,6 +305,10 @@ void Visualizer::draw(const DrawContext& ctx) {
   }
   if (m_styleIndex == 13) {
     drawVortex(ctx);
+    return;
+  }
+  if (m_styleIndex == 14) {
+    drawFire(ctx);
     return;
   }
   const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;
