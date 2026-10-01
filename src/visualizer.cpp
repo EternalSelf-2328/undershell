@@ -294,7 +294,7 @@ void Visualizer::drawRing(const DrawContext& ctx) {
 
 void Visualizer::tick(const TickContext& ctx) {
   // hiding with nothing playing: a smooth fade either way
-  m_hideFade += ((m_hidden ? 0.0 : 1.0) - m_hideFade) * (1 - std::exp(-ctx.dt / (m_hidden ? 0.7 : 0.25)));
+  m_hideFade += ((m_hidden ? 0.0 : 1.0) - m_hideFade) * (1 - std::exp(-ctx.dt / (m_hidden ? 0.18 : 0.15)));
   if (std::abs(m_hideFade - (m_hidden ? 0.0 : 1.0)) < 0.002) m_hideFade = m_hidden ? 0.0 : 1.0;
   static const std::vector<float> kEmpty;
   m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);

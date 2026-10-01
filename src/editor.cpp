@@ -29,10 +29,24 @@ constexpr double kCoalesceSec = 0.8;
 const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
                         "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire"};
 
-bool inGrip(const Widget& w, double x, double y) {
+// The resize grip under the pointer: 0 top-left, 1 top-right, 2 bottom-left,
+// 3 bottom-right, -1 none (the grips turn with the widget)
+int gripAt(const Widget& w, double x, double y) {
   double lx = 0, ly = 0;
-  toLocal(w.cfg, x, y, lx, ly);  // the grip turns with the widget
-  return lx > w.cfg.width - 26 && ly > w.cfg.height - 26 && lx < w.cfg.width && ly < w.cfg.height;
+  toLocal(w.cfg, x, y, lx, ly);
+  const double gs = std::min({26.0, w.cfg.width / 2.0, w.cfg.height / 2.0});
+  if (lx < 0 || ly < 0 || lx >= w.cfg.width || ly >= w.cfg.height) return -1;
+  const bool left = lx < gs, right = lx > w.cfg.width - gs, top = ly < gs, bottom = ly > w.cfg.height - gs;
+  if (top && left) return 0;
+  if (top && right) return 1;
+  if (bottom && left) return 2;
+  if (bottom && right) return 3;
+  return -1;
+}
+bool inGrip(const Widget& w, double x, double y) { return gripAt(w, x, y) >= 0; }
+const char* gripCursor(int corner) {
+  static const char* names[] = {"nw-resize", "ne-resize", "sw-resize", "se-resize"};
+  return corner >= 0 && corner < 4 ? names[corner] : "grab";
 }
 
 // pointer angle about the widget's centre, degrees
@@ -137,7 +151,7 @@ void App::persist(Widget& w) {
 // Snaps a box being moved (all edges + centre) or resized (right/bottom edge)
 // to the output's edges and centre and to other widgets on the same output.
 // Records the guide lines to draw. Shift disables snapping.
-void App::snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool moving) {
+void App::snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool moving, int corner) {
   m_guidesV.clear();
   m_guidesH.clear();
   if (m_snapOn == modActive(XKB_MOD_NAME_SHIFT) || !w.output) return;  // magnet off, or Shift held
@@ -163,12 +177,18 @@ void App::snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool
       m_guidesH.push_back(static_cast<float>(g));
     }
   } else {
-    if (best({double(x + width)}, tx, d, g)) {
-      width += static_cast<int>(std::lround(d));
+    // resizing: only the edges of the grabbed corner move
+    const bool right = corner & 1, bottom = corner & 2;
+    if (best({double(right ? x + width : x)}, tx, d, g)) {
+      const int dd = static_cast<int>(std::lround(d));
+      if (right) width += dd;
+      else x += dd, width -= dd;
       m_guidesV.push_back(static_cast<float>(g));
     }
-    if (best({double(y + height)}, ty, d, g)) {
-      height += static_cast<int>(std::lround(d));
+    if (best({double(bottom ? y + height : y)}, ty, d, g)) {
+      const int dd = static_cast<int>(std::lround(d));
+      if (bottom) height += dd;
+      else y += dd, height -= dd;
       m_guidesH.push_back(static_cast<float>(g));
     }
   }
@@ -580,6 +600,11 @@ void App::onPointerMotion(double x, double y) {
     uiDrag(x);
     return;
   }
+  if (m_drag == Drag::Panel) {  // moving a panel out of the way
+    m_panelPos[m_panelDrag] = {static_cast<float>(x) - m_panelGrabX, static_cast<float>(y) - m_panelGrabY};
+    markEditDirty();
+    return;
+  }
   if (m_paintMode && m_panning) {  // dragging the zoomed view
     m_viewX = m_panViewX - (x - m_panX) / m_zoom;
     m_viewY = m_panViewY - (y - m_panY) / m_zoom;
@@ -597,7 +622,8 @@ void App::onPointerMotion(double x, double y) {
       m_pointerWidget = nullptr;
       markEditDirty();
     }
-    setCursor(m_ui[static_cast<size_t>(hover)].type == UiControl::Panel ? "default" : "pointer");
+    const auto t = m_ui[static_cast<size_t>(hover)].type;
+    setCursor(t == UiControl::PanelGrab ? "grab" : t == UiControl::Panel ? "default" : "pointer");
     return;
   }
   if (m_paintMode) {
@@ -624,7 +650,7 @@ void App::onPointerMotion(double x, double y) {
       m_pointerWidget = hit;
       markEditDirty();
     }
-    setCursor(!hit ? "default" : (inGrip(*hit, x, y) ? "se-resize" : "grab"));
+    setCursor(!hit ? "default" : gripCursor(gripAt(*hit, x, y)));
     return;
   }
   Widget* w = m_pointerWidget;
@@ -654,34 +680,36 @@ void App::onPointerMotion(double x, double y) {
     int bx = vb.x, by = vb.y, bw = vb.w, bh = vb.h;
     snapBox(*w, bx, by, bw, bh, true);
     moveWidget(*w, nx + bx - vb.x, ny + by - vb.y);
-  } else if (rotated(w->cfg)) {
-    // turned: size along the widget's own axes, the grabbed corner's opposite
-    // (its top-left, as seen) stays put
+  } else {
+    // resize from the grabbed corner, along the widget's own axes; the
+    // opposite corner (as seen) stays put, turned or not
+    const double sx = (m_gripCorner & 1) ? 1.0 : -1.0, sy = (m_gripCorner & 2) ? 1.0 : -1.0;
     const double r = -w->cfg.rotation * std::numbers::pi / 180.0;
     const double ldx = dx * std::cos(r) - dy * std::sin(r), ldy = dx * std::sin(r) + dy * std::cos(r);
     WidgetConfig c = w->cfg;
-    c.width = std::max(48, static_cast<int>(std::lround(m_dragW + ldx)));
-    c.height = std::max(32, static_cast<int>(std::lround(m_dragH + ldy)));
-    const double a = w->cfg.rotation * std::numbers::pi / 180.0;
-    const double cx = m_anchorX + (c.width / 2.0) * std::cos(a) - (c.height / 2.0) * std::sin(a);
-    const double cy = m_anchorY + (c.width / 2.0) * std::sin(a) + (c.height / 2.0) * std::cos(a);
-    c.x = static_cast<int>(std::lround(cx - c.width / 2.0));
-    c.y = static_cast<int>(std::lround(cy - c.height / 2.0));
+    c.width = std::max(48, static_cast<int>(std::lround(m_dragW + sx * ldx)));
+    c.height = std::max(32, static_cast<int>(std::lround(m_dragH + sy * ldy)));
+    if (!rotated(w->cfg)) {
+      // an upright box snaps its moving edges to guides
+      int bx = static_cast<int>(std::lround(sx > 0 ? m_anchorX : m_anchorX - c.width));
+      int by = static_cast<int>(std::lround(sy > 0 ? m_anchorY : m_anchorY - c.height));
+      snapBox(*w, bx, by, c.width, c.height, false, m_gripCorner);
+      c.x = bx;
+      c.y = by;
+    } else {
+      const double a = w->cfg.rotation * std::numbers::pi / 180.0;
+      const double hx = sx * c.width / 2.0, hy = sy * c.height / 2.0;
+      const double cx = m_anchorX + hx * std::cos(a) - hy * std::sin(a);
+      const double cy = m_anchorY + hx * std::sin(a) + hy * std::cos(a);
+      c.x = static_cast<int>(std::lround(cx - c.width / 2.0));
+      c.y = static_cast<int>(std::lround(cy - c.height / 2.0));
+    }
     clampToOutput(c, w->output);
     w->cfg.x = c.x;
     w->cfg.y = c.y;
     w->cfg.width = c.width;
     w->cfg.height = c.height;
     placeLayer(*w);
-  } else {
-    int nx = w->cfg.x, ny = w->cfg.y;
-    int nw = std::max(48, m_dragW + dx), nh = std::max(32, m_dragH + dy);
-    snapBox(*w, nx, ny, nw, nh, false);
-    WidgetConfig c = w->cfg;
-    c.width = nw;
-    c.height = nh;
-    clampToOutput(c, w->output);
-    resizeWidget(*w, c.width, c.height);
   }
   markEditDirty();
 }
@@ -712,6 +740,14 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
       m_drag = Drag::None;
       m_sliderControl = -1;
+      markEditDirty();
+    }
+    return;
+  }
+  if (m_drag == Drag::Panel) {
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      m_drag = Drag::None;
+      setCursor("grab");
       markEditDirty();
     }
     return;
@@ -763,15 +799,17 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
       return;
     }
     pushUndo(*w, "drag");
-    m_drag = inGrip(*w, m_px, m_py) ? Drag::Resize : Drag::Move;
-    toOutput(w->cfg, 0, 0, m_anchorX, m_anchorY);
+    m_gripCorner = gripAt(*w, m_px, m_py);
+    m_drag = m_gripCorner >= 0 ? Drag::Resize : Drag::Move;
+    if (m_gripCorner >= 0)  // the opposite corner, which stays put
+      toOutput(w->cfg, (m_gripCorner & 1) ? 0.0 : w->cfg.width, (m_gripCorner & 2) ? 0.0 : w->cfg.height, m_anchorX, m_anchorY);
     m_pressX = m_px;
     m_pressY = m_py;
     m_startX = w->cfg.x;
     m_startY = w->cfg.y;
     m_dragW = w->cfg.width;
     m_dragH = w->cfg.height;
-    setCursor(m_drag == Drag::Resize ? "se-resize" : "grabbing");
+    setCursor(m_drag == Drag::Resize ? gripCursor(m_gripCorner) : "grabbing");
   } else if (m_drag == Drag::Rotate && w) {
     m_drag = Drag::None;
     const double a = w->cfg.rotation;
@@ -793,11 +831,32 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     if (m_drag == Drag::Move) {
       moveWidget(*w, (free || keepX) ? w->cfg.x : snap(w->cfg.x), (free || keepY) ? w->cfg.y : snap(w->cfg.y));
     } else {
+      // the edges that moved snap to the grid; the anchored ones stay
       WidgetConfig c = w->cfg;
-      if (!free && !keepX) c.width = snap(c.x + c.width) - c.x;
-      if (!free && !keepY) c.height = snap(c.y + c.height) - c.y;
+      if (!free && !keepX) {
+        if (m_gripCorner & 1) {
+          c.width = snap(c.x + c.width) - c.x;
+        } else {
+          const int nx = snap(c.x);
+          c.width += c.x - nx;
+          c.x = nx;
+        }
+      }
+      if (!free && !keepY) {
+        if (m_gripCorner & 2) {
+          c.height = snap(c.y + c.height) - c.y;
+        } else {
+          const int ny = snap(c.y);
+          c.height += c.y - ny;
+          c.y = ny;
+        }
+      }
       clampToOutput(c, w->output);
-      resizeWidget(*w, c.width, c.height);
+      w->cfg.x = c.x;
+      w->cfg.y = c.y;
+      w->cfg.width = c.width;
+      w->cfg.height = c.height;
+      placeLayer(*w);
     }
     // a click without movement is a selection, not an undo step
     if (!m_undo.empty() && m_undo.back().x == w->cfg.x && m_undo.back().y == w->cfg.y &&

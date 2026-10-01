@@ -81,9 +81,53 @@ std::string formatNumber(const PropSpec& p, double v) {
 // an editable structure an "Elements" section: one row per element (show,
 // order, open) and the open element's own options. `expanded` "*" opens all
 // (used to find any key's default).
-std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expanded) {
+// Whether an option does anything for the widget as it is now configured
+// (its look, face, colour mode…): the inspector hides the rest.
+bool optionApplies(const Widget& w, const std::string& key) {
+  const toml::table& o = w.cfg.options;
+  auto in = [](const std::string& v, std::initializer_list<const char*> list) {
+    for (const char* x : list)
+      if (v == x) return true;
+    return false;
+  };
+  if (w.cfg.type == "visualizer") {
+    const std::string look = o["style"].value_or(std::string("bars"));
+    const bool own = in(look, {"halo", "vortex", "fire"});  // the newer looks draw their own way
+    const bool polar = in(look, {"radial", "orb", "spiral"});
+    const bool linear = !own && !polar && look != "frame";
+    const std::string mode = o["color_mode"].value_or(std::string("theme"));
+    if (key == "color") return mode != "theme";
+    if (key == "color2") return mode == "gradient";
+    if (in(key, {"bars", "thickness", "glow", "shape", "idle_wave"})) return !own;
+    if (in(key, {"grow", "mirror", "reflection"})) return linear;
+    if (key == "segments") return look == "segments";
+    if (key == "peaks") return in(look, {"bars", "segments", "frame"});
+    if (key == "spin") return polar;
+    if (key == "rotation") return look != "frame";
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
+  if (w.cfg.type == "clock") {
+    const std::string face = o["face"].value_or(std::string("digital"));
+    if (key == "date") return face != "stacked";
+    if (key == "seconds") return in(face, {"banner", "bighour", "column", "digital", "flip", "grand", "minimal"});
+    if (key == "clock_24h") return !in(face, {"analog", "bighour", "outline"});
+    if (key == "accent") return face != "bighour";
+    if (key == "accent_color") return face != "bighour" && o["accent"].value_or(std::string("primary")) == "custom";
+    if (key == "weather") return face == "metal";
+    if (key == "fahrenheit") return face == "metal" && o["weather"].value_or(true);
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
+  if (key == "depth_level") return o["depth"].value_or(true);
+  return true;
+}
+
+std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded) {
   using K = PropSpec::Kind;
-  std::vector<PropSpec> s = schemaFor(w.cfg.type);
+  std::vector<PropSpec> s;
+  for (const auto& p : schemaFor(w.cfg.type))
+    if (expanded == "*" || optionApplies(w, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
   if (w.cfg.type == "visualizer") {
     // with nothing playing: follow [general] idle, or its own choice
@@ -220,6 +264,50 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     add({K::Color, key("color"), "Colour", "Color", inks, 0, 0, 0, 0, e.spec->color});
   }
   return s;
+}
+
+// The rows, grouped into titled sections in one order for every widget:
+// look, colour, music, time & data (clocks), placement; a clock structure's
+// Elements stay last, as they are.
+std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expanded) {
+  std::vector<PropSpec> rows = inspectorRows(w, expanded);
+  if (expanded == "*") return rows;  // a lookup of defaults, not a layout
+  size_t split = rows.size();
+  for (size_t i = 0; i < rows.size(); ++i)
+    if (rows[i].kind == PropSpec::Header) {
+      split = i;
+      break;
+    }
+  auto in = [](const std::string& v, std::initializer_list<const char*> list) {
+    for (const char* x : list)
+      if (v == x) return true;
+    return false;
+  };
+  auto section = [&](const std::string& k) {
+    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors"})) return 1;
+    if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps"})) return 2;
+    if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
+    if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
+    return 0;  // the look and its shape
+  };
+  static const char* titles[5][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
+                                     {"Time & data", "Hora y datos"}, {"Placement", "Colocación"}};
+  std::vector<PropSpec> out;
+  for (int sec = 0; sec < 5; ++sec) {
+    std::vector<PropSpec> part;
+    for (size_t i = 0; i < split; ++i)
+      if (section(rows[i].key) == sec) part.push_back(rows[i]);
+    if (part.empty()) continue;
+    PropSpec h;
+    h.kind = PropSpec::Header;
+    h.key = std::string("_sec") + std::to_string(sec);
+    h.labelEn = titles[sec][0];
+    h.labelEs = titles[sec][1];
+    out.push_back(h);
+    out.insert(out.end(), part.begin(), part.end());
+  }
+  out.insert(out.end(), rows.begin() + static_cast<long>(split), rows.end());
+  return out;
 }
 
 const char* typeName(const std::string& type, bool es) {
@@ -495,7 +583,12 @@ void App::layoutUi(const EditSurface& e) {
       if (px < 12) px = W - kPanelW - 16;
       py = std::clamp(static_cast<float>(w->cfg.y), top, std::max(top, H - panelH - 16));
     }
+    if (auto it = m_panelPos.find("inspector"); it != m_panelPos.end()) {  // where the user put it
+      px = std::clamp(it->second.first, 0.0F, W - kPanelW);
+      py = std::clamp(it->second.second, 0.0F, std::max(0.0F, H - panelH));
+    }
     m_ui.push_back({UiControl::Panel, {px, py, kPanelW, panelH}, -1, "inspector"});
+    m_ui.push_back({UiControl::PanelGrab, {px, py, kPanelW, kHeadH}, -1, "inspector"});  // drag by the title
     float y = py + kHeadH - m_inspScroll + 6;  // same origin as drawUi
     auto visible = [&](const Rect& r) { return r.y >= py + kHeadH - 2 && r.y + r.h <= py + panelH - kFootH + 2; };
     const float cx = px + kLabelW + 14, cw = kPanelW - kLabelW - 28;
@@ -554,8 +647,13 @@ void App::layoutUi(const EditSurface& e) {
 
   // ── depth brush panel (docked left) ──
   if (m_paintMode) {
-    const float px = 24, py = kBarY + kBarH + 14;
+    float px = 24, py = kBarY + kBarH + 14;
+    if (auto it = m_panelPos.find("paint"); it != m_panelPos.end()) {
+      px = std::clamp(it->second.first, 0.0F, W - kPaintW);
+      py = std::clamp(it->second.second, 0.0F, std::max(0.0F, H - kPaintH));
+    }
     m_ui.push_back({UiControl::Panel, {px, py, kPaintW, kPaintH}, -1, "paint"});
+    m_ui.push_back({UiControl::PanelGrab, {px, py, kPaintW, 48}, -1, "paint"});
     const float sw4 = (kPaintW - 28 - 18) / 4;
     for (int t = 0; t < 4; ++t)
       m_ui.push_back({UiControl::PaintSelect, {px + 14 + t * (sw4 + 6), py + 84, sw4, 48}, -1, std::to_string(t)});
@@ -719,6 +817,23 @@ bool App::uiPress(int index, double x) {
     case UiControl::Paint:
       if (!m_motion) setPaintMode(!m_paintMode);  // no depth to paint under a moving wallpaper
       return true;
+    case UiControl::PanelGrab: {
+      // a double click puts the panel back where it goes by itself
+      const double now = nowSeconds();
+      if (now - m_panelClickAt < 0.35 && m_panelDrag == c.value) {
+        m_panelPos.erase(c.value);
+        m_panelClickAt = 0;
+        markEditDirty();
+        return true;
+      }
+      m_panelClickAt = now;
+      m_drag = Drag::Panel;
+      m_panelDrag = c.value;
+      m_panelGrabX = static_cast<float>(m_px) - c.r.x;
+      m_panelGrabY = static_cast<float>(m_py) - c.r.y;
+      setCursor("grabbing");
+      return true;
+    }
     case UiControl::FontClose:
       m_fontPickFor.clear();
       markEditDirty();
@@ -1649,6 +1764,15 @@ void App::drawUi(EditSurface& e) {
       cv.text(k, keyS, colX + 7, rowY + 11 - kh / 2, ink);
       cv.text(es ? rows[i].es : rows[i].en, label, colX + kw + 24, rowY + 3, dim);
     }
+  }
+
+  // ── grip dots on movable panels ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::PanelGrab) continue;
+    const bool hot = hovered(c) || (m_drag == Drag::Panel && m_panelDrag == c.value);
+    const float gx = c.r.x + c.r.w - 26, gy = c.r.y + 18;
+    for (int i = 0; i < 2; ++i)
+      for (int j = 0; j < 3; ++j) cv.circle(gx + i * 6, gy + j * 6, 1.4F, withAlphaC(ink, hot ? 0.8F : 0.3F));
   }
 
   // ── tooltip under the hovered toolbar button ──

@@ -635,20 +635,24 @@ AudioFrame App::audioFrame(const Widget* w) {
 
 // a visualizer's behaviour with nothing playing: its own "idle" option, or
 // [general] idle when that is "auto" (or unset)
+static constexpr double kIdleGrace = 0.35;
+
 std::string App::idleModeOf(const Widget& w) const {
   if (!w.impl || !w.impl->usesAudio()) return "show";
   const std::string own = w.cfg.options["idle"].value_or(std::string("auto"));
   return own == "show" || own == "hide" || own == "demo" ? own : m_config.idle;
 }
 
-// "Nothing playing" = no sound for 2.5 s (the gap between two songs is not
-// it); sound brings everything back at once. Hidden visualizers fade out and
+// "Nothing playing" = no sound for kIdleGrace; sound brings everything
+// back at once. Hidden visualizers fade out and
 // stop drawing; editing always shows them.
 void App::updateIdle(double now) {
-  const bool silentNow = !m_audioOk || m_audio.idle();
+  // silence straight from the level (the analyser itself waits a second
+  // before calling itself idle), with a third of a second of grace
+  const bool silentNow = !m_audioOk || m_audio.idle() || m_audio.energy() < 0.004;
   if (!silentNow) m_silentSince = -1;
   else if (m_silentSince < 0) m_silentSince = now;
-  const bool nothing = silentNow && now - m_silentSince > 2.5;
+  const bool nothing = silentNow && now - m_silentSince > kIdleGrace;
   if (nothing != m_nothingPlaying) {
     m_nothingPlaying = nothing;
     US_DEBUG("{}", nothing ? "nothing playing" : "music back");
@@ -1214,7 +1218,7 @@ int App::computeTimeout() {
   if (m_silentSince >= 0 && !m_nothingPlaying)
     for (auto& w : m_widgets)
       if (idleModeOf(*w) != "show") {
-        next = std::min(next, m_silentSince + 2.5 + 0.01);
+        next = std::min(next, m_silentSince + kIdleGrace + 0.01);
         break;
       }
   for (auto& w : m_widgets) {

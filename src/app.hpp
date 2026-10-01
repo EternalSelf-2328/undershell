@@ -17,6 +17,7 @@
 
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -208,7 +209,7 @@ public:
   [[nodiscard]] bool modActive(const char* name) const;
   Widget* target();
   void cycleSelection(int step);
-  void snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool moving);
+  void snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool moving, int corner = 3);
   void setStyle(Widget& w, const std::string& look);
   void editorTick(double now);
   void validateEditPointers();
@@ -220,7 +221,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose } type = Panel;
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -301,11 +302,16 @@ private:
   EditSurface* m_pointerEdit = nullptr;  // editor surface under the pointer
   Widget* m_pointerWidget = nullptr;     // widget hovered / being dragged
   double m_px = 0, m_py = 0;             // pointer, output coordinates
-  enum class Drag { None, Move, Resize, Slider, Rotate } m_drag = Drag::None;
+  enum class Drag { None, Move, Resize, Slider, Rotate, Panel } m_drag = Drag::None;
+  std::map<std::string, std::pair<float, float>> m_panelPos;  // panels the user moved (top-left)
+  std::string m_panelDrag;                                    // the panel being dragged
+  float m_panelGrabX = 0, m_panelGrabY = 0;
+  double m_panelClickAt = 0;
   double m_rotStart = 0, m_rotLast = 0, m_rotAcc = 0;  // rotate drag
   double m_sliderX = 0, m_sliderStart = 0;              // slider drag (Shift: fine)
   bool m_sliderFine = false;
-  double m_anchorX = 0, m_anchorY = 0;         // turned resize: fixed corner
+  double m_anchorX = 0, m_anchorY = 0;         // resize: the corner that stays put
+  int m_gripCorner = 3;                        // resize: 0 TL, 1 TR, 2 BL, 3 BR
   double m_pressX = 0, m_pressY = 0;     // pointer at press, output coordinates
   int m_startX = 0, m_startY = 0, m_dragW = 0, m_dragH = 0;
   double m_scrollAcc = 0;

@@ -77,12 +77,12 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 |---|---|
 | Toolbar | top center: **＋** add · undo · redo · magnet · grid · one chip per widget (selects it, even fullscreen looks like `frame`) · **?** shortcuts · **Done** |
 | Select | click or its chip (empty space: deselect) · **Tab** / Shift+Tab |
-| Move / resize | drag · bottom-right corner |
+| Move / resize | drag · **any corner** (the opposite one stays put, turned widgets too) |
 | Magnet | snaps to the screen center, the edges and other widgets (guide lines); toggle it in the toolbar; **Shift** inverts it while held |
 | Tilt | drag the **knob** above the selected widget (0.1° steps; **Shift** = ten times finer; the magnet catches multiples of 15° within 2°) · **Ctrl+←/→** 0.1°, Ctrl+Shift 1° · Shift-drag any slider to nudge it · *Rotation* in the inspector · `rotation = 20` in the config (degrees, clockwise) |
 | Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
 | Change look | **wheel** over the widget (visualizer style or clock face) |
-| Options | the **inspector** appears next to the selected widget: lists ‹ ›, switches, sliders (drag or wheel) and theme color swatches; you see every change live |
+| Options | the **inspector** appears next to the selected widget, in sections (Look, Colour, Music, Time & data, Placement) showing only the settings that do something for its current look; drag it by its title to move it out of the way (double-click the title to put it back); the depth brush panel moves the same way. It offers: lists ‹ ›, switches, sliders (drag or wheel) and theme color swatches; you see every change live |
 | Add | the **＋** button in the toolbar opens the gallery: visualizer, clock, music |
 | Duplicate / delete | **Ctrl+D** · **Del** (or the inspector buttons) |
 | Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes, looks, options, additions and deletions) |
@@ -94,9 +94,9 @@ without touching the rest of the file.
 
 ## With nothing playing
 
-`idle` in `[general]` sets what every visualizer does when no sound has
-played for 2.5 s (so the gap between two songs does not count): `show`
-(as is, the default), `hide` (a smooth fade out; a hidden visualizer stops
+`idle` in `[general]` sets what every visualizer does as soon as the sound
+stops (a third of a second of grace): `show`
+(as is, the default), `hide` (a quick fade out; a hidden visualizer stops
 drawing, so it costs nothing) or `demo` (it moves on a demo spectrum). Each
 visualizer's **With no music** option (`idle = "auto" | "show" | "hide" |
 "demo"`) follows the general one on `auto` or overrides it. Music brings

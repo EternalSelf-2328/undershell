@@ -190,7 +190,7 @@ void main() {
         bool hot = i == u_hover || i == u_active || i == u_selected;
         float border = 1.0 - smoothstep(0.0, 1.2, abs(d) - (hot ? 1.3 : 0.7));
         float inside = 1.0 - smoothstep(-0.5, 0.5, d);
-        vec2 g = r.zw * 0.5 - p;
+        vec2 g = r.zw * 0.5 - abs(p);  // a grip in every corner
         float grip = 0.0;
         if (g.x >= 0.0 && g.y >= 0.0 && g.x < 24.0 && g.y < 24.0) {
             float diag = g.x + g.y;
