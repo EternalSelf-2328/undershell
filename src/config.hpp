@@ -39,6 +39,10 @@ struct WidgetConfig {
   std::string type = "visualizer";
   std::string output;  // connector name; empty = first output
   int x = 0, y = 0, width = 800, height = 240;  // logical px on the output
+  // the output size the block was laid out on (anchor.hpp); 0 = legacy 1920x1080.
+  // x, y, width, height and pin are in that space in the file; at runtime
+  // (App's widgets) they are mapped to the actual output
+  double spaceW = 0, spaceH = 0;
   bool enabled = true;
   bool depth = true;   // pass behind the wallpaper_depth foreground
   double rotation = 0;  // degrees, clockwise, about the box centre
@@ -113,7 +117,7 @@ struct Config {
   static bool appendBlock(const std::string& path, const std::string& block);
   // A commented starter block for a widget type.
   static std::string defaultBlock(const std::string& type, const std::string& id, const std::string& output, int x, int y,
-                                  int w, int h, const std::string& look);
+                                  int w, int h, const std::string& look, int spaceW = 0, int spaceH = 0);
   // TOML text of a value (strings quoted), for undo records
   static std::string tomlText(const toml::node& n);
 };

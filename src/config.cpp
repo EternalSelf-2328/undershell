@@ -107,6 +107,10 @@ Config Config::load(const std::string& path) {
       w.y = static_cast<int>(get<int64_t>(*t, "y", 0));
       w.width = static_cast<int>(std::max<int64_t>(24, get<int64_t>(*t, "width", 800)));
       w.height = static_cast<int>(std::max<int64_t>(24, get<int64_t>(*t, "height", 240)));
+      if (const toml::array* a = (*t)["space"].as_array(); a && a->size() == 2) {
+        w.spaceW = std::max(0.0, (*a)[0].value_or(0.0));
+        w.spaceH = std::max(0.0, (*a)[1].value_or(0.0));
+      }
       w.enabled = get<bool>(*t, "enabled", true);
       w.depth = get<bool>(*t, "depth", true);
       w.depthLevel = std::clamp(get<double>(*t, "depth_level", 0.0), 0.0, 100.0);
@@ -492,10 +496,12 @@ std::string Config::tomlText(const toml::node& n) {
 }
 
 std::string Config::defaultBlock(const std::string& type, const std::string& id, const std::string& output, int x, int y,
-                                 int w, int h, const std::string& look) {
+                                 int w, int h, const std::string& look, int spaceW, int spaceH) {
   std::string b = std::format("[[widget]]\nid = \"{}\"\ntype = \"{}\"\n", id, type);
   if (!output.empty()) b += std::format("output = \"{}\"\n", output);
   b += std::format("x = {}\ny = {}\nwidth = {}\nheight = {}\n", x, y, w, h);
+  if (spaceW > 0 && spaceH > 0)  // the output it was laid out on: other sizes follow the wallpaper
+    b += std::format("space = [{}, {}]\n", spaceW, spaceH);
   if (type == "clock") {
     b += std::format("face = \"{}\"            # digital minimal analog flip rings bighour metal goodnight grand column outline banner\n",
                      look.empty() ? "digital" : look);

@@ -360,7 +360,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   const int h = type == "clock" ? 240 : (type == "now_playing" ? 302 : 280);
   if (x == INT_MIN) x = (ow - w) / 2;
   if (y == INT_MIN) y = (oh - h) / 2;
-  const std::string block = Config::defaultBlock(type, id, o ? o->name : "", x, y, w, h, look);
+  const std::string block = Config::defaultBlock(type, id, o ? o->name : "", x, y, w, h, look, ow, oh);
   if (!Config::appendBlock(m_configPath, block)) return {};
   WidgetConfig placeholder;  // keeps ids unique before the reload lands
   placeholder.id = id;
@@ -406,7 +406,11 @@ void App::duplicateWidget(Widget& w) {
     id = base + "-" + std::to_string(n);
   }
   // the copy: new id, offset 32 px so it is visibly separate
-  block = Config::retargetBlock(block, id, w.cfg.x + 32, w.cfg.y + 32);
+  WidgetConfig moved = w.cfg;
+  moved.x += 32;
+  moved.y += 32;
+  mapWidget(moved, w.toScreen.inverse());  // the block is in its own space
+  block = Config::retargetBlock(block, id, moved.x, moved.y);
   if (!Config::appendBlock(m_configPath, block)) return;
   WidgetConfig placeholder;
   placeholder.id = id;
@@ -487,12 +491,9 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
       widgetCorners(w.cfg, qx, qy);
       const toml::array* a = w.cfg.options["pin"].as_array();
       if (!a || a->size() != 8) {
-        std::string text = "[";
-        for (int i = 0; i < 4; ++i) text += std::format("{}{:.1f}, {:.1f}", i ? ", " : "", qx[i], qy[i]);
-        text += "]";
-        storeOption(w.cfg.options, "pin", text);
-        Config::setKey(m_configPath, w.cfg.id, "pin", text);
         for (int i = 0; i < 4; ++i) w.cfg.pin[2 * i] = qx[i], w.cfg.pin[2 * i + 1] = qy[i];
+        storeOption(w.cfg.options, "pin", pinText(w.cfg.pin));
+        Config::setKey(m_configPath, w.cfg.id, "pin", pinText(toStored(w).pin));
       } else {
         for (size_t k = 0; k < 8; ++k) w.cfg.pin[k] = (*a)[k].value_or(0.0);
       }
@@ -530,7 +531,8 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (w.impl) w.impl->configure(w.cfg, m_noctalia.state());
   w.needsRender = true;
   w.drewEmpty = false;
-  Config::setKey(m_configPath, w.cfg.id, key, v);
+  // pins are output points: the file keeps them in the block's own space
+  Config::setKey(m_configPath, w.cfg.id, key, key == "pin" ? pinText(toStored(w).pin) : v);
   markEditDirty();
 }
 

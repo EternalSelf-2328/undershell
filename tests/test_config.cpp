@@ -2,6 +2,7 @@
 #include "check.hpp"
 #include "common.hpp"
 #include "clockparts.hpp"
+#include "anchor.hpp"
 #include "config.hpp"
 
 #include <filesystem>
@@ -175,6 +176,43 @@ int main() {
     CHECK(t2.find("pin = [9.0") != std::string::npos && t2.find("pin = [1.0") == std::string::npos);
     const Config pc = Config::load(path);
     CHECK(pc.widgets.size() == 1 && pc.widgets[0].pinned && pc.widgets[0].pin[0] == 9.0);
+  }
+
+  {
+    // layouts follow the wallpaper: a 2560x1440 image cropped on 1920x1080
+    // and on 1393x783 (1366x768 at scale 0.98) shows the same picture smaller
+    const SpaceMap m = spaceMap(1920, 1080, 1393, 783, 2560, 1440, 1);
+    CHECK(std::abs(m.ax - 1393.0 / 1920) < 1e-3 && std::abs(m.ay - m.ax) < 1e-9);  // uniform
+    // the centre of the screen stays the centre of the image
+    CHECK(std::abs(m.ax * 960 + m.bx - 1393 / 2.0) < 1e-6 && std::abs(m.ay * 540 + m.by - 783 / 2.0) < 1e-6);
+    // a 4:3 screen crops the sides: a widget keeps its spot on the image
+    const SpaceMap q = spaceMap(1920, 1080, 1024, 768, 1920, 1080, 1);
+    CHECK(std::abs(q.ax - 768.0 / 1080) < 1e-9 && q.bx < 0);
+    WidgetConfig c;
+    c.x = 960 - 100, c.y = 540 - 50, c.width = 200, c.height = 100;
+    c.pin[0] = 960, c.pin[1] = 540;
+    mapWidget(c, q);
+    CHECK(std::abs(c.x + c.width / 2.0 - 512) <= 1 && std::abs(c.y + c.height / 2.0 - 384) <= 1);
+    CHECK(std::abs(c.pin[0] - 512) < 1e-6 && std::abs(c.pin[1] - 384) < 1e-6);
+    // and back again, within rounding
+    mapWidget(c, q.inverse());
+    CHECK(std::abs(c.x - 860) <= 1 && std::abs(c.width - 200) <= 1 && std::abs(c.pin[0] - 960) < 1e-6);
+    // the same size is the identity; unknown image (video) scales like a picture of the screen
+    CHECK(spaceMap(1920, 1080, 1920, 1080, 800, 600, 1).identity());
+    const SpaceMap v = spaceMap(1920, 1080, 960, 540, 0, 0, 1);
+    CHECK(std::abs(v.ax - 0.5) < 1e-9 && std::abs(v.bx) < 1e-9);
+    // stretch is per axis
+    const SpaceMap st = spaceMap(1920, 1080, 1024, 768, 1920, 1080, 3);
+    CHECK(std::abs(st.ax - 1024.0 / 1920) < 1e-9 && std::abs(st.ay - 768.0 / 1080) < 1e-9);
+
+    // the block's space is read back; new blocks write it; legacy is 1920x1080
+    const std::string b = Config::defaultBlock("clock", "anch", "", 1, 2, 300, 100, "", 1393, 783);
+    CHECK(b.find("space = [1393, 783]") != std::string::npos);
+    std::filesystem::create_directories(dir);
+    writeFileAtomic(path, "[general]\n\n" + b + "\n[[widget]]\nid = \"old\"\ntype = \"clock\"\n");
+    const Config ac = Config::load(path);
+    CHECK(ac.widgets.size() == 2 && ac.widgets[0].spaceW == 1393 && ac.widgets[0].spaceH == 783);
+    CHECK(blockSpaceW(ac.widgets[1]) == 1920 && blockSpaceH(ac.widgets[1]) == 1080);
   }
 
   std::filesystem::remove_all(dir);

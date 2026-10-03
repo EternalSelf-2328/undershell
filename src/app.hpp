@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "anchor.hpp"
 #include "audio.hpp"
 #include "config.hpp"
 #include "depth.hpp"
@@ -38,6 +39,8 @@ struct wl_callback;
 struct wl_egl_window;
 struct wl_cursor_theme;
 struct zwlr_layer_shell_v1;
+struct zxdg_output_manager_v1;
+struct zxdg_output_v1;
 struct zwlr_layer_surface_v1;
 
 namespace undershell {
@@ -49,12 +52,17 @@ struct Output {
   uint32_t global = 0;
   std::string name;
   int modeW = 0, modeH = 0, scale = 1;
-  [[nodiscard]] float logicalW() const { return static_cast<float>(modeW) / scale; }
-  [[nodiscard]] float logicalH() const { return static_cast<float>(modeH) / scale; }
+  // the size surfaces and pointers live in, from xdg-output: under a
+  // fractional scale (1366x768 at 0.98 is 1393x783) mode / scale is wrong
+  zxdg_output_v1* xdg = nullptr;
+  int logW = 0, logH = 0;
+  [[nodiscard]] float logicalW() const { return logW > 0 ? static_cast<float>(logW) : static_cast<float>(modeW) / scale; }
+  [[nodiscard]] float logicalH() const { return logH > 0 ? static_cast<float>(logH) : static_cast<float>(modeH) / scale; }
 };
 
 struct Widget {
-  WidgetConfig cfg;
+  WidgetConfig cfg;  // geometry mapped to the output (anchor.hpp)
+  SpaceMap toScreen;  // the block's space -> this output, through the wallpaper
   std::unique_ptr<WidgetImpl> impl;
   Output* output = nullptr;
   wl_surface* surface = nullptr;
@@ -247,6 +255,17 @@ private:
   void commitPin(Widget& w);                            // store the points (one undo step) and fit the box
   void setRotation(Widget& w, double degrees);  // live, not persisted
   void clampToOutput(WidgetConfig& c, const Output* o) const;
+  // wallpaper anchoring (anchor.hpp): the map for a block on an output, and
+  // a runtime box back to the block's space for writing
+  SpaceMap spaceMapFor(const WidgetConfig& c, const Output* o);
+  [[nodiscard]] static WidgetConfig toStored(const Widget& w) {
+    WidgetConfig c = w.cfg;
+    mapWidget(c, w.toScreen.inverse());
+    return c;
+  }
+  std::map<std::string, std::pair<int, int>> m_imageSizes;  // wallpaper -> size (0: not an image)
+  std::string m_anchorKey;  // what the maps were made from (fill mode + wallpapers)
+  std::string anchorKey() const;
   void persist(Widget& w);
   void setCursor(const char* name);
   Widget* widgetBySurface(wl_surface* s);
@@ -262,6 +281,8 @@ private:
   wl_registry* m_registry = nullptr;
   wl_compositor* m_compositor = nullptr;
   zwlr_layer_shell_v1* m_layerShell = nullptr;
+  zxdg_output_manager_v1* m_xdgOutputs = nullptr;
+  void watchLogicalSize(Output* o);
   wl_shm* m_shm = nullptr;
   wl_seat* m_seat = nullptr;
   wl_pointer* m_pointer = nullptr;

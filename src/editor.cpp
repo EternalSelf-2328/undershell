@@ -106,11 +106,8 @@ int App::pinAt(const Widget& w, double x, double y) const {
 // The points go to the config as one undo step; the box (the widget's own
 // resolution) follows the quad's size so it renders crisp, at its real aspect.
 void App::commitPin(Widget& w) {
-  std::string text = "[";
-  for (int i = 0; i < 8; ++i) text += std::format("{}{:.1f}", i ? ", " : "", w.cfg.pin[i]);
-  text += "]";
   m_lastOpKind.clear();
-  setProp(w, "pin", text);
+  setProp(w, "pin", pinText(w.cfg.pin));
   const double* q = w.cfg.pin;
   auto len = [&](int a, int b) { return std::hypot(q[2 * a] - q[2 * b], q[2 * a + 1] - q[2 * b + 1]); };
   const int nw = std::max(48, static_cast<int>(std::lround((len(0, 1) + len(3, 2)) / 2)));
@@ -170,14 +167,15 @@ void App::setRotation(Widget& w, double degrees) {
 void App::onMoveApplied(Widget*, int, int) {}
 
 void App::persist(Widget& w) {
+  const WidgetConfig s = toStored(w);  // the file keeps the block's own space
   for (auto& c : m_config.widgets)
     if (c.id == w.cfg.id) {
-      c.x = w.cfg.x;
-      c.y = w.cfg.y;
-      c.width = w.cfg.width;
-      c.height = w.cfg.height;
+      c.x = s.x;
+      c.y = s.y;
+      c.width = s.width;
+      c.height = s.height;
     }
-  if (!Config::saveGeometry(m_configPath, w.cfg)) US_WARN("could not save the new geometry of {}", w.cfg.id);
+  if (!Config::saveGeometry(m_configPath, s)) US_WARN("could not save the new geometry of {}", w.cfg.id);
 }
 
 // Snaps a box being moved (all edges + centre) or resized (right/bottom edge)

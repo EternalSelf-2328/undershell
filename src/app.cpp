@@ -7,6 +7,7 @@
 #define namespace namespace_
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #undef namespace
+#include "xdg-output-unstable-v1-client-protocol.h"
 
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -16,6 +17,7 @@
 #include <csignal>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <linux/input-event-codes.h>
 #include <poll.h>
 #include <sys/inotify.h>
@@ -24,6 +26,7 @@
 #include <wayland-cursor.h>
 #include <wayland-egl.h>
 #include <cairo.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
 namespace undershell {
 
@@ -58,6 +61,19 @@ static void outScale(void* d, wl_output*, int32_t s) { static_cast<OutputCtx*>(d
 static void outName(void* d, wl_output*, const char* n) { static_cast<OutputCtx*>(d)->out->name = n; }
 static void outDesc(void*, wl_output*, const char*) {}
 static const wl_output_listener kOutput = {outGeometry, outMode, outDone, outScale, outName, outDesc};
+
+// xdg-output: the output's size in logical (surface) pixels; since v3 it
+// lands atomically with wl_output.done
+static void xoPosition(void*, zxdg_output_v1*, int32_t, int32_t) {}
+static void xoSize(void* d, zxdg_output_v1*, int32_t w, int32_t h) {
+  auto* o = static_cast<Output*>(d);
+  o->logW = w;
+  o->logH = h;
+}
+static void xoDone(void*, zxdg_output_v1*) {}
+static void xoName(void*, zxdg_output_v1*, const char*) {}
+static void xoDesc(void*, zxdg_output_v1*, const char*) {}
+static const zxdg_output_v1_listener kXdgOutput = {xoPosition, xoSize, xoDone, xoName, xoDesc};
 
 static void lsConfigure(void* d, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t w, uint32_t h);
 static void lsClosed(void* d, zwlr_layer_surface_v1*);
@@ -207,14 +223,25 @@ void App::onGlobal(wl_registry* reg, uint32_t name, const char* iface, uint32_t 
   } else if (i == wl_seat_interface.name && !m_seat) {
     m_seat = static_cast<wl_seat*>(wl_registry_bind(reg, name, &wl_seat_interface, std::min(version, 7u)));
     wl_seat_add_listener(m_seat, &kSeat, this);
+  } else if (i == zxdg_output_manager_v1_interface.name) {
+    m_xdgOutputs = static_cast<zxdg_output_manager_v1*>(
+        wl_registry_bind(reg, name, &zxdg_output_manager_v1_interface, std::min(version, 3u)));
+    for (auto& o : m_outputs) watchLogicalSize(o.get());
   } else if (i == wl_output_interface.name) {
     auto out = std::make_unique<Output>();
     out->global = name;
     out->wl = static_cast<wl_output*>(wl_registry_bind(reg, name, &wl_output_interface, std::min(version, 4u)));
     auto* ctx = new OutputCtx{this, out.get()};
     wl_output_add_listener(out->wl, &kOutput, ctx);
+    watchLogicalSize(out.get());
     m_outputs.push_back(std::move(out));
   }
+}
+
+void App::watchLogicalSize(Output* o) {
+  if (!m_xdgOutputs || o->xdg) return;
+  o->xdg = zxdg_output_manager_v1_get_xdg_output(m_xdgOutputs, o->wl);
+  zxdg_output_v1_add_listener(o->xdg, &kXdgOutput, o);
 }
 
 void App::onGlobalRemove(uint32_t name) {
@@ -230,6 +257,7 @@ void App::onGlobalRemove(uint32_t name) {
         ++e;
       }
     }
+    if ((*it)->xdg) zxdg_output_v1_destroy((*it)->xdg);
     wl_output_destroy((*it)->wl);
     m_outputs.erase(it);
     return;
@@ -327,6 +355,7 @@ void App::refreshNoctalia() {
     updateDepth();
     checkProfile();
     checkWallpaperKind();
+    if (anchorKey() != m_anchorKey) syncWidgets();  // another wallpaper or fill: re-anchor the layout
     restack();  // the plugin's plane may have moved
   }
 }
@@ -363,45 +392,68 @@ void App::updateDepth() {
 // Keeps m_widgets in step with the config: reconfigures existing widgets in
 // place (so a saved file or an editor drop never flickers), adds new ones and
 // drops removed ones.
+std::string App::anchorKey() const {
+  const NoctaliaState& st = m_noctalia.state();
+  std::string k = std::to_string(st.fillMode);
+  for (auto& o : m_outputs) k += std::format("|{}:{}x{}:{}", o->name, o->logicalW(), o->logicalH(), st.wallpaperFor(o->name));
+  return k;
+}
+
+SpaceMap App::spaceMapFor(const WidgetConfig& c, const Output* o) {
+  if (!o || o->logicalW() <= 0 || o->logicalH() <= 0) return {};
+  const NoctaliaState& st = m_noctalia.state();
+  const std::string wall = st.wallpaperFor(o->name);
+  auto it = m_imageSizes.find(wall);
+  if (it == m_imageSizes.end()) {
+    int iw = 0, ih = 0;
+    if (!wall.empty() && !gdk_pixbuf_get_file_info(wall.c_str(), &iw, &ih)) iw = ih = 0;  // a video, a scene
+    it = m_imageSizes.emplace(wall, std::make_pair(iw, ih)).first;
+  }
+  return spaceMap(blockSpaceW(c), blockSpaceH(c), o->logicalW(), o->logicalH(), it->second.first, it->second.second,
+                  st.fillMode);
+}
+
 void App::syncWidgets() {
+  m_anchorKey = anchorKey();
   std::vector<std::unique_ptr<Widget>> next;
-  for (const auto& wc : m_config.widgets) {
-    if (!wc.enabled) continue;
+  for (const auto& stored : m_config.widgets) {
+    if (!stored.enabled) continue;
     std::unique_ptr<Widget> w;
     for (auto& old : m_widgets) {
-      if (old && old->cfg.id == wc.id) {
+      if (old && old->cfg.id == stored.id) {
         w = std::move(old);
         break;
       }
     }
     if (!w) w = std::make_unique<Widget>();
-    if (!w->impl || w->cfg.type != wc.type) {
+    if (!w->impl || w->cfg.type != stored.type) {
       destroySurface(*w);
-      w->impl = createWidget(wc.type);
+      w->impl = createWidget(stored.type);
       if (!w->impl) {
-        US_WARN("widget {}: unknown type '{}'", wc.id, wc.type);
+        US_WARN("widget {}: unknown type '{}'", stored.id, stored.type);
         continue;
       }
     }
+    Output* out = nullptr;
+    for (auto& o : m_outputs)
+      if (stored.output.empty() ? true : o->name == stored.output) {
+        out = o.get();
+        break;
+      }
+    // the block's box, moved to where its part of the wallpaper is on this output
+    WidgetConfig wc = stored;
+    w->toScreen = spaceMapFor(stored, out);
+    mapWidget(wc, w->toScreen);
+    if (out) clampToOutput(wc, out);
     const bool geomChanged = w->cfg.x != wc.x || w->cfg.y != wc.y || w->cfg.width != wc.width ||
                              w->cfg.height != wc.height || w->cfg.output != wc.output ||
                              std::abs(w->cfg.rotation - wc.rotation) > 1e-6 || std::abs(w->cfg.tiltX - wc.tiltX) > 1e-6 ||
                              std::abs(w->cfg.tiltY - wc.tiltY) > 1e-6 || std::abs(w->cfg.skewX - wc.skewX) > 1e-6 ||
-                             std::abs(w->cfg.perspective - wc.perspective) > 1e-6;
+                             std::abs(w->cfg.perspective - wc.perspective) > 1e-6 || w->cfg.pinned != wc.pinned ||
+                             !std::equal(std::begin(wc.pin), std::end(wc.pin), std::begin(w->cfg.pin));
     w->cfg = wc;
-    for (auto& o : m_outputs)
-      if (wc.output.empty() || o->name == wc.output) {
-        clampToOutput(w->cfg, o.get());
-        break;
-      }
     w->impl->configure(w->cfg, m_noctalia.state());
     w->needsRender = true;
-    Output* out = nullptr;
-    for (auto& o : m_outputs)
-      if (wc.output.empty() ? true : o->name == wc.output) {
-        out = o.get();
-        break;
-      }
     // a look that switches between boxed and fullscreen (frame) needs a new
     // surface; compare against how the surface was made, not the previous
     // config (the inspector reconfigures the widget before the reload lands)

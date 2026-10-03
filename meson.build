@@ -42,6 +42,7 @@ wl_protos_dir = wayland_protos.get_variable('pkgdatadir')
 protocols = [
   meson.project_source_root() / 'protocols/wlr-layer-shell-unstable-v1.xml',
   wl_protos_dir / 'stable/xdg-shell/xdg-shell.xml',
+  wl_protos_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml',
 ]
 proto_src = []
 foreach p : protocols

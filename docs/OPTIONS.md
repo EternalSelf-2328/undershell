@@ -21,6 +21,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | `type` | `visualizer`, `clock`, `now_playing` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
+| `space` | `[w, h]` | `[1920, 1080]` | the output size the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size the widget follows the wallpaper (its fill mode), not the screen |
 | `width`, `height` | logical px | `800` × `240` | box; the design is fitted into it |
 | `enabled` | `true` / `false` | `true` | |
 | `depth` | `true` / `false` | `true` | pass behind the `wallpaper_depth` foreground |

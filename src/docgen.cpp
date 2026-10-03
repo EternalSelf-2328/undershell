@@ -57,6 +57,8 @@ std::string optionsMarkdown() {
   md += "| `type` | `visualizer`, `clock`, `now_playing` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
+  md += "| `space` | `[w, h]` | `[1920, 1080]` | the output size the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. "
+        "On a screen of another size the widget follows the wallpaper (its fill mode), not the screen |\n";
   md += "| `width`, `height` | logical px | `800` × `240` | box; the design is fitted into it |\n";
   md += "| `enabled` | `true` / `false` | `true` | |\n";
   md += "| `depth` | `true` / `false` | `true` | pass behind the `wallpaper_depth` foreground |\n\n";
