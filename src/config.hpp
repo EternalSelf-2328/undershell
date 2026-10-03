@@ -39,7 +39,8 @@ struct WidgetConfig {
   std::string type = "visualizer";
   std::string output;  // connector name; empty = first output
   int x = 0, y = 0, width = 800, height = 240;  // logical px on the output
-  // the output size the block was laid out on (anchor.hpp); 0 = legacy 1920x1080.
+  // the output size the block was laid out on (anchor.hpp); 0 = not recorded yet
+  // (the screen it is first shown on, which is then written to the block).
   // x, y, width, height and pin are in that space in the file; at runtime
   // (App's widgets) they are mapped to the actual output
   double spaceW = 0, spaceH = 0;

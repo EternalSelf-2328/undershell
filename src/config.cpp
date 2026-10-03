@@ -32,11 +32,11 @@ profiles = true           # remember a widget layout for each wallpaper
 [[widget]]
 id = "visualizer"
 type = "visualizer"
-output = "HDMI-A-1"
-x = 460
-y = 760
+x = 460                   # x, y, width, height: logical px of a screen of size `space`;
+y = 760                   # on any other screen the widget keeps its place on the wallpaper
 width = 1000
 height = 280
+space = [1920, 1080]
 # bars split dots segments wave ribbon curtain line frame radial orb spiral
 style = "bars"
 bars = 64

@@ -348,8 +348,10 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
     if (!taken) break;
     id = type + std::to_string(n);
   }
-  const int w = type == "visualizer" ? 1000 : 560;
-  const int h = type == "clock" ? 240 : (type == "now_playing" ? 302 : 280);
+  // sizes designed on a 1080-px-high screen, scaled to this one
+  const double k = std::clamp(oh / 1080.0, 0.5, 3.0);
+  const int w = static_cast<int>(std::lround((type == "visualizer" ? 1000 : 560) * k));
+  const int h = static_cast<int>(std::lround((type == "clock" ? 240 : (type == "now_playing" ? 302 : 280)) * k));
   if (x == INT_MIN) x = (ow - w) / 2;
   if (y == INT_MIN) y = (oh - h) / 2;
   const std::string block = Config::defaultBlock(type, id, o ? o->name : "", x, y, w, h, look, ow, oh);
@@ -537,7 +539,7 @@ namespace {
 constexpr float kBarY = 50, kBarH = 46, kBtn = 34, kGap = 6, kSep = 14, kChipH = 30;
 // the Profiles (saved layouts) panel
 constexpr float kSavesW = 540, kSavesHead = 92, kSaveRowH = 70, kSavePitch = 76;
-constexpr int kSaveRows = 5;
+constexpr int kSaveRowsMax = 5;
 // the depth brush panel
 constexpr float kPaintW = 300, kPaintH = 478;
 const char* kToolKeys[5][3] = {{"front", "Al frente", "To front"},
@@ -728,8 +730,9 @@ void App::layoutUi(const EditSurface& e) {
         px = c.r.x + c.r.w / 2 < W / 2 ? W - kPaintW - 24 : 24;
     if (auto it = m_panelPos.find("paint"); it != m_panelPos.end()) {
       px = std::clamp(it->second.first, 0.0F, W - kPaintW);
-      py = std::clamp(it->second.second, 0.0F, std::max(0.0F, H - kPaintH));
+      py = it->second.second;
     }
+    py = std::clamp(py, 0.0F, std::max(0.0F, H - kPaintH - 8));  // a short screen: up over the toolbar's row
     m_ui.push_back({UiControl::Panel, {px, py, kPaintW, kPaintH}, -1, "paint"});
     m_ui.push_back({UiControl::PanelGrab, {px, py, kPaintW, 48}, -1, "paint"});
     const float sw4 = (kPaintW - 28 - 18) / 4;
@@ -761,6 +764,9 @@ void App::layoutUi(const EditSurface& e) {
   }
   if (m_savesOpen) {
     const int n = static_cast<int>(m_saves.size());
+    // as many rows as the screen has room for
+    m_saveRows = std::clamp(static_cast<int>((H - (kBarY + kBarH + 10) - kSavesHead - 48 - 28 - 16) / kSavePitch), 1, kSaveRowsMax);
+    const int kSaveRows = m_saveRows;
     m_saveScroll = std::clamp(m_saveScroll, 0, std::max(0, n - kSaveRows));
     const int shown = std::min(kSaveRows, n - m_saveScroll);
     const float sh = kSavesHead + 48 + (n == 0 ? 56 : shown * kSavePitch) + 10 + (n > kSaveRows ? 18 : 0);
@@ -1194,7 +1200,7 @@ bool App::uiScroll(double x, double y, int step) {
   const UiControl c = m_ui[static_cast<size_t>(hit)];
   if (c.value == "saves" || isSaveControl(c.type)) {
     const int before = m_saveScroll;
-    m_saveScroll = std::clamp(m_saveScroll + step, 0, std::max(0, static_cast<int>(m_saves.size()) - kSaveRows));
+    m_saveScroll = std::clamp(m_saveScroll + step, 0, std::max(0, static_cast<int>(m_saves.size()) - m_saveRows));
     if (m_saveScroll != before) markEditDirty();
     return true;
   }
@@ -1777,8 +1783,8 @@ void App::drawUi(EditSurface& e) {
       cv.text(es ? "Aún no hay perfiles. Guarda el primero con el botón de arriba."
                  : "No profiles yet. Save the first one with the button above.",
               label, P.x + 18, P.y + kSavesHead + 64, dim);
-    if (n > kSaveRows) {
-      const std::string more = std::format("{}–{} / {}  ·  {}", m_saveScroll + 1, m_saveScroll + std::min(kSaveRows, n - m_saveScroll), n,
+    if (n > m_saveRows) {
+      const std::string more = std::format("{}–{} / {}  ·  {}", m_saveScroll + 1, m_saveScroll + std::min(m_saveRows, n - m_saveScroll), n,
                                            es ? "rueda para ver más" : "scroll for more");
       auto [mw, mh] = measure(more, label);
       cv.text(more, label, P.x + (P.w - mw) / 2, P.y + P.h - 24, dim);

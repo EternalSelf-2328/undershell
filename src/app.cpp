@@ -432,14 +432,15 @@ SpaceMap App::spaceMapFor(const WidgetConfig& c, const Output* o) {
     if (!wall.empty() && !gdk_pixbuf_get_file_info(wall.c_str(), &iw, &ih)) iw = ih = 0;  // a video, a scene
     it = m_imageSizes.emplace(wall, std::make_pair(iw, ih)).first;
   }
-  return spaceMap(blockSpaceW(c), blockSpaceH(c), o->logicalW(), o->logicalH(), it->second.first, it->second.second,
-                  st.fillMode);
+  return spaceMap(blockSpaceW(c, o->logicalW()), blockSpaceH(c, o->logicalH()), o->logicalW(), o->logicalH(),
+                  it->second.first, it->second.second, st.fillMode);
 }
 
 void App::syncWidgets() {
   m_anchorKey = anchorKey();
   std::vector<std::unique_ptr<Widget>> next;
-  for (const auto& stored : m_config.widgets) {
+  bool stamped = false;
+  for (auto& stored : m_config.widgets) {
     if (!stored.enabled) continue;
     std::unique_ptr<Widget> w;
     for (auto& old : m_widgets) {
@@ -463,6 +464,14 @@ void App::syncWidgets() {
         out = o.get();
         break;
       }
+    if ((stored.spaceW <= 0 || stored.spaceH <= 0) && out && out->logicalW() > 0 && out->logicalH() > 0) {
+      // no space recorded (an older or hand-written block): it was made for
+      // this screen; write that down so another screen can follow the wallpaper
+      stored.spaceW = std::round(out->logicalW());
+      stored.spaceH = std::round(out->logicalH());
+      stamped |= Config::setKey(m_configPath, stored.id, "space",
+                                std::format("[{}, {}]", static_cast<int>(stored.spaceW), static_cast<int>(stored.spaceH)));
+    }
     // the block's box, moved to where its part of the wallpaper is on this output
     WidgetConfig wc = stored;
     w->toScreen = spaceMapFor(stored, out);
@@ -494,6 +503,7 @@ void App::syncWidgets() {
     }
     next.push_back(std::move(w));
   }
+  if (stamped) US_INFO("recorded the screen size of older widget blocks (space = [w, h])");
   for (auto& old : m_widgets)
     if (old) destroySurface(*old);
   m_widgets = std::move(next);

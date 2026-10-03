@@ -20,6 +20,9 @@ int main() {
   CHECK(std::filesystem::exists(path));
   CHECK(cfg.widgets.size() == 1);
   CHECK(cfg.widgets[0].type == "visualizer");
+  // the starter widget names no monitor and carries its own space, so it
+  // shows (in the same place on the wallpaper) on any screen
+  CHECK(cfg.widgets[0].output.empty() && cfg.widgets[0].spaceW == 1920 && cfg.widgets[0].spaceH == 1080);
   CHECK(VisualizerConfig::fromTable(cfg.widgets[0].options).style == "bars");
 
   // a value with '#' inside quotes and a trailing comment
@@ -213,7 +216,9 @@ int main() {
     writeFileAtomic(path, "[general]\n\n" + b + "\n[[widget]]\nid = \"old\"\ntype = \"clock\"\n");
     const Config ac = Config::load(path);
     CHECK(ac.widgets.size() == 2 && ac.widgets[0].spaceW == 1393 && ac.widgets[0].spaceH == 783);
-    CHECK(blockSpaceW(ac.widgets[1]) == 1920 && blockSpaceH(ac.widgets[1]) == 1080);
+    // a block without one belongs to the screen it is shown on (identity there)
+    CHECK(blockSpaceW(ac.widgets[1], 1366) == 1366 && blockSpaceH(ac.widgets[1], 768) == 768);
+    CHECK(blockSpaceW(ac.widgets[0], 1366) == 1393);
   }
 
   {

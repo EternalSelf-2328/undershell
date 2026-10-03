@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Layouts follow the wallpaper, not the screen. A widget block remembers the
-// output size it was laid out on (`space = [w, h]`; legacy blocks were all
-// made at 1920x1080). On an output of another size its box goes where the
+// output size it was laid out on (`space = [w, h]`; a block without one is
+// taken to belong to the screen it is first shown on, and gets that written
+// down). On an output of another size its box goes where the
 // same part of the wallpaper now is, through the wallpaper's fill mode (crop
 // on a smaller screen shows the image smaller, so the widget shrinks with it
 // and stays on the rock or the portal it was put on).
@@ -15,8 +16,6 @@
 #include <string>
 
 namespace undershell {
-
-constexpr double kLegacySpaceW = 1920, kLegacySpaceH = 1080;
 
 // image px -> output px: X = ox + u * sx (Noctalia's calculateWallpaperUV,
 // fill modes center crop fit stretch repeat span)
@@ -62,8 +61,9 @@ inline SpaceMap spaceMap(double fromW, double fromH, double toW, double toH, dou
   return m;
 }
 
-inline double blockSpaceW(const WidgetConfig& c) { return c.spaceW > 0 ? c.spaceW : kLegacySpaceW; }
-inline double blockSpaceH(const WidgetConfig& c) { return c.spaceH > 0 ? c.spaceH : kLegacySpaceH; }
+// the block's space, or (none recorded) the output it is on
+inline double blockSpaceW(const WidgetConfig& c, double outputW) { return c.spaceW > 0 && c.spaceH > 0 ? c.spaceW : outputW; }
+inline double blockSpaceH(const WidgetConfig& c, double outputH) { return c.spaceW > 0 && c.spaceH > 0 ? c.spaceH : outputH; }
 
 // the box and corner pins through `m` (rotation, tilt and the rest are angles
 // and stay); the edges are mapped, so neighbours stay flush

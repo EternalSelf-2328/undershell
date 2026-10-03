@@ -278,6 +278,7 @@ private:
     return c;
   }
   std::map<std::string, std::pair<int, int>> m_imageSizes;  // wallpaper -> size (0: not an image)
+  int m_saveRows = 5;  // saved-layout rows that fit the screen
   std::string m_anchorKey;  // what the maps were made from (fill mode + wallpapers)
   std::string anchorKey() const;
   void persist(Widget& w);
