@@ -4,6 +4,7 @@
 // labels. Pointer positions come from the fullscreen editor surface, so they
 // are output coordinates and never depend on the widget being moved.
 #include "app.hpp"
+#include "i18n.hpp"
 #include "clock.hpp"
 #include "snap.hpp"
 
@@ -60,13 +61,7 @@ std::string degreesText(double d) {
   return r == std::floor(r) ? std::format("{:.0f}", r) : std::format("{:.1f}", r);
 }
 
-bool spanish() {
-  for (const char* v : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
-    const char* s = std::getenv(v);
-    if (s && *s) return std::string_view(s).starts_with("es");
-  }
-  return false;
-}
+bool spanish() { return spanishUi(); }
 
 // the key that selects a widget's look, and its current value
 const char* lookKey(const Widget& w) { return w.cfg.type == "clock" ? "face" : "style"; }
@@ -1026,15 +1021,15 @@ void App::drawEditorText(EditSurface& e) {
   for (auto& w : m_widgets) {
     if (zoomed || w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
     const bool sel = w.get() == m_selected;
-    std::string label = std::format("{}  ·  {}  ·  {}×{}", w->cfg.id, lookOf(*w), w->cfg.width, w->cfg.height);
-    if (rotated(w->cfg)) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));
+    std::string label = std::format("{}  ·  {}  ·  {}×{}", w->cfg.id, optionLabel(lookOf(*w), spanish()), w->cfg.width, w->cfg.height);
+    if (turnedOnly(w->cfg) && !w->cfg.pinned) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));
     if (m_drag != Drag::None && m_drag != Drag::Rotate && w.get() == m_pointerWidget)
       label += std::format("  @ {},{}", w->cfg.x, w->cfg.y);
     // above what is seen; a selected turned widget's knob needs the room
     const Box vb = visualBox(w->cfg);
     float lx = static_cast<float>(std::max(8, vb.x + 10));
     float ly = static_cast<float>(vb.y) - 20;
-    if (sel) ly -= OverlayPass::kHandleGap + OverlayPass::kHandleR;  // clear of the knob
+    if (sel && !w->cfg.pinned) ly -= OverlayPass::kHandleGap + OverlayPass::kHandleR;  // clear of the knob
     if (ly < 106) ly = static_cast<float>(vb.y) + 10;  // keep clear of the toolbar
     put(label, ls, lx, ly, sel ? w->impl->accent() : ink);
   }

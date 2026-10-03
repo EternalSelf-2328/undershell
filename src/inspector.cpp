@@ -22,14 +22,6 @@
 
 namespace undershell {
 
-bool spanishUi() {
-  for (const char* v : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
-    const char* s = std::getenv(v);
-    if (s && *s) return std::string_view(s).starts_with("es");
-  }
-  return false;
-}
-
 namespace {
 constexpr float kPanelW = 300, kRowH = 30, kColorRowH = 54, kHeadH = 46, kFootH = 46, kLabelW = 118;
 constexpr double kCoalesceProp = 1.0;
@@ -730,6 +722,10 @@ void App::layoutUi(const EditSurface& e) {
   // ── depth brush panel (docked left) ──
   if (m_paintMode) {
     float px = 24, py = kBarY + kBarH + 14;
+    // not over the inspector: the other side of the screen
+    for (const UiControl& c : m_ui)
+      if (c.type == UiControl::Panel && c.value == "inspector" && c.r.x < px + kPaintW && px < c.r.x + c.r.w)
+        px = c.r.x + c.r.w / 2 < W / 2 ? W - kPaintW - 24 : 24;
     if (auto it = m_panelPos.find("paint"); it != m_panelPos.end()) {
       px = std::clamp(it->second.first, 0.0F, W - kPaintW);
       py = std::clamp(it->second.second, 0.0F, std::max(0.0F, H - kPaintH));
@@ -811,8 +807,14 @@ void App::layoutUi(const EditSurface& e) {
     }
   }
   if (m_helpOpen) {
-    const float hw = 580, hh = 334;
-    m_ui.push_back({UiControl::Panel, {std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh}, -1, "help"});
+    const float hw = 580, hh = 384;
+    const Rect card{std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh};
+    m_ui.push_back({UiControl::Panel, card, -1, "help"});
+    // the interface language, at the foot of the card
+    const float bw = 112, bx = card.x + card.w - 20 - 3 * bw - 8;
+    const char* langs[] = {"system", "en", "es"};
+    for (int i = 0; i < 3; ++i)
+      m_ui.push_back({UiControl::Language, {bx + i * (bw + 4), card.y + hh - 44, bw, 28}, -1, langs[i]});
   }
 }
 
@@ -1044,6 +1046,19 @@ bool App::uiPress(int index, double x) {
           }
           m_selected = ww.get();
         }
+      markEditDirty();
+      return true;
+    case UiControl::Language:
+      if (c.value != uiLanguage()) {
+        setUiLanguage(c.value);
+        m_config.language = c.value;
+        Config::setGeneral(m_configPath, "language", "\"" + c.value + "\"");
+        for (auto& ww : m_widgets)  // clocks with language = "system" follow it
+          if (ww->impl) {
+            ww->impl->configure(ww->cfg, m_noctalia.state());
+            ww->needsRender = true;
+          }
+      }
       markEditDirty();
       return true;
     case UiControl::Panel:
@@ -1329,6 +1344,31 @@ void App::drawUi(EditSurface& e) {
     TextRenderer::measure(t, st, w, h, b);
     return std::pair<float, float>{w, h};
   };
+  // text in a fixed width: a little smaller if that is enough, else cut with "…"
+  auto fitted = [&](std::string t, TextStyle st, float maxW) {
+    if (maxW <= 0) return std::pair<std::string, TextStyle>{std::string(), st};
+    if (measure(t, st).first <= maxW) return std::pair<std::string, TextStyle>{t, st};
+    const float base = st.size;
+    for (st.size = base - 0.5F; st.size >= base * 0.85F; st.size -= 0.5F)
+      if (measure(t, st).first <= maxW) return std::pair<std::string, TextStyle>{t, st};
+    st.size = base * 0.85F;
+    while (!t.empty() && measure(t + "…", st).first > maxW) {
+      t.pop_back();
+      while (!t.empty() && (static_cast<unsigned char>(t.back()) & 0xC0) == 0x80) t.pop_back();  // whole UTF-8 chars
+      if (!t.empty() && (static_cast<unsigned char>(t.back()) & 0xC0) == 0xC0) t.pop_back();
+    }
+    while (!t.empty() && t.back() == ' ') t.pop_back();
+    return std::pair<std::string, TextStyle>{t + "…", st};
+  };
+  auto fitText = [&](const std::string& t, const TextStyle& st, float x, float y, float maxW, Color c) {
+    auto [ft, fs] = fitted(t, st, maxW);
+    cv.text(ft, fs, x, y + (st.size - fs.size) * 0.6F, c);
+  };
+  auto fitCentered = [&](const std::string& t, const TextStyle& st, float x, float cy, float maxW, Color c) {
+    auto [ft, fs] = fitted(t, st, maxW);
+    auto [tw, th] = measure(ft, fs);
+    cv.text(ft, fs, x + (maxW - tw) / 2, cy - th / 2, c);
+  };
   auto hovered = [&](const UiControl& c) {
     return m_uiHover >= 0 && m_uiHover < static_cast<int>(m_ui.size()) && &m_ui[static_cast<size_t>(m_uiHover)] == &c;
   };
@@ -1483,9 +1523,11 @@ void App::drawUi(EditSurface& e) {
       if (y + rowH >= top && y <= bottom) {
         const bool locked = m_motion && (std::string_view(p.key) == "depth" || std::string_view(p.key) == "depth_level");
         const bool plainLabel = p.kind != PropSpec::Header && p.kind != PropSpec::Element;
-        if (plainLabel)
-          cv.text(es ? p.labelEs : p.labelEn, label, P.x + 16 + (p.indent ? 16 : 0), y + 6,
+        if (plainLabel) {
+          const float lx = P.x + 16 + (p.indent ? 16 : 0);
+          fitText(es ? p.labelEs : p.labelEn, label, lx, y + 6, cx - lx - 8,
                   locked ? withAlphaC(dim, 0.5F) : (p.indent ? withAlphaC(dim, 0.85F) : dim));
+        }
         const std::string v = plainLabel ? valueText(w->cfg.options, p) : std::string();
         if (p.kind == PropSpec::Header) {
           cv.segment(P.x + 14, y + 4, P.x + P.w - 14, y + 4, 1, line, false);
@@ -1529,8 +1571,7 @@ void App::drawUi(EditSurface& e) {
           cv.roundRect(cx, y + 3, cw, 24, 12, raised, 1, line);
           cv.triangle(cx + 12, y + 15, cx + 17, y + 11, cx + 17, y + 19, dim);
           cv.triangle(cx + cw - 12, y + 15, cx + cw - 17, y + 11, cx + cw - 17, y + 19, dim);
-          auto [tw, th] = measure(v, mono);
-          cv.text(v, mono, cx + (cw - tw) / 2, y + 15 - th / 2, accent);
+          fitCentered(optionLabel(v, es), label, cx + 22, y + 15, cw - 44, accent);
         } else if (p.kind == PropSpec::Bool) {
           const bool on = v == "true";
           const float tx = cx + cw - 38;
@@ -1623,14 +1664,15 @@ void App::drawUi(EditSurface& e) {
     static const char* hintsEn[4] = {"Drag to paint · Shift+wheel: size", "Click an object: takes all of it",
                                      "Click around · first point or Enter: close", "Drag to move the view"};
     if (dm) {
-      cv.text(es ? hintsEs[m_selectTool] : hintsEn[m_selectTool], label, P.x + 14, P.y + 426, ink);
-      cv.text(std::format("{} {} {} · {} {} · {}", es ? "Teñido: tapa a" : "Tint: covers", who, "", es ? "plano" : "plane", plane,
+      fitText(es ? hintsEs[m_selectTool] : hintsEn[m_selectTool], label, P.x + 14, P.y + 426, kPaintW - 28, ink);
+      fitText(std::format("{} {} · {} {} · {}", es ? "Teñido: tapa a" : "Tint: covers", who, es ? "plano" : "plane", plane,
                           es ? "rueda: zoom" : "wheel: zoom"),
-              label, P.x + 14, P.y + 446, dim);
+              label, P.x + 14, P.y + 446, kPaintW - 28, dim);
     } else {
-      cv.text(es ? "Este fondo aún no tiene mapa de profundidad." : "No depth map for this wallpaper yet.", label, P.x + 14,
-              P.y + 426, Color{1, 0.62F, 0.57F, 1});
-      cv.text(es ? "Genéralo en Wallpaper Depth." : "Generate it in Wallpaper Depth.", label, P.x + 14, P.y + 446, dim);
+      fitText(es ? "Este fondo aún no tiene mapa de profundidad." : "No depth map for this wallpaper yet.", label, P.x + 14,
+              P.y + 426, kPaintW - 28, Color{1, 0.62F, 0.57F, 1});
+      fitText(es ? "Genéralo en Wallpaper Depth." : "Generate it in Wallpaper Depth.", label, P.x + 14, P.y + 446,
+              kPaintW - 28, dim);
     }
   }
   for (const UiControl& c : m_ui) {
@@ -1865,35 +1907,48 @@ void App::drawUi(EditSurface& e) {
     plateAt(c.r, 16);
     cv.text(es ? "Atajos del editor" : "Editor shortcuts", head, c.r.x + 20, c.r.y + 16, ink);
     struct K {
-      const char *keys, *en, *es;
+      const char *keysEn, *keysEs, *en, *es;
     };
     static const K rows[] = {
-        {"Arrastrar", "move", "mover"},
-        {"Esquina", "resize", "cambiar tamaño"},
-        {"Asa superior", "tilt (Shift: fine)", "inclinar (Shift: fino)"},
-        {"Rueda", "next look / value", "estilo o valor siguiente"},
-        {"Shift", "hold: no magnet", "mantener: sin imán"},
-        {"← → ↑ ↓", "nudge 1 px", "ajustar 1 px"},
-        {"Shift+←", "nudge 16 px", "ajustar 16 px"},
-        {"Alt+←", "resize", "tamaño"},
-        {"Ctrl+← →", "tilt 0.1° (Shift 1°)", "inclinar 0.1° (Shift 1°)"},
-        {"Tab", "next widget", "siguiente widget"},
-        {"Ctrl+Z", "undo", "deshacer"},
-        {"Ctrl+Shift+Z", "redo", "rehacer"},
-        {"Ctrl+D", "duplicate", "duplicar"},
-        {"Supr", "delete", "eliminar"},
-        {"Esc", "done", "terminar"},
-        {"Clic der.", "done", "terminar"},
+        {"Drag", "Arrastrar", "move", "mover"},
+        {"Corner", "Esquina", "resize", "cambiar tamaño"},
+        {"Top handle", "Asa superior", "rotate (Shift: fine)", "girar (Shift: fino)"},
+        {"Wheel", "Rueda", "next look / value", "estilo o valor siguiente"},
+        {"Shift", "Shift", "hold: no magnet", "mantener: sin imán"},
+        {"← → ↑ ↓", "← → ↑ ↓", "nudge 1 px", "ajustar 1 px"},
+        {"Shift+←", "Shift+←", "nudge 16 px", "ajustar 16 px"},
+        {"Alt+←", "Alt+←", "resize", "tamaño"},
+        {"Ctrl+← →", "Ctrl+← →", "rotate 0.1° (Shift 1°)", "girar 0.1° (Shift 1°)"},
+        {"Tab", "Tab", "next widget", "siguiente widget"},
+        {"Ctrl+Z", "Ctrl+Z", "undo", "deshacer"},
+        {"Ctrl+Shift+Z", "Ctrl+Shift+Z", "redo", "rehacer"},
+        {"Ctrl+D", "Ctrl+D", "duplicate", "duplicar"},
+        {"Del", "Supr", "delete", "eliminar"},
+        {"Esc", "Esc", "done", "terminar"},
+        {"Right click", "Clic der.", "done", "terminar"},
     };
     const int n = static_cast<int>(std::size(rows)), half = (n + 1) / 2;
     for (int i = 0; i < n; ++i) {
       const float colX = c.r.x + 20 + (i >= half ? c.r.w / 2 : 0), rowY = c.r.y + 54 + (i % half) * 34;
-      const std::string k = rows[i].keys;
+      const std::string k = es ? rows[i].keysEs : rows[i].keysEn;
       auto [kw, kh] = measure(k, keyS);
       cv.roundRect(colX, rowY, kw + 14, 22, 6, raised, 1, line);
       cv.text(k, keyS, colX + 7, rowY + 11 - kh / 2, ink);
-      cv.text(es ? rows[i].es : rows[i].en, label, colX + kw + 24, rowY + 3, dim);
+      fitText(es ? rows[i].es : rows[i].en, label, colX + kw + 24, rowY + 3, c.r.w / 2 - kw - 48, dim);
     }
+    // language
+    const float ly = c.r.y + c.r.h - 44;
+    cv.segment(c.r.x + 20, ly - 10, c.r.x + c.r.w - 20, ly - 10, 1, line, false);
+    cv.text(es ? "Idioma" : "Language", strong, c.r.x + 20, ly + 6, ink);
+  }
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Language) continue;
+    const bool on = c.value == uiLanguage();
+    const std::string t = c.value == "system" ? (es ? "Sistema" : "System") : c.value == "en" ? "English" : "Español";
+    cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 14, on ? accent : (hovered(c) ? withAlphaC(ink, 0.12F) : raised), 1,
+                 on ? accent : line);
+    auto [tw, th] = measure(t, strong);
+    cv.text(t, strong, c.r.x + (c.r.w - tw) / 2, c.r.y + c.r.h / 2 - th / 2, on ? onAccent : ink);
   }
 
   // ── grip dots on movable panels ──

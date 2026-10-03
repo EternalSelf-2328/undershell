@@ -4,6 +4,7 @@
 #include "clockparts.hpp"
 #include "anchor.hpp"
 #include "config.hpp"
+#include "i18n.hpp"
 
 #include <filesystem>
 
@@ -213,6 +214,30 @@ int main() {
     const Config ac = Config::load(path);
     CHECK(ac.widgets.size() == 2 && ac.widgets[0].spaceW == 1393 && ac.widgets[0].spaceH == 783);
     CHECK(blockSpaceW(ac.widgets[1]) == 1920 && blockSpaceH(ac.widgets[1]) == 1080);
+  }
+
+  {
+    // the interface language: pinned or from the locale, and option labels
+    setUiLanguage("es");
+    CHECK(spanishUi() && spanishDates());
+    setUiLanguage("en");
+    CHECK(!spanishUi() && uiLanguage() == "en");
+    setUiLanguage("klingon");
+    CHECK(uiLanguage() == "system");
+    CHECK(optionLabel("rounded", true) == "Redondeado" && optionLabel("rounded", false) == "Rounded");
+    CHECK(optionLabel("inside_out", false) == "Inside out" && optionLabel("softBurst", false) == "Soft burst");
+    // [general] keys are set in place (and [general] made when missing)
+    writeFileAtomic(path, "[general]\ngrid = 16   # snap\n\n[[widget]]\nid = \"a\"\ntype = \"clock\"\n");
+    CHECK(Config::setGeneral(path, "language", "\"es\""));
+    CHECK(Config::setGeneral(path, "language", "\"en\""));
+    std::string g = readFile(path);
+    CHECK(g.find("language = \"en\"") != std::string::npos && g.find("\"es\"") == std::string::npos);
+    CHECK(g.find("language") < g.find("[[widget]]") && g.find("grid = 16   # snap") != std::string::npos);
+    CHECK(Config::load(path).language == "en");
+    writeFileAtomic(path, "[[widget]]\nid = \"a\"\ntype = \"clock\"\n");
+    CHECK(Config::setGeneral(path, "language", "\"es\""));
+    const Config lc = Config::load(path);
+    CHECK(lc.language == "es" && lc.widgets.size() == 1);
   }
 
   std::filesystem::remove_all(dir);

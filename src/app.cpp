@@ -356,6 +356,10 @@ void App::loadConfig() {
     US_WARN("keeping the previous configuration");
     return;
   }
+  if (m_config.language != uiLanguage()) {
+    setUiLanguage(m_config.language);
+    markEditDirty();
+  }
   int maxBars = 16;
   for (auto& w : m_config.widgets)
     if (w.type == "visualizer") maxBars = std::max(maxBars, VisualizerConfig::fromTable(w.options).bars);
@@ -1222,6 +1226,14 @@ std::string App::handleCommand(const std::string& cmd) {
         return "selected " + id;
       }
     return "error: no widget '" + id + "'";
+  }
+  if (cmd == "help" || cmd == "saves" || cmd == "paint") {  // the editor's cards, from a script
+    if (!m_edit) setEditMode(true);
+    if (cmd == "help") m_helpOpen = !m_helpOpen;
+    else if (cmd == "saves") m_savesOpen = !m_savesOpen;
+    else setPaintMode(!m_paintMode);
+    markEditDirty();
+    return cmd + " toggled";
   }
   if (cmd == "gallery") {
     if (!m_edit) setEditMode(true);

@@ -26,6 +26,7 @@ grid = 16                 # snap step for the editor, px
 noise_reduction = 0.45    # analyser smoothing (Ryoku's cava used 45)
 monstercat = false        # spread peaks to neighbours (cava's monstercat)
 idle = "show"             # visualizers with nothing playing: show | hide | demo
+language = "system"       # editor language: system (follows the locale) | en | es
 profiles = true           # remember a widget layout for each wallpaper
 
 [[widget]]
@@ -93,6 +94,8 @@ Config Config::load(const std::string& path) {
     cfg.monstercat = get<bool>(*g, "monstercat", false);
     cfg.idle = get<std::string>(*g, "idle", "show");
     if (cfg.idle != "hide" && cfg.idle != "demo") cfg.idle = "show";
+    cfg.language = get<std::string>(*g, "language", "system");
+    if (cfg.language != "en" && cfg.language != "es") cfg.language = "system";
   }
   if (auto* arr = root["widget"].as_array()) {
     int n = 0;
@@ -180,6 +183,32 @@ static void setLine(std::vector<std::string>& lines, size_t start, size_t& end, 
   while (at > start + 1 && lines[at - 1].find_first_not_of(" \t") == std::string::npos) --at;
   lines.insert(lines.begin() + static_cast<long>(at), key + " = " + value);
   ++end;
+}
+
+bool Config::setGeneral(const std::string& path, const std::string& key, const std::string& tomlValue) {
+  std::string text = readFile(path);
+  std::istringstream in(text);
+  std::vector<std::string> lines;
+  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  size_t start = lines.size(), end = lines.size();
+  for (size_t k = 0; k < lines.size(); ++k) {
+    const auto first = lines[k].find_first_not_of(" \t");
+    if (first == std::string::npos || lines[k][first] != '[') continue;
+    if (start < lines.size()) {  // the next table ends [general]
+      end = k;
+      break;
+    }
+    if (lines[k].compare(first, 9, "[general]") == 0) start = k;
+  }
+  if (start == lines.size()) {  // no [general] yet: one at the top
+    lines.insert(lines.begin(), {"[general]", ""});
+    start = 0;
+    end = 2;
+  }
+  setLine(lines, start, end, key, tomlValue);
+  std::string out;
+  for (auto& l : lines) out += l + "\n";
+  return writeFileAtomic(path, out);
 }
 
 static bool editBlock(const std::string& path, const std::string& id,

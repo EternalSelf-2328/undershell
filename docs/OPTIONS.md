@@ -12,6 +12,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | `grid` | px | `16` | editor snap step |
 | `noise_reduction` | 0 – 1 | `0.45` | analyser smoothing (Ryoku's cava used 45) |
 | `monstercat` | `true` / `false` | `false` | spread peaks to neighbours |
+| `language` | `system`, `en`, `es` | `"system"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |
 
 ## Every `[[widget]]`
 

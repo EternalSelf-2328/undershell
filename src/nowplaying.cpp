@@ -2,6 +2,7 @@
 // Translated from ryoku/shell/.../modules/desktop/music/{MusicWidget,
 // MusicLyrics, MusicViz, MusicSeek, MusicTransport, MusicPulse}.qml (GPL-3.0).
 #include "nowplaying.hpp"
+#include "i18n.hpp"
 
 #include "m3shapes.hpp"
 
@@ -27,13 +28,7 @@ Color withAlpha(Color c, float a) {
   return c;
 }
 
-bool spanish() {
-  for (const char* v : {"LC_ALL", "LC_MESSAGES", "LANG"}) {
-    const char* s = std::getenv(v);
-    if (s && *s) return std::string_view(s).starts_with("es");
-  }
-  return false;
-}
+bool spanish() { return spanishUi(); }
 
 std::string stamp(double sec) {
   const long s = static_cast<long>(std::max(0.0, sec));

@@ -6,6 +6,7 @@
 #include "config.hpp"
 #include "depth.hpp"
 #include "geom.hpp"
+#include "i18n.hpp"
 #include "ipc.hpp"
 #include "jobs.hpp"
 #include "media.hpp"
@@ -49,7 +50,6 @@ struct zwlr_layer_surface_v1;
 
 namespace undershell {
 
-bool spanishUi();  // the editor speaks Spanish under an es_* locale
 
 struct Output {
   wl_output* wl = nullptr;
@@ -243,7 +243,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab } type = Panel;
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type

@@ -50,7 +50,8 @@ std::string optionsMarkdown() {
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `grid` | px | `16` | editor snap step |\n";
   md += "| `noise_reduction` | 0 – 1 | `0.45` | analyser smoothing (Ryoku's cava used 45) |\n";
-  md += "| `monstercat` | `true` / `false` | `false` | spread peaks to neighbours |\n\n";
+  md += "| `monstercat` | `true` / `false` | `false` | spread peaks to neighbours |\n";
+  md += "| `language` | `system`, `en`, `es` | `\"system\"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |\n\n";
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";

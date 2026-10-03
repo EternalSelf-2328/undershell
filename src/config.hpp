@@ -73,6 +73,7 @@ struct Config {
   int gridSize = 16;
   bool profiles = true;  // a widget layout per wallpaper (profiles.cpp)
   std::string idle = "show";  // visualizers with nothing playing: show | hide | demo
+  std::string language = "system";  // the editor's language: system | en | es (i18n.hpp)
   // audio analysis
   double noiseReduction = 0.45;  // Ryoku's cava noise_reduction = 45
   bool monstercat = false;
@@ -105,6 +106,8 @@ struct Config {
   static bool renameSave(const std::string& dir, const std::string& id, const std::string& name);
   static bool deleteSave(const std::string& dir, const std::string& id);
   // A block's text with its id and position replaced (duplicating a widget).
+  // sets a key of [general] (made if missing), keeping comments
+  static bool setGeneral(const std::string& path, const std::string& key, const std::string& tomlValue);
   static std::string retargetBlock(const std::string& block, const std::string& id, int x, int y);
   // Sets `key = value` (value already TOML-formatted) inside widget `id`'s
   // block, adding the line if missing. Comments and layout are preserved.

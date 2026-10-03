@@ -2,6 +2,7 @@
 // Faces translated from ryoku/shell/quickshell/shell/modules/desktop/clock/*.qml
 // (GPL-3.0): sizes, weights, spacing and colours are Ryoku's at clockScale 1.
 #include "clock.hpp"
+#include "i18n.hpp"
 
 #include "clockparts.hpp"
 
@@ -118,13 +119,7 @@ Parts partsOf(std::time_t t, bool clock24, const std::string& lang) {
   return p;
 }
 
-bool systemSpanish() {
-  for (const char* v : {"LC_ALL", "LC_TIME", "LANG"}) {
-    const char* s = std::getenv(v);
-    if (s && *s) return std::string_view(s).starts_with("es");
-  }
-  return false;
-}
+bool systemSpanish() { return spanishDates(); }
 
 // the good-night greeting, split into two stacked words
 std::pair<std::string, std::string> greeting(int hour, bool es) {
