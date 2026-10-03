@@ -111,10 +111,10 @@ void main() {
 }
 )";
 
-void Canvas::begin(float surfaceW, float surfaceH, int pixelScale, TextRenderer* text) {
+void Canvas::begin(float surfaceW, float surfaceH, float pixelScale, TextRenderer* text) {
   m_w = surfaceW;
   m_h = surfaceH;
-  m_pixelScale = std::max(1, pixelScale);
+  m_pixelScale = std::max(0.25F, pixelScale);
   m_text = text;
   m_scale = 1;
   m_ox = m_oy = 0;

@@ -43,6 +43,8 @@ protocols = [
   meson.project_source_root() / 'protocols/wlr-layer-shell-unstable-v1.xml',
   wl_protos_dir / 'stable/xdg-shell/xdg-shell.xml',
   wl_protos_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml',
+  wl_protos_dir / 'staging/fractional-scale/fractional-scale-v1.xml',
+  wl_protos_dir / 'stable/viewporter/viewporter.xml',
 ]
 proto_src = []
 foreach p : protocols

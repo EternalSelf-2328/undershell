@@ -16,7 +16,7 @@ namespace undershell {
 
 class Canvas {
 public:
-  void begin(float surfaceW, float surfaceH, int pixelScale, TextRenderer* text);
+  void begin(float surfaceW, float surfaceH, float pixelScale, TextRenderer* text);
   void setTransform(float scale, float offsetX, float offsetY);
   [[nodiscard]] float scale() const { return m_scale; }
 
@@ -49,7 +49,7 @@ public:
 private:
   void shape(int kind, float x0, float y0, float x1, float y1, const float* params, Color fill, float strokeW, Color stroke);
   float m_w = 0, m_h = 0, m_scale = 1, m_ox = 0, m_oy = 0;
-  int m_pixelScale = 1;
+  float m_pixelScale = 1;
   TextRenderer* m_text = nullptr;
   Program m_prog;
   Program m_image;

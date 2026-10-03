@@ -140,10 +140,10 @@ void TextRenderer::releaseGl() {
   m_prog.destroy();
 }
 
-const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st, int scale) {
+const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st, float scale) {
   registerBundledFonts();
   const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}\x1f{:.1f}\x1f{}\x1f{}\x1f{}", text,
-                                      st.family, st.size, st.weight, st.letterSpacing, st.italic ? 1 : 0, scale, st.stroke,
+                                      st.family, st.size, st.weight, st.letterSpacing, st.italic ? 1 : 0, std::round(scale * 1000) / 1000, st.stroke,
                                       st.maxWidth, st.maxLines, st.align, st.variations);
   auto it = m_cache.find(key);
   if (it != m_cache.end()) {
@@ -208,6 +208,7 @@ const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st,
   img.quadY = static_cast<float>(top - toPx(logical.y)) - pad / static_cast<float>(scale);
   img.quadW = static_cast<float>(pxW) / static_cast<float>(scale);
   img.quadH = static_cast<float>(pxH) / static_cast<float>(scale);
+  img.scale = scale;
 
   glGenTextures(1, &img.texture);
   glBindTexture(GL_TEXTURE_2D, img.texture);
@@ -287,7 +288,12 @@ void TextRenderer::drawEx(const TextImage& img, float x, float y, Color color, f
   glUniform2f(m_prog.uniform("u_blur"), blur > 0 ? blur / img.quadW : 0.0F, blur > 0 ? blur / img.quadH : 0.0F);
   // scale about the logical box centre
   const float cx = x + img.w / 2, cy = y + img.h / 2;
-  const float qx = cx + (x + img.quadX - cx) * sx, qy = cy + (y + img.quadY - cy) * sy;
+  float qx = cx + (x + img.quadX - cx) * sx, qy = cy + (y + img.quadY - cy) * sy;
+  if (sx == 1 && sy == 1 && blur <= 0) {
+    // texels on device pixels: a quad between pixels is resampled soft
+    qx = std::round(qx * img.scale) / img.scale;
+    qy = std::round(qy * img.scale) / img.scale;
+  }
   glUniform4f(m_prog.uniform("u_rect"), qx, qy, img.quadW * sx, img.quadH * sy);
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);

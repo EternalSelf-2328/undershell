@@ -30,6 +30,7 @@ struct TextStyle {
 struct TextImage {
   GLuint texture = 0;
   int pxW = 0, pxH = 0;      // texture size, device px
+  float scale = 1;           // device px per logical px it was rendered at
   float w = 0, h = 0;        // logical box (Pango logical extents)
   float baseline = 0;        // logical px from the top of the box
   float inkLeft = 0, inkTop = 0, inkW = 0, inkH = 0;  // painted area within the box
@@ -52,7 +53,7 @@ public:
   static bool refreshFonts();
 
   // Rasterises (or returns the cached) text. Needs a current GL context.
-  const TextImage& get(const std::string& text, const TextStyle& style, int scale);
+  const TextImage& get(const std::string& text, const TextStyle& style, float scale);
   // Logical size only, no GL work.
   static void measure(const std::string& text, const TextStyle& style, float& w, float& h, float& baseline);
 

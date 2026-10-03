@@ -45,7 +45,7 @@ struct TickContext {
 struct DrawContext {
   float w = 0, h = 0;               // surface, logical px
   float outputW = 0, outputH = 0;   // the monitor, logical px
-  int scale = 1;
+  float scale = 1;                  // device px per logical px (may be fractional)
   TextRenderer* text = nullptr;
   MediaService* media = nullptr;
   double now = 0;

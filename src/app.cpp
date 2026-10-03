@@ -8,6 +8,8 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #undef namespace
 #include "xdg-output-unstable-v1-client-protocol.h"
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -109,6 +111,18 @@ struct EditCtx {
   App* app;
   EditSurface* e;
 };
+
+// fractional-scale: the scale the compositor wants this surface drawn at
+static void widgetScale(void* d, wp_fractional_scale_v1*, uint32_t s120) {
+  auto* c = static_cast<WidgetCtx*>(d);
+  c->app->onPreferredScale(c->w, nullptr, static_cast<float>(s120) / 120.0F);
+}
+static const wp_fractional_scale_v1_listener kWidgetScale = {widgetScale};
+static void editScale(void* d, wp_fractional_scale_v1*, uint32_t s120) {
+  auto* c = static_cast<EditCtx*>(d);
+  c->app->onPreferredScale(nullptr, c->e, static_cast<float>(s120) / 120.0F);
+}
+static const wp_fractional_scale_v1_listener kEditScale = {editScale};
 static void editConfigure(void* d, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t w, uint32_t h) {
   auto* c = static_cast<EditCtx*>(d);
   c->app->onEditConfigure(c->e, ls, serial, w, h);
@@ -223,6 +237,11 @@ void App::onGlobal(wl_registry* reg, uint32_t name, const char* iface, uint32_t 
   } else if (i == wl_seat_interface.name && !m_seat) {
     m_seat = static_cast<wl_seat*>(wl_registry_bind(reg, name, &wl_seat_interface, std::min(version, 7u)));
     wl_seat_add_listener(m_seat, &kSeat, this);
+  } else if (i == wp_viewporter_interface.name) {
+    m_viewporter = static_cast<wp_viewporter*>(wl_registry_bind(reg, name, &wp_viewporter_interface, 1));
+  } else if (i == wp_fractional_scale_manager_v1_interface.name) {
+    m_fractional = static_cast<wp_fractional_scale_manager_v1*>(
+        wl_registry_bind(reg, name, &wp_fractional_scale_manager_v1_interface, 1));
   } else if (i == zxdg_output_manager_v1_interface.name) {
     m_xdgOutputs = static_cast<zxdg_output_manager_v1*>(
         wl_registry_bind(reg, name, &zxdg_output_manager_v1_interface, std::min(version, 3u)));
@@ -490,8 +509,17 @@ void App::createSurface(Widget& w) {
   if (!w.output) return;
   m_mapped.push_back(&w);
   w.surface = wl_compositor_create_surface(m_compositor);
-  w.scale = w.output->scale;
-  wl_surface_set_buffer_scale(w.surface, w.scale);
+  if (fractional()) {
+    // drawn at the output's real pixels and shown 1:1 (a 0.98 scale would
+    // otherwise resample every surface, softening text)
+    w.scale = initialScale(w.output);
+    w.viewport = wp_viewporter_get_viewport(m_viewporter, w.surface);
+    w.fraction = wp_fractional_scale_manager_v1_get_fractional_scale(m_fractional, w.surface);
+    wp_fractional_scale_v1_add_listener(w.fraction, &kWidgetScale, new WidgetCtx{this, &w});
+  } else {
+    w.scale = static_cast<float>(w.output->scale);
+    wl_surface_set_buffer_scale(w.surface, w.output->scale);
+  }
   // Bottom layer, like Noctalia's own desktop widgets: above the wallpaper,
   // below every window.
   w.layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, w.surface, w.output->wl,
@@ -553,6 +581,13 @@ void App::destroySurface(Widget& w) {
     wl_callback_destroy(w.frameCb);
   }
   w.frameCb = nullptr;
+  if (w.fraction) {
+    delete static_cast<WidgetCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(w.fraction)));
+    wp_fractional_scale_v1_destroy(w.fraction);
+    w.fraction = nullptr;
+  }
+  if (w.viewport) wp_viewport_destroy(w.viewport);
+  w.viewport = nullptr;
   if (w.layer) zwlr_layer_surface_v1_destroy(w.layer);
   w.layer = nullptr;
   if (w.surface) wl_surface_destroy(w.surface);
@@ -637,21 +672,53 @@ bool App::widgetPointer(PointerEvent::Type type, wl_surface* s, double x, double
 
 void App::onLayerConfigure(Widget* w, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t width, uint32_t height) {
   zwlr_layer_surface_v1_ack_configure(ls, serial);
-  int nw = width ? static_cast<int>(width) : w->cfg.width;
-  int nh = height ? static_cast<int>(height) : w->cfg.height;
-  if (!w->eglWindow) {
-    w->eglWindow = wl_egl_window_create(w->surface, nw * w->scale, nh * w->scale);
-    w->eglSurface = eglCreatePlatformWindowSurface(m_egl, m_eglConfig, w->eglWindow, nullptr);
-    eglMakeCurrent(m_egl, w->eglSurface, w->eglSurface, m_eglContext);
-    eglSwapInterval(m_egl, 0);  // pacing comes from frame callbacks
-  } else if (nw != w->w || nh != w->h) {
-    wl_egl_window_resize(w->eglWindow, nw * w->scale, nh * w->scale, 0, 0);
-  }
-  w->w = nw;
-  w->h = nh;
+  const int nw = width ? static_cast<int>(width) : w->cfg.width;
+  const int nh = height ? static_cast<int>(height) : w->cfg.height;
+  sizeBuffer(*w, nw, nh);
   w->configured = true;
   w->needsRender = true;
   w->drewEmpty = false;
+}
+
+float App::initialScale(const Output* o) const {
+  // until the compositor says: the output's pixels per logical px
+  if (o && o->logW > 0 && o->modeW > 0) return static_cast<float>(o->modeW) / static_cast<float>(o->logW);
+  return o ? static_cast<float>(o->scale) : 1.0F;
+}
+
+// (re)sizes the buffer behind a surface of nw x nh logical px
+template <class S> void App::sizeBuffer(S& x, int nw, int nh) {
+  const int bw = std::max(1, static_cast<int>(std::lround(nw * x.scale)));
+  const int bh = std::max(1, static_cast<int>(std::lround(nh * x.scale)));
+  if (x.viewport) wp_viewport_set_destination(x.viewport, nw, nh);
+  if (!x.eglWindow) {
+    x.eglWindow = wl_egl_window_create(x.surface, bw, bh);
+    x.eglSurface = eglCreatePlatformWindowSurface(m_egl, m_eglConfig, x.eglWindow, nullptr);
+    eglMakeCurrent(m_egl, x.eglSurface, x.eglSurface, m_eglContext);
+    eglSwapInterval(m_egl, 0);  // pacing comes from frame callbacks
+  } else if (bw != x.bufW || bh != x.bufH) {
+    wl_egl_window_resize(x.eglWindow, bw, bh, 0, 0);
+  }
+  x.w = nw;
+  x.h = nh;
+  x.bufW = bw;
+  x.bufH = bh;
+}
+
+void App::onPreferredScale(Widget* w, EditSurface* e, float scale) {
+  if (scale <= 0) return;
+  US_DEBUG("preferred scale {:.4f} for {}", scale, w ? w->cfg.id : std::string("editor"));
+  if (w && std::abs(w->scale - scale) > 1e-4F) {
+    w->scale = scale;
+    if (w->eglWindow) sizeBuffer(*w, w->w, w->h);
+    w->needsRender = true;
+    w->drewEmpty = false;
+  }
+  if (e && std::abs(e->scale - scale) > 1e-4F) {
+    e->scale = scale;
+    if (e->eglWindow) sizeBuffer(*e, e->w, e->h);
+    e->needsRender = true;
+  }
 }
 
 void App::onLayerClosed(Widget* w) {
@@ -751,7 +818,8 @@ void App::render(Widget& w) {
   // on the surface at its angle; the depth mask comes after, in output space.
   const bool turn = show && !w.impl->fullscreen() && rotated(w.cfg);
   if (turn) {
-    const int tw = w.cfg.width * w.scale, th = w.cfg.height * w.scale;
+    const int tw = std::max(1, static_cast<int>(std::lround(w.cfg.width * w.scale)));
+    const int th = std::max(1, static_cast<int>(std::lround(w.cfg.height * w.scale)));
     if (!w.rtFbo || w.rtW != tw || w.rtH != th) {
       if (!w.rtTex) glGenTextures(1, &w.rtTex);
       glBindTexture(GL_TEXTURE_2D, w.rtTex);
@@ -769,7 +837,7 @@ void App::render(Widget& w) {
     glBindFramebuffer(GL_FRAMEBUFFER, w.rtFbo);
     glViewport(0, 0, tw, th);
   } else {
-    glViewport(0, 0, w.w * w.scale, w.h * w.scale);
+    glViewport(0, 0, w.bufW, w.bufH);
   }
   glClearColor(0, 0, 0, 0);
   glClear(GL_COLOR_BUFFER_BIT);
@@ -794,7 +862,7 @@ void App::render(Widget& w) {
     }
     if (turn) {
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
-      glViewport(0, 0, w.w * w.scale, w.h * w.scale);
+      glViewport(0, 0, w.bufW, w.bufH);
       glClear(GL_COLOR_BUFFER_BIT);
       const Box b = surfaceBox(w.cfg);
       try {
@@ -897,9 +965,16 @@ void App::setEditMode(bool on) {
 void App::createEditSurface(Output* o) {
   auto e = std::make_unique<EditSurface>();
   e->output = o;
-  e->scale = o->scale;
   e->surface = wl_compositor_create_surface(m_compositor);
-  wl_surface_set_buffer_scale(e->surface, e->scale);
+  if (fractional()) {
+    e->scale = initialScale(o);
+    e->viewport = wp_viewporter_get_viewport(m_viewporter, e->surface);
+    e->fraction = wp_fractional_scale_manager_v1_get_fractional_scale(m_fractional, e->surface);
+    wp_fractional_scale_v1_add_listener(e->fraction, &kEditScale, new EditCtx{this, e.get()});
+  } else {
+    e->scale = static_cast<float>(o->scale);
+    wl_surface_set_buffer_scale(e->surface, o->scale);
+  }
   e->layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, e->surface, o->wl, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
                                                    "undershell-editor");
   zwlr_layer_surface_v1_add_listener(e->layer, &kEditLayer, new EditCtx{this, e.get()});
@@ -925,6 +1000,13 @@ void App::destroyEditSurface(EditSurface& e) {
     wl_callback_destroy(e.frameCb);
     e.frameCb = nullptr;
   }
+  if (e.fraction) {
+    delete static_cast<EditCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(e.fraction)));
+    wp_fractional_scale_v1_destroy(e.fraction);
+    e.fraction = nullptr;
+  }
+  if (e.viewport) wp_viewport_destroy(e.viewport);
+  e.viewport = nullptr;
   if (e.layer) zwlr_layer_surface_v1_destroy(e.layer);
   e.layer = nullptr;
   if (e.surface) wl_surface_destroy(e.surface);
@@ -935,16 +1017,7 @@ void App::onEditConfigure(EditSurface* e, zwlr_layer_surface_v1* ls, uint32_t se
   zwlr_layer_surface_v1_ack_configure(ls, serial);
   const int nw = width ? static_cast<int>(width) : static_cast<int>(e->output->logicalW());
   const int nh = height ? static_cast<int>(height) : static_cast<int>(e->output->logicalH());
-  if (!e->eglWindow) {
-    e->eglWindow = wl_egl_window_create(e->surface, nw * e->scale, nh * e->scale);
-    e->eglSurface = eglCreatePlatformWindowSurface(m_egl, m_eglConfig, e->eglWindow, nullptr);
-    eglMakeCurrent(m_egl, e->eglSurface, e->eglSurface, m_eglContext);
-    eglSwapInterval(m_egl, 0);
-  } else if (nw != e->w || nh != e->h) {
-    wl_egl_window_resize(e->eglWindow, nw * e->scale, nh * e->scale, 0, 0);
-  }
-  e->w = nw;
-  e->h = nh;
+  sizeBuffer(*e, nw, nh);
   e->configured = true;
   e->needsRender = true;
 }
@@ -979,7 +1052,7 @@ void App::renderEdit(EditSurface& e) {
     accent = w->impl->accent();
   }
   eglMakeCurrent(m_egl, e.eglSurface, e.eglSurface, m_eglContext);
-  glViewport(0, 0, e.w * e.scale, e.h * e.scale);
+  glViewport(0, 0, e.bufW, e.bufH);
   glClearColor(0, 0, 0, 0);
   glClear(GL_COLOR_BUFFER_BIT);
   try {
@@ -1037,8 +1110,8 @@ void App::renderEdit(EditSurface& e) {
         mp.viewAtX = lx + L / 2;
         mp.viewAtY = ly + L / 2;
         glEnable(GL_SCISSOR_TEST);
-        glScissor(static_cast<GLint>(lx * e.scale), static_cast<GLint>((e.h - ly - L) * e.scale), static_cast<GLsizei>(L * e.scale),
-                  static_cast<GLsizei>(L * e.scale));
+        glScissor(static_cast<GLint>(std::lround(lx * e.scale)), static_cast<GLint>(std::lround((e.h - ly - L) * e.scale)),
+                  static_cast<GLsizei>(std::lround(L * e.scale)), static_cast<GLsizei>(std::lround(L * e.scale)));
         m_maskPass.drawWallpaper(mp, m_depth.wallpaperTexture(*m));
         glDisable(GL_SCISSOR_TEST);
       }
@@ -1271,10 +1344,10 @@ std::string App::handleCommand(const std::string& cmd) {
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
                                      : w->cfg.type == "clock" ? "clock:" + w->cfg.options["face"].value_or(std::string("digital"))
                                                               : w->cfg.type;
-      s += std::format("  {} {} on {} at {},{} {}x{} depth={} frames={} fps={:.0f}\n", w->cfg.id, look,
-                       w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height,
-                       m ? fs::path(m->maskPath).filename().string().substr(0, 12) : "none", w->frames,
-                       stale ? 0.0 : w->fpsMeasured);
+      s += std::format("  {} {} on {} at {},{} {}x{} buffer={}x{}@{:.3f} depth={} frames={} fps={:.0f}\n", w->cfg.id, look,
+                       w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height, w->bufW,
+                       w->bufH, w->scale, m ? fs::path(m->maskPath).filename().string().substr(0, 12) : "none",
+                       w->frames, stale ? 0.0 : w->fpsMeasured);
     }
     return s;
   }

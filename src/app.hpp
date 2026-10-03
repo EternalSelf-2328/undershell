@@ -41,6 +41,10 @@ struct wl_cursor_theme;
 struct zwlr_layer_shell_v1;
 struct zxdg_output_manager_v1;
 struct zxdg_output_v1;
+struct wp_viewporter;
+struct wp_viewport;
+struct wp_fractional_scale_manager_v1;
+struct wp_fractional_scale_v1;
 struct zwlr_layer_surface_v1;
 
 namespace undershell {
@@ -70,7 +74,13 @@ struct Widget {
   wl_egl_window* eglWindow = nullptr;
   EGLSurface eglSurface = EGL_NO_SURFACE;
   wl_callback* frameCb = nullptr;
-  int w = 0, h = 0, scale = 1;  // current logical size
+  int w = 0, h = 0;  // current logical size
+  // the buffer behind it: scale is device px per logical px, fractional when
+  // the compositor offers fractional-scale + viewporter (else the output's)
+  float scale = 1;
+  int bufW = 0, bufH = 0;
+  wp_viewport* viewport = nullptr;
+  wp_fractional_scale_v1* fraction = nullptr;
   bool configured = false;
   bool needsRender = true;
   bool drewEmpty = false;
@@ -99,7 +109,11 @@ struct EditSurface {
   wl_egl_window* eglWindow = nullptr;
   EGLSurface eglSurface = EGL_NO_SURFACE;
   wl_callback* frameCb = nullptr;
-  int w = 0, h = 0, scale = 1;
+  int w = 0, h = 0;
+  float scale = 1;
+  int bufW = 0, bufH = 0;
+  wp_viewport* viewport = nullptr;
+  wp_fractional_scale_v1* fraction = nullptr;
   bool configured = false;
   bool needsRender = true;
 };
@@ -282,6 +296,14 @@ private:
   wl_compositor* m_compositor = nullptr;
   zwlr_layer_shell_v1* m_layerShell = nullptr;
   zxdg_output_manager_v1* m_xdgOutputs = nullptr;
+  wp_viewporter* m_viewporter = nullptr;
+  wp_fractional_scale_manager_v1* m_fractional = nullptr;
+  [[nodiscard]] bool fractional() const { return m_viewporter && m_fractional; }
+  float initialScale(const Output* o) const;
+  template <class S> void sizeBuffer(S& s, int nw, int nh);
+public:
+  void onPreferredScale(Widget* w, EditSurface* e, float scale);
+private:
   void watchLogicalSize(Output* o);
   wl_shm* m_shm = nullptr;
   wl_seat* m_seat = nullptr;
