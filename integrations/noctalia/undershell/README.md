@@ -14,10 +14,13 @@ tilt, and save or load layouts per wallpaper and per monitor.
 
 ## Requirements
 
-Install `undershell` (the desktop widgets daemon) from
-<https://github.com/EternalSelf-2328/undershell>. The plugin looks for it at
-`~/.local/bin/undershell` first, then on `PATH`. It runs as a systemd user
-service (`systemctl --user enable --now undershell`).
+- `undershell`, the desktop widgets daemon, from
+  <https://github.com/EternalSelf-2328/undershell>. The plugin looks for it at
+  `~/.local/bin/undershell` first, then on `PATH`.
+- `systemctl` (systemd), with undershell's **user service** `undershell.service`
+  installed. undershell's install puts the unit in place; enable it with
+  `systemctl --user enable --now undershell`. The panel's **Start undershell**
+  button runs `systemctl --user start undershell.service`.
 
 You need a Wayland compositor with `wlr-layer-shell`. Depth (widgets passing behind
 the wallpaper's subject) comes from Noctalia's official `wallpaper_depth`
@@ -49,9 +52,10 @@ noctalia msg panel-toggle eternalself-2328/undershell:panel
 
 ## Notes
 
-- Everything goes through `undershell msg …` commands: `json` and `saves` to
-  read the state, then `edit`, `set`, `save`, `save-load` and the like. The
-  plugin writes no files itself; undershell keeps its configuration in
-  `~/.config/undershell/`.
+- Processes the plugin spawns: `undershell msg …` (`json` and `saves` to read
+  the state; `edit`, `set`, `save`, `save-load` and the like to act), and
+  `systemctl --user start undershell.service` when you press **Start
+  undershell** while the daemon is not running. The plugin writes no files
+  itself; undershell keeps its configuration in `~/.config/undershell/`.
 - No network access. undershell itself fetches synced lyrics from LRCLIB for
   the now-playing card.
