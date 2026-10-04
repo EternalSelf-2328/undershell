@@ -20,6 +20,58 @@ runs on Umbriel/niri/Hyprland. Its first widgets are ports of
   spectrum drawn in **a single GPU pass** (Ryoku's shader). With music it
   uses ~3% CPU on an HD 520; with no audio it sleeps.
 
+## Requirements
+
+- **A Wayland compositor with `wlr-layer-shell`**: Umbriel, niri, Hyprland,
+  Sway, …
+- **Optional:** [Noctalia](https://github.com/noctalia-dev/noctalia) for the
+  palette and the depth effect (with its `wallpaper_depth` plugin); without it
+  the widgets use their own colors and no depth. **PipeWire** for live audio
+  in the visualizers.
+
+| | |
+|---|---|
+| **Libraries** | wayland, EGL / GLES 3, libpipewire-0.3, toml++, glib, cairo, pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl |
+| **To build** | a C++20 compiler, meson, ninja, wayland-protocols, nlohmann-json, git |
+
+On Arch and derivatives, all of it:
+
+```sh
+sudo pacman -S --needed base-devel git meson ninja wayland wayland-protocols libglvnd \
+  libpipewire tomlplusplus glib2 cairo pango fontconfig libxkbcommon systemd-libs \
+  gdk-pixbuf2 curl nlohmann-json
+```
+
+## Install
+
+```sh
+git clone https://github.com/EternalSelf-2328/undershell.git
+cd undershell
+```
+
+**As a package (Arch and derivatives):**
+
+```sh
+cd packaging/arch && makepkg -si
+systemctl --user enable --now undershell
+```
+
+**By hand:**
+
+```sh
+meson setup build --prefix=$HOME/.local
+ninja -C build && meson test -C build && meson install -C build
+systemctl --user daemon-reload && systemctl --user enable --now undershell
+```
+
+It runs as a **systemd user service** tied to the graphical session: it starts
+with it, restarts itself if it crashes, and its logs go to the journal
+(`journalctl --user -u undershell`). To stop it: `systemctl --user disable --now undershell`.
+
+Every option is documented in [`docs/OPTIONS.md`](docs/OPTIONS.md) (generated
+from the same table the inspector uses: `undershell --doc`). For the Noctalia
+bar widget, see [Noctalia bar widget](#noctalia-bar-widget).
+
 ## Visualizer: 15 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
@@ -320,39 +372,6 @@ thickness, reflection, grow, shape, color_mode theme/gradient/custom,
 color/color2 as a Noctalia role or `#hex`, gain, smoothing, peaks, mirror,
 idle_wave, spin, glow, fps, opacity, depth). You can have several widgets.
 
-## Install
-
-Needs a Wayland compositor with `wlr-layer-shell` (Umbriel, niri, Hyprland,
-Sway, …). Noctalia is optional: without it the widgets use their own colors
-and no depth.
-
-```sh
-git clone https://github.com/EternalSelf-2328/undershell.git
-cd undershell
-```
-
-**As a package (Arch and derivatives):**
-
-```sh
-cd packaging/arch && makepkg -si
-systemctl --user enable --now undershell
-```
-
-**By hand:**
-
-```sh
-meson setup build --prefix=$HOME/.local
-ninja -C build && meson test -C build && meson install -C build
-systemctl --user daemon-reload && systemctl --user enable --now undershell
-```
-
-It runs as a **systemd user service** tied to the graphical session: it starts
-with it, restarts itself if it crashes, and its logs go to the journal
-(`journalctl --user -u undershell`). To stop it: `systemctl --user disable --now undershell`.
-
-Every option is documented in [`docs/OPTIONS.md`](docs/OPTIONS.md) (generated
-from the same table the inspector uses: `undershell --doc`).
-
 ## Build and tests
 
 ```sh
@@ -394,10 +413,6 @@ via headless EGL). If you change a look on purpose: `build/test_render --update`
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex (OFL) |
 | `integrations/noctalia/undershell/` | the Noctalia bar plugin |
 | `packaging/arch/` | PKGBUILD |
-
-Dependencies: wayland, wayland-protocols,
-EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo, pango, fontconfig, xkbcommon,
-libsystemd (sd-bus), gdk-pixbuf, libcurl, nlohmann-json.
 
 ## Status
 
