@@ -20,12 +20,13 @@ runs on Umbriel/niri/Hyprland. Its first widgets are ports of
   spectrum drawn in **a single GPU pass** (Ryoku's shader). With music it
   uses ~3% CPU on an HD 520; with no audio it sleeps.
 
-## Visualizer: 12 looks
+## Visualizer: 15 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`).
+and Ryoku's motion (`Motion.qml`). Plus three of its own: `halo` (a glowing
+ring), `vortex` and `fire` (see below).
 
 ## Clock: 12 faces
 
@@ -67,7 +68,7 @@ undershell msg select clock    # select it in the editor (scripts)
 undershell msg gallery         # open the editor with the gallery
 undershell msg reload
 undershell msg quit
-undershell --snapshot DIR   # render the 12 looks to PNG (no window needed)
+undershell --snapshot DIR   # render the looks and clock faces to PNG (no window needed)
 ```
 
 **Editor** (`msg edit`, e.g. bound to `"Mod+Ctrl+D" = "spawn:/home/USER/.local/bin/undershell msg edit"`
@@ -292,16 +293,20 @@ save-delete <id>`.
 
 ## Noctalia bar widget
 
-`integrations/noctalia/undershell` is a Noctalia plugin: a bar button
+`integrations/noctalia/undershell` is a Noctalia plugin
+(`eternalself-2328/undershell`): a bar button
 (click: panel, right click: toggle the editor) and a panel that shows the
 wallpaper profile and depth state, and per widget: behind the scenery on/off,
 depth plane and tilt (committed when a slider is released), and a pencil that
 opens the editor on it. It talks to the daemon with `undershell msg`
-(`msg json` is its state). To use it from a path source:
+(`msg json` is its state). With several monitors, saved profiles can be
+loaded onto one of them or all. Install it from Noctalia's plugin store (once
+it is published there), or from this checkout:
 
 ```sh
-ln -s "$PWD/integrations/noctalia/undershell" ~/.local/share/noctalia/plugins/<your-source>/undershell
-noctalia msg plugins enable <your-source>/undershell
+mkdir -p ~/.local/share/noctalia/plugins/eternalself-2328
+ln -s "$PWD/integrations/noctalia/undershell" ~/.local/share/noctalia/plugins/eternalself-2328/undershell
+noctalia msg plugins enable eternalself-2328/undershell
 ```
 
 then add the **undershell** widget to a bar in Noctalia's settings.
@@ -317,7 +322,16 @@ idle_wave, spin, glow, fps, opacity, depth). You can have several widgets.
 
 ## Install
 
-**As a package (Arch / CachyOS):**
+Needs a Wayland compositor with `wlr-layer-shell` (Umbriel, niri, Hyprland,
+Sway, …). Noctalia is optional: without it the widgets use their own colors
+and no depth.
+
+```sh
+git clone https://github.com/EternalSelf-2328/undershell.git
+cd undershell
+```
+
+**As a package (Arch and derivatives):**
 
 ```sh
 cd packaging/arch && makepkg -si
@@ -347,43 +361,50 @@ ninja -C build && meson test -C build && meson install -C build
 ```
 
 The tests don't need a compositor: `config` (loading and in-place editing
-of the file), `editor` (magnet, limits, grid), `media` (LRC, album color,
-position), `motion` (Ryoku's easing) and `render` (the 12 looks against
-the images in `tests/golden/`, compilation of every shader, and text with the
-bundled fonts, via headless EGL). If you change a look on purpose: `build/test_render --update`.
+of the file, layouts across screen sizes, languages), `depth` (depth maps,
+refinement, the brush), `docs` (`docs/OPTIONS.md` is up to date), `editor`
+(magnet, limits, grid), `media` (LRC, album color, position), `motion`
+(Ryoku's easing) and `render` (the looks against the images in
+`tests/golden/`, every shader, glow edges, and text with the bundled fonts,
+via headless EGL). If you change a look on purpose: `build/test_render --update`.
 
 ## Structure
 
 | | |
 |---|---|
-| `src/app.*` | Wayland, EGL, loop, surfaces, IPC |
+| `src/app.*` | Wayland, EGL, loop, surfaces, IPC (`msg …`) |
+| `src/anchor.hpp` | layouts that follow the wallpaper across screen sizes |
+| `src/i18n.*` | interface language (system, English, Spanish) |
+| `src/saves.cpp`, `src/profiles.cpp` | saved profiles; a layout per wallpaper |
+| `src/geom.hpp` | rotation, perspective and corner pins (homographies) |
 | `src/editor.cpp`, `snap.hpp` | the editor: selection, magnet, keyboard, undo/redo, labels |
 | `src/inspector.cpp`, `schema.hpp` | inspector (options per type) and widget gallery |
 | `src/widget.*` | the widget interface (`WidgetImpl`) and the type registry |
-| `src/visualizer.*`, `motion.hpp`, `shaders/` | the visualizer (Ryoku) |
-| `src/clock.*` | the clocks (Ryoku): faces as display lists |
+| `src/visualizer.*`, `motion.hpp`, `shaders/`, `*_shader.inc` | the visualizer (Ryoku's looks, halo, vortex, fire) |
+| `src/clock.*`, `src/clockparts.*` | the clocks (Ryoku): faces as display lists; editable structures |
+| `src/m3shapes.*` | Material 3 shapes (from Sung) |
 | `src/canvas.*` | 2D canvas: rects, circles, segments, arcs, triangles, wave, images + text |
 | `src/nowplaying.*` | the music card (Ryoku) |
 | `src/media.*`, `src/jobs.*` | MPRIS (sd-bus), covers, album color, lyrics; background jobs |
 | `src/text.*` | text: Pango → cached textures |
 | `src/audio.*` | PipeWire capture + FFT |
-| `src/noctalia.*`, `src/depth.*` | Noctalia palette and depth masks |
+| `src/noctalia.*`, `src/depth.*`, `src/depthfield.*`, `src/depthpaint.cpp` | Noctalia palette, depth masks, per-widget depth planes, the depth brush |
+| `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
-| `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono (OFL) |
+| `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex (OFL) |
+| `integrations/noctalia/undershell/` | the Noctalia bar plugin |
+| `packaging/arch/` | PKGBUILD |
 
-Dependencies (all present on CachyOS with Noctalia): wayland, wayland-protocols,
+Dependencies: wayland, wayland-protocols,
 EGL/GLES 3, libpipewire-0.3, toml++, glib, cairo, pango, fontconfig, xkbcommon,
 libsystemd (sd-bus), gdk-pixbuf, libcurl, nlohmann-json.
 
 ## Status
 
-- [x] Phase 0: visualizer (12 looks), depth, Noctalia palette, editor, IPC
-- [x] Phase 1: widget interface, text, fonts, automated tests
-- [x] Phase 2: editor (guides, arrows, undo/redo, demo while editing, labels)
-- [x] Phase 3: clocks (12 faces, 3 dates), 2D canvas, hollow text and halo
-- [x] Phase 4: now-playing card (MPRIS via sd-bus, cover, album color, LRCLIB lyrics, controls)
-- [x] Phase 5: inspector, gallery, duplicate/delete, full undo
-- [x] Phase 6: systemd service, PKGBUILD, generated option docs, credits
+A personal project, shared as is: it works day to day on the setup it was
+made on (Umbriel + Noctalia, Arch), but it is young and not every compositor
+or setup has been tried. It was written with a lot of help from an AI
+assistant (Claude); issues and pull requests are welcome.
 
 ## License
 

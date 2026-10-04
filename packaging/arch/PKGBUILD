@@ -1,15 +1,15 @@
 # Maintainer: EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>
 #
-# Builds undershell from its git repository. By default it clones the local
-# checkout; point UNDERSHELL_REPO at a URL (or another path) to build elsewhere:
-#   UNDERSHELL_REPO=https://example.org/undershell.git makepkg -si
+# Builds undershell from its git repository on GitHub. Point UNDERSHELL_REPO at
+# a local checkout (an absolute path) or another URL to build that instead:
+#   UNDERSHELL_REPO=$PWD/../.. makepkg -si
 
 pkgname=undershell
 pkgver=1.0.0
 pkgrel=1
 pkgdesc="Desktop widgets that live under your shell: Ryoku's visualizer, clocks and music card, with Noctalia palette and depth"
 arch=('x86_64')
-url="https://github.com/ryoku-dev/ryoku"
+url="https://github.com/EternalSelf-2328/undershell"
 license=('GPL-3.0-or-later' 'MIT' 'OFL-1.1')
 depends=('wayland' 'libglvnd' 'libpipewire' 'tomlplusplus' 'glib2' 'cairo' 'pango' 'fontconfig'
          'libxkbcommon' 'systemd-libs' 'gdk-pixbuf2' 'curl')

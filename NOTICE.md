@@ -1,6 +1,7 @@
 # Credits and licences
 
-undershell is free software under the **GNU GPL v3 or later** (see `LICENSE`).
+undershell, © 2026 EternalSelf-2328, is free software under the **GNU GPL v3
+or later** (see `LICENSE`).
 
 - **Ryoku** — <https://github.com/ryoku-dev/ryoku>, GPL-3.0. The visualizer
   looks (`shaders/spectrum.frag`, ported from `ryoku/ui/shaders/spectrum.frag`),

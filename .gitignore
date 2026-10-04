@@ -5,3 +5,7 @@
 /packaging/arch/pkg/
 /packaging/arch/undershell/
 *.pkg.tar.*
+# editor and note-taking folders
+.obsidian/
+.vscode/
+.idea/
