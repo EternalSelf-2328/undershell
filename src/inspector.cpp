@@ -23,7 +23,7 @@
 namespace undershell {
 
 namespace {
-constexpr float kPanelW = 300, kRowH = 30, kColorRowH = 54, kHeadH = 46, kFootH = 46, kLabelW = 118;
+constexpr float kPanelW = 320, kRowH = 30, kColorRowH = 54, kHeadH = 46, kFootH = 46, kLabelW = 134;
 constexpr double kCoalesceProp = 1.0;
 
 Color withAlphaC(Color c, float a) {
@@ -136,10 +136,10 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   std::vector<PropSpec> all = schemaFor(w.cfg.type);
   // perspective, for every widget
   all.push_back({K::Bool, "pin_corners", "Pin corners", "Fijar esquinas", {}, 0, 1, 1, 0});
-  all.push_back({K::Number, "tilt_x", "Tilt back °", "Inclinación atrás °", {}, -70, 70, 0.5, 0});
-  all.push_back({K::Number, "tilt_y", "Tilt sideways °", "Inclinación lateral °", {}, -70, 70, 0.5, 0});
+  all.push_back({K::Number, "tilt_x", "Lean back °", "Inclinar atrás °", {}, -70, 70, 0.5, 0});
+  all.push_back({K::Number, "tilt_y", "Lean sideways °", "Inclinar de lado °", {}, -70, 70, 0.5, 0});
   all.push_back({K::Number, "skew", "Skew °", "Sesgo °", {}, -60, 60, 0.5, 0});
-  all.push_back({K::Number, "perspective", "Perspective depth", "Profundidad de perspectiva", {}, 1.2, 20, 0.1, 2.5});
+  all.push_back({K::Number, "perspective", "Distance", "Distancia", {}, 1.2, 20, 0.1, 2.5});
   for (const auto& p : all)
     if (expanded == "*" || optionApplies(w, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
@@ -160,7 +160,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "fire_speed", "Speed", "Velocidad", {}, 0.1, 3, 0.05, 1},
         {K::Number, "halo_pulse", "Pulse (groove)", "Pulso (ritmo)", {}, 0, 1, 0.05, 0.7},
         {K::Number, "halo_breathe", "Breathing", "Respiración", {}, 0, 1, 0.05, 0.6},
-        {K::Number, "halo_hits", "Beat flare", "Llamarada al golpe", {}, 0, 1, 0.05, 0.7},
+        {K::Number, "halo_hits", "Beat flare", "Llamarada", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, f.begin(), f.end());
   }
@@ -168,15 +168,15 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
     // the vortex's shape, then the halo's music (it shares the halo's motion)
     std::vector<PropSpec> v = {
         {K::Enum, "vortex_mode", "Mode", "Modo", {"inward", "outward", "inside", "inside_out"}, 0, 0, 0, 0, "inward"},
-        {K::Number, "halo_inner", "Horizon size", "Tamaño del horizonte", {}, 0.1, 1.4, 0.05, 0.7},
+        {K::Number, "halo_inner", "Horizon size", "Tamaño horizonte", {}, 0.1, 1.4, 0.05, 0.7},
         {K::Number, "vortex_reach", "Reach", "Alcance", {}, 1.1, 6, 0.1, 1.9},
         {K::Number, "vortex_arms", "Arms", "Brazos", {}, 1, 12, 1, 3, "", true},
         {K::Number, "vortex_twist", "Twist", "Torsión", {}, 0, 8, 0.1, 3.4},
         {K::Number, "vortex_turbulence", "Turbulence", "Turbulencia", {}, 0, 1, 0.05, 0.45},
         {K::Number, "vortex_speed", "Spin speed", "Velocidad de giro", {}, 0, 3, 0.05, 0.35},
         {K::Bool, "vortex_clockwise", "Clockwise", "Sentido horario", {}, 0, 1, 1, 0},
-        {K::Number, "vortex_ring", "Ring (0 = arms only)", "Anillo (0 = solo brazos)", {}, 0, 1, 0.05, 1},
-        {K::Number, "halo_width", "Horizon line", "Línea del horizonte", {}, 0.003, 0.15, 0.001, 0.012},
+        {K::Number, "vortex_ring", "Ring", "Anillo", {}, 0, 1, 0.05, 1},
+        {K::Number, "halo_width", "Horizon line", "Línea horizonte", {}, 0.003, 0.15, 0.001, 0.012},
         {K::Number, "halo_bloom", "Glow strength", "Intensidad", {}, 0, 2, 0.05, 0.8},
         {K::Number, "halo_pulse", "Pulse (groove)", "Pulso (ritmo)", {}, 0, 1, 0.05, 0.7},
         {K::Number, "halo_breathe", "Breathing", "Respiración", {}, 0, 1, 0.05, 0.6},
@@ -192,7 +192,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "halo_inner", "Size", "Tamaño", {}, 0.1, 1.4, 0.05, 0.7},
         {K::Number, "halo_width", "Line width", "Grosor de línea", {}, 0.003, 0.15, 0.001, 0.012},
         {K::Number, "halo_spread", "Glow reach", "Alcance del halo", {}, 0.01, 0.4, 0.01, 0.09},
-        {K::Number, "halo_bloom", "Glow strength", "Intensidad del halo", {}, 0, 2, 0.05, 0.8},
+        {K::Number, "halo_bloom", "Glow strength", "Intensidad", {}, 0, 2, 0.05, 0.8},
         {K::Number, "halo_pulse", "Pulse (groove)", "Pulso (ritmo)", {}, 0, 1, 0.05, 0.7},
         {K::Number, "halo_breathe", "Breathing", "Respiración", {}, 0, 1, 0.05, 0.6},
         {K::Number, "halo_hits", "Beat flash", "Destello al golpe", {}, 0, 1, 0.05, 0.7},
@@ -1360,14 +1360,11 @@ void App::drawUi(EditSurface& e) {
     TextRenderer::measure(t, st, w, h, b);
     return std::pair<float, float>{w, h};
   };
-  // text in a fixed width: a little smaller if that is enough, else cut with "…"
+  // text in a fixed width: cut with "…" if it must be (labels are written to
+  // fit; mixed text sizes look broken, so it never shrinks)
   auto fitted = [&](std::string t, TextStyle st, float maxW) {
     if (maxW <= 0) return std::pair<std::string, TextStyle>{std::string(), st};
     if (measure(t, st).first <= maxW) return std::pair<std::string, TextStyle>{t, st};
-    const float base = st.size;
-    for (st.size = base - 0.5F; st.size >= base * 0.85F; st.size -= 0.5F)
-      if (measure(t, st).first <= maxW) return std::pair<std::string, TextStyle>{t, st};
-    st.size = base * 0.85F;
     while (!t.empty() && measure(t + "…", st).first > maxW) {
       t.pop_back();
       while (!t.empty() && (static_cast<unsigned char>(t.back()) & 0xC0) == 0x80) t.pop_back();  // whole UTF-8 chars
@@ -1601,7 +1598,9 @@ void App::drawUi(EditSurface& e) {
             cv.roundRect(cx, y + 13, sw, 4, 2, withAlphaC(ink, 0.14F));
             cv.roundRect(cx, y + 13, static_cast<float>(sw * t), 4, 2, accent);
             cv.circle(cx + static_cast<float>(sw * t), y + 15, 7, ink, 2, accent);
-            cv.text(v, mono, cx + sw + 10, y + 7, ink);
+            // a depth plane of 0 means "the plugin's mask"
+          const bool autoPlane = std::string_view(p.key) == "depth_level" && numberOf(w->cfg.options, p) == 0;
+          cv.text(autoPlane ? std::string("auto") : v, mono, cx + sw + 10, y + 7, autoPlane ? dim : ink);
           } else {
             const auto& sws = p.options.empty() ? colorSwatches() : p.options;
             const float size = 20, gap = (kPanelW - 28 - sws.size() * size) / (sws.size() - 1);

@@ -54,8 +54,8 @@ Ryoku's desktop spectrum.
 | `fps` | 15 – 144 | `60` | FPS |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
-| `depth_level` | 0 – 100 | `0` | Depth plane (0 = plugin) |
-| `layer` | -10 – 10 | `0` | Layer (higher = front) |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -10 – 10 | `0` | Layer |
 
 ## `type = "clock"`
 
@@ -76,8 +76,8 @@ Ryoku's clock faces and date strips.
 | `opacity` | 0.1 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
-| `depth_level` | 0 – 100 | `0` | Depth plane (0 = plugin) |
-| `layer` | -10 – 10 | `0` | Layer (higher = front) |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -10 – 10 | `0` | Layer |
 
 ## `type = "now_playing"`
 
@@ -96,6 +96,6 @@ Ryoku's now-playing card.
 | `fps` | 15 – 60 | `30` | FPS |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
-| `depth_level` | 0 – 100 | `0` | Depth plane (0 = plugin) |
-| `layer` | -10 – 10 | `0` | Layer (higher = front) |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -10 – 10 | `0` | Layer |
 | `music_app` | shell command | `"spotify"` | opened by the corner button (not in the inspector) |
