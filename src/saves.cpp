@@ -73,12 +73,12 @@ void App::replaceLayout(const std::string& blocks, bool record) {
   markEditDirty();
 }
 
-bool App::loadSave(const std::string& id) {
+bool App::loadSave(const std::string& id, const std::string& output) {
   refreshSaves();
   for (const auto& s : m_saves)
     if (s.id == id) {
-      replaceLayout(s.blocks, true);
-      US_INFO("loaded saved layout \"{}\"", s.name);
+      replaceLayout(output.empty() ? s.blocks : Config::moveToOutput(s.blocks, output), true);
+      US_INFO("loaded saved layout \"{}\"{}", s.name, output.empty() ? std::string() : " on " + output);
       return true;
     }
   return false;

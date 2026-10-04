@@ -30,6 +30,7 @@
   "saves.empty": "No saved profiles yet.",
   "saves.on_screen": "on screen",
   "saves.load": "Load",
+  "saves.target": "Load on",
   "saves.overwrite": "Overwrite with what is on screen",
   "saves.delete": "Delete",
   "saves.confirm": "Click again to delete",

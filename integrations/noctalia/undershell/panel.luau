@@ -9,6 +9,7 @@ local pending = {}       -- slider values being dragged, by "id:key"
 local busy = false
 local newName = ""       -- the name typed for the next saved profile
 local armedDelete = nil  -- save id waiting for its confirming click
+local target = nil       -- the monitor saved profiles are loaded onto (several monitors only)
 
 local function tr(key, params)
   return noctalia.tr(key, params)
@@ -261,6 +262,34 @@ local function savesSection()
       end }),
     }),
   }
+  -- several monitors: choose which one a profile is loaded onto (it is fitted
+  -- to that screen's size through the wallpaper)
+  local outputs = (state ~= nil and type(state.outputs) == "table") and state.outputs or {}
+  if #outputs > 1 then
+    local known = false
+    for _, o in ipairs(outputs) do
+      if o.name == target then known = true end
+    end
+    if not known then
+      target = outputs[1].name
+      for _, o in ipairs(outputs) do  -- default: where the widgets are
+        if (o.widgets or 0) > 0 then target = o.name break end
+      end
+    end
+    local chips = { ui.label({ text = tr("saves.target"), fontSize = 11, color = "on_surface_variant" }) }
+    for _, o in ipairs(outputs) do
+      table.insert(chips, ui.button({ text = o.name, controlSize = "sm",
+        variant = o.name == target and "primary" or "ghost",
+        tooltip = string.format("%d × %d", o.width or 0, o.height or 0),
+        onClick = function()
+          target = o.name
+          render()
+        end }))
+    end
+    table.insert(rows, ui.row({ gap = 6, align = "center" }, chips))
+  else
+    target = nil
+  end
   if #saves == 0 then
     table.insert(rows, ui.label({ text = tr("saves.empty"), color = "on_surface_variant", fontSize = 11 }))
   end
@@ -281,7 +310,11 @@ local function savesSection()
       }),
       ui.button({ text = tr("saves.load"), variant = "primary", controlSize = "sm", onClick = function()
         armedDelete = nil
-        send({ "save-load", sv.id })
+        if target ~= nil then
+          send({ "save-load", sv.id, target })
+        else
+          send({ "save-load", sv.id })
+        end
       end }),
       ui.button({ glyph = "device-floppy", variant = "ghost", controlSize = "sm", tooltip = tr("saves.overwrite"), onClick = function()
         armedDelete = nil

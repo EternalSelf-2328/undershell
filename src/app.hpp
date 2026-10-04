@@ -170,7 +170,8 @@ private:
   void refreshSaves();
   std::string saveLayout(const std::string& name);  // "" = "Profile N"
   bool overwriteSave(const std::string& id);
-  bool loadSave(const std::string& id);
+  // a saved layout, on `output` when given (else where its blocks say)
+  bool loadSave(const std::string& id, const std::string& output = {});
   void replaceLayout(const std::string& blocks, bool record);
   std::string savesJson();
   bool textKey(uint32_t key);  // typing a save's name

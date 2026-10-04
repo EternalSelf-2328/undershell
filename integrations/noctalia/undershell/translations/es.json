@@ -30,6 +30,7 @@
   "saves.empty": "Aún no hay perfiles guardados.",
   "saves.on_screen": "en pantalla",
   "saves.load": "Cargar",
+  "saves.target": "Cargar en",
   "saves.overwrite": "Sobrescribir con lo que hay en pantalla",
   "saves.delete": "Eliminar",
   "saves.confirm": "Clic otra vez para eliminar",

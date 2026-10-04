@@ -245,6 +245,19 @@ int main() {
     CHECK(lc.language == "es" && lc.widgets.size() == 1);
   }
 
+  {
+    // a saved layout loaded on another monitor: every block moves there
+    const std::string blocks = "[[widget]]\nid = \"a\"\ntype = \"clock\"\noutput = \"HDMI-A-1\"   # monitor\nx = 1\n\n"
+                               "[[widget]]\nid = \"b\"\ntype = \"visualizer\"\nx = 2\n";
+    const std::string moved = Config::moveToOutput(blocks, "eDP-1");
+    CHECK(moved.find("output = \"eDP-1\"   # monitor") != std::string::npos);  // in place, comment kept
+    CHECK(moved.find("HDMI-A-1") == std::string::npos);
+    size_t n = 0;
+    for (size_t at = moved.find("output = \"eDP-1\""); at != std::string::npos; at = moved.find("output = \"eDP-1\"", at + 1)) ++n;
+    CHECK(n == 2);
+    CHECK(moved.find("output = \"eDP-1\"", moved.find("id = \"b\"")) < moved.size());  // added to the block that had none
+  }
+
   std::filesystem::remove_all(dir);
   return TEST_RESULT();
 }

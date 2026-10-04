@@ -464,6 +464,9 @@ void App::syncWidgets() {
         out = o.get();
         break;
       }
+    // a monitor this machine does not have (a layout from another setup, an
+    // unplugged screen): show it on the first one, mapped to its size
+    if (!out && !m_outputs.empty()) out = m_outputs.front().get();
     if ((stored.spaceW <= 0 || stored.spaceH <= 0) && out && out->logicalW() > 0 && out->logicalH() > 0) {
       // no space recorded (an older or hand-written block): it was made for
       // this screen; write that down so another screen can follow the wallpaper
@@ -1296,7 +1299,14 @@ std::string App::handleCommand(const std::string& cmd) {
     const std::string id = saveLayout(cmd.size() > 5 ? cmd.substr(5) : std::string());
     return id.empty() ? "error: could not save" : "saved " + id;
   }
-  if (cmd.rfind("save-load ", 0) == 0) return loadSave(cmd.substr(10)) ? "loaded" : "error: no such save";
+  if (cmd.rfind("save-load ", 0) == 0) {  // save-load <id> [output]
+    std::istringstream in(cmd.substr(10));
+    std::string id, output;
+    in >> id >> output;
+    if (!output.empty() && std::none_of(m_outputs.begin(), m_outputs.end(), [&](auto& o) { return o->name == output; }))
+      return "error: no output '" + output + "'";
+    return loadSave(id, output) ? "loaded" : "error: no such save";
+  }
   if (cmd.rfind("save-overwrite ", 0) == 0) return overwriteSave(cmd.substr(15)) ? "overwritten" : "error: no such save";
   if (cmd.rfind("save-delete ", 0) == 0) {
     const bool ok = Config::deleteSave(savesDir(), cmd.substr(12));
@@ -1338,17 +1348,26 @@ std::string App::handleCommand(const std::string& cmd) {
       }
     std::string s = std::format(
         "{{\"motion\":{},\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
-        "\"depth\":{{\"mask\":{},\"field\":{},\"plugin_threshold\":{:.0f}}},\"widgets\":[",
+        "\"depth\":{{\"mask\":{},\"field\":{},\"plugin_threshold\":{:.0f}}},\"outputs\":[",
         m_motion, m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, mask, field,
         m_noctalia.state().depthThreshold * 100);
+    // the monitors (logical size), and how many widgets each shows
+    for (size_t i = 0; i < m_outputs.size(); ++i) {
+      const Output& o = *m_outputs[i];
+      const auto n = std::count_if(m_widgets.begin(), m_widgets.end(), [&](auto& w) { return w->output == &o; });
+      s += std::format("{}{{\"name\":{},\"width\":{:.0f},\"height\":{:.0f},\"widgets\":{}}}", i ? "," : "", q(o.name),
+                       o.logicalW(), o.logicalH(), n);
+    }
+    s += "],\"widgets\":[";
     bool first = true;
     for (auto& w : m_widgets) {
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
                                : w->cfg.type == "clock"    ? w->cfg.options["face"].value_or(std::string("digital"))
                                                            : w->cfg.type;
-      s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
+      s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f}}}",
-                       first ? "" : ",", q(w->cfg.id), q(w->cfg.type), q(look), w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height,
+                       first ? "" : ",", q(w->cfg.id), q(w->cfg.type), q(look), q(w->output ? w->output->name : ""), w->cfg.x,
+                       w->cfg.y, w->cfg.width, w->cfg.height,
                        w->cfg.rotation, w->cfg.depth, w->cfg.depthLevel, nowSeconds() - w->markAt > 1.5 ? 0.0 : w->fpsMeasured);
       first = false;
     }

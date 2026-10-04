@@ -999,8 +999,8 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     }
-    case UiControl::SaveLoad:
-      loadSave(c.value);
+    case UiControl::SaveLoad:  // onto the monitor it is loaded from
+      loadSave(c.value, m_uiOutput ? m_uiOutput->name : std::string());
       return true;
     case UiControl::SaveOverwrite:
       overwriteSave(c.value);

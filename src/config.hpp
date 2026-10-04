@@ -107,6 +107,9 @@ struct Config {
   static bool renameSave(const std::string& dir, const std::string& id, const std::string& name);
   static bool deleteSave(const std::string& dir, const std::string& id);
   // A block's text with its id and position replaced (duplicating a widget).
+  // every [[widget]] block of `blocks` set to show on `output` (a layout
+  // loaded on another monitor; its `space` maps it to that screen's size)
+  static std::string moveToOutput(const std::string& blocks, const std::string& output);
   // sets a key of [general] (made if missing), keeping comments
   static bool setGeneral(const std::string& path, const std::string& key, const std::string& tomlValue);
   static std::string retargetBlock(const std::string& block, const std::string& id, int x, int y);

@@ -374,6 +374,26 @@ std::string Config::widgetBlocks(const std::string& text) {
   return blocks;
 }
 
+std::string Config::moveToOutput(const std::string& blocks, const std::string& output) {
+  std::istringstream in(blocks);
+  std::vector<std::string> lines;
+  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  auto header = [&](size_t k) {
+    const auto first = lines[k].find_first_not_of(" \t");
+    return first != std::string::npos && lines[k][first] == '[';
+  };
+  for (size_t start = 0; start < lines.size(); ++start) {
+    if (lines[start].find("[[widget]]") != 0) continue;
+    size_t end = start + 1;
+    while (end < lines.size() && !header(end)) ++end;
+    setLine(lines, start, end, "output", "\"" + output + "\"");
+    start = end - 1;
+  }
+  std::string out;
+  for (auto& l : lines) out += l + "\n";
+  return out;
+}
+
 std::string Config::replaceWidgetBlocks(const std::string& text, const std::string& blocks) {
   std::string rest, old;
   splitWidgets(text, rest, old);
