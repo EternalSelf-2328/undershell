@@ -6,6 +6,7 @@
 
 #include <cairo.h>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <glib.h>
 #include <sys/stat.h>
@@ -106,16 +107,25 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
     }
     if (st.depthPluginEnabled && !wall.empty() && mask.empty()) m_missing = true;
     auto& m = m_masks[out];
-    if (m.fieldNpy != npy) {
+    // wallpaper_depth may (re)write the map while the wallpaper changes: key it
+    // by time and size too, so the finished file is read again
+    std::string key;
+    if (!npy.empty()) {
+      std::error_code ec;
+      const auto t = fs::last_write_time(npy, ec).time_since_epoch().count();
+      key = std::format("{}@{}:{}", npy, t, fs::file_size(npy, ec));
+    }
+    if (m.fieldKey != key) {
       // a new depth map: refine it against the image off the main thread
       m.fieldNpy = npy;
+      m.fieldKey = key;
       m.fieldPixels.clear();
       m.fieldStale = m.field != 0;
       changed = true;
       if (!npy.empty() && m_jobs) {
         const std::string sha = sha256Of(wall);
         const std::string editsPath = m_editsDir.empty() ? std::string() : m_editsDir + "/" + sha + ".usde";
-        m_jobs->run([this, out, wall, npy, sha, editsPath]() -> Jobs::Done {
+        m_jobs->run([this, out, wall, npy, key, sha, editsPath]() -> Jobs::Done {
           DepthField raw, refined;
           std::vector<float> guide;
           std::vector<std::uint8_t> colour;
@@ -135,11 +145,11 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
               for (size_t i = 0; i < applied.size(); ++i) applied[i] = editedDepth(applied[i], edits.target[i], edits.cover[i]);
             half = toHalf(applied);
           }
-          return [this, out, npy, ok, iw, ih, sha, hasEdits, refined = std::move(refined), guide = std::move(guide),
+          return [this, out, npy, key, ok, iw, ih, sha, hasEdits, refined = std::move(refined), guide = std::move(guide),
                   edits = std::move(edits), half = std::move(half), colour = std::move(colour)]() mutable {
             auto it = m_masks.find(out);
-            if (it == m_masks.end() || it->second.fieldNpy != npy) return;  // superseded
-            if (!ok) {
+            if (it == m_masks.end() || it->second.fieldKey != key) return;  // superseded
+            if (!ok) {  // e.g. still being written: its close brings it back (inotify)
               US_WARN("could not refine the depth map {}", fs::path(npy).filename().string());
               return;
             }

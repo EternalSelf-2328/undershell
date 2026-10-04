@@ -1419,6 +1419,7 @@ void App::handleInotify() {
       if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdMasks && name.ends_with(".png")) m_refreshDepthAt = now + 0.3;
+      if (ev->wd == m_wdDepthMaps && name.ends_with(".npy")) m_refreshDepthAt = now + 0.3;
       p += sizeof(inotify_event) + ev->len;
     }
   }
@@ -1490,6 +1491,10 @@ int App::run() {
   m_wdNoctState = inotify_add_watch(m_inotify, fs::path(Noctalia::settingsPath()).parent_path().c_str(), mask);
   m_wdNoctConfig = inotify_add_watch(m_inotify, Noctalia::configDir().c_str(), mask);
   m_wdMasks = inotify_add_watch(m_inotify, DepthMasks::maskDir().c_str(), mask);
+  // the depth maps (.npy) the per-widget planes are cut from; only finished
+  // writes, never a half-written file
+  m_wdDepthMaps = inotify_add_watch(m_inotify, (fs::path(DepthMasks::maskDir()).parent_path() / "depth").c_str(),
+                                    IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE);
 
   while (m_running && !g_quit) {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);

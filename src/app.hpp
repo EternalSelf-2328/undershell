@@ -348,7 +348,7 @@ private:
   OverlayPass m_overlay;
   IpcServer m_ipc;
   int m_inotify = -1;
-  int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1;
+  int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1, m_wdDepthMaps = -1;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
 
   std::vector<const Widget*> m_mapped;    // widget surfaces, bottom to top, in the order they were made

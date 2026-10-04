@@ -27,6 +27,7 @@ struct DepthMask {
   std::vector<std::uint8_t> pixels;  // pending upload (R8)
   // the refined depth field (depthfield.hpp), for widgets with their own plane
   std::string fieldNpy;
+  std::string fieldKey;  // npy + its mtime and size: a map rewritten in place is a new map
   int fieldW = 0, fieldH = 0;    // texture size
   int imageW = 0, imageH = 0;    // the wallpaper's size (sampling maths)
   GLuint field = 0;

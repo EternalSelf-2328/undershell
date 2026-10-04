@@ -1,11 +1,17 @@
 // The depth field: .npy reading, the plugin's refinement maths, half floats.
 #include "check.hpp"
 #include "common.hpp"
+#include "depth.hpp"
 #include "depthfield.hpp"
+#include "jobs.hpp"
+#include "noctalia.hpp"
 #include "wallkind.hpp"
 #include "m3shapes.hpp"
 
+#include <cairo.h>
+#include <chrono>
 #include <cmath>
+#include <thread>
 #include <cstring>
 #include <filesystem>
 
@@ -167,6 +173,67 @@ int main() {
     for (const auto& name : m3ShapeNames())
       for (float r : m3ShapeRadii(name, 256)) CHECK(r > 0.05F && r <= 1.5F);
     CHECK(m3ShapeRadii("none", 16)[3] == 1.0F);
+  }
+
+  {
+    // wallpaper_depth may write a wallpaper's depth map while undershell
+    // switches to it: the field must load once the map is there, and again
+    // when the same file is rewritten (it used to be keyed by name only)
+    const std::string state = dir + "/state";
+    setenv("XDG_STATE_HOME", state.c_str(), 1);
+    const std::filesystem::path cache = std::filesystem::path(DepthMasks::maskDir()).parent_path();
+    std::filesystem::create_directories(cache / "masks");
+    std::filesystem::create_directories(cache / "depth");
+    const std::string wall = dir + "/wall.png";
+    cairo_surface_t* img = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 64, 36);
+    cairo_t* cr = cairo_create(img);
+    cairo_set_source_rgb(cr, 0.2, 0.4, 0.6);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    cairo_surface_write_to_png(img, wall.c_str());
+    cairo_surface_destroy(img);
+
+    Jobs jobs(1);
+    DepthMasks masks;
+    int ready = 0;
+    masks.setJobs(&jobs, [&] { ++ready; });
+    NoctaliaState st;
+    st.depthPluginEnabled = true;
+    st.wallpaperByOutput["T-1"] = wall;
+    auto settle = [&](int want, int ms) {  // run the refinement until `want` fields landed (or time is up)
+      for (int t = 0; t < ms && ready < want; t += 5) {
+        jobs.dispatch();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+      jobs.dispatch();
+    };
+    auto writeMap = [&](int w, int h) {
+      std::string hd = std::format("{{'descr': '<f4', 'fortran_order': False, 'shape': ({}, {}), }}", h, w);
+      while ((10 + hd.size() + 1) % 64) hd += ' ';
+      hd += '\n';
+      std::string data = std::string("\x93NUMPY\x01\x00", 8);
+      data += static_cast<char>(hd.size() & 0xff);
+      data += static_cast<char>(hd.size() >> 8);
+      data += hd;
+      std::vector<float> v(static_cast<size_t>(w) * h, 0.5F);
+      data.append(reinterpret_cast<const char*>(v.data()), v.size() * sizeof(float));
+      writeFileAtomic((cache / "depth" / (masks.sha256Of(wall) + "-m-d2-i518.npy")).string(), data);
+    };
+    masks.update(st, {"T-1"});  // no map yet
+    settle(1, 300);
+    CHECK(ready == 0);
+    writeMap(16, 9);  // the plugin finishes it
+    masks.update(st, {"T-1"});
+    settle(1, 5000);
+    CHECK(ready == 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    writeMap(32, 18);  // rewritten under the same name
+    masks.update(st, {"T-1"});
+    settle(2, 5000);
+    CHECK(ready == 2);
+    masks.update(st, {"T-1"});  // nothing new: no work
+    settle(3, 300);
+    CHECK(ready == 2);
   }
 
   std::filesystem::remove_all(dir);
