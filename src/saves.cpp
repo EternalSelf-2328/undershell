@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Layouts saved on purpose, like save slots in a game: the editor's Profiles
 // panel (and `undershell msg save…`) keeps named copies of the widgets on
-// screen in saves/<id>.toml and loads one back. Loading replaces the layout of
-// the current wallpaper, so it also becomes that wallpaper's profile; it is one
-// undo step.
+// screen in saves/<id>.toml and loads one back, onto one monitor (whose widgets
+// it replaces; the others keep theirs) or all of them. The result is the
+// current wallpaper's profile; loading is one undo step.
 #include "app.hpp"
 
 #include <filesystem>
+#include <regex>
 
 namespace fs = std::filesystem;
 
@@ -73,11 +74,34 @@ void App::replaceLayout(const std::string& blocks, bool record) {
   markEditDirty();
 }
 
+std::string App::blockOutput(const std::string& block) const {
+  static const std::regex kOutput(R"re((^|\n)\s*output\s*=\s*"([^"]*)")re");
+  std::smatch m;
+  const std::string named = std::regex_search(block, m, kOutput) ? m[2].str() : std::string();
+  for (const auto& o : m_outputs)
+    if (o->name == named) return named;
+  return m_outputs.empty() ? named : m_outputs.front()->name;  // as syncWidgets places it
+}
+
 bool App::loadSave(const std::string& id, const std::string& output) {
   refreshSaves();
   for (const auto& s : m_saves)
     if (s.id == id) {
-      replaceLayout(output.empty() ? s.blocks : Config::moveToOutput(s.blocks, output), true);
+      std::string blocks = s.blocks;
+      if (!output.empty()) {
+        // the other monitors keep their widgets; the target gets the layout
+        std::vector<std::string> targets;
+        if (output == "all")
+          for (const auto& o : m_outputs) targets.push_back(o->name);
+        else
+          targets.push_back(output);
+        blocks.clear();
+        for (const auto& b : Config::splitBlocks(Config::widgetBlocks(readFile(m_configPath))))
+          if (std::find(targets.begin(), targets.end(), blockOutput(b)) == targets.end()) blocks += b + "\n";
+        for (const auto& t : targets) blocks += Config::moveToOutput(s.blocks, t) + "\n";
+        while (blocks.ends_with("\n\n")) blocks.pop_back();
+      }
+      replaceLayout(blocks, true);  // repeated ids are renamed on load
       US_INFO("loaded saved layout \"{}\"{}", s.name, output.empty() ? std::string() : " on " + output);
       return true;
     }

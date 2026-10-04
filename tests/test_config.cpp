@@ -257,6 +257,12 @@ int main() {
     CHECK(n == 2);
     CHECK(moved.find("output = \"eDP-1\"", moved.find("id = \"b\"")) < moved.size());  // added to the block that had none
   }
+  {
+    // blocks one by one (a layout loaded on one monitor keeps the others')
+    const auto parts = Config::splitBlocks("[[widget]]\nid = \"a\"\n\n\n[[widget]]\nid = \"b\"\nx = 1\n");
+    CHECK(parts.size() == 2 && parts[0] == "[[widget]]\nid = \"a\"\n" && parts[1] == "[[widget]]\nid = \"b\"\nx = 1\n");
+    CHECK(Config::splitBlocks("").empty());
+  }
 
   std::filesystem::remove_all(dir);
   return TEST_RESULT();

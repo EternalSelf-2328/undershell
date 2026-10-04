@@ -1303,7 +1303,8 @@ std::string App::handleCommand(const std::string& cmd) {
     std::istringstream in(cmd.substr(10));
     std::string id, output;
     in >> id >> output;
-    if (!output.empty() && std::none_of(m_outputs.begin(), m_outputs.end(), [&](auto& o) { return o->name == output; }))
+    if (!output.empty() && output != "all" &&
+        std::none_of(m_outputs.begin(), m_outputs.end(), [&](auto& o) { return o->name == output; }))
       return "error: no output '" + output + "'";
     return loadSave(id, output) ? "loaded" : "error: no such save";
   }

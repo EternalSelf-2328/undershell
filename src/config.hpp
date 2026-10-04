@@ -110,6 +110,8 @@ struct Config {
   // every [[widget]] block of `blocks` set to show on `output` (a layout
   // loaded on another monitor; its `space` maps it to that screen's size)
   static std::string moveToOutput(const std::string& blocks, const std::string& output);
+  // the [[widget]] blocks one by one (each ending in a single newline)
+  static std::vector<std::string> splitBlocks(const std::string& blocks);
   // sets a key of [general] (made if missing), keeping comments
   static bool setGeneral(const std::string& path, const std::string& key, const std::string& tomlValue);
   static std::string retargetBlock(const std::string& block, const std::string& id, int x, int y);

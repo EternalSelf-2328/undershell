@@ -263,10 +263,10 @@ local function savesSection()
     }),
   }
   -- several monitors: choose which one a profile is loaded onto (it is fitted
-  -- to that screen's size through the wallpaper)
+  -- to that screen's size through the wallpaper; the others keep their widgets)
   local outputs = (state ~= nil and type(state.outputs) == "table") and state.outputs or {}
   if #outputs > 1 then
-    local known = false
+    local known = target == "all"
     for _, o in ipairs(outputs) do
       if o.name == target then known = true end
     end
@@ -286,6 +286,13 @@ local function savesSection()
           render()
         end }))
     end
+    -- every monitor: a copy of the profile on each
+    table.insert(chips, ui.button({ text = tr("saves.all"), controlSize = "sm",
+      variant = target == "all" and "primary" or "ghost",
+      onClick = function()
+        target = "all"
+        render()
+      end }))
     table.insert(rows, ui.row({ gap = 6, align = "center" }, chips))
   else
     target = nil

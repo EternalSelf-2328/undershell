@@ -31,6 +31,7 @@
   "saves.on_screen": "on screen",
   "saves.load": "Load",
   "saves.target": "Load on",
+  "saves.all": "All",
   "saves.overwrite": "Overwrite with what is on screen",
   "saves.delete": "Delete",
   "saves.confirm": "Click again to delete",
