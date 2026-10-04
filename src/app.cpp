@@ -1237,13 +1237,15 @@ std::string App::handleCommand(const std::string& cmd) {
       }
     return "error: no widget '" + id + "'";
   }
-  if (cmd == "help" || cmd == "saves" || cmd == "paint") {  // the editor's cards, from a script
+  if (cmd == "card help" || cmd == "card saves" || cmd == "card paint") {  // the editor's cards, from a script
+    // ("saves" alone is the saved-layout list the bar plugin reads)
     if (!m_edit) setEditMode(true);
-    if (cmd == "help") m_helpOpen = !m_helpOpen;
-    else if (cmd == "saves") m_savesOpen = !m_savesOpen;
+    const std::string card = cmd.substr(5);
+    if (card == "help") m_helpOpen = !m_helpOpen;
+    else if (card == "saves") m_savesOpen = !m_savesOpen;
     else setPaintMode(!m_paintMode);
     markEditDirty();
-    return cmd + " toggled";
+    return card + " toggled";
   }
   if (cmd == "gallery") {
     if (!m_edit) setEditMode(true);
