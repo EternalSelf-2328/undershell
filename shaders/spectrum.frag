@@ -267,8 +267,9 @@ void main() {
     } else if (st == 7) {
         // the scope: the live waveform, windowed at the ends so it melts into
         // the wallpaper instead of stopping dead.
-        float amp = maxLen * 0.5;
-        float base = centred ? 0.0 : amp * 1.05;
+        // kept inside the box (the bloom has the pad around it to fall off in)
+        float amp = maxLen * 0.46;
+        float base = centred ? 0.0 : maxLen * 0.5;
         float win = pow(sin(PI * clamp(along, 0.0, 1.0)), 0.45);
         float dt = 1.0 / max(axisLen * 0.25, 8.0);
         float y0 = base + scopeAt(along - dt) * amp * win;
@@ -280,8 +281,6 @@ void main() {
                  segDist(p, vec2(alongPx, y1), vec2(alongPx + dt * axisLen, y2))) - w;
         lift = 1.0;
         hot = abs(scopeAt(along));
-        float bl = abs(p.y - base) - max(0.6, aa * 0.7);
-        extraA += (1.0 - smoothstep(-aa, aa, bl)) * 0.16 * energy;
     } else if (st == 8) {
         // the frame: a full ring of bars around the whole screen's edge, packed
         // with a small gap and each grown inward to its own height, so it reads
@@ -414,6 +413,12 @@ void main() {
         ? (exp(-g / max(glowPx * 0.5, 0.8)) * 0.42 + exp(-g / max(glowPx * 3.0, 3.0)) * 0.16)
           * glowAmt * (0.35 + 0.65 * energy) * (1.0 - body)
         : 0.0;
+    // the soft skirt reaches past the pad: let it die out before the surface
+    // edge, or a bright glow ends in a hard rectangle around the widget
+    if (!frame && pad > 0.0) {
+        float edge = min(min(px.x, res.x - px.x), min(px.y, res.y - px.y));
+        halo *= smoothstep(0.0, pad, edge);
+    }
 
     float a = clamp(cover + halo, 0.0, 1.0) * fade * mirrorFade * u_opacity;
     // Edge looks melt into the wallpaper at both ends instead of being cut off;

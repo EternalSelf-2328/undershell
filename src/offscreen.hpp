@@ -33,8 +33,9 @@ private:
 // A fixed palette so rendering tests do not depend on the current wallpaper.
 NoctaliaState testPalette();
 
-// Renders a visualizer look fed a fixed synthetic spectrum (needs Headless).
-Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noct);
+// Renders a visualizer look fed a fixed synthetic spectrum (needs Headless);
+// `options` (a [[widget]] table) overrides its defaults.
+Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noct, const toml::table* options = nullptr);
 // Renders a clock face at a fixed wall-clock time (needs Headless).
 struct ClockConfig;
 // With `options`, the clock is configured from that widget table instead

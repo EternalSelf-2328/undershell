@@ -81,6 +81,24 @@ int main(int argc, char** argv) {
     CHECK(d >= 0 && d <= 1.5);
   }
 
+  // a bright glow fades out before the surface edge: no hard rectangle
+  // around a small widget (the line look at full glow)
+  for (const char* look : {"line", "wave", "bars"}) {
+    toml::table opts;
+    opts.insert_or_assign("glow", 1.0);
+    opts.insert_or_assign("thickness", 1.0);
+    opts.insert_or_assign("bars", 40);  // wide bands: a wide glow
+    const int w = 385, h = 94;
+    const Image img = renderLook(look, w, h, pal, &opts);
+    int edgeMax = 0;
+    for (int x = 0; x < w; ++x)
+      for (int y : {0, h - 1}) edgeMax = std::max<int>(edgeMax, img.rgba[(static_cast<size_t>(y) * w + x) * 4 + 3]);
+    for (int y = 0; y < h; ++y)
+      for (int x : {0, w - 1}) edgeMax = std::max<int>(edgeMax, img.rgba[(static_cast<size_t>(y) * w + x) * 4 + 3]);
+    if (edgeMax > 4) std::fprintf(stderr, "%s: glow reaches the surface edge (alpha %d)\n", look, edgeMax);
+    CHECK(edgeMax <= 4);
+  }
+
   // the now-playing card: synced lyrics, the no-lyrics spectrum, nothing
   {
     MediaState st;

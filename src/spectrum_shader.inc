@@ -268,8 +268,9 @@ void main() {
     } else if (st == 7) {
         // the scope: the live waveform, windowed at the ends so it melts into
         // the wallpaper instead of stopping dead.
-        float amp = maxLen * 0.5;
-        float base = centred ? 0.0 : amp * 1.05;
+        // kept inside the box (the bloom has the pad around it to fall off in)
+        float amp = maxLen * 0.46;
+        float base = centred ? 0.0 : maxLen * 0.5;
         float win = pow(sin(PI * clamp(along, 0.0, 1.0)), 0.45);
         float dt = 1.0 / max(axisLen * 0.25, 8.0);
         float y0 = base + scopeAt(along - dt) * amp * win;
@@ -281,51 +282,44 @@ void main() {
                  segDist(p, vec2(alongPx, y1), vec2(alongPx + dt * axisLen, y2))) - w;
         lift = 1.0;
         hot = abs(scopeAt(along));
-        float bl = abs(p.y - base) - max(0.6, aa * 0.7);
-        extraA += (1.0 - smoothstep(-aa, aa, bl)) * 0.16 * energy;
     } else if (st == 8) {
         // the frame: a full ring of bars around the whole screen's edge, packed
         // with a small gap and each grown inward to its own height, so it reads
         // as a bar spectrum wrapped around the display.
-        // A pixel near a corner can be reached by bars of both edges that meet
-        // there, so the nearest horizontal and vertical edge are both evaluated
-        // and the closer bar wins; picking one edge per pixel cut the bars and
-        // their glow along the corner's diagonal.
-        float perim = 2.0 * (cw + ch);
-        float ticks = max(bands, 1.0) * 3.0;
-        float slotP = perim / ticks;
-        float barWp = max(1.5, slotP * thickness);
-        float capH = max(2.0, min(capR * 1.1, barWp * 0.34));
-        float dT = cpx.y;
-        float dB = ch - cpx.y;
         float dL = cpx.x;
         float dR = cw - cpx.x;
-        // arc length clockwise from the top-left corner, and inward distance
-        vec2 hSE = dT <= dB ? vec2(cpx.x, dT) : vec2(cw + ch + (cw - cpx.x), dB);
-        vec2 vSE = dR <= dL ? vec2(cw + cpx.y, dR) : vec2(2.0 * cw + ch + (ch - cpx.y), dL);
-        float peakA = 0.0;
-        for (int k = 0; k < 2; ++k) {
-            vec2 se = k == 0 ? hSE : vSE;
-            float ti = floor(se.x / slotP);
-            float ci = (ti + 0.5) * slotP;
-            float tAl = fract((ti + 0.5) / ticks);
-            float lvv = lvSmooth(tAl);
-            float len = max(minLen, maxLen * lvv);
-            float d = roundBox(vec2(se.x - ci, se.y - len * 0.5), vec2(barWp * 0.5, len * 0.5), capR);
-            if (d < sd) {
-                sd = d;
-                tRamp = tAl;
-                hot = lvv;
-                lift = clamp(se.y / max(len, 1.0), 0.0, 1.0);
-            }
-            if (peakOn > 0.5) {
-                float ph = maxLen * pkAt(bandAt(tAl));
-                float sdp = roundBox(vec2(se.x - ci, se.y - (ph + capH * 1.6)),
-                                     vec2(barWp * 0.46, capH * 0.5), capH * 0.5);
-                peakA = max(peakA, (1.0 - smoothstep(-aa, aa, sdp)) * 0.85);
-            }
+        float dT = cpx.y;
+        float dB = ch - cpx.y;
+        float perim = 2.0 * (cw + ch);
+        float ed;   // inward distance from the nearest edge
+        float s;    // arc length clockwise from the top-left corner
+        float mE = min(min(dL, dR), min(dT, dB));
+        if (mE == dT)      { ed = dT; s = cpx.x; }
+        else if (mE == dR) { ed = dR; s = cw + cpx.y; }
+        else if (mE == dB) { ed = dB; s = cw + ch + (cw - cpx.x); }
+        else               { ed = dL; s = 2.0 * cw + ch + (ch - cpx.y); }
+        float al = s / perim;
+        // Many bars, packed: each samples the smoothed spectrum at its own spot,
+        // so the ring fills with bars of uneven height rather than sparse ticks.
+        float ticks = max(bands, 1.0) * 3.0;
+        float slotP = perim / ticks;
+        float ti = floor(s / slotP);
+        float ci = (ti + 0.5) * slotP;
+        float tAl = (ti + 0.5) / ticks;
+        float lvv = lvSmooth(tAl);
+        float len = max(minLen, maxLen * lvv);
+        float barWp = max(1.5, slotP * thickness);
+        tRamp = tAl;
+        hot = lvv;
+        sd = roundBox(vec2(s - ci, ed - len * 0.5), vec2(barWp * 0.5, len * 0.5), capR);
+        lift = clamp(ed / max(len, 1.0), 0.0, 1.0);
+        if (peakOn > 0.5) {
+            float ph = maxLen * pkAt(bandAt(tAl));
+            float capH = max(2.0, min(capR * 1.1, barWp * 0.34));
+            float sdp = roundBox(vec2(s - ci, ed - (ph + capH * 1.6)),
+                                 vec2(barWp * 0.46, capH * 0.5), capH * 0.5);
+            extraA += (1.0 - smoothstep(-aa, aa, sdp)) * 0.85;
         }
-        extraA += peakA;
     } else if (st == 9) {
         vec2 q = px - origin;
         float d = length(q);
@@ -420,6 +414,12 @@ void main() {
         ? (exp(-g / max(glowPx * 0.5, 0.8)) * 0.42 + exp(-g / max(glowPx * 3.0, 3.0)) * 0.16)
           * glowAmt * (0.35 + 0.65 * energy) * (1.0 - body)
         : 0.0;
+    // the soft skirt reaches past the pad: let it die out before the surface
+    // edge, or a bright glow ends in a hard rectangle around the widget
+    if (!frame && pad > 0.0) {
+        float edge = min(min(px.x, res.x - px.x), min(px.y, res.y - px.y));
+        halo *= smoothstep(0.0, pad, edge);
+    }
 
     float a = clamp(cover + halo, 0.0, 1.0) * fade * mirrorFade * u_opacity;
     // Edge looks melt into the wallpaper at both ends instead of being cut off;

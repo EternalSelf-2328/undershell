@@ -138,7 +138,7 @@ Image renderWarped(const Image& src, double tiltX, double tiltY, double skew, do
   return img;
 }
 
-Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noct) {
+Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noct, const toml::table* options) {
   VisualizerConfig vc;
   vc.style = look;
   vc.peaks = look == "bars" || look == "segments";
@@ -148,6 +148,8 @@ Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noc
   wc.type = "visualizer";
   wc.options.insert_or_assign("style", look);
   wc.options.insert_or_assign("peaks", vc.peaks);
+  if (options)
+    for (auto&& [k, v] : *options) wc.options.insert_or_assign(k, v);
   viz.configure(wc, noct);
   std::vector<float> raw(64);
   for (int step = 0; step < 90; ++step) {
