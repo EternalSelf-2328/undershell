@@ -636,6 +636,7 @@ void App::onPointerMotion(double x, double y) {
   }
   m_px = x;
   m_py = y;
+  uiFor(m_pointerEdit);
   if (m_drag == Drag::Slider) {
     uiDrag(x);
     return;
@@ -782,6 +783,7 @@ void App::onPointerMotion(double x, double y) {
 
 void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   m_pointerSerial = serial;
+  if (m_edit) uiFor(m_pointerEdit);
   US_DEBUG("button {} {} at {:.0f},{:.0f} edit={} surface={} drag={} ui={} hover={} selected={}", button,
            state == WL_POINTER_BUTTON_STATE_PRESSED ? "down" : "up", m_px, m_py, m_edit, m_pointerEdit ? "editor" : "none",
            static_cast<int>(m_drag), uiHit(m_px, m_py), m_pointerWidget ? m_pointerWidget->cfg.id : "-",
@@ -969,6 +971,7 @@ void App::onScroll(double value) {
   if (std::abs(m_scrollAcc) < 10.0) return;  // one wheel notch
   const int step = m_scrollAcc > 0 ? 1 : -1;
   m_scrollAcc = 0;
+  uiFor(m_pointerEdit);
   if (uiScroll(m_px, m_py, step)) return;
   if (m_paintMode) {
     if (modActive(XKB_MOD_NAME_SHIFT)) {  // Shift+wheel: brush size / wand tolerance

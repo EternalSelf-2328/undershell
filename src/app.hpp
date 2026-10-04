@@ -252,6 +252,11 @@ public:
 
 private:
   void layoutUi(const EditSurface& e);
+  // m_ui is laid out for whichever editor surface drew last; with several
+  // monitors, lay it out again for the one under the pointer before hit-testing
+  void uiFor(const EditSurface* e) {
+    if (e && m_uiOutput != e->output) layoutUi(*e);
+  }
   void layoutGallery(float W, float H);
   void drawUi(EditSurface& e);
   int uiHit(double x, double y) const;

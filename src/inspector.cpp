@@ -1083,11 +1083,7 @@ bool App::uiPress(int index, double x) {
       return true;
     case UiControl::Panel:
       if (c.value == "fonts") return true;  // the search field lives on the plate
-      if (c.value == "help") {  // a click on the card closes it
-        m_helpOpen = false;
-        markEditDirty();
-      }
-      return true;  // plates swallow clicks
+      return true;  // plates swallow clicks (the help card closes from its button, Esc or a click outside)
     case UiControl::Duplicate:
       if (w) duplicateWidget(*w);
       return true;
@@ -1390,6 +1386,7 @@ void App::drawUi(EditSurface& e) {
     cv.text(ft, fs, x + (maxW - tw) / 2, cy - th / 2, c);
   };
   auto hovered = [&](const UiControl& c) {
+    if (!m_pointerEdit || m_pointerEdit->output != e.output) return false;  // the pointer is on another monitor
     return m_uiHover >= 0 && m_uiHover < static_cast<int>(m_ui.size()) && &m_ui[static_cast<size_t>(m_uiHover)] == &c;
   };
   auto plateAt = [&](const Rect& r, float radius) {
