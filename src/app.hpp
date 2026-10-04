@@ -20,6 +20,7 @@
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <vector>
@@ -243,7 +244,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language } type = Panel;
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -354,6 +355,7 @@ private:
   double m_pinStart[8] = {};     // the points when the drag began
   Rect m_loupe;                  // the magnifier while placing a corner (output px)
   std::map<std::string, std::pair<float, float>> m_panelPos;  // panels the user moved (top-left)
+  std::set<std::string> m_collapsed;  // panels folded to their title (inspector, paint)
   std::string m_panelDrag;                                    // the panel being dragged
   float m_panelGrabX = 0, m_panelGrabY = 0;
   double m_panelClickAt = 0;

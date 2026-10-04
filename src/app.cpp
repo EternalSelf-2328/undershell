@@ -1237,6 +1237,12 @@ std::string App::handleCommand(const std::string& cmd) {
       }
     return "error: no widget '" + id + "'";
   }
+  if (cmd == "card fold inspector" || cmd == "card fold paint") {  // fold a panel to its title, or unfold it
+    const std::string panel = cmd.substr(10);
+    if (!m_collapsed.erase(panel)) m_collapsed.insert(panel);
+    markEditDirty();
+    return panel + (m_collapsed.count(panel) ? " folded" : " unfolded");
+  }
   if (cmd == "card help" || cmd == "card saves" || cmd == "card paint") {  // the editor's cards, from a script
     // ("saves" alone is the saved-layout list the bar plugin reads)
     if (!m_edit) setEditMode(true);

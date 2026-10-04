@@ -568,6 +568,7 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Magnet: return es ? "Imán: alinear con bordes, centro y otros widgets" : "Magnet: snap to edges, centre and widgets";
     case T::Grid: return es ? "Cuadrícula" : "Grid";
     case T::Help: return es ? "Atajos de teclado" : "Keyboard shortcuts";
+    case T::Collapse: return es ? "Minimizar / expandir" : "Fold / unfold";
     case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
     case T::Paint: return es ? "Pincel de profundidad (no disponible con fondos animados)" : "Depth brush (not with moving wallpapers)";
     case T::PaintZoomIn: return es ? "Acercar (rueda o +)" : "Zoom in (wheel or +)";
@@ -634,8 +635,10 @@ void App::layoutUi(const EditSurface& e) {
     for (const auto& p : schema) contentH += p.kind == PropSpec::Color ? kColorRowH : kRowH;
     const float top = kBarY + kBarH + 14;
     const float maxH = H - top - 16;
-    const float panelH = std::min(contentH, maxH);
-    m_inspScroll = std::clamp(m_inspScroll, 0.0F, std::max(0.0F, contentH - panelH));
+    const bool folded = m_collapsed.count("inspector") > 0;  // only the title shows
+    const float panelH = folded ? kHeadH + 6 : std::min(contentH, maxH);
+    const float placeH = std::min(contentH, maxH);  // placed as if open, so folding does not move it
+    if (!folded) m_inspScroll = std::clamp(m_inspScroll, 0.0F, std::max(0.0F, contentH - placeH));
     float px, py;
     if (w->impl->fullscreen()) {  // a frame owns the screen: dock at the right
       px = W - kPanelW - 24;
@@ -646,13 +649,13 @@ void App::layoutUi(const EditSurface& e) {
       px = static_cast<float>(vb.x + vb.w) + 16;
       if (px + kPanelW > W - 12) px = static_cast<float>(vb.x) - 16 - kPanelW;
       if (px < 12) px = W - kPanelW - 16;
-      py = std::clamp(static_cast<float>(vb.y), top, std::max(top, H - panelH - 16));
+      py = std::clamp(static_cast<float>(vb.y), top, std::max(top, H - placeH - 16));
       if (w->cfg.pinned) {
         // a pin under the panel could not be grabbed: take the far side of the screen instead
         auto covers = [&](float x0) {
           for (int i = 0; i < 4; ++i)
             if (w->cfg.pin[2 * i] > x0 - 20 && w->cfg.pin[2 * i] < x0 + kPanelW + 20 && w->cfg.pin[2 * i + 1] > py - 20 &&
-                w->cfg.pin[2 * i + 1] < py + panelH + 20)
+                w->cfg.pin[2 * i + 1] < py + placeH + 20)
               return true;
           return false;
         };
@@ -661,64 +664,67 @@ void App::layoutUi(const EditSurface& e) {
     }
     if (auto it = m_panelPos.find("inspector"); it != m_panelPos.end()) {  // where the user put it
       px = std::clamp(it->second.first, 0.0F, W - kPanelW);
-      py = std::clamp(it->second.second, 0.0F, std::max(0.0F, H - panelH));
+      py = std::clamp(it->second.second, 0.0F, std::max(0.0F, H - panelH));  // folded, it may sit low
     }
     m_ui.push_back({UiControl::Panel, {px, py, kPanelW, panelH}, -1, "inspector"});
     m_ui.push_back({UiControl::PanelGrab, {px, py, kPanelW, kHeadH}, -1, "inspector"});  // drag by the title
-    float y = py + kHeadH - m_inspScroll + 6;  // same origin as drawUi
-    auto visible = [&](const Rect& r) { return r.y >= py + kHeadH - 2 && r.y + r.h <= py + panelH - kFootH + 2; };
-    const float cx = px + kLabelW + 14, cw = kPanelW - kLabelW - 28;
-    for (size_t i = 0; i < schema.size(); ++i) {
-      const auto& p = schema[i];
-      const int idx = static_cast<int>(i);
-      if (p.kind == PropSpec::Enum) {
-        Rect prev{cx, y + 4, 24, 22}, next{cx + cw - 24, y + 4, 24, 22};
-        if (visible(prev)) {
-          m_ui.push_back({UiControl::Prev, prev, idx});
-          m_ui.push_back({UiControl::Next, {cx + 24, y + 4, cw - 48, 22}, idx});
-          m_ui.push_back({UiControl::Next, next, idx});
-        }
-        y += kRowH;
-      } else if (p.kind == PropSpec::Bool) {
-        Rect t{cx + cw - 38, y + 5, 38, 20};
-        const bool locked = m_motion && std::string_view(p.key) == "depth";
-        if (visible(t) && !locked) m_ui.push_back({UiControl::Toggle, t, idx});
-        y += kRowH;
-      } else if (p.kind == PropSpec::Number) {
-        Rect sr{cx, y + 5, cw - 46, 20};
-        const bool locked = m_motion && std::string_view(p.key) == "depth_level";
-        if (visible(sr) && !locked) m_ui.push_back({UiControl::Slider, sr, idx});
-        y += kRowH;
-      } else if (p.kind == PropSpec::Header) {
-        y += kRowH;
-      } else if (p.kind == PropSpec::Element) {
-        Rect show{cx + cw - 38, y + 5, 38, 20};
-        if (visible(show)) {
-          m_ui.push_back({UiControl::ElemExpand, {px + 8, y, kLabelW + cw - 104, kRowH}, idx});
-          if (p.options.empty()) {  // "fixed": the structure keeps its layout
-            m_ui.push_back({UiControl::ElemUp, {cx + cw - 38 - 58, y + 4, 24, 22}, idx});
-            m_ui.push_back({UiControl::ElemDown, {cx + cw - 38 - 32, y + 4, 24, 22}, idx});
+    m_ui.push_back({UiControl::Collapse, {px + kPanelW - 58, py + 11, 24, 24}, -1, "inspector"});
+    if (!folded) {
+      float y = py + kHeadH - m_inspScroll + 6;  // same origin as drawUi
+      auto visible = [&](const Rect& r) { return r.y >= py + kHeadH - 2 && r.y + r.h <= py + panelH - kFootH + 2; };
+      const float cx = px + kLabelW + 14, cw = kPanelW - kLabelW - 28;
+      for (size_t i = 0; i < schema.size(); ++i) {
+        const auto& p = schema[i];
+        const int idx = static_cast<int>(i);
+        if (p.kind == PropSpec::Enum) {
+          Rect prev{cx, y + 4, 24, 22}, next{cx + cw - 24, y + 4, 24, 22};
+          if (visible(prev)) {
+            m_ui.push_back({UiControl::Prev, prev, idx});
+            m_ui.push_back({UiControl::Next, {cx + 24, y + 4, cw - 48, 22}, idx});
+            m_ui.push_back({UiControl::Next, next, idx});
           }
-          m_ui.push_back({UiControl::ElemShow, show, idx});
+          y += kRowH;
+        } else if (p.kind == PropSpec::Bool) {
+          Rect t{cx + cw - 38, y + 5, 38, 20};
+          const bool locked = m_motion && std::string_view(p.key) == "depth";
+          if (visible(t) && !locked) m_ui.push_back({UiControl::Toggle, t, idx});
+          y += kRowH;
+        } else if (p.kind == PropSpec::Number) {
+          Rect sr{cx, y + 5, cw - 46, 20};
+          const bool locked = m_motion && std::string_view(p.key) == "depth_level";
+          if (visible(sr) && !locked) m_ui.push_back({UiControl::Slider, sr, idx});
+          y += kRowH;
+        } else if (p.kind == PropSpec::Header) {
+          y += kRowH;
+        } else if (p.kind == PropSpec::Element) {
+          Rect show{cx + cw - 38, y + 5, 38, 20};
+          if (visible(show)) {
+            m_ui.push_back({UiControl::ElemExpand, {px + 8, y, kLabelW + cw - 104, kRowH}, idx});
+            if (p.options.empty()) {  // "fixed": the structure keeps its layout
+              m_ui.push_back({UiControl::ElemUp, {cx + cw - 38 - 58, y + 4, 24, 22}, idx});
+              m_ui.push_back({UiControl::ElemDown, {cx + cw - 38 - 32, y + 4, 24, 22}, idx});
+            }
+            m_ui.push_back({UiControl::ElemShow, show, idx});
+          }
+          y += kRowH;
+        } else if (p.kind == PropSpec::Font) {
+          Rect f{cx, y + 3, cw, 24};
+          if (visible(f)) m_ui.push_back({UiControl::FontPick, f, idx});
+          y += kRowH;
+        } else {
+          const auto& sw = p.options.empty() ? colorSwatches() : p.options;
+          const float size = 20, gap = (kPanelW - 28 - sw.size() * size) / (sw.size() - 1);
+          for (size_t k = 0; k < sw.size(); ++k) {
+            Rect r{px + 14 + k * (size + gap), y + 26, size, size};
+            if (visible(r)) m_ui.push_back({UiControl::Swatch, r, idx, sw[k]});
+          }
+          y += kColorRowH;
         }
-        y += kRowH;
-      } else if (p.kind == PropSpec::Font) {
-        Rect f{cx, y + 3, cw, 24};
-        if (visible(f)) m_ui.push_back({UiControl::FontPick, f, idx});
-        y += kRowH;
-      } else {
-        const auto& sw = p.options.empty() ? colorSwatches() : p.options;
-        const float size = 20, gap = (kPanelW - 28 - sw.size() * size) / (sw.size() - 1);
-        for (size_t k = 0; k < sw.size(); ++k) {
-          Rect r{px + 14 + k * (size + gap), y + 26, size, size};
-          if (visible(r)) m_ui.push_back({UiControl::Swatch, r, idx, sw[k]});
-        }
-        y += kColorRowH;
       }
+      const float fy = py + panelH - kFootH + 8;
+      m_ui.push_back({UiControl::Duplicate, {px + 14, fy, (kPanelW - 38) / 2, 30}});
+      m_ui.push_back({UiControl::Delete, {px + 24 + (kPanelW - 38) / 2, fy, (kPanelW - 38) / 2, 30}});
     }
-    const float fy = py + panelH - kFootH + 8;
-    m_ui.push_back({UiControl::Duplicate, {px + 14, fy, (kPanelW - 38) / 2, 30}});
-    m_ui.push_back({UiControl::Delete, {px + 24 + (kPanelW - 38) / 2, fy, (kPanelW - 38) / 2, 30}});
   }
 
   // ── depth brush panel (docked left) ──
@@ -733,22 +739,26 @@ void App::layoutUi(const EditSurface& e) {
       py = it->second.second;
     }
     py = std::clamp(py, 0.0F, std::max(0.0F, H - kPaintH - 8));  // a short screen: up over the toolbar's row
-    m_ui.push_back({UiControl::Panel, {px, py, kPaintW, kPaintH}, -1, "paint"});
+    const bool folded = m_collapsed.count("paint") > 0;
+    m_ui.push_back({UiControl::Panel, {px, py, kPaintW, folded ? 56.0F : kPaintH}, -1, "paint"});
     m_ui.push_back({UiControl::PanelGrab, {px, py, kPaintW, 48}, -1, "paint"});
-    const float sw4 = (kPaintW - 28 - 18) / 4;
-    for (int t = 0; t < 4; ++t)
-      m_ui.push_back({UiControl::PaintSelect, {px + 14 + t * (sw4 + 6), py + 84, sw4, 48}, -1, std::to_string(t)});
-    const float aw = (kPaintW - 28 - 12) / 3;
-    for (int t = 0; t < 5; ++t)
-      m_ui.push_back({UiControl::PaintTool, {px + 14 + (t % 3) * (aw + 6), py + 164 + (t / 3) * 40, aw, 34}, -1, std::to_string(t)});
-    if (m_selectTool <= 1) m_ui.push_back({UiControl::PaintSize, {px + 14, py + 272, kPaintW - 28 - 60, 20}});
-    if (m_selectTool == 0 || m_selectTool == 2) m_ui.push_back({UiControl::PaintSmart, {px + kPaintW - 14 - 38, py + 306, 38, 20}});
-    m_ui.push_back({UiControl::PaintZoomOut, {px + 14, py + 340, 34, 30}});
-    m_ui.push_back({UiControl::PaintZoomIn, {px + 14 + 34 + 70, py + 340, 34, 30}});
-    m_ui.push_back({UiControl::PaintZoomReset, {px + kPaintW - 14 - 56, py + 340, 56, 30}});
-    const float hb = (kPaintW - 28 - 8) / 2;
-    m_ui.push_back({UiControl::PaintUndo, {px + 14, py + 382, hb, 32}});
-    m_ui.push_back({UiControl::PaintClear, {px + 22 + hb, py + 382, hb, 32}});
+    m_ui.push_back({UiControl::Collapse, {px + kPaintW - 58, py + 16, 24, 24}, -1, "paint"});
+    if (!folded) {
+      const float sw4 = (kPaintW - 28 - 18) / 4;
+      for (int t = 0; t < 4; ++t)
+        m_ui.push_back({UiControl::PaintSelect, {px + 14 + t * (sw4 + 6), py + 84, sw4, 48}, -1, std::to_string(t)});
+      const float aw = (kPaintW - 28 - 12) / 3;
+      for (int t = 0; t < 5; ++t)
+        m_ui.push_back({UiControl::PaintTool, {px + 14 + (t % 3) * (aw + 6), py + 164 + (t / 3) * 40, aw, 34}, -1, std::to_string(t)});
+      if (m_selectTool <= 1) m_ui.push_back({UiControl::PaintSize, {px + 14, py + 272, kPaintW - 28 - 60, 20}});
+      if (m_selectTool == 0 || m_selectTool == 2) m_ui.push_back({UiControl::PaintSmart, {px + kPaintW - 14 - 38, py + 306, 38, 20}});
+      m_ui.push_back({UiControl::PaintZoomOut, {px + 14, py + 340, 34, 30}});
+      m_ui.push_back({UiControl::PaintZoomIn, {px + 14 + 34 + 70, py + 340, 34, 30}});
+      m_ui.push_back({UiControl::PaintZoomReset, {px + kPaintW - 14 - 56, py + 340, 56, 30}});
+      const float hb = (kPaintW - 28 - 8) / 2;
+      m_ui.push_back({UiControl::PaintUndo, {px + 14, py + 382, hb, 32}});
+      m_ui.push_back({UiControl::PaintClear, {px + 22 + hb, py + 382, hb, 32}});
+    }
   }
 
   // ── popovers last: drawn on top, hit first ──
@@ -1052,6 +1062,10 @@ bool App::uiPress(int index, double x) {
           }
           m_selected = ww.get();
         }
+      markEditDirty();
+      return true;
+    case UiControl::Collapse:
+      if (!m_collapsed.erase(c.value)) m_collapsed.insert(c.value);
       markEditDirty();
       return true;
     case UiControl::Language:
@@ -1517,114 +1531,116 @@ void App::drawUi(EditSurface& e) {
     icon(cv, chipIcon(w->cfg.type), P.x + 25, P.y + 27, w->impl->accent());
     cv.text(typeName(w->cfg.type, es), head, P.x + 44, P.y + 13, ink);
     cv.text(w->cfg.id, mono, P.x + 44, P.y + 32, dim);
-    cv.segment(P.x + 14, P.y + kHeadH + 4, P.x + P.w - 14, P.y + kHeadH + 4, 1, line, false);
+    if (!m_collapsed.count("inspector")) {
+      cv.segment(P.x + 14, P.y + kHeadH + 4, P.x + P.w - 14, P.y + kHeadH + 4, 1, line, false);
 
-    const auto& schema = m_inspSchema;
-    float y = P.y + kHeadH - m_inspScroll + 6;
-    const float cx = P.x + kLabelW + 14, cw = kPanelW - kLabelW - 28;
-    const float top = P.y + kHeadH, bottom = P.y + P.h - kFootH + 2;
-    cv.clip(P.x, top + 2, P.w, bottom - top - 4);
-    for (const auto& p : schema) {
-      const float rowH = p.kind == PropSpec::Color ? kColorRowH : kRowH;
-      if (y + rowH >= top && y <= bottom) {
-        const bool locked = m_motion && (std::string_view(p.key) == "depth" || std::string_view(p.key) == "depth_level");
-        const bool plainLabel = p.kind != PropSpec::Header && p.kind != PropSpec::Element;
-        if (plainLabel) {
-          const float lx = P.x + 16 + (p.indent ? 16 : 0);
-          fitText(es ? p.labelEs : p.labelEn, label, lx, y + 6, cx - lx - 8,
-                  locked ? withAlphaC(dim, 0.5F) : (p.indent ? withAlphaC(dim, 0.85F) : dim));
-        }
-        const std::string v = plainLabel ? valueText(w->cfg.options, p) : std::string();
-        if (p.kind == PropSpec::Header) {
-          cv.segment(P.x + 14, y + 4, P.x + P.w - 14, y + 4, 1, line, false);
-          cv.text(es ? p.labelEs : p.labelEn, strong, P.x + 16, y + 10, withAlphaC(ink, 0.9F));
-        } else if (p.kind == PropSpec::Element) {
-          // ▸ name ............ ↑ ↓ [on]
-          const bool open = m_elExpanded == p.key;
-          bool shown = true;
-          if (const ClockStructure* cs = clockStructure(p.face))
-            for (const auto& el : clockElements(w->cfg.options, *cs))
-              if (p.key == el.spec->id) shown = el.show;
-          const float ax = P.x + 20, ay = y + 15;
-          if (open) cv.triangle(ax - 4, ay - 2, ax + 4, ay - 2, ax, ay + 3, accent);
-          else cv.triangle(ax - 2, ay - 4, ax - 2, ay + 4, ax + 3, ay, dim);
-          cv.text(es ? p.labelEs : p.labelEn, open ? strong : label, P.x + 32, y + 6,
-                  !shown ? withAlphaC(ink, 0.35F) : (open ? ink : withAlphaC(ink, 0.8F)));
-          const float ux = cx + cw - 38 - 58 + 12, dx = cx + cw - 38 - 32 + 12;
-          if (p.options.empty()) {
-            cv.triangle(ux - 4, y + 18, ux + 4, y + 18, ux, y + 12, dim);
-            cv.triangle(dx - 4, y + 12, dx + 4, y + 12, dx, y + 18, dim);
+      const auto& schema = m_inspSchema;
+      float y = P.y + kHeadH - m_inspScroll + 6;
+      const float cx = P.x + kLabelW + 14, cw = kPanelW - kLabelW - 28;
+      const float top = P.y + kHeadH, bottom = P.y + P.h - kFootH + 2;
+      cv.clip(P.x, top + 2, P.w, bottom - top - 4);
+      for (const auto& p : schema) {
+        const float rowH = p.kind == PropSpec::Color ? kColorRowH : kRowH;
+        if (y + rowH >= top && y <= bottom) {
+          const bool locked = m_motion && (std::string_view(p.key) == "depth" || std::string_view(p.key) == "depth_level");
+          const bool plainLabel = p.kind != PropSpec::Header && p.kind != PropSpec::Element;
+          if (plainLabel) {
+            const float lx = P.x + 16 + (p.indent ? 16 : 0);
+            fitText(es ? p.labelEs : p.labelEn, label, lx, y + 6, cx - lx - 8,
+                    locked ? withAlphaC(dim, 0.5F) : (p.indent ? withAlphaC(dim, 0.85F) : dim));
           }
-          const float tx = cx + cw - 38;
-          cv.roundRect(tx, y + 5, 38, 20, 10, shown ? accent : withAlphaC(ink, 0.14F));
-          cv.circle(shown ? tx + 28 : tx + 10, y + 15, 7.5F, shown ? onAccent : ink);
-        } else if (p.kind == PropSpec::Font) {
-          const bool picking = m_fontPickFor == p.key;
-          cv.roundRect(cx, y + 3, cw, 24, 8, picking ? withAlphaC(accent, 0.2F) : raised, 1, picking ? accent : line);
-          const TextStyle fs{.family = v, .size = 13, .weight = 500};
-          cv.clip(cx + 6, y + 3, cw - 24, 24);
-          auto [fw, fh] = measure(v, fs);
-          cv.text(v, fs, cx + 8, y + 15 - fh / 2, ink);
-          cv.clip(P.x, top + 2, P.w, bottom - top - 4);  // back to the inspector's own clip
-          cv.triangle(cx + cw - 14, y + 13, cx + cw - 6, y + 13, cx + cw - 10, y + 18, dim);
-        } else if (locked) {
-          // a moving wallpaper has no depth to pass behind
-          const std::string note = es ? "fondo animado" : "moving wallpaper";
-          auto [nw, nh] = measure(note, label);
-          cv.roundRect(cx + cw - nw - 16, y + 5, nw + 16, 20, 10, withAlphaC(ink, 0.08F));
-          cv.text(note, label, cx + cw - nw - 8, y + 15 - nh / 2, withAlphaC(ink, 0.5F));
-        } else if (p.kind == PropSpec::Enum) {
-          cv.roundRect(cx, y + 3, cw, 24, 12, raised, 1, line);
-          cv.triangle(cx + 12, y + 15, cx + 17, y + 11, cx + 17, y + 19, dim);
-          cv.triangle(cx + cw - 12, y + 15, cx + cw - 17, y + 11, cx + cw - 17, y + 19, dim);
-          fitCentered(optionLabel(v, es), label, cx + 22, y + 15, cw - 44, accent);
-        } else if (p.kind == PropSpec::Bool) {
-          const bool on = v == "true";
-          const float tx = cx + cw - 38;
-          cv.roundRect(tx, y + 5, 38, 20, 10, on ? accent : withAlphaC(ink, 0.14F));
-          cv.circle(on ? tx + 28 : tx + 10, y + 15, 7.5F, on ? onAccent : ink);
-        } else if (p.kind == PropSpec::Number) {
-          const float sw = cw - 46;
-          const double t = std::clamp((numberOf(w->cfg.options, p) - p.min) / (p.max - p.min), 0.0, 1.0);
-          cv.roundRect(cx, y + 13, sw, 4, 2, withAlphaC(ink, 0.14F));
-          cv.roundRect(cx, y + 13, static_cast<float>(sw * t), 4, 2, accent);
-          cv.circle(cx + static_cast<float>(sw * t), y + 15, 7, ink, 2, accent);
-          cv.text(v, mono, cx + sw + 10, y + 7, ink);
-        } else {
-          const auto& sws = p.options.empty() ? colorSwatches() : p.options;
-          const float size = 20, gap = (kPanelW - 28 - sws.size() * size) / (sws.size() - 1);
-          bool listed = false;
-          for (size_t k = 0; k < sws.size(); ++k) {
-            const float sx = P.x + 14 + k * (size + gap), sy = y + 26;
-            listed = listed || sws[k] == v;
-            if (sws[k] == v) cv.circle(sx + size / 2, sy + size / 2, size / 2 + 3, Color{0, 0, 0, 0}, 1.8F, ink);
-            // a clock's own inks by name, else the palette
-            const Color sc = sws[k] == "card"   ? Color{0.02F, 0.02F, 0.025F, 1}
-                             : sws[k] == "accent" ? w->impl->accent()
-                             : sws[k] == "ink"  ? m_noctalia.state().color(w->cfg.options["ink"].value_or(std::string("on_surface")))
-                                                : m_noctalia.state().color(sws[k]);
-            cv.circle(sx + size / 2, sy + size / 2, size / 2, sc, 1, line);
+          const std::string v = plainLabel ? valueText(w->cfg.options, p) : std::string();
+          if (p.kind == PropSpec::Header) {
+            cv.segment(P.x + 14, y + 4, P.x + P.w - 14, y + 4, 1, line, false);
+            cv.text(es ? p.labelEs : p.labelEn, strong, P.x + 16, y + 10, withAlphaC(ink, 0.9F));
+          } else if (p.kind == PropSpec::Element) {
+            // ▸ name ............ ↑ ↓ [on]
+            const bool open = m_elExpanded == p.key;
+            bool shown = true;
+            if (const ClockStructure* cs = clockStructure(p.face))
+              for (const auto& el : clockElements(w->cfg.options, *cs))
+                if (p.key == el.spec->id) shown = el.show;
+            const float ax = P.x + 20, ay = y + 15;
+            if (open) cv.triangle(ax - 4, ay - 2, ax + 4, ay - 2, ax, ay + 3, accent);
+            else cv.triangle(ax - 2, ay - 4, ax - 2, ay + 4, ax + 3, ay, dim);
+            cv.text(es ? p.labelEs : p.labelEn, open ? strong : label, P.x + 32, y + 6,
+                    !shown ? withAlphaC(ink, 0.35F) : (open ? ink : withAlphaC(ink, 0.8F)));
+            const float ux = cx + cw - 38 - 58 + 12, dx = cx + cw - 38 - 32 + 12;
+            if (p.options.empty()) {
+              cv.triangle(ux - 4, y + 18, ux + 4, y + 18, ux, y + 12, dim);
+              cv.triangle(dx - 4, y + 12, dx + 4, y + 12, dx, y + 18, dim);
+            }
+            const float tx = cx + cw - 38;
+            cv.roundRect(tx, y + 5, 38, 20, 10, shown ? accent : withAlphaC(ink, 0.14F));
+            cv.circle(shown ? tx + 28 : tx + 10, y + 15, 7.5F, shown ? onAccent : ink);
+          } else if (p.kind == PropSpec::Font) {
+            const bool picking = m_fontPickFor == p.key;
+            cv.roundRect(cx, y + 3, cw, 24, 8, picking ? withAlphaC(accent, 0.2F) : raised, 1, picking ? accent : line);
+            const TextStyle fs{.family = v, .size = 13, .weight = 500};
+            cv.clip(cx + 6, y + 3, cw - 24, 24);
+            auto [fw, fh] = measure(v, fs);
+            cv.text(v, fs, cx + 8, y + 15 - fh / 2, ink);
+            cv.clip(P.x, top + 2, P.w, bottom - top - 4);  // back to the inspector's own clip
+            cv.triangle(cx + cw - 14, y + 13, cx + cw - 6, y + 13, cx + cw - 10, y + 18, dim);
+          } else if (locked) {
+            // a moving wallpaper has no depth to pass behind
+            const std::string note = es ? "fondo animado" : "moving wallpaper";
+            auto [nw, nh] = measure(note, label);
+            cv.roundRect(cx + cw - nw - 16, y + 5, nw + 16, 20, 10, withAlphaC(ink, 0.08F));
+            cv.text(note, label, cx + cw - nw - 8, y + 15 - nh / 2, withAlphaC(ink, 0.5F));
+          } else if (p.kind == PropSpec::Enum) {
+            cv.roundRect(cx, y + 3, cw, 24, 12, raised, 1, line);
+            cv.triangle(cx + 12, y + 15, cx + 17, y + 11, cx + 17, y + 19, dim);
+            cv.triangle(cx + cw - 12, y + 15, cx + cw - 17, y + 11, cx + cw - 17, y + 19, dim);
+            fitCentered(optionLabel(v, es), label, cx + 22, y + 15, cw - 44, accent);
+          } else if (p.kind == PropSpec::Bool) {
+            const bool on = v == "true";
+            const float tx = cx + cw - 38;
+            cv.roundRect(tx, y + 5, 38, 20, 10, on ? accent : withAlphaC(ink, 0.14F));
+            cv.circle(on ? tx + 28 : tx + 10, y + 15, 7.5F, on ? onAccent : ink);
+          } else if (p.kind == PropSpec::Number) {
+            const float sw = cw - 46;
+            const double t = std::clamp((numberOf(w->cfg.options, p) - p.min) / (p.max - p.min), 0.0, 1.0);
+            cv.roundRect(cx, y + 13, sw, 4, 2, withAlphaC(ink, 0.14F));
+            cv.roundRect(cx, y + 13, static_cast<float>(sw * t), 4, 2, accent);
+            cv.circle(cx + static_cast<float>(sw * t), y + 15, 7, ink, 2, accent);
+            cv.text(v, mono, cx + sw + 10, y + 7, ink);
+          } else {
+            const auto& sws = p.options.empty() ? colorSwatches() : p.options;
+            const float size = 20, gap = (kPanelW - 28 - sws.size() * size) / (sws.size() - 1);
+            bool listed = false;
+            for (size_t k = 0; k < sws.size(); ++k) {
+              const float sx = P.x + 14 + k * (size + gap), sy = y + 26;
+              listed = listed || sws[k] == v;
+              if (sws[k] == v) cv.circle(sx + size / 2, sy + size / 2, size / 2 + 3, Color{0, 0, 0, 0}, 1.8F, ink);
+              // a clock's own inks by name, else the palette
+              const Color sc = sws[k] == "card"   ? Color{0.02F, 0.02F, 0.025F, 1}
+                               : sws[k] == "accent" ? w->impl->accent()
+                               : sws[k] == "ink"  ? m_noctalia.state().color(w->cfg.options["ink"].value_or(std::string("on_surface")))
+                                                  : m_noctalia.state().color(sws[k]);
+              cv.circle(sx + size / 2, sy + size / 2, size / 2, sc, 1, line);
+            }
+            if (!listed) cv.text(v, mono, cx + cw - 70, y + 6, ink);
           }
-          if (!listed) cv.text(v, mono, cx + cw - 70, y + 6, ink);
         }
+        y += rowH;
       }
-      y += rowH;
+      cv.clip();
+      // scroll hint when the list continues
+      if (m_inspScroll > 1) cv.roundRect(P.x + P.w / 2 - 16, top + 3, 32, 3, 1.5F, withAlphaC(ink, 0.25F));
+      cv.segment(P.x + 14, P.y + P.h - kFootH + 2, P.x + P.w - 14, P.y + P.h - kFootH + 2, 1, line, false);
+      for (const UiControl& c : m_ui) {
+        if (c.type != UiControl::Duplicate && c.type != UiControl::Delete) continue;
+        const bool del = c.type == UiControl::Delete, hot = hovered(c);
+        const Color bg = del ? Color{0.9F, 0.25F, 0.2F, hot ? 0.32F : 0.18F} : (hot ? withAlphaC(ink, 0.14F) : raised);
+        cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 10, bg);
+        const Color fg = del ? Color{1, 0.62F, 0.57F, 1} : ink;
+        const std::string s = del ? (es ? "Eliminar" : "Delete") : (es ? "Duplicar" : "Duplicate");
+        auto [tw, th] = measure(s, strong);
+        const float gx = c.r.x + (c.r.w - tw - 22) / 2;
+        icon(cv, del ? "trash" : "copy", gx + 7, c.r.y + c.r.h / 2, fg);
+        cv.text(s, strong, gx + 22, c.r.y + (c.r.h - th) / 2, fg);
     }
-    cv.clip();
-    // scroll hint when the list continues
-    if (m_inspScroll > 1) cv.roundRect(P.x + P.w / 2 - 16, top + 3, 32, 3, 1.5F, withAlphaC(ink, 0.25F));
-    cv.segment(P.x + 14, P.y + P.h - kFootH + 2, P.x + P.w - 14, P.y + P.h - kFootH + 2, 1, line, false);
-    for (const UiControl& c : m_ui) {
-      if (c.type != UiControl::Duplicate && c.type != UiControl::Delete) continue;
-      const bool del = c.type == UiControl::Delete, hot = hovered(c);
-      const Color bg = del ? Color{0.9F, 0.25F, 0.2F, hot ? 0.32F : 0.18F} : (hot ? withAlphaC(ink, 0.14F) : raised);
-      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 10, bg);
-      const Color fg = del ? Color{1, 0.62F, 0.57F, 1} : ink;
-      const std::string s = del ? (es ? "Eliminar" : "Delete") : (es ? "Duplicar" : "Duplicate");
-      auto [tw, th] = measure(s, strong);
-      const float gx = c.r.x + (c.r.w - tw - 22) / 2;
-      icon(cv, del ? "trash" : "copy", gx + 7, c.r.y + c.r.h / 2, fg);
-      cv.text(s, strong, gx + 22, c.r.y + (c.r.h - th) / 2, fg);
     }
   }
 
@@ -1653,6 +1669,7 @@ void App::drawUi(EditSurface& e) {
     icon(cv, "brush", P.x + 28, P.y + 28, accent);
     cv.text(es ? "Pincel de profundidad" : "Depth brush", head, P.x + 50, P.y + 12, ink);
     cv.text(es ? "Corrige qué queda delante" : "Fix what stands in front", label, P.x + 50, P.y + 32, dim);
+    if (m_collapsed.count("paint")) continue;  // folded to its title
     cv.text(es ? "Herramienta" : "Tool", label, P.x + 14, P.y + 62, dim);
     cv.text(es ? "Acción" : "Action", label, P.x + 14, P.y + 142, dim);
     if (m_selectTool <= 1)
@@ -1957,6 +1974,17 @@ void App::drawUi(EditSurface& e) {
     cv.text(t, strong, c.r.x + (c.r.w - tw) / 2, c.r.y + c.r.h / 2 - th / 2, on ? onAccent : ink);
   }
 
+  // ── fold buttons: a chevron up folds the panel to its title, down unfolds it ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Collapse) continue;
+    const bool folded = m_collapsed.count(c.value) > 0, hot = hovered(c);
+    cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 8, hot ? withAlphaC(ink, 0.14F) : (folded ? withAlphaC(accent, 0.18F) : raised));
+    const float mx = c.r.x + c.r.w / 2, my = c.r.y + c.r.h / 2;
+    const Color cc = folded ? accent : (hot ? ink : withAlphaC(ink, 0.7F));
+    if (folded) cv.triangle(mx - 5, my - 2.5F, mx + 5, my - 2.5F, mx, my + 3.5F, cc);
+    else cv.triangle(mx - 5, my + 2.5F, mx + 5, my + 2.5F, mx, my - 3.5F, cc);
+  }
+
   // ── grip dots on movable panels ──
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::PanelGrab) continue;
@@ -1971,7 +1999,7 @@ void App::drawUi(EditSurface& e) {
     const std::string t = tipFor(tipCtl->type, es);
     auto [tw, th] = measure(t, label);
     const float tx = std::clamp(tipCtl->r.x + tipCtl->r.w / 2 - tw / 2 - 10, 8.0F, W - tw - 28);
-    const bool inPanel = isSaveControl(tipCtl->type) || tipCtl->type == UiControl::PaintZoomIn ||
+    const bool inPanel = isSaveControl(tipCtl->type) || tipCtl->type == UiControl::Collapse || tipCtl->type == UiControl::PaintZoomIn ||
                          tipCtl->type == UiControl::PaintZoomOut || tipCtl->type == UiControl::PaintZoomReset;
     const float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : kBarY + kBarH + 8;
     if (inPanel || (!m_galleryOpen && !m_helpOpen && !m_savesOpen)) {
