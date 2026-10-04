@@ -126,8 +126,8 @@ int main(int argc, char** argv) {
     MediaState st;
     st.present = true;
     st.playing = true;
-    st.title = "Cariño mío";
-    st.artist = "Paloma San Basilio";
+    st.title = "Canción de prueba";
+    st.artist = "Banda Imaginaria";
     st.lengthUs = 208'000'000;
     st.positionUs = 40'000'000;
     st.positionAt = 500;
@@ -135,8 +135,9 @@ int main(int argc, char** argv) {
     st.hasAccent = true;
     st.accent = Color::fromHex("#e0654a");
     st.lyrics = MediaState::Lyrics::Synced;
-    st.lines = parseLrc("[00:31.84]Sé que estás pensando que te soy infiel\n[00:36.05]Que te estoy mintiendo\n"
-                        "[00:39.50]Que no te quiero\n[00:43.10]Y que busco en otros brazos lo que no me das\n[00:48.00]\n");
+    // invented lines (accents and ñ exercise the text path)
+    st.lines = parseLrc("[00:31.84]La luz se queda quieta en la ventana\n[00:36.05]y el reloj no sabe esperar\n"
+                        "[00:39.50]Canta bajito la ciudad\n[00:43.10]mientras el año vuelve a empezar, otra canción\n[00:48.00]\n");
     MediaState viz = st;
     viz.lyrics = MediaState::Lyrics::None;
     viz.lines.clear();
