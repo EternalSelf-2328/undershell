@@ -99,6 +99,28 @@ int main(int argc, char** argv) {
     CHECK(edgeMax <= 4);
   }
 
+  // the line floats in its box: its glow fades below it too, with no cut
+  // where a bar look's root would be
+  {
+    toml::table opts;
+    opts.insert_or_assign("glow", 0.55);
+    opts.insert_or_assign("thickness", 1.0);
+    opts.insert_or_assign("bars", 40);
+    const int w = 385, h = 94;
+    const Image img = renderLook("line", w, h, pal, &opts);
+    auto alpha = [&](int x, int y) { return static_cast<int>(img.rgba[(static_cast<size_t>(y) * w + x) * 4 + 3]); };
+    int worst = 0;
+    for (int x = 40; x < w - 40; x += 7) {
+      int peak = 0;
+      for (int y = 0; y < h; ++y)
+        if (alpha(x, y) > alpha(x, peak)) peak = y;
+      for (int y = peak; y < h - 1; ++y)
+        if (alpha(x, y) < 14) worst = std::max(worst, alpha(x, y) - alpha(x, y + 1));  // the faint skirt
+    }
+    if (worst > 5) std::fprintf(stderr, "line: its glow is cut below it (a drop of %d in one row)\n", worst);
+    CHECK(worst <= 5);
+  }
+
   // the now-playing card: synced lyrics, the no-lyrics spectrum, nothing
   {
     MediaState st;

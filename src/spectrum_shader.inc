@@ -147,7 +147,9 @@ void main() {
     if (centred) across = abs(signedAcross);
 
     float mirrorFade = 1.0;
-    if (!polar && !frame && !centred && across < 0.0) {
+    // below the root: only the reflection, for looks that grow from it (the
+    // line floats in its box, so its glow falls off downwards as well)
+    if (!polar && !frame && !centred && st != 7 && across < 0.0) {
         if (reflectPx <= 0.0) {
             fragColor = vec4(0.0);
             return;
