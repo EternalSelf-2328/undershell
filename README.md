@@ -60,9 +60,14 @@ systemctl --user enable --now undershell
 
 ```sh
 meson setup build --prefix=$HOME/.local
-ninja -C build && meson test -C build && meson install -C build
+meson compile -C build
+meson install -C build
 systemctl --user daemon-reload && systemctl --user enable --now undershell
 ```
+
+`meson install` puts the binary in `~/.local/bin` and the user service in
+`~/.local/share/systemd/user/`, where `systemctl --user` finds it. The tests
+are optional (see [Build and tests](#build-and-tests)).
 
 It runs as a **systemd user service** tied to the graphical session: it starts
 with it, restarts itself if it crashes, and its logs go to the journal
@@ -376,7 +381,7 @@ idle_wave, spin, glow, fps, opacity, depth). You can have several widgets.
 
 ```sh
 meson setup build --prefix=$HOME/.local
-ninja -C build && meson test -C build && meson install -C build
+meson compile -C build && meson test -C build
 ```
 
 The tests don't need a compositor: `config` (loading and in-place editing
@@ -385,7 +390,11 @@ refinement, the brush), `docs` (`docs/OPTIONS.md` is up to date), `editor`
 (magnet, limits, grid), `media` (LRC, album color, position), `motion`
 (Ryoku's easing) and `render` (the looks against the images in
 `tests/golden/`, every shader, glow edges, and text with the bundled fonts,
-via headless EGL). If you change a look on purpose: `build/test_render --update`.
+via headless EGL). The golden images pin the exact pixels of the machine they
+were made on; another GPU, Mesa or Pango version draws slightly differently,
+so there a mismatch is only reported. `UNDERSHELL_GOLDEN=strict meson test -C build`
+makes it fail (for development); if you change a look on purpose:
+`build/test_render --update`.
 
 ## Structure
 
