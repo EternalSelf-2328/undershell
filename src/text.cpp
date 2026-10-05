@@ -182,10 +182,18 @@ const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st,
   cairo_set_source_rgba(cr, 1, 1, 1, 1);
   layout = makeLayout(cr, text, st);
   if (st.stroke > 0) {
+    // Hollow text: the outer half of a double-width stroke. Many fonts build
+    // a glyph from overlapping contours (an R's bowl over its stem, a 4's bar
+    // across its stem, static instances of variable fonts); a plain stroke
+    // outlines every piece and shows those seams. Clearing the filled glyph
+    // (non-zero winding: the union of its contours) keeps only the outline.
     pango_cairo_layout_path(cr, layout);
-    cairo_set_line_width(cr, st.stroke);
+    cairo_set_line_width(cr, 2 * st.stroke);
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
-    cairo_stroke(cr);
+    cairo_stroke_preserve(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING);
+    cairo_fill(cr);
   } else {
     pango_cairo_show_layout(cr, layout);
   }
