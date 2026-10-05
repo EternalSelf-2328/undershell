@@ -264,13 +264,53 @@ the switch hides one (flip keeps its layout). Each structure also has
 options of its own: the card's weekday drawn in strokes or set in a font,
 the column's line overlap and alignment, flip's corners and pulsing
 separator, metal's separator, stacked's alignment, gap and date format.
-Fonts you download: put the `.ttf`/`.otf` files in `~/.local/share/fonts`
-(any installed font works too); the picker notices new files the next time
-it opens, no restart needed. Untouched, a structure looks exactly as designed; changes are flat keys
+To use fonts you download, see [Fonts](#fonts). Untouched, a structure looks exactly as designed; changes are flat keys
 in the widget (`goodnight_time_font = "Space Grotesk"`,
 `goodnight_order = "rule_top,greeting,time,day,date,rule_bottom"`), so
 they travel with wallpaper profiles and saved layouts. The other faces
 stay as classics.
+
+## Fonts
+
+The five editable clock structures (`goodnight`, `column`, `flip`, `metal`,
+`stacked`) can use any font installed on your system. The classic faces and
+the music card keep the fonts of their design. Space Grotesk, Fraunces, Inter
+Display, JetBrains Mono and Google Sans Flex come bundled, so they are always
+there.
+
+**Adding your own:**
+
+1. Download the font as `.ttf` or `.otf` (variable fonts work too).
+2. Copy the files to `~/.local/share/fonts/` (create the folder if needed;
+   subfolders are fine). Fonts installed system-wide, for example with your
+   package manager, work as well.
+3. In the editor, select the clock, open a part under **Elements** and click
+   its **Font**. The list is read again each time it opens, so new fonts show
+   up without restarting undershell or running `fc-cache`. Type to search;
+   each family is shown in its own typeface.
+4. The first entry, **Design · …**, goes back to the face's own font.
+
+**In the config file**, a part's font is `<face>_<part>_font`, with the family
+name as `fc-list : family` prints it:
+
+| Face | Parts with a font |
+|---|---|
+| `goodnight` | `greeting`, `date`, `time` (the weekday is drawn in strokes; `goodnight_day_style = "font"` sets it in `goodnight_day_font`) |
+| `column` | `hours`, `minutes`, `extra` (seconds and AM/PM) |
+| `flip` | `digits`, `colon` |
+| `metal` | `time`, `ampm`, `weekday`, `date`, `weather` |
+| `stacked` | `day`, `date`, `time` |
+
+```toml
+[[widget]]
+type = "clock"
+face = "stacked"
+stacked_day_font = "Bebas Neue"
+stacked_time_font = "JetBrains Mono"
+```
+
+If a family name doesn't match an installed font, Pango falls back to a
+similar one; check the exact name with `fc-list : family | grep -i <name>`.
 
 ## Depth planes
 
