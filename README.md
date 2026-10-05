@@ -42,6 +42,13 @@ sudo pacman -S --needed base-devel git meson ninja wayland wayland-protocols lib
   gdk-pixbuf2 curl nlohmann-json
 ```
 
+On Fedora, after cloning the repository (see [Install](#install)), from inside it:
+
+```sh
+sudo dnf install dnf-plugins-core git
+sudo dnf builddep packaging/fedora/undershell.spec
+```
+
 ## Install
 
 ```sh
@@ -55,6 +62,9 @@ cd undershell
 cd packaging/arch && makepkg -si
 systemctl --user enable --now undershell
 ```
+
+**As a package (Fedora):** `packaging/fedora/undershell.spec` builds an RPM
+(`rpmbuild -ba` with the release tarball from GitHub as its source).
 
 **By hand:**
 
