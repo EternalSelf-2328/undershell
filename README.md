@@ -69,6 +69,18 @@ systemctl --user daemon-reload && systemctl --user enable --now undershell
 `~/.local/share/systemd/user/`, where `systemctl --user` finds it. The tests
 are optional (see [Build and tests](#build-and-tests)).
 
+**If the service doesn't start** ("A dependency job failed", "unmet condition
+check ConditionEnvironment=WAYLAND_DISPLAY", or nothing appears at login):
+your compositor doesn't run a systemd graphical session, so systemd doesn't
+know the Wayland display. Add this to your compositor's autostart (Hyprland
+`exec-once`, niri `spawn-at-startup`, Sway `exec`, …):
+
+```sh
+sh -c 'systemctl --user import-environment WAYLAND_DISPLAY && systemctl --user start undershell'
+```
+
+or skip the service and autostart `undershell` itself.
+
 It runs as a **systemd user service** tied to the graphical session: it starts
 with it, restarts itself if it crashes, and its logs go to the journal
 (`journalctl --user -u undershell`). To stop it: `systemctl --user disable --now undershell`.

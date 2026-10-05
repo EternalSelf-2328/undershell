@@ -1,17 +1,22 @@
 [Unit]
 Description=undershell desktop widgets
 Documentation=file://@DOCDIR@/README.md
-# lives and dies with the graphical session (umbriel, niri, Hyprland...)
+# Follows the graphical session when the compositor runs one under systemd
+# (Umbriel, uwsm, niri's session…): starts with it, stops with it. Not a hard
+# requirement: plenty of compositors started from a TTY or a display manager
+# never activate graphical-session.target, and the service must still start
+# by hand there.
 PartOf=graphical-session.target
 After=graphical-session.target
-Requisite=graphical-session.target
+# it can only draw once systemd knows the Wayland display (the compositor, or
+# `systemctl --user import-environment WAYLAND_DISPLAY`, puts it there)
+ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]
 Type=simple
 ExecStart=@BINDIR@/undershell
 Restart=on-failure
 RestartSec=2
-# WAYLAND_DISPLAY and XDG_RUNTIME_DIR come from the session environment
 
 [Install]
 WantedBy=graphical-session.target
