@@ -28,11 +28,10 @@ runs on Umbriel/niri/Hyprland. Its first widgets are ports of
   palette and the depth effect (with its `wallpaper_depth` plugin); without it
   the widgets use their own colors and no depth. **PipeWire** for live audio
   in the visualizers.
-
-| | |
-|---|---|
-| **Libraries** | wayland, EGL / GLES 3, libpipewire-0.3, toml++, glib, cairo, pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl |
-| **To build** | a C++20 compiler, meson, ninja, wayland-protocols, nlohmann-json, git |
+- **Libraries:** wayland, EGL / GLES 3, libpipewire-0.3, toml++, glib, cairo,
+  pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl.
+- **To build:** a C++20 compiler, meson, ninja, wayland-protocols,
+  nlohmann-json, git.
 
 On Arch and derivatives, all of it:
 
@@ -515,7 +514,7 @@ makes it fail (for development); if you change a look on purpose:
 
 ## Structure
 
-| | |
+| Files | What it does |
 |---|---|
 | `src/app.*` | Wayland, EGL, loop, surfaces, IPC (`msg …`) |
 | `src/anchor.hpp` | layouts that follow the wallpaper across screen sizes |
