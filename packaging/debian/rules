@@ -1,0 +1,11 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --buildsystem=meson
+
+override_dh_auto_configure:
+	dh_auto_configure -- -Ddev_paths=false
+
+# the user service is installed, not enabled for every user
+override_dh_installsystemduser:
+	dh_installsystemduser --no-enable

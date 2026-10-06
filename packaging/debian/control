@@ -1,0 +1,36 @@
+Source: undershell
+Section: x11
+Priority: optional
+Maintainer: EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>
+Build-Depends: debhelper-compat (= 13),
+               meson,
+               ninja-build,
+               pkg-config,
+               libwayland-dev,
+               wayland-protocols,
+               libegl-dev,
+               libgles-dev,
+               libpipewire-0.3-dev,
+               libtomlplusplus-dev,
+               libglib2.0-dev,
+               libcairo2-dev,
+               libpango1.0-dev,
+               libfontconfig-dev,
+               libxkbcommon-dev,
+               libsystemd-dev,
+               libgdk-pixbuf-2.0-dev,
+               libcurl4-openssl-dev | libcurl-dev,
+               nlohmann-json3-dev
+Standards-Version: 4.7.0
+Homepage: https://github.com/EternalSelf-2328/undershell
+Rules-Requires-Root: no
+
+Package: undershell
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: pipewire
+Description: desktop widgets that live under your Wayland shell
+ Audio visualizers, clocks and a now-playing card for Wayland compositors
+ that support the layer-shell protocol. They sit above the wallpaper and
+ below the windows; with Noctalia they take its palette and, through its
+ depth plugin, pass behind the subject of the wallpaper.
