@@ -42,7 +42,8 @@ sudo pacman -S --needed base-devel git meson ninja wayland wayland-protocols lib
   gdk-pixbuf2 curl nlohmann-json
 ```
 
-On Fedora, after cloning the repository (see [Install](#install)), from inside it:
+On Fedora, the package script below installs them for you; to build by hand
+instead, after cloning the repository (see [Install](#install)), from inside it:
 
 ```sh
 sudo dnf install dnf-plugins-core git
@@ -63,8 +64,16 @@ cd packaging/arch && makepkg -si
 systemctl --user enable --now undershell
 ```
 
-**As a package (Fedora):** `packaging/fedora/undershell.spec` builds an RPM
-(`rpmbuild -ba` with the release tarball from GitHub as its source).
+**As a package (Fedora 43, 44):**
+
+```sh
+sudo dnf install git rpm-build dnf-plugins-core
+packaging/fedora/build-rpm.sh -i
+systemctl --user enable --now undershell
+```
+
+The script installs the build dependencies, builds the RPM from the checkout
+(into `build-rpm/`) and installs it; without `-i` it only builds.
 
 **By hand:**
 
