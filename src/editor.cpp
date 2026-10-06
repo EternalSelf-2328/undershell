@@ -33,7 +33,7 @@ const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
 // The resize grip under the pointer: 0 top-left, 1 top-right, 2 bottom-left,
 // 3 bottom-right, -1 none (the grips turn with the widget)
 int gripAt(const Widget& w, double x, double y) {
-  if (w.cfg.pinned) return -1;  // its corners are pins, not resize grips
+  if (handPlaced(w.cfg)) return -1;  // its corners are pins or mesh points, not resize grips
   double lx = 0, ly = 0;
   toLocal(w.cfg, x, y, lx, ly);
   const double gs = std::min({26.0, w.cfg.width / 2.0, w.cfg.height / 2.0});
@@ -88,25 +88,34 @@ Widget* App::widgetAt(const Output* o, double x, double y) {
 
 // the knob above the selected widget's (turned) top edge
 int App::pinAt(const Widget& w, double x, double y) const {
-  if (!w.cfg.pinned || &w != m_selected) return -1;
+  if (!handPlaced(w.cfg) || &w != m_selected) return -1;
+  const double* p = handlePoints(w.cfg);
   int best = -1;
-  double bestD = 14;
-  for (int i = 0; i < 4; ++i) {
-    const double d = std::hypot(x - w.cfg.pin[2 * i], y - w.cfg.pin[2 * i + 1]);
+  double bestD = w.cfg.meshed ? 11 : 14;  // mesh points sit closer together
+  for (int i = 0; i < handleCount(w.cfg); ++i) {
+    const double d = std::hypot(x - p[2 * i], y - p[2 * i + 1]);
     if (d < bestD) bestD = d, best = i;
   }
   return best;
 }
 
 // The points go to the config as one undo step; the box (the widget's own
-// resolution) follows the quad's size so it renders crisp, at its real aspect.
+// resolution) follows the shape's size so it renders crisp, at its real aspect.
 void App::commitPin(Widget& w) {
   m_lastOpKind.clear();
-  setProp(w, "pin", pinText(w.cfg.pin));
-  const double* q = w.cfg.pin;
-  auto len = [&](int a, int b) { return std::hypot(q[2 * a] - q[2 * b], q[2 * a + 1] - q[2 * b + 1]); };
-  const int nw = std::max(48, static_cast<int>(std::lround((len(0, 1) + len(3, 2)) / 2)));
-  const int nh = std::max(32, static_cast<int>(std::lround((len(0, 3) + len(1, 2)) / 2)));
+  int nw = 0, nh = 0;
+  if (w.cfg.meshed) {
+    setProp(w, "mesh", pointsText(w.cfg.mesh, 2 * w.cfg.meshN * w.cfg.meshN));
+    // moved by hand: no longer the preset it started from
+    setQuietly(w, "mesh_preset", "\"custom\"");
+    meshFitSize(w.cfg, nw, nh);
+  } else {
+    setProp(w, "pin", pinText(w.cfg.pin));
+    const double* q = w.cfg.pin;
+    auto len = [&](int a, int b) { return std::hypot(q[2 * a] - q[2 * b], q[2 * a + 1] - q[2 * b + 1]); };
+    nw = std::max(48, static_cast<int>(std::lround((len(0, 1) + len(3, 2)) / 2)));
+    nh = std::max(32, static_cast<int>(std::lround((len(0, 3) + len(1, 2)) / 2)));
+  }
   if (nw != w.cfg.width || nh != w.cfg.height) {
     w.cfg.width = nw;
     w.cfg.height = nh;
@@ -116,7 +125,7 @@ void App::commitPin(Widget& w) {
 }
 
 bool App::inRotateHandle(const Widget& w, double x, double y) const {
-  if (&w != m_selected || !w.impl || w.impl->fullscreen() || w.cfg.pinned) return false;
+  if (&w != m_selected || !w.impl || w.impl->fullscreen() || handPlaced(w.cfg)) return false;
   double kx = 0, ky = 0;
   toOutput(w.cfg, w.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
   return std::hypot(x - kx, y - ky) <= OverlayPass::kHandleR + 6;
@@ -363,16 +372,17 @@ void App::cycleSelection(int step) {
 void App::nudge(int dx, int dy, bool resize) {
   Widget* w = target();
   if (!w) return;
-  if (w->cfg.pinned) {
-    // the last corner moved, or all four: one pixel at a time for precision
-    for (int i = 0; i < 4; ++i)
+  if (handPlaced(w->cfg)) {
+    // the last point moved, or all of them: one pixel at a time for precision
+    double* p = handlePoints(w->cfg);
+    for (int i = 0; i < handleCount(w->cfg); ++i)
       if (m_pinCorner < 0 || m_pinCorner == i) {
-        w->cfg.pin[2 * i] += dx;
-        w->cfg.pin[2 * i + 1] += dy;
+        p[2 * i] += dx;
+        p[2 * i + 1] += dy;
       }
     placeLayer(*w);
     commitPin(*w);
-    m_lastOpKind = "prop:pin";  // a burst of arrows is one undo step
+    m_lastOpKind = w->cfg.meshed ? "prop:mesh" : "prop:pin";  // a burst of arrows is one undo step
     m_lastOpId = w->cfg.id;
     markEditDirty();
     return;
@@ -719,19 +729,21 @@ void App::onPointerMotion(double x, double y) {
     setRotation(*w, std::round(a * 10.0) / 10.0);
     return;
   }
-  if (m_drag == Drag::Pin && w->cfg.pinned && m_pinCorner >= 0) {
-    // one corner follows the pointer; Shift moves it a quarter as fast
+  if (m_drag == Drag::Pin && handPlaced(w->cfg) && m_pinCorner >= 0) {
+    // one point follows the pointer; Shift moves it a quarter as fast
     const double k = modActive(XKB_MOD_NAME_SHIFT) ? 0.25 : 1.0;
-    w->cfg.pin[2 * m_pinCorner] = m_pinStart[2 * m_pinCorner] + (x - m_pressX) * k;
-    w->cfg.pin[2 * m_pinCorner + 1] = m_pinStart[2 * m_pinCorner + 1] + (y - m_pressY) * k;
+    double* p = handlePoints(w->cfg);
+    p[2 * m_pinCorner] = m_pinStart[2 * m_pinCorner] + (x - m_pressX) * k;
+    p[2 * m_pinCorner + 1] = m_pinStart[2 * m_pinCorner + 1] + (y - m_pressY) * k;
     placeLayer(*w);
     markEditDirty();
     return;
   }
-  if (m_drag == Drag::Move && w->cfg.pinned) {  // all four corners together
-    for (int i = 0; i < 4; ++i) {
-      w->cfg.pin[2 * i] = m_pinStart[2 * i] + (x - m_pressX);
-      w->cfg.pin[2 * i + 1] = m_pinStart[2 * i + 1] + (y - m_pressY);
+  if (m_drag == Drag::Move && handPlaced(w->cfg)) {  // all the points together
+    double* p = handlePoints(w->cfg);
+    for (int i = 0; i < handleCount(w->cfg); ++i) {
+      p[2 * i] = m_pinStart[2 * i] + (x - m_pressX);
+      p[2 * i + 1] = m_pinStart[2 * i + 1] + (y - m_pressY);
     }
     placeLayer(*w);
     markEditDirty();
@@ -861,10 +873,10 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_selected = w;  // clicking empty space clears the selection
     markEditDirty();
     if (!w) return;
-    if (w->cfg.pinned) {
-      // a corner pin: a corner moves alone, anywhere else moves the four
+    if (handPlaced(w->cfg)) {
+      // pins or mesh points: a point moves alone, anywhere else moves them all
       const int corner = pinAt(*w, m_px, m_py);
-      std::copy(std::begin(w->cfg.pin), std::end(w->cfg.pin), m_pinStart);
+      std::copy_n(handlePoints(w->cfg), 2 * handleCount(w->cfg), m_pinStart);
       m_pressX = m_px;
       m_pressY = m_py;
       if (corner >= 0) m_pinCorner = corner;
@@ -895,10 +907,11 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_dragW = w->cfg.width;
     m_dragH = w->cfg.height;
     setCursor(m_drag == Drag::Resize ? gripCursor(m_gripCorner) : "grabbing");
-  } else if ((m_drag == Drag::Pin || m_drag == Drag::Move) && w && w->cfg.pinned) {
+  } else if ((m_drag == Drag::Pin || m_drag == Drag::Move) && w && handPlaced(w->cfg)) {
     m_drag = Drag::None;
     bool moved = false;
-    for (int i = 0; i < 8; ++i) moved = moved || std::abs(w->cfg.pin[i] - m_pinStart[i]) > 0.05;
+    const double* p = handlePoints(w->cfg);
+    for (int i = 0; i < 2 * handleCount(w->cfg); ++i) moved = moved || std::abs(p[i] - m_pinStart[i]) > 0.05;
     if (moved) commitPin(*w);
     setCursor("grab");
     markEditDirty();
@@ -1025,14 +1038,14 @@ void App::drawEditorText(EditSurface& e) {
     if (zoomed || w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
     const bool sel = w.get() == m_selected;
     std::string label = std::format("{}  ·  {}  ·  {}×{}", w->cfg.id, optionLabel(lookOf(*w), spanish()), w->cfg.width, w->cfg.height);
-    if (turnedOnly(w->cfg) && !w->cfg.pinned) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));
+    if (turnedOnly(w->cfg) && !handPlaced(w->cfg)) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));
     if (m_drag != Drag::None && m_drag != Drag::Rotate && w.get() == m_pointerWidget)
       label += std::format("  @ {},{}", w->cfg.x, w->cfg.y);
     // above what is seen; a selected turned widget's knob needs the room
     const Box vb = visualBox(w->cfg);
     float lx = static_cast<float>(std::max(8, vb.x + 10));
     float ly = static_cast<float>(vb.y) - 20;
-    if (sel && !w->cfg.pinned) ly -= OverlayPass::kHandleGap + OverlayPass::kHandleR;  // clear of the knob
+    if (sel && !handPlaced(w->cfg)) ly -= OverlayPass::kHandleGap + OverlayPass::kHandleR;  // clear of the knob
     if (ly < 106) ly = static_cast<float>(vb.y) + 10;  // keep clear of the toolbar
     put(label, ls, lx, ly, sel ? w->impl->accent() : ink);
   }

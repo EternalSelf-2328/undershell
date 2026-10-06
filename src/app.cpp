@@ -485,6 +485,8 @@ void App::syncWidgets() {
                              std::abs(w->cfg.rotation - wc.rotation) > 1e-6 || std::abs(w->cfg.tiltX - wc.tiltX) > 1e-6 ||
                              std::abs(w->cfg.tiltY - wc.tiltY) > 1e-6 || std::abs(w->cfg.skewX - wc.skewX) > 1e-6 ||
                              std::abs(w->cfg.perspective - wc.perspective) > 1e-6 || w->cfg.pinned != wc.pinned ||
+                             w->cfg.meshed != wc.meshed || w->cfg.meshN != wc.meshN || w->cfg.meshSmooth != wc.meshSmooth ||
+                             !std::equal(std::begin(wc.mesh), std::end(wc.mesh), std::begin(w->cfg.mesh)) ||
                              !std::equal(std::begin(wc.pin), std::end(wc.pin), std::begin(w->cfg.pin));
     w->cfg = wc;
     w->impl->configure(w->cfg, m_noctalia.state());
@@ -1105,11 +1107,11 @@ void App::renderEdit(EditSurface& e) {
     }
     // placing a pinned corner: a loupe of the wallpaper under it
     m_loupe = {};
-    if (m_drag == Drag::Pin && m_selected && m_selected->cfg.pinned && m_pinCorner >= 0 && e.output == m_selected->output) {
+    if (m_drag == Drag::Pin && m_selected && handPlaced(m_selected->cfg) && m_pinCorner >= 0 && e.output == m_selected->output) {
       m_depth.get(e.output->name);  // uploads the field and image even when no widget uses depth
       if (DepthMask* m = m_depth.paintable(e.output->name); m && m->field) {
-        const float cx = static_cast<float>(m_selected->cfg.pin[2 * m_pinCorner]);
-        const float cy = static_cast<float>(m_selected->cfg.pin[2 * m_pinCorner + 1]);
+        const float cx = static_cast<float>(handlePoints(m_selected->cfg)[2 * m_pinCorner]);
+        const float cy = static_cast<float>(handlePoints(m_selected->cfg)[2 * m_pinCorner + 1]);
         const float L = 190;
         // beside the pointer, away from the screen edge
         float lx = cx + 40, ly = cy - 40 - L;
@@ -1206,8 +1208,20 @@ std::string App::handleCommand(const std::string& cmd) {
                                  ? value
                                  : "\"" + value + "\"";
     int n = 0;
-    for (auto& c : m_config.widgets)
-      if (id == "all" || c.id == id) n += Config::setKey(m_configPath, c.id, key, toml) ? 1 : 0;
+    // shape keys reshape the widget (presets, grid size), like the inspector
+    const bool shapeKey = key == "warp" || key == "mesh_preset" || key == "mesh_amount" || key == "mesh_grid" || key == "mesh_between";
+    for (auto& c : m_config.widgets) {
+      if (id != "all" && c.id != id) continue;
+      Widget* live = nullptr;
+      for (auto& w : m_widgets)
+        if (w->cfg.id == c.id) live = w.get();
+      if (shapeKey && live) {
+        applyProp(*live, key, toml);
+        ++n;
+      } else {
+        n += Config::setKey(m_configPath, c.id, key, toml) ? 1 : 0;
+      }
+    }
     if (n == 0) return "error: no widget '" + id + "'";
     m_reloadConfigAt = nowSeconds() + 0.05;
     return std::format("set {} = {} on {} widget(s)", key, toml, n);

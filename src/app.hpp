@@ -249,7 +249,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse } type = Panel;
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse, Action } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -270,6 +270,9 @@ private:
   bool uiScroll(double x, double y, int step);
   void setProp(Widget& w, const std::string& key, const std::string& tomlValue);
   void applyProp(Widget& w, const std::string& key, const std::string& tomlValue);
+  // stores an option in the widget and the file without an undo step (a
+  // value that follows from another change, like a mesh turning custom)
+  void setQuietly(Widget& w, const std::string& key, const std::string& tomlValue);
   std::string addWidget(const std::string& type, const std::string& look, int x, int y, bool record);
   void removeWidget(Widget& w);
   void duplicateWidget(Widget& w);
@@ -278,6 +281,8 @@ private:
   bool inRotateHandle(const Widget& w, double x, double y) const;
   int pinAt(const Widget& w, double x, double y) const;  // a pinned widget's corner under the pointer
   void commitPin(Widget& w);                            // store the points (one undo step) and fit the box
+  // the mesh laid again on its corners in a preset shape (flat: reset)
+  void reshapeMesh(Widget& w, const std::string& preset, double amount, int gridSize = 0);
   void setRotation(Widget& w, double degrees);  // live, not persisted
   void clampToOutput(WidgetConfig& c, const Output* o) const;
   // wallpaper anchoring (anchor.hpp): the map for a block on an output, and
@@ -363,7 +368,7 @@ private:
   double m_px = 0, m_py = 0;             // pointer, output coordinates
   enum class Drag { None, Move, Resize, Slider, Rotate, Panel, Pin } m_drag = Drag::None;
   int m_pinCorner = -1;          // corner pin: the corner being moved (or last moved, for the arrows)
-  double m_pinStart[8] = {};     // the points when the drag began
+  double m_pinStart[2 * WidgetConfig::kMeshMax * WidgetConfig::kMeshMax] = {};  // the points when the drag began
   Rect m_loupe;                  // the magnifier while placing a corner (output px)
   std::map<std::string, std::pair<float, float>> m_panelPos;  // panels the user moved (top-left)
   std::set<std::string> m_collapsed;  // panels folded to their title (inspector, paint)

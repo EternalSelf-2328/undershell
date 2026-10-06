@@ -23,6 +23,12 @@ struct Box {
 inline bool warped(const WidgetConfig& c) {
   return c.meshed || c.pinned || std::abs(c.tiltX) > 0.01 || std::abs(c.tiltY) > 0.01 || std::abs(c.skewX) > 0.01;
 }
+// the points a user places by hand: the 4 corner pins, or the mesh's grid
+inline bool handPlaced(const WidgetConfig& c) { return c.pinned || c.meshed; }
+inline int handleCount(const WidgetConfig& c) { return c.meshed ? c.meshN * c.meshN : (c.pinned ? 4 : 0); }
+inline double* handlePoints(WidgetConfig& c) { return c.meshed ? c.mesh : c.pin; }
+inline const double* handlePoints(const WidgetConfig& c) { return c.meshed ? c.mesh : c.pin; }
+
 inline bool turnedOnly(const WidgetConfig& c) { return std::abs(c.rotation) > 0.01; }
 // turned or warped: drawn off-screen and laid on its surface
 inline bool rotated(const WidgetConfig& c) { return turnedOnly(c) || warped(c); }

@@ -87,11 +87,20 @@ std::string formatNumber(const PropSpec& p, double v) {
 // (its look, face, colour mode…): the inspector hides the rest.
 bool optionApplies(const Widget& w, const std::string& key) {
   const toml::table& o = w.cfg.options;
-  if (w.cfg.pinned && (key == "perspective" || key == "tilt_x" || key == "tilt_y" || key == "skew" || key == "rotation"))
-    return false;  // the pinned corners decide the shape
-  if (key == "perspective") return std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01;  // only a tilt is seen in depth
-  if (key == "tilt_x" || key == "tilt_y" || key == "skew")
-    return !(w.cfg.type == "visualizer" && o["style"].value_or(std::string()) == "frame");
+  const bool frameLook = w.cfg.type == "visualizer" && o["style"].value_or(std::string()) == "frame";
+  const std::string mode = w.cfg.meshed ? "mesh" : w.cfg.pinned ? "pin" : o["warp"].value_or(std::string(warped(w.cfg) ? "tilt" : "none"));
+  if (key == "warp") return !frameLook;  // a frame owns the whole screen
+  if (key == "rotation" && handPlaced(w.cfg)) return false;  // the points decide the shape
+  if (key == "tilt_x" || key == "tilt_y" || key == "skew") return !frameLook && mode == "tilt";
+  if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
+  if (key.starts_with("mesh_")) {
+    if (!w.cfg.meshed) return false;
+    if (key == "mesh_amount") {
+      const std::string preset = o["mesh_preset"].value_or(std::string("flat"));
+      return preset != "flat" && preset != "custom";
+    }
+    return true;
+  }
   auto in = [](const std::string& v, std::initializer_list<const char*> list) {
     for (const char* x : list)
       if (v == x) return true;
@@ -134,12 +143,18 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   using K = PropSpec::Kind;
   std::vector<PropSpec> s;
   std::vector<PropSpec> all = schemaFor(w.cfg.type);
-  // perspective, for every widget
-  all.push_back({K::Bool, "pin_corners", "Pin corners", "Fijar esquinas", {}, 0, 1, 1, 0});
+  // shape, for every widget: a mode, then that mode's own controls
+  all.push_back({K::Enum, "warp", "Mode", "Modo", {"none", "tilt", "pin", "mesh"}, 0, 0, 0, 0, "none"});
   all.push_back({K::Number, "tilt_x", "Lean back °", "Inclinar atrás °", {}, -70, 70, 0.5, 0});
   all.push_back({K::Number, "tilt_y", "Lean sideways °", "Inclinar de lado °", {}, -70, 70, 0.5, 0});
   all.push_back({K::Number, "skew", "Skew °", "Sesgo °", {}, -60, 60, 0.5, 0});
   all.push_back({K::Number, "perspective", "Distance", "Distancia", {}, 1.2, 20, 0.1, 2.5});
+  all.push_back({K::Enum, "mesh_preset", "Base shape", "Forma base", {"flat", "arc", "bulge", "flag", "cylinder", "wave"}, 0, 0, 0,
+                 0, "flat"});
+  all.push_back({K::Number, "mesh_amount", "Curvature", "Curvatura", {}, -100, 100, 1, 40, "", true});
+  all.push_back({K::Enum, "mesh_grid", "Points", "Puntos", {"3", "4", "5"}, 0, 0, 0, 0, "3"});
+  all.push_back({K::Enum, "mesh_between", "Between points", "Entre puntos", {"smooth", "straight"}, 0, 0, 0, 0, "smooth"});
+  all.push_back({K::Action, "mesh_reset", "Reset mesh", "Restablecer malla"});
   for (const auto& p : all)
     if (expanded == "*" || optionApplies(w, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
@@ -303,12 +318,14 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
-    if (in(k, {"pin_corners", "tilt_x", "tilt_y", "skew", "perspective"})) return 5;
+    if (in(k, {"warp", "tilt_x", "tilt_y", "skew", "perspective", "mesh_preset", "mesh_amount", "mesh_grid", "mesh_between",
+               "mesh_reset"}))
+      return 5;
     return 0;  // the look and its shape
   };
   static const char* titles[6][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
                                      {"Time & data", "Hora y datos"}, {"Placement", "Colocación"},
-                                     {"Perspective", "Perspectiva"}};
+                                     {"Shape", "Forma"}};
   std::vector<PropSpec> out;
   for (int sec = 0; sec < 6; ++sec) {
     std::vector<PropSpec> part;
@@ -439,6 +456,32 @@ void App::setProp(Widget& w, const std::string& key, const std::string& tomlValu
   applyProp(w, key, tomlValue);
 }
 
+void App::reshapeMesh(Widget& w, const std::string& preset, double amount, int gridSize) {
+  // the corners first, read with the grid the points are laid out in now
+  double qx[4], qy[4];
+  widgetCorners(w.cfg, qx, qy);
+  if (gridSize > 0) w.cfg.meshN = gridSize;
+  // a flag or a wave needs points mid-way to bend through: at least 5 x 5
+  if ((preset == "flag" || preset == "wave") && w.cfg.meshN < 5) w.cfg.meshN = 5;
+  setQuietly(w, "mesh_grid", std::format("\"{}\"", w.cfg.meshN));
+  meshShape(qx, qy, w.cfg.meshN, preset, amount, w.cfg.mesh);
+  setQuietly(w, "mesh", pointsText(toStored(w).mesh, 2 * w.cfg.meshN * w.cfg.meshN));
+  int nw = 0, nh = 0;
+  meshFitSize(w.cfg, nw, nh);
+  if (nw != w.cfg.width || nh != w.cfg.height) {
+    w.cfg.width = nw;
+    w.cfg.height = nh;
+    persist(w);
+  }
+  placeLayer(w);
+  w.needsRender = true;
+}
+
+void App::setQuietly(Widget& w, const std::string& key, const std::string& tomlValue) {
+  storeOption(w.cfg.options, key, tomlValue);
+  Config::setKey(m_configPath, w.cfg.id, key, tomlValue);
+}
+
 // writes a value without recording undo (setProp and undo/redo use it)
 void App::applyProp(Widget& w, const std::string& key, const std::string& tomlValue) {
   if (m_motion && (key == "depth" || key == "depth_level")) return;  // locked under a moving wallpaper
@@ -505,6 +548,69 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
     } catch (const std::exception&) {
     }
   }
+  auto unquoted = [](const std::string& t) { return t.size() >= 2 && t.front() == '"' ? t.substr(1, t.size() - 2) : t; };
+  if (key == "warp") {
+    // the new shape starts from where the widget is drawn now
+    const std::string mode = unquoted(v);
+    double qx[4], qy[4];
+    widgetCorners(w.cfg, qx, qy);
+    w.cfg.pinned = mode == "pin";
+    w.cfg.meshed = mode == "mesh";
+    if (mode == "tilt") {  // the stored tilt comes back
+      auto num = [&](const char* k) { return w.cfg.options[k].value_or(0.0); };
+      w.cfg.tiltX = std::clamp(num("tilt_x"), -70.0, 70.0);
+      w.cfg.tiltY = std::clamp(num("tilt_y"), -70.0, 70.0);
+      w.cfg.skewX = std::clamp(num("skew"), -60.0, 60.0);
+    } else {
+      w.cfg.tiltX = w.cfg.tiltY = w.cfg.skewX = 0;  // kept in the file, not applied
+    }
+    if (w.cfg.pinned) {
+      for (int i = 0; i < 4; ++i) w.cfg.pin[2 * i] = qx[i], w.cfg.pin[2 * i + 1] = qy[i];
+      setQuietly(w, "pin", pinText(toStored(w).pin));
+    }
+    m_pinCorner = -1;
+    if (w.cfg.meshed) {
+      meshShape(qx, qy, w.cfg.meshN, "flat", 0, w.cfg.mesh);  // its corners are where the widget was
+      reshapeMesh(w, "flat", 0);
+      setQuietly(w, "mesh_preset", "\"flat\"");
+    } else {
+      placeLayer(w);
+    }
+  }
+  if ((key == "mesh_preset" || key == "mesh_amount") && w.cfg.meshed) {
+    const std::string preset = w.cfg.options["mesh_preset"].value_or(std::string("flat"));
+    if (preset != "custom") reshapeMesh(w, preset, w.cfg.options["mesh_amount"].value_or(40.0));
+  }
+  if (key == "mesh_grid" && w.cfg.meshed) {
+    const int n = std::clamp(std::atoi(unquoted(v).c_str()), 3, WidgetConfig::kMeshMax);
+    if (n != w.cfg.meshN) {
+      const std::string preset = w.cfg.options["mesh_preset"].value_or(std::string("flat"));
+      if (preset == "custom") {  // hand-placed: keep the surface, more or fewer points on it
+        double pts[2 * WidgetConfig::kMeshMax * WidgetConfig::kMeshMax];
+        meshResample(w.cfg, n, pts);
+        w.cfg.meshN = n;
+        std::copy_n(pts, 2 * n * n, w.cfg.mesh);
+        setQuietly(w, "mesh", pointsText(toStored(w).mesh, 2 * n * n));
+        placeLayer(w);
+      } else {  // a preset: laid again exactly at the new size
+        reshapeMesh(w, preset, w.cfg.options["mesh_amount"].value_or(40.0), n);
+      }
+    }
+  }
+  if (key == "mesh_between") {
+    w.cfg.meshSmooth = unquoted(v) != "straight";
+    placeLayer(w);
+  }
+  if (key == "mesh") {
+    try {
+      auto parsed = toml::parse("v = " + v);
+      const size_t want = static_cast<size_t>(2 * w.cfg.meshN * w.cfg.meshN);
+      if (const toml::array* a = parsed["v"].as_array(); a && a->size() == want)
+        for (size_t k = 0; k < want; ++k) w.cfg.mesh[k] = (*a)[k].value_or(0.0);
+      if (w.cfg.meshed) placeLayer(w);
+    } catch (const std::exception&) {
+    }
+  }
   if (key == "tilt_x" || key == "tilt_y" || key == "skew" || key == "perspective") {
     try {
       const double d = std::stod(v);
@@ -526,7 +632,10 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   w.needsRender = true;
   w.drewEmpty = false;
   // pins are output points: the file keeps them in the block's own space
-  Config::setKey(m_configPath, w.cfg.id, key, key == "pin" ? pinText(toStored(w).pin) : v);
+  Config::setKey(m_configPath, w.cfg.id, key,
+                 key == "pin"    ? pinText(toStored(w).pin)
+                 : key == "mesh" ? pointsText(toStored(w).mesh, 2 * w.cfg.meshN * w.cfg.meshN)
+                                 : v);
   markEditDirty();
 }
 
@@ -650,12 +759,12 @@ void App::layoutUi(const EditSurface& e) {
       if (px + kPanelW > W - 12) px = static_cast<float>(vb.x) - 16 - kPanelW;
       if (px < 12) px = W - kPanelW - 16;
       py = std::clamp(static_cast<float>(vb.y), top, std::max(top, H - placeH - 16));
-      if (w->cfg.pinned) {
-        // a pin under the panel could not be grabbed: take the far side of the screen instead
+      if (handPlaced(w->cfg)) {
+        // a point under the panel could not be grabbed: take the far side of the screen instead
+        const double* hp = handlePoints(w->cfg);
         auto covers = [&](float x0) {
-          for (int i = 0; i < 4; ++i)
-            if (w->cfg.pin[2 * i] > x0 - 20 && w->cfg.pin[2 * i] < x0 + kPanelW + 20 && w->cfg.pin[2 * i + 1] > py - 20 &&
-                w->cfg.pin[2 * i + 1] < py + placeH + 20)
+          for (int i = 0; i < handleCount(w->cfg); ++i)
+            if (hp[2 * i] > x0 - 20 && hp[2 * i] < x0 + kPanelW + 20 && hp[2 * i + 1] > py - 20 && hp[2 * i + 1] < py + placeH + 20)
               return true;
           return false;
         };
@@ -710,6 +819,10 @@ void App::layoutUi(const EditSurface& e) {
         } else if (p.kind == PropSpec::Font) {
           Rect f{cx, y + 3, cw, 24};
           if (visible(f)) m_ui.push_back({UiControl::FontPick, f, idx});
+          y += kRowH;
+        } else if (p.kind == PropSpec::Action) {
+          Rect r{px + 16, y + 3, kPanelW - 32, 24};
+          if (visible(r)) m_ui.push_back({UiControl::Action, r, idx});
           y += kRowH;
         } else {
           const auto& sw = p.options.empty() ? colorSwatches() : p.options;
@@ -1064,6 +1177,13 @@ bool App::uiPress(int index, double x) {
         }
       markEditDirty();
       return true;
+    case UiControl::Action:
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "mesh_reset") {
+        m_lastOpKind.clear();
+        setProp(*w, "mesh_preset", "\"flat\"");  // laid flat again on its corners (one undo step)
+      }
+      markEditDirty();
+      return true;
     case UiControl::Collapse:
       if (!m_collapsed.erase(c.value)) m_collapsed.insert(c.value);
       markEditDirty();
@@ -1401,6 +1521,37 @@ void App::drawUi(EditSurface& e) {
     widgetCorners(ww.cfg, qx, qy);
     const float lw = sel ? 2.2F : (hot ? 1.8F : 1.2F);
     const Color lc = withAlphaC(wa, sel ? 1.0F : (hot ? 0.85F : 0.5F));
+    if (ww.cfg.meshed) {
+      // the bent outline, and the grid through its points while selected
+      const int n = ww.cfg.meshN, steps = 24;
+      auto curve = [&](bool across, double at, float width, Color col) {
+        double px = 0, py = 0;
+        for (int k = 0; k <= steps; ++k) {
+          double x = 0, y = 0;
+          const double f = static_cast<double>(k) / steps;
+          meshEval(ww.cfg, across ? f : at, across ? at : f, x, y);
+          if (k > 0) cv.segment(static_cast<float>(px), static_cast<float>(py), static_cast<float>(x), static_cast<float>(y), width, col);
+          px = x, py = y;
+        }
+      };
+      for (int g = 0; g < n; ++g) {
+        const double at = static_cast<double>(g) / (n - 1);
+        const bool border = g == 0 || g == n - 1;
+        if (!border && !sel) continue;
+        const float gw = border ? lw : 1.0F;
+        const Color gc = border ? lc : withAlphaC(wa, 0.45F);
+        curve(true, at, gw, gc);
+        curve(false, at, gw, gc);
+      }
+      if (sel)
+        for (int i = 0; i < n * n; ++i) {
+          const float x = static_cast<float>(ww.cfg.mesh[2 * i]), y = static_cast<float>(ww.cfg.mesh[2 * i + 1]);
+          const bool act = i == m_pinCorner;
+          cv.circle(x, y, 7, act ? withAlphaC(wa, 0.9F) : Color{0, 0, 0, 0.35F}, 1.8F, act ? ink : wa);
+          cv.circle(x, y, 1.6F, ink);
+        }
+      continue;
+    }
     for (int i = 0; i < 4; ++i) {
       const int j = (i + 1) % 4;
       cv.segment(static_cast<float>(qx[i]), static_cast<float>(qy[i]), static_cast<float>(qx[j]), static_cast<float>(qy[j]), lw, lc);
@@ -1416,7 +1567,7 @@ void App::drawUi(EditSurface& e) {
     } else if (sel || hot) {
       for (int i = 0; i < 4; ++i) cv.circle(static_cast<float>(qx[i]), static_cast<float>(qy[i]), 5, withAlphaC(wa, 0.95F), 1.5F, ink);
     }
-    if (sel && !ww.cfg.pinned) {  // the rotation knob, where inRotateHandle looks for it
+    if (sel && !handPlaced(ww.cfg)) {  // the rotation knob, where inRotateHandle looks for it
       double kx = 0, ky = 0, tx = 0, ty = 0;
       toOutput(ww.cfg, ww.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
       toOutput(ww.cfg, ww.cfg.width / 2.0, 0, tx, ty);
@@ -1537,7 +1688,7 @@ void App::drawUi(EditSurface& e) {
         const float rowH = p.kind == PropSpec::Color ? kColorRowH : kRowH;
         if (y + rowH >= top && y <= bottom) {
           const bool locked = m_motion && (std::string_view(p.key) == "depth" || std::string_view(p.key) == "depth_level");
-          const bool plainLabel = p.kind != PropSpec::Header && p.kind != PropSpec::Element;
+          const bool plainLabel = p.kind != PropSpec::Header && p.kind != PropSpec::Element && p.kind != PropSpec::Action;
           if (plainLabel) {
             const float lx = P.x + 16 + (p.indent ? 16 : 0);
             fitText(es ? p.labelEs : p.labelEn, label, lx, y + 6, cx - lx - 8,
@@ -1601,6 +1752,16 @@ void App::drawUi(EditSurface& e) {
             // a depth plane of 0 means "the plugin's mask"
           const bool autoPlane = std::string_view(p.key) == "depth_level" && numberOf(w->cfg.options, p) == 0;
           cv.text(autoPlane ? std::string("auto") : v, mono, cx + sw + 10, y + 7, autoPlane ? dim : ink);
+          } else if (p.kind == PropSpec::Action) {
+            // a button across the row
+            const float bx = P.x + 16, bw = kPanelW - 32;
+            bool hot = false;
+            for (const UiControl& c : m_ui)
+              if (c.type == UiControl::Action && c.prop == static_cast<int>(&p - &schema[0])) hot = hovered(c);
+            cv.roundRect(bx, y + 3, bw, 24, 8, hot ? withAlphaC(ink, 0.14F) : raised, 1, line);
+            const std::string t = es ? p.labelEs : p.labelEn;
+            auto [tw, th] = measure(t, label);
+            cv.text(t, label, bx + (bw - tw) / 2, y + 15 - th / 2, ink);
           } else {
             const auto& sws = p.options.empty() ? colorSwatches() : p.options;
             const float size = 20, gap = (kPanelW - 28 - sws.size() * size) / (sws.size() - 1);

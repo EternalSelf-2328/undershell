@@ -128,9 +128,10 @@ Config Config::load(const std::string& path) {
         double d = std::fmod(*r, 360.0);
         w.rotation = d <= -180.0 ? d + 360.0 : (d > 180.0 ? d - 360.0 : d);
       }
-      // shape: none | tilt | pin | mesh; older blocks have no key and are
-      // read as before (pin_corners, else a tilt or skew that is set)
-      std::string shape = get<std::string>(*t, "shape", "");
+      // warp: none | tilt | pin | mesh; older blocks have no key and are
+      // read as before (pin_corners, else a tilt or skew that is set).
+      // (not "shape": that is the visualizer's bar shape)
+      std::string shape = get<std::string>(*t, "warp", "");
       if (shape != "none" && shape != "tilt" && shape != "pin" && shape != "mesh")
         shape = get<bool>(*t, "pin_corners", false)                                                   ? "pin"
                 : (std::abs(w.tiltX) > 0.01 || std::abs(w.tiltY) > 0.01 || std::abs(w.skewX) > 0.01) ? "tilt"

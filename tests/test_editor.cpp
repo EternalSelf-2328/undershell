@@ -173,11 +173,11 @@ int main() {
     std::filesystem::create_directories(dir);
     const std::string path = dir + "/config.toml";
     writeFileAtomic(path,
-                    "[general]\n\n[[widget]]\nid = \"a\"\nx = 10\ny = 20\nwidth = 100\nheight = 50\nshape = \"mesh\"\n"
+                    "[general]\n\n[[widget]]\nid = \"a\"\nx = 10\ny = 20\nwidth = 100\nheight = 50\nwarp = \"mesh\"\n"
                     "mesh_grid = 4\nmesh_between = \"straight\"\n\n"
                     "[[widget]]\nid = \"b\"\npin_corners = true\n\n"
                     "[[widget]]\nid = \"c\"\ntilt_x = 20\n\n"
-                    "[[widget]]\nid = \"d\"\ntilt_x = 20\nshape = \"none\"\n");
+                    "[[widget]]\nid = \"d\"\ntilt_x = 20\nwarp = \"none\"\n");
     const Config cfg = Config::load(path);
     CHECK(cfg.widgets.size() == 4);
     const WidgetConfig& a = cfg.widgets[0];
@@ -186,6 +186,11 @@ int main() {
     CHECK(cfg.widgets[1].pinned && !cfg.widgets[1].meshed);
     CHECK(cfg.widgets[2].tiltX == 20);                       // a tilt that is set: tilt mode
     CHECK(cfg.widgets[3].tiltX == 0 && !warped(cfg.widgets[3]));  // kept in the file, not applied
+    // the visualizer's own "shape" (its bars) is not the warp mode
+    writeFileAtomic(path, "[[widget]]\nid = \"v\"\ntype = \"visualizer\"\nshape = \"square\"\nwarp = \"mesh\"\n");
+    const Config vc = Config::load(path);
+    CHECK(vc.widgets.size() == 1 && vc.widgets[0].meshed);
+    CHECK(VisualizerConfig::fromTable(vc.widgets[0].options).shape == "square");
     std::filesystem::remove_all(dir);
   }
 
