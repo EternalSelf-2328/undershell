@@ -344,6 +344,7 @@ private:
   MaskPass m_maskPass;
   RotatedBlit m_blit;
   PerspectiveBlit m_warpBlit;
+  MeshBlit m_meshBlit;
   TextRenderer m_text;
   OverlayPass m_overlay;
   IpcServer m_ipc;

@@ -395,3 +395,69 @@ void PerspectiveBlit::draw(GLuint texture, float surfaceW, float surfaceH, const
 }
 
 }  // namespace undershell
+
+namespace undershell {
+
+static const char* kMeshVert = R"(#version 300 es
+precision highp float;
+layout(location = 0) in vec2 a_pos;
+layout(location = 1) in vec2 a_uv;
+uniform vec2 u_surface;
+out vec2 v_uv;
+void main() {
+    v_uv = a_uv;
+    gl_Position = vec4(a_pos.x / u_surface.x * 2.0 - 1.0, 1.0 - a_pos.y / u_surface.y * 2.0, 0.0, 1.0);
+}
+)";
+
+static const char* kMeshFrag = R"(#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_tex;
+void main() {
+    // distance to the box's edge, in output pixels, for a soft 1 px edge
+    float e = min(min(v_uv.x, 1.0 - v_uv.x), min(v_uv.y, 1.0 - v_uv.y));
+    float fw = max(fwidth(v_uv.x), fwidth(v_uv.y));
+    float a = clamp(e / max(fw, 1e-6) + 0.5, 0.0, 1.0);
+    if (a <= 0.0) { fragColor = vec4(0.0); return; }
+    vec2 uv = clamp(v_uv, 0.0, 1.0);
+    fragColor = texture(u_tex, vec2(uv.x, 1.0 - uv.y)) * a;  // off-screen targets are bottom-up
+}
+)";
+
+void MeshBlit::draw(GLuint texture, float surfaceW, float surfaceH, const std::vector<float>& xyuv, int steps) {
+  const int m = steps + 1;
+  if (!texture || surfaceW <= 0 || surfaceH <= 0 || steps <= 0 || xyuv.size() != static_cast<size_t>(m) * m * 4) return;
+  if (!m_prog.valid()) m_prog.create(kMeshVert, kMeshFrag, "mesh-blit");
+  if (m_indexSteps != steps) {  // two triangles per cell
+    m_index.clear();
+    for (int b = 0; b < steps; ++b)
+      for (int a = 0; a < steps; ++a) {
+        const auto p = static_cast<unsigned short>(b * m + a);
+        const auto q = static_cast<unsigned short>(p + m);
+        m_index.insert(m_index.end(), {p, static_cast<unsigned short>(p + 1), q, static_cast<unsigned short>(q + 1), q,
+                                       static_cast<unsigned short>(p + 1)});
+      }
+    m_indexSteps = steps;
+  }
+  glUseProgram(m_prog.id());
+  glUniform2f(m_prog.uniform("u_surface"), surfaceW, surfaceH);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, texture);
+  glUniform1i(m_prog.uniform("u_tex"), 0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), xyuv.data());
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), xyuv.data() + 2);
+  glEnable(GL_BLEND);
+  glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(m_index.size()), GL_UNSIGNED_SHORT, m_index.data());
+  glDisable(GL_BLEND);
+  glDisableVertexAttribArray(1);
+  glDisableVertexAttribArray(0);
+}
+
+}  // namespace undershell

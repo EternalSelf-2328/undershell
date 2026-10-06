@@ -51,6 +51,19 @@ private:
   Program m_prog;
 };
 
+// Draws a widget rendered off-screen (premultiplied texture of its own box)
+// on its bent surface: meshVertices() as a (steps+1)^2 lattice of x, y, u, v,
+// with a soft 1 px edge.
+class MeshBlit {
+public:
+  void draw(GLuint texture, float surfaceW, float surfaceH, const std::vector<float>& xyuv, int steps);
+
+private:
+  Program m_prog;
+  std::vector<unsigned short> m_index;
+  int m_indexSteps = 0;
+};
+
 struct EditRect {
   float x, y, w, h;
   float angle = 0;  // degrees, about the centre

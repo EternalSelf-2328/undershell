@@ -883,7 +883,10 @@ void App::render(Widget& w) {
       glClear(GL_COLOR_BUFFER_BIT);
       const Box b = surfaceBox(w.cfg);
       try {
-        if (warped(w.cfg)) {
+        if (w.cfg.meshed) {
+          m_meshBlit.draw(w.rtTex, static_cast<float>(w.w), static_cast<float>(w.h), meshVertices(w.cfg, b.x, b.y),
+                          meshSteps(w.cfg));
+        } else if (warped(w.cfg)) {
           const Homography toUv = surfaceToUv(w.cfg);
           m_warpBlit.draw(w.rtTex, static_cast<float>(w.w), static_cast<float>(w.h), toUv.m);
         } else

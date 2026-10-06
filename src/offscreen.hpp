@@ -51,6 +51,8 @@ Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaStat
 Image renderRotated(const Image& src, double degrees);
 // ... and in perspective (tilt and skew, degrees), as the daemon draws it
 Image renderWarped(const Image& src, double tiltX, double tiltY, double skew, double degrees = 0);
+// `src` on a mesh laid on its own box in a preset shape (geom.hpp meshShape)
+Image renderMeshed(const Image& src, const std::string& preset, double amount, int n = 3, bool smooth = true);
 // Renders one line of text in white (needs Headless).
 Image renderText(const std::string& text, const std::string& family, float size, int weight);
 

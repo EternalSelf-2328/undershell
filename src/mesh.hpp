@@ -95,6 +95,21 @@ inline MeshGrid meshGrid(const WidgetConfig& c, double du = 0, double dv = 0) {
   return g;
 }
 
+// the surface as a triangle mesh for the blit: x, y (output px minus the
+// origin), u, v per vertex, with 1.5 px more all round for the soft edge
+inline std::vector<float> meshVertices(const WidgetConfig& c, double originX, double originY) {
+  const MeshGrid g = meshGrid(c, 1.5 / std::max(1, c.width), 1.5 / std::max(1, c.height));
+  std::vector<float> v;
+  v.reserve(g.x.size() * 4);
+  for (size_t k = 0; k < g.x.size(); ++k) {
+    v.push_back(static_cast<float>(g.x[k] - originX));
+    v.push_back(static_cast<float>(g.y[k] - originY));
+    v.push_back(static_cast<float>(g.u[k]));
+    v.push_back(static_cast<float>(g.v[k]));
+  }
+  return v;
+}
+
 // output point -> (u, v) on the surface, or false outside it
 inline bool meshInverse(const WidgetConfig& c, double ox, double oy, double& u, double& v) {
   const MeshGrid g = meshGrid(c);

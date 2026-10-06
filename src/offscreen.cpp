@@ -110,6 +110,36 @@ Image renderRotated(const Image& src, double degrees) {
   return img;
 }
 
+Image renderMeshed(const Image& src, const std::string& preset, double amount, int n, bool smooth) {
+  GLuint tex = 0;
+  glGenTextures(1, &tex);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  std::vector<std::uint8_t> flipped(src.rgba.size());
+  const size_t row = static_cast<size_t>(src.w) * 4;
+  for (int y = 0; y < src.h; ++y)
+    std::copy_n(src.rgba.data() + static_cast<size_t>(src.h - 1 - y) * row, row, flipped.data() + static_cast<size_t>(y) * row);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, src.w, src.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, flipped.data());
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  WidgetConfig c;
+  c.width = src.w;
+  c.height = src.h;
+  c.meshed = true;
+  c.meshN = n;
+  c.meshSmooth = smooth;
+  const double qx[4] = {0, static_cast<double>(src.w), static_cast<double>(src.w), 0};
+  const double qy[4] = {0, 0, static_cast<double>(src.h), static_cast<double>(src.h)};
+  meshShape(qx, qy, n, preset, amount, c.mesh);
+  const Box b = surfaceBox(c);
+  const std::vector<float> verts = meshVertices(c, b.x, b.y);
+  MeshBlit blit;
+  Image img = renderToImage(b.w, b.h, [&] { blit.draw(tex, static_cast<float>(b.w), static_cast<float>(b.h), verts, meshSteps(c)); });
+  glDeleteTextures(1, &tex);
+  return img;
+}
+
 Image renderWarped(const Image& src, double tiltX, double tiltY, double skew, double degrees) {
   GLuint tex = 0;
   glGenTextures(1, &tex);

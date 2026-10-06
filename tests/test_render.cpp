@@ -309,6 +309,47 @@ int main(int argc, char** argv) {
     }
   }
 
+  // mesh warp: a flat mesh reproduces the picture; an arc (smooth) and a flag
+  // (straight, folded along the grid) match their goldens
+  {
+    const Image src = renderLook("bars", 480, 160, pal);
+    const Image flat = renderMeshed(src, "flat", 0);
+    CHECK(flat.w == src.w + 4 && flat.h == src.h + 4);  // 2 px of room for the soft edge
+    Image inner;
+    inner.w = src.w;
+    inner.h = src.h;
+    inner.rgba.resize(src.rgba.size());
+    for (int y = 0; y < src.h; ++y)
+      std::copy_n(flat.rgba.data() + (static_cast<size_t>(y + 2) * flat.w + 2) * 4, static_cast<size_t>(src.w) * 4,
+                  inner.rgba.data() + static_cast<size_t>(y) * src.w * 4);
+    const double d0 = imageDiff(inner, src);
+    if (d0 < 0 || d0 > 0.5) std::fprintf(stderr, "flat mesh differs from its source: %.3f\n", d0);
+    CHECK(d0 >= 0 && d0 <= 0.5);
+    struct M {
+      const char* name;
+      const char* preset;
+      double amount;
+      int n;
+      bool smooth;
+    };
+    for (const M& mm : {M{"mesh-arc", "arc", 70, 3, true}, M{"mesh-flag-straight", "flag", 80, 5, false}}) {
+      const Image bent = renderMeshed(src, mm.preset, mm.amount, mm.n, mm.smooth);
+      size_t lit = 0;
+      for (size_t i = 3; i < bent.rgba.size(); i += 4) lit += bent.rgba[i] > 8;
+      CHECK(lit > 480u * 160u / 20);  // the picture is there
+      const std::string path = golden + "/" + mm.name + ".png";
+      if (update) {
+        writePng(bent, path, false);
+      } else {
+        Image ref;
+        CHECK(readPng(path, ref));
+        const double d = imageDiff(bent, ref);
+        if (d < 0 || d > 1.5) std::fprintf(stderr, "%s differs from golden: %.3f\n", mm.name, d);
+        GOLDEN(d);
+      }
+    }
+  }
+
   // every auxiliary pass compiles and draws (a GLSL error must fail here,
   // never in the running daemon)
   while (glGetError() != GL_NO_ERROR) {}
