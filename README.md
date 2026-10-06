@@ -42,6 +42,9 @@ sudo pacman -S --needed base-devel git meson ninja wayland wayland-protocols lib
   gdk-pixbuf2 curl nlohmann-json
 ```
 
+On Debian 13 and Ubuntu 24.04 or newer, the package script below installs
+them for you (it needs GCC 13 or newer for C++20).
+
 On Fedora, the package script below installs them for you; to build by hand
 instead, after cloning the repository (see [Install](#install)), from inside it:
 
@@ -75,6 +78,16 @@ systemctl --user enable --now undershell
 The script installs the build dependencies, builds the RPM from the checkout
 (into `build-rpm/`) and installs it; without `-i` it only builds.
 
+**As a package (Debian 13, Ubuntu 24.04 and newer):**
+
+```sh
+sudo apt install git dpkg-dev
+packaging/debian/build-deb.sh -i
+systemctl --user enable --now undershell
+```
+
+Same idea: build dependencies, a `.deb` in `build-deb/`, installed with `-i`.
+
 **By hand:**
 
 ```sh
@@ -107,6 +120,39 @@ with it, restarts itself if it crashes, and its logs go to the journal
 Every option is documented in [`docs/OPTIONS.md`](docs/OPTIONS.md) (generated
 from the same table the inspector uses: `undershell --doc`). For the Noctalia
 bar widget, see [Noctalia bar widget](#noctalia-bar-widget).
+
+## Uninstall
+
+First stop the service, whichever way you installed it:
+
+```sh
+systemctl --user disable --now undershell
+```
+
+Then remove it the way it was installed:
+
+| Installed with | Remove with |
+|---|---|
+| the Arch package (`makepkg -si`) | `sudo pacman -R undershell` |
+| the Fedora package (`build-rpm.sh -i`) | `sudo dnf remove undershell` |
+| the Debian/Ubuntu package (`build-deb.sh -i`) | `sudo apt remove undershell` (`purge` instead of `remove` also drops its package record) |
+| by hand (`meson install`) | `ninja -C build uninstall`, from the checkout you installed from |
+
+If you installed by hand and no longer have that `build` folder, delete the
+files yourself:
+
+```sh
+rm -rf ~/.local/bin/undershell ~/.local/share/undershell ~/.local/share/systemd/user/undershell.service \
+       ~/.local/share/doc/undershell ~/.local/share/licenses/undershell
+systemctl --user daemon-reload
+```
+
+Your layouts, saved profiles and depth corrections stay in
+`~/.config/undershell`, and the lyrics cache in `~/.cache/undershell`. To
+remove those too: `rm -rf ~/.config/undershell ~/.cache/undershell`. For the
+Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
+linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
+and delete the link).
 
 ## Visualizer: 15 looks
 
