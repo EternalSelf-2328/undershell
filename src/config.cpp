@@ -124,7 +124,19 @@ Config Config::load(const std::string& path) {
       if (auto i = (*t)["tilt_x"].value<int64_t>()) w.tiltX = std::clamp(static_cast<double>(*i), -70.0, 70.0);
       if (auto i = (*t)["tilt_y"].value<int64_t>()) w.tiltY = std::clamp(static_cast<double>(*i), -70.0, 70.0);
       if (auto i = (*t)["skew"].value<int64_t>()) w.skewX = std::clamp(static_cast<double>(*i), -60.0, 60.0);
-      if (get<bool>(*t, "pin_corners", false)) {
+      if (auto r = (*t)["rotation"].value<double>()) {
+        double d = std::fmod(*r, 360.0);
+        w.rotation = d <= -180.0 ? d + 360.0 : (d > 180.0 ? d - 360.0 : d);
+      }
+      // shape: none | tilt | pin | mesh; older blocks have no key and are
+      // read as before (pin_corners, else a tilt or skew that is set)
+      std::string shape = get<std::string>(*t, "shape", "");
+      if (shape != "none" && shape != "tilt" && shape != "pin" && shape != "mesh")
+        shape = get<bool>(*t, "pin_corners", false)                                                   ? "pin"
+                : (std::abs(w.tiltX) > 0.01 || std::abs(w.tiltY) > 0.01 || std::abs(w.skewX) > 0.01) ? "tilt"
+                                                                                                      : "none";
+      if (shape != "tilt") w.tiltX = w.tiltY = w.skewX = 0;  // kept in the file, not applied
+      if (shape == "pin") {
         if (const toml::array* a = (*t)["pin"].as_array(); a && a->size() == 8) {
           for (size_t k = 0; k < 8; ++k) w.pin[k] = (*a)[k].value_or(0.0);
         } else {  // turned on without points: start from where the box is drawn
@@ -134,12 +146,23 @@ Config Config::load(const std::string& path) {
         }
         w.pinned = true;
       }
+      if (auto g = (*t)["mesh_grid"].value<int64_t>()) w.meshN = static_cast<int>(*g);
+      else if (auto gs = (*t)["mesh_grid"].value<std::string>()) w.meshN = std::atoi(gs->c_str());
+      w.meshN = std::clamp(w.meshN, 3, WidgetConfig::kMeshMax);
+      w.meshSmooth = get<std::string>(*t, "mesh_between", "smooth") != "straight";
+      if (shape == "mesh") {
+        const size_t want = static_cast<size_t>(2 * w.meshN * w.meshN);
+        if (const toml::array* a = (*t)["mesh"].as_array(); a && a->size() == want) {
+          for (size_t k = 0; k < want; ++k) w.mesh[k] = (*a)[k].value_or(0.0);
+        } else {  // no points yet: a flat grid where the box is drawn
+          double qx[4], qy[4];
+          widgetCorners(w, qx, qy);
+          meshShape(qx, qy, w.meshN, "flat", 0, w.mesh);
+        }
+        w.meshed = true;
+      }
       w.layer = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "layer", 0), -10, 10));
       if (auto i = (*t)["depth_level"].value<int64_t>()) w.depthLevel = std::clamp(static_cast<double>(*i), 0.0, 100.0);
-      if (auto r = (*t)["rotation"].value<double>()) {
-        double d = std::fmod(*r, 360.0);
-        w.rotation = d <= -180.0 ? d + 360.0 : (d > 180.0 ? d - 360.0 : d);
-      }
       w.options = *t;
       cfg.widgets.push_back(std::move(w));
     }

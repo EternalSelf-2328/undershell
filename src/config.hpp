@@ -55,6 +55,14 @@ struct WidgetConfig {
   // top-right, bottom-right, bottom-left), replacing tilt, skew and rotation
   bool pinned = false;
   double pin[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  // mesh warp (mesh.hpp): meshN x meshN output points, row by row from the
+  // top-left, the box bent smoothly through them (or flat between them);
+  // replaces tilt, skew, rotation and the corner pins
+  static constexpr int kMeshMax = 5;
+  bool meshed = false;
+  int meshN = 3;
+  bool meshSmooth = true;
+  double mesh[2 * kMeshMax * kMeshMax] = {};
   double depthLevel = 0;  // own depth plane 1..100 (0: the plugin's mask)
   int layer = 0;          // stacking among widgets: higher is in front (then depth decides)
   toml::table options;  // the whole [[widget]] table

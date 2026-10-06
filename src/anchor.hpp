@@ -79,6 +79,17 @@ inline void mapWidget(WidgetConfig& c, const SpaceMap& m) {
     c.pin[2 * i] = m.ax * c.pin[2 * i] + m.bx;
     c.pin[2 * i + 1] = m.ay * c.pin[2 * i + 1] + m.by;
   }
+  for (int i = 0; i < c.meshN * c.meshN; ++i) {
+    c.mesh[2 * i] = m.ax * c.mesh[2 * i] + m.bx;
+    c.mesh[2 * i + 1] = m.ay * c.mesh[2 * i + 1] + m.by;
+  }
+}
+
+// a TOML array of `count` numbers (corner pins, mesh points)
+inline std::string pointsText(const double* p, int count) {
+  std::string text = "[";
+  for (int i = 0; i < count; ++i) text += std::format("{}{:.1f}", i ? ", " : "", p[i]);
+  return text + "]";
 }
 
 inline std::string pinText(const double* p) {

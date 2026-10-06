@@ -8,6 +8,7 @@
 #pragma once
 
 #include "config.hpp"
+#include "mesh.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -20,7 +21,7 @@ struct Box {
 };
 
 inline bool warped(const WidgetConfig& c) {
-  return c.pinned || std::abs(c.tiltX) > 0.01 || std::abs(c.tiltY) > 0.01 || std::abs(c.skewX) > 0.01;
+  return c.meshed || c.pinned || std::abs(c.tiltX) > 0.01 || std::abs(c.tiltY) > 0.01 || std::abs(c.skewX) > 0.01;
 }
 inline bool turnedOnly(const WidgetConfig& c) { return std::abs(c.rotation) > 0.01; }
 // turned or warped: drawn off-screen and laid on its surface
@@ -72,6 +73,13 @@ inline Homography squareToQuad(const double qx[4], const double qy[4]) {
 // The box's four corners on the output (top-left, top-right, bottom-right,
 // bottom-left), after skew, tilt, perspective and rotation.
 inline void widgetCorners(const WidgetConfig& c, double qx[4], double qy[4]) {
+  if (c.meshed) {  // the mesh's corner points
+    for (int i = 0; i < 4; ++i) {
+      const int k = meshCorner(c.meshN, i);
+      qx[i] = c.mesh[2 * k], qy[i] = c.mesh[2 * k + 1];
+    }
+    return;
+  }
   if (c.pinned) {  // placed by hand on four points
     for (int i = 0; i < 4; ++i) qx[i] = c.pin[2 * i], qy[i] = c.pin[2 * i + 1];
     return;
@@ -92,6 +100,46 @@ inline void widgetCorners(const WidgetConfig& c, double qx[4], double qy[4]) {
     qx[i] = cx + px * std::cos(rz) - py * std::sin(rz);
     qy[i] = cy + px * std::sin(rz) + py * std::cos(rz);
   }
+}
+
+// A mesh of n x n points on the quad (perspective kept), bent into a preset
+// shape: flat, arc, bulge, flag, wave or cylinder; amount -100..100 (its sign
+// flips the bend). Displacements are in the quad's own unit square.
+inline void meshShape(const double qx[4], const double qy[4], int n, const std::string& preset, double amount, double* out) {
+  const Homography h = squareToQuad(qx, qy);
+  const double a = std::clamp(amount / 100.0, -1.0, 1.0), pi = std::numbers::pi;
+  for (int j = 0; j < n; ++j)
+    for (int i = 0; i < n; ++i) {
+      const double s = static_cast<double>(i) / (n - 1), t = static_cast<double>(j) / (n - 1);
+      const double bs = 1 - (2 * s - 1) * (2 * s - 1), bt = 1 - (2 * t - 1) * (2 * t - 1);  // 1 mid-way, 0 at the edges
+      double ds = 0, dt = 0;
+      if (preset == "arc") {
+        dt = -0.35 * a * bs;
+      } else if (preset == "bulge") {
+        ds = 0.2 * a * (2 * s - 1) * bt;
+        dt = 0.2 * a * (2 * t - 1) * bs;
+      } else if (preset == "flag") {
+        dt = 0.15 * a * std::sin(2 * pi * s);
+      } else if (preset == "wave") {
+        dt = 0.12 * a * std::sin(2 * pi * s + pi * t);
+        ds = 0.04 * a * std::sin(2 * pi * t);
+      } else if (preset == "cylinder") {
+        // wrapped round a cylinder: crowded at the sides (convex) or in the
+        // middle (concave), the edges bowed as seen from a little above
+        const double th = std::abs(a) * 1.25, x = 2 * s - 1;
+        if (th > 1e-6)
+          ds = (a > 0 ? 0.5 * std::sin(x * th) / std::sin(th) : std::asin(x * std::sin(th)) / (2 * th)) + 0.5 - s;
+        dt = 0.12 * a * bs;
+      }
+      h.apply(s + ds, t + dt, out[2 * (j * n + i)], out[2 * (j * n + i) + 1]);
+    }
+}
+
+// the mesh resampled to n x n points along its current surface
+inline void meshResample(const WidgetConfig& c, int n, double* out) {
+  for (int j = 0; j < n; ++j)
+    for (int i = 0; i < n; ++i)
+      meshEval(c, static_cast<double>(i) / (n - 1), static_cast<double>(j) / (n - 1), out[2 * (j * n + i)], out[2 * (j * n + i) + 1]);
 }
 
 // widget px -> output, for a warped widget
@@ -119,6 +167,13 @@ inline double normalizeDegrees(double d) {
 // it on every side, room for the antialiased edge on the surface.
 inline Box visualBox(const WidgetConfig& c, int pad = 0) {
   if (!rotated(c)) return {c.x - pad, c.y - pad, c.width + 2 * pad, c.height + 2 * pad};
+  if (c.meshed) {  // the bent surface can bulge past its points
+    const MeshGrid g = meshGrid(c);
+    const auto [x0, x1] = std::minmax_element(g.x.begin(), g.x.end());
+    const auto [y0, y1] = std::minmax_element(g.y.begin(), g.y.end());
+    const int bx = static_cast<int>(std::floor(*x0)) - pad, by = static_cast<int>(std::floor(*y0)) - pad;
+    return {bx, by, static_cast<int>(std::ceil(*x1)) + pad - bx, static_cast<int>(std::ceil(*y1)) + pad - by};
+  }
   if (warped(c)) {
     double qx[4], qy[4];
     widgetCorners(c, qx, qy);
@@ -137,10 +192,17 @@ inline Box visualBox(const WidgetConfig& c, int pad = 0) {
 }
 
 // the widget's surface: one extra pixel around a turned box for its soft edge
-inline Box surfaceBox(const WidgetConfig& c) { return visualBox(c, rotated(c) ? 1 : 0); }
+inline Box surfaceBox(const WidgetConfig& c) { return visualBox(c, c.meshed ? 2 : (rotated(c) ? 1 : 0)); }
 
 // output point -> the widget's own (untransformed) coordinates
 inline void toLocal(const WidgetConfig& c, double ox, double oy, double& lx, double& ly) {
+  if (c.meshed) {
+    double u = 0, v = 0;
+    if (!meshInverse(c, ox, oy, u, v)) u = v = -1;  // off the surface
+    lx = u * c.width;
+    ly = v * c.height;
+    return;
+  }
   if (warped(c)) {
     widgetHomography(c).inverse().apply(ox, oy, lx, ly);
     return;
@@ -153,6 +215,10 @@ inline void toLocal(const WidgetConfig& c, double ox, double oy, double& lx, dou
 
 // the widget's own coordinates -> output point
 inline void toOutput(const WidgetConfig& c, double lx, double ly, double& ox, double& oy) {
+  if (c.meshed) {
+    meshEval(c, lx / c.width, ly / c.height, ox, oy);
+    return;
+  }
   if (warped(c)) {
     widgetHomography(c).apply(lx, ly, ox, oy);
     return;
