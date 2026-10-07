@@ -207,12 +207,23 @@ int main(int argc, char** argv) {
     viz.lyrics = MediaState::Lyrics::None;
     viz.lines.clear();
     viz.playing = false;
+    // the poster: a line too long for the column, so the row that fills the
+    // measure and the one set smaller to fit both get drawn
+    MediaState poster = st;
+    poster.lines = parseLrc("[00:31.84]La luz se queda quieta en la ventana y el reloj no sabe esperar\n"
+                            "[00:39.50]Electroencefalografistas\n[00:48.00]fin\n");
+    toml::table posterOpts;
+    posterOpts.insert("lyrics_style", "poster");
     struct Case {
       const char* name;
       const MediaState* s;
-    } cases[] = {{"np-lyrics", &st}, {"np-viz", &viz}, {"np-empty", nullptr}};
+      const toml::table* opts;
+    } cases[] = {{"np-lyrics", &st, nullptr},
+                 {"np-viz", &viz, nullptr},
+                 {"np-empty", nullptr, nullptr},
+                 {"np-poster", &poster, &posterOpts}};
     for (auto& cs : cases) {
-      Image img = renderNowPlaying(cs.s, 560, 302, pal, 500);
+      Image img = renderNowPlaying(cs.s, 560, 302, pal, 500, cs.opts);
       size_t lit = 0;
       for (size_t i = 3; i < img.rgba.size(); i += 4) lit += img.rgba[i] > 8;
       CHECK(lit > 560u * 302u / 4);  // the plate at least

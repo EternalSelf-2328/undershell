@@ -191,6 +191,11 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
   };
   static const WordStyle kStyles[] = {{820, 100, 0}, {340, 0, -10}, {620, 0, 0}, {920, 100, -6}};
   const auto mix = [p](float a, float b) { return a + (b - a) * p; };
+  // what a word paints to the right of its advance
+  const auto overhang = [](const std::string& w, const TextStyle& st) {
+    const auto ink = TextRenderer::measureInk(w, st);
+    return std::max(0.0F, ink.x + ink.w - ink.boxW);
+  };
   auto styleOf = [&](const std::string& w, float wdth, float size) {
     const WordStyle& ws = kStyles[std::hash<std::string>{}(w) % std::size(kStyles)];
     TextStyle t{.family = POSTER, .size = size, .weight = static_cast<int>(mix(plainWeight, ws.wght))};
@@ -199,10 +204,16 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
   };
   float y = 0;
   for (const auto& row : rows) {
-    // the width (25..151) that makes the row fill the column, by bisection
+    // How far the row reaches: its advances and spaces, plus what the last
+    // word paints past its own advance (a slanted or round letter leans out,
+    // and that lean is what the column's edge would shave off).
     auto rowWidth = [&](float wdth, float size) {
       float total = 0;
-      for (size_t k = 0; k < row.size(); ++k) total += measure(row[k], styleOf(row[k], wdth, size)).w + (k ? space : 0);
+      for (size_t k = 0; k < row.size(); ++k) {
+        const TextStyle st = styleOf(row[k], wdth, size);
+        total += measure(row[k], st).w + (k ? space : 0);
+        if (k + 1 == row.size()) total += overhang(row[k], st);
+      }
       return total;
     };
     float lo = 25, hi = 151, wdth = 100, size = base;
@@ -214,6 +225,16 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
         (rowWidth(151, mid) < width ? slo : shi) = mid;
       }
       size = slo;
+    } else if (rowWidth(lo, base) > width) {
+      // too long for the column even at its narrowest -- one very long word,
+      // which no wrap can break: set it smaller until it fits
+      wdth = lo;
+      float slo = base * 0.4F, shi = base;
+      for (int it = 0; it < 8; ++it) {
+        const float mid = (slo + shi) / 2;
+        (rowWidth(lo, mid) < width ? slo : shi) = mid;
+      }
+      size = slo;
     } else {
       for (int it = 0; it < 8; ++it) {
         const float mid = (lo + hi) / 2;
@@ -222,16 +243,18 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
       wdth = lo;
     }
     const float sz = mix(base, size);
-    float used = 0, rowH = 0;
+    float used = 0, rowH = 0, lean = 0;
     std::vector<float> ws;
     for (const auto& w : row) {
-      const auto z = measure(w, styleOf(w, wdth, sz));
+      const TextStyle st = styleOf(w, wdth, sz);
+      const auto z = measure(w, st);
       ws.push_back(z.w);
       used += z.w;
       rowH = std::max(rowH, z.h);
+      lean = overhang(w, st);
     }
     // the gaps take up the last pixels, so the row meets the measure exactly
-    const float gap = row.size() > 1 ? mix(space, std::max(space * 0.4F, (width - used) / (row.size() - 1))) : 0;
+    const float gap = row.size() > 1 ? mix(space, std::max(space * 0.4F, (width - lean - used) / (row.size() - 1))) : 0;
     float x = 0;
     for (size_t k = 0; k < row.size(); ++k) {
       out.words.push_back({row[k], styleOf(row[k], wdth, sz), x, y});
