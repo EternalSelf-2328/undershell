@@ -12,12 +12,13 @@
 #include "ring_shader.inc"
 #include "vortex_shader.inc"
 #include "fire_shader.inc"
+#include "muzzle_shader.inc"
 #include "spectrum_shader.inc"
 
 namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire"};
+                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);
@@ -27,7 +28,7 @@ void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
 void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noct) {
   m_cfg = cfg;
   m_styleIndex = 0;
-  for (int i = 0; i < 15; ++i)
+  for (int i = 0; i < static_cast<int>(std::size(kStyles)); ++i)
     if (cfg.style == kStyles[i]) m_styleIndex = i;
   const bool polar = m_styleIndex >= 9 && m_styleIndex <= 13;  // radial, orb, spiral, halo, vortex
   m_motion.gain = cfg.gain;
@@ -81,6 +82,20 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   m_fSparks = std::clamp(t["fire_sparks"].value_or(0.6), 0.0, 1.0);
   m_fSpeed = std::clamp(t["fire_speed"].value_or(1.0), 0.1, 3.0);
   m_fTheme = t["fire_colors"].value_or(std::string("fire")) == "theme";
+  m_mManga = t["muzzle_style"].value_or(std::string("flash")) == "manga";
+  m_mTheme = t["muzzle_colors"].value_or(std::string("fire")) == "theme";
+  m_mLength = std::clamp(t["muzzle_length"].value_or(0.85), 0.3, 1.0);
+  m_mSpikes = std::clamp(t["muzzle_spikes"].value_or(4.0), 0.0, 6.0);
+  m_mSparks = std::clamp(t["muzzle_sparks"].value_or(0.6), 0.0, 1.0);
+  m_mSmoke = std::clamp(t["muzzle_smoke"].value_or(0.5), 0.0, 1.0);
+  // a shot frozen at an age (seconds), for previews and tests
+  m_mPreview = false;
+  if (auto age = t["muzzle_preview"].value<double>()) {
+    m_mPreview = true;
+    m_shotAge = {*age, -1, -1, -1};
+    m_shotSeed[0] = 7;
+    m_shotGain[0] = 1;
+  }
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -195,6 +210,55 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
   m_fFlare *= std::exp(-dt / 0.45);
   m_fTime = std::fmod(m_fTime + dt * m_fSpeed * (0.9 + 0.8 * m_breath + 0.6 * m_pump), 1000.0);
   m_fSparkTime = std::fmod(m_fSparkTime + dt * m_fSpeed * (0.8 + 0.6 * m_breath + 0.8 * m_fFlare), 1000.0);
+  // the muzzle flash: every kick is a shot, as hard as the kick
+  if (m_styleIndex == 15 && !m_mPreview) {
+    for (double& a : m_shotAge)
+      if (a >= 0) a = a + dt > 2.0 ? -1 : a + dt;
+    if (m_trace.kick) shoot(std::clamp(0.45 + 0.55 * m_hit / std::max(0.05, m_haloHits), 0.45, 1.0));
+  }
+}
+
+void Visualizer::shoot(double gain) {
+  size_t slot = 0;  // a free slot, else the oldest shot
+  for (size_t i = 0; i < m_shotAge.size(); ++i) {
+    if (m_shotAge[i] < 0) {
+      slot = i;
+      break;
+    }
+    if (m_shotAge[i] > m_shotAge[slot]) slot = i;
+  }
+  m_shotAge[slot] = 0;
+  m_shotGain[slot] = gain;
+  m_shotCounter = std::fmod(m_shotCounter + 1, 997.0);
+  m_shotSeed[slot] = m_shotCounter * 1.618 + 0.37;  // every shot its own shape
+}
+
+void Visualizer::drawMuzzle(const DrawContext& ctx) {
+  if (!m_muzzleProg.valid()) m_muzzleProg.create(kQuadVertexShader, kMuzzleFrag, "muzzle");
+  glUseProgram(m_muzzleProg.id());
+  auto U = [&](const char* nm) { return m_muzzleProg.uniform(nm); };
+  float age[4], seed[4], gain[4];
+  for (size_t i = 0; i < 4; ++i) {
+    age[i] = static_cast<float>(m_shotAge[i]);
+    seed[i] = static_cast<float>(m_shotSeed[i]);
+    gain[i] = static_cast<float>(m_shotGain[i]);
+  }
+  glUniform2f(U("res"), ctx.w, ctx.h);
+  glUniform1fv(U("u_age"), 4, age);
+  glUniform1fv(U("u_seed"), 4, seed);
+  glUniform1fv(U("u_gain"), 4, gain);
+  glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
+  glUniform1f(U("u_manga"), m_mManga ? 1.0F : 0.0F);
+  glUniform1f(U("u_theme"), m_mTheme ? 1.0F : 0.0F);
+  glUniform3f(U("u_c1"), m_haloA.r, m_haloA.g, m_haloA.b);
+  glUniform3f(U("u_c2"), m_haloB.r, m_haloB.g, m_haloB.b);
+  glUniform1f(U("u_length"), static_cast<float>(m_mLength));
+  glUniform1f(U("u_spikes"), static_cast<float>(m_mSpikes));
+  glUniform1f(U("u_sparks"), static_cast<float>(m_mSparks));
+  glUniform1f(U("u_smoke"), static_cast<float>(m_mSmoke));
+  glUniform1f(U("u_opacity"), opacityNow());
+  glDisable(GL_BLEND);
+  drawUnitQuad();
 }
 
 void Visualizer::drawVortex(const DrawContext& ctx) {
@@ -318,6 +382,10 @@ void Visualizer::draw(const DrawContext& ctx) {
   }
   if (m_styleIndex == 14) {
     drawFire(ctx);
+    return;
+  }
+  if (m_styleIndex == 15) {
+    drawMuzzle(ctx);
     return;
   }
   const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;

@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 15 looks
+## Visualizer: 16 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`). Plus three of its own: `halo` (a glowing
-ring), `vortex` and `fire` (see below).
+and Ryoku's motion (`Motion.qml`). Plus four of its own: `halo` (a glowing
+ring), `vortex`, `fire` and `muzzle` (see below).
 
 ## Clock: 12 faces
 
@@ -333,6 +333,20 @@ flames rise faster when the music is busy. Options: Shape (`bonfire`, a
 cone; `wall`, full width), Colours (`fire`, a black-body ramp; `theme`,
 Colour 1 for the core and Colour 2 for the tongues), Height, Turbulence,
 Spectrum shape, Sparks, Speed, Pulse, Breathing, Beat flare.
+
+## Muzzle flash
+
+The `muzzle` look is the burst at a gun's muzzle, made for wallpapers with a
+gun in them: **every kick of the music is a shot**, as hard as the kick. A
+shot is a white-hot core, flame tongues fanned forward and shorter spikes to
+the sides, ragged and different every time; it grows in about 30 ms and is
+gone in about 150, sparks fly out in a fan, and a little smoke stays,
+swelling and rising. Between shots an ember glows with the bass. The muzzle
+is the box's **left edge** and the shot goes right: turn, pin or mesh the
+widget onto the barrel (see Shape). Options: Drawn as (`flash`, light in
+white, yellow and orange, or the theme's colours with Colours `theme`;
+`manga`, flat white with a black ink outline, for black-and-white artwork),
+Reach, Side spikes, Sparks, Smoke, Ember.
 
 ## Clock structures
 

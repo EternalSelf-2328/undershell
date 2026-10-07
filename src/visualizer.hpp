@@ -23,7 +23,8 @@ public:
     if (m_hidden && m_hideFade < 0.003) return false;
     if (m_hidden || m_hideFade < 0.997) return true;  // fading
     return m_motion.animating(ctx.audio.energy) || m_breath > 0.003 || std::abs(m_breathVel) > 0.003 || m_hit > 0 || m_pump > 0.003 ||
-           (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
+           (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 ||
+           (m_styleIndex == 15 && (m_shotAge[0] >= 0 || m_shotAge[1] >= 0 || m_shotAge[2] >= 0 || m_shotAge[3] >= 0)) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
            m_waveAges[3] >= 0;
   }
   [[nodiscard]] bool visible() const override {
@@ -71,6 +72,14 @@ private:
   double m_fHeight = 0.6, m_fTurb = 0.55, m_fSpectrum = 0.5, m_fSparks = 0.6, m_fSpeed = 1.0;
   double m_fTime = 0, m_fSparkTime = 0, m_fFlare = 0;
   bool m_fTheme = false;
+  // the muzzle flash: a shot per kick, up to four alive at once
+  Program m_muzzleProg;
+  std::array<double, 4> m_shotAge{-1, -1, -1, -1}, m_shotSeed{}, m_shotGain{};
+  double m_shotCounter = 0;
+  bool m_mManga = false, m_mTheme = false, m_mPreview = false;  // preview: one shot frozen in time
+  double m_mLength = 0.85, m_mSpikes = 4, m_mSparks = 0.6, m_mSmoke = 0.5;
+  void shoot(double gain);
+  void drawMuzzle(const DrawContext& ctx);
   double m_breath = 0, m_breathVel = 0, m_hit = 0, m_tone = 0.3, m_prevBass = 0, m_fluxMean = 0, m_fluxVar = 0, m_sinceBeat = 1,
          m_ringTime = 0, m_pump = 0, m_energySlow = 0, m_loud = 0.5, m_liveTime = 0;
   double m_bassFloor = 0, m_bassPeak = 0, m_energyFloor = 0, m_energyPeak = 0;  // recent ranges

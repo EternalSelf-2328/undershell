@@ -116,6 +116,54 @@ int main(int argc, char** argv) {
     CHECK(edgeMax <= 4);
   }
 
+  // the muzzle flash: a shot frozen in time. It starts at the left (the
+  // muzzle), burns brighter there than at the far right, is gone after two
+  // seconds, and the manga drawing is only white, black and grey
+  {
+    auto shot = [&](double age, const char* style) {
+      toml::table o;
+      o.insert_or_assign("muzzle_preview", age);
+      o.insert_or_assign("muzzle_style", style);
+      return renderLook("muzzle", 480, 200, pal, &o);
+    };
+    auto alphaSum = [](const Image& im, int x0, int x1) {
+      double sum = 0;
+      for (int y = 0; y < im.h; ++y)
+        for (int x = x0; x < x1; ++x) sum += im.rgba[(static_cast<size_t>(y) * im.w + x) * 4 + 3];
+      return sum;
+    };
+    const Image flash = shot(0.03, "flash");
+    CHECK(alphaSum(flash, 0, 120) > 4 * alphaSum(flash, 360, 480));  // hottest at the muzzle
+    CHECK(alphaSum(flash, 0, 480) > 480.0 * 200 * 255 * 0.03);      // a real burst
+    const Image gone = shot(1.9, "flash");
+    CHECK(alphaSum(gone, 0, 480) < alphaSum(flash, 0, 480) * 0.05);
+    const Image manga = shot(0.03, "manga");
+    bool inkOnly = true;
+    for (size_t i = 0; i < manga.rgba.size(); i += 4) {
+      const int r = manga.rgba[i], g = manga.rgba[i + 1], b = manga.rgba[i + 2];
+      if (std::abs(r - g) > 3 || std::abs(g - b) > 3) inkOnly = false;  // greys only
+    }
+    CHECK(inkOnly);
+    struct G {
+      const char* name;
+      double age;
+      const char* style;
+    };
+    for (const G& gg : {G{"muzzle-flash", 0.03, "flash"}, G{"muzzle-manga", 0.03, "manga"}, G{"muzzle-smoke", 0.3, "manga"}}) {
+      const Image img = shot(gg.age, gg.style);
+      const std::string path = golden + "/" + gg.name + ".png";
+      if (update) {
+        writePng(img, path, false);
+      } else {
+        Image ref;
+        CHECK(readPng(path, ref));
+        const double d = imageDiff(img, ref);
+        if (d < 0 || d > 1.5) std::fprintf(stderr, "%s differs from golden: %.3f\n", gg.name, d);
+        GOLDEN(d);
+      }
+    }
+  }
+
   // the line floats in its box: its glow fades below it too, with no cut
   // where a bar look's root would be
   {

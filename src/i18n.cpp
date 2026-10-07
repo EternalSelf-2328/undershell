@@ -54,7 +54,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"space", "Espacio"}, {"spiral", "Espiral"}, {"split", "Dividido"}, {"square", "Cuadrado"}, {"stacked", "Apilado"},
       {"strokes", "Trazos"}, {"sunny", "Sol"}, {"system", "Sistema"}, {"tertiary", "Terciario"}, {"theme", "Tema"},
       {"up", "Arriba"}, {"verySunny", "Sol intenso"}, {"vortex", "Vórtice"}, {"wall", "Muro"}, {"wave", "Onda"},
-      {"spotify", "Spotify"}, {"on_surface", "Texto"}, {"tilt", "Inclinar"}, {"pin", "Esquinas"}, {"mesh", "Malla"},
+      {"spotify", "Spotify"}, {"on_surface", "Texto"}, {"tilt", "Inclinar"}, {"muzzle", "Fogonazo"}, {"manga", "Manga"}, {"flash", "Realista"}, {"pin", "Esquinas"}, {"mesh", "Malla"},
       {"flat", "Plana"}, {"arc", "Arco"}, {"bulge", "Abombar"}, {"flag", "Bandera"}, {"cylinder", "Cilindro"},
       {"smooth", "Suave"}, {"straight", "Recto"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
   };
@@ -62,7 +62,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"bighour", "Big hour"}, {"goodnight", "Good night"}, {"en", "English"}, {"es", "Spanish"},
       {"clover4Leaf", "Clover 4"}, {"clover8Leaf", "Clover 8"}, {"cookie12Sided", "Cookie 12"}, {"cookie4Sided", "Cookie 4"},
       {"cookie6Sided", "Cookie 6"}, {"cookie7Sided", "Cookie 7"}, {"cookie9Sided", "Cookie 9"}, {"slash", "Slash /"},
-      {"on_surface", "Text"}, {"pin", "Corners"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
+      {"on_surface", "Text"}, {"pin", "Corners"}, {"muzzle", "Muzzle flash"}, {"flash", "Realistic"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
   };
   const auto& table = es ? kEs : kEn;
   if (auto it = table.find(value); it != table.end()) return it->second;
