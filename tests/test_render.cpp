@@ -276,6 +276,13 @@ int main(int argc, char** argv) {
     for (const auto& ed : edits) {
       auto opts = toml::parse(std::string("language = \"en\"\ndate = \"none\"\n") + ed.toml);
       Image img = renderClock(ClockConfig{}, ed.w, ed.h, pal, 1790456862, &opts);
+      // nothing is cut at the widget's edge: fonts that paint past their
+      // metrics (here Fraunces' serifs) are fitted by what they draw
+      int edge = 0;
+      for (int y = 0; y < img.h; ++y)
+        for (int x : {0, img.w - 1}) edge = std::max<int>(edge, img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3]);
+      if (edge > 8) std::fprintf(stderr, "%s: text reaches the widget's edge (alpha %d)\n", ed.name, edge);
+      CHECK(edge <= 8);
       const std::string path = golden + "/" + ed.name + ".png";
       if (update) {
         writePng(img, path, false);

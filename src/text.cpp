@@ -3,6 +3,7 @@
 
 #include <cairo.h>
 #include <cmath>
+#include <unordered_map>
 #include <filesystem>
 #include <fontconfig/fontconfig.h>
 #include <pango/pangocairo.h>
@@ -129,6 +130,33 @@ void TextRenderer::measure(const std::string& text, const TextStyle& st, float& 
   g_object_unref(layout);
   cairo_destroy(cr);
   cairo_surface_destroy(s);
+}
+
+TextRenderer::Ink TextRenderer::measureInk(const std::string& text, const TextStyle& st) {
+  static std::unordered_map<std::string, Ink> cache;
+  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}", text, st.family, st.size, st.weight,
+                                      st.letterSpacing, st.italic ? 1 : 0, st.stroke, st.variations);
+  if (auto it = cache.find(key); it != cache.end()) return it->second;
+  registerBundledFonts();
+  cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1);
+  cairo_t* cr = cairo_create(s);
+  PangoLayout* layout = makeLayout(cr, text, st);
+  PangoRectangle ink, logical;
+  pango_layout_get_extents(layout, &ink, &logical);
+  g_object_unref(layout);
+  cairo_destroy(cr);
+  cairo_surface_destroy(s);
+  const auto px = [](int v) { return static_cast<float>(v) / PANGO_SCALE; };
+  Ink r;
+  r.x = px(ink.x - logical.x) - st.stroke;  // a hollow outline sits outside the glyph
+  r.y = px(ink.y - logical.y) - st.stroke;
+  r.w = px(ink.width) + 2 * st.stroke;
+  r.h = px(ink.height) + 2 * st.stroke;
+  r.boxW = px(logical.width);
+  r.boxH = px(logical.height);
+  if (cache.size() > 512) cache.clear();
+  cache.emplace(key, r);
+  return r;
 }
 
 TextRenderer::~TextRenderer() = default;  // GL objects go with the context

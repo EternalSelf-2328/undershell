@@ -1072,10 +1072,24 @@ double ClockWidget::nextWakeup(double now) const {
 void ClockWidget::draw(const DrawContext& ctx) {
   Scene sc = build(currentTime());
   if (sc.w <= 0 || sc.h <= 0) return;
-  // fit the design into the box, centred, with a small margin
-  const float margin = 4;
-  const float k = std::min((ctx.w - 2 * margin) / sc.w, (ctx.h - 2 * margin) / sc.h);
-  const float ox = (ctx.w - sc.w * k) / 2, oy = (ctx.h - sc.h * k) / 2;
+  // Fit the design into the box, centred, with a small margin. The design's
+  // size comes from font metrics; decorative fonts paint past them (brush
+  // strokes, swashes, slanted letters), so it is grown to everything its text
+  // really draws, or that would be cut at the widget's edge.
+  float x0 = 0, y0 = 0, x1 = sc.w, y1 = sc.h;
+  for (const Item& it : sc.items) {
+    if (it.kind != Item::Text || it.text.empty()) continue;
+    const TextRenderer::Ink ink = TextRenderer::measureInk(it.text, it.style);
+    const float cy = it.y + ink.boxH / 2;  // drawn scaled by sy about its box's centre
+    const float ta = cy + (it.y + ink.y - cy) * it.sy, tb = cy + (it.y + ink.y + ink.h - cy) * it.sy;
+    x0 = std::min(x0, it.x + ink.x);
+    x1 = std::max(x1, it.x + ink.x + ink.w);
+    y0 = std::min(y0, std::min(ta, tb));
+    y1 = std::max(y1, std::max(ta, tb));
+  }
+  const float margin = 4, bw = std::max(1.0F, x1 - x0), bh = std::max(1.0F, y1 - y0);
+  const float k = std::min((ctx.w - 2 * margin) / bw, (ctx.h - 2 * margin) / bh);
+  const float ox = (ctx.w - bw * k) / 2 - x0 * k, oy = (ctx.h - bh * k) / 2 - y0 * k;
   m_canvas.begin(ctx.w, ctx.h, ctx.scale, ctx.text);
   m_canvas.setTransform(k, ox, oy);
   const float op = static_cast<float>(m_cfg.opacity);

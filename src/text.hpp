@@ -56,6 +56,14 @@ public:
   const TextImage& get(const std::string& text, const TextStyle& style, float scale);
   // Logical size only, no GL work.
   static void measure(const std::string& text, const TextStyle& style, float& w, float& h, float& baseline);
+  // What the text really paints, relative to its logical box's top-left
+  // (decorative fonts often reach past their metrics), plus that box's size;
+  // hollow text includes its outline. Cached, no GL needed.
+  struct Ink {
+    float x = 0, y = 0, w = 0, h = 0;  // painted area
+    float boxW = 0, boxH = 0;          // logical box
+  };
+  static Ink measureInk(const std::string& text, const TextStyle& style);
 
   // Draws at (x, y) = top-left of the logical box, in surface logical px.
   void draw(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float opacity = 1);
