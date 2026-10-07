@@ -35,7 +35,9 @@ git -C "$repo" archive --format=tar.gz --prefix="undershell-$version/" HEAD \
 cp "$spec" "$top/SPECS/"
 
 echo ":: building undershell $version"
-rpmbuild -ba --define "_topdir $top" "$top/SPECS/undershell.spec"
+# the commit count in the release: each update installs as newer
+count="$(git -C "$repo" rev-list --count HEAD)"
+rpmbuild -ba --define "_topdir $top" --define "_gitcount $count" "$top/SPECS/undershell.spec"
 
 rpm="$(find "$top/RPMS" -name "undershell-$version-*.rpm" ! -name '*debug*' | head -1)"
 echo ":: built $rpm"

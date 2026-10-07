@@ -19,7 +19,8 @@ for tool in git dpkg-buildpackage; do
   command -v "$tool" >/dev/null || { echo "missing $tool: sudo apt install git dpkg-dev" >&2; exit 1; }
 done
 
-version="$(dpkg-parsechangelog -l "$here/changelog" -S Version)"
+# the commit count in the version (1.1.0+git92): each update installs as newer
+version="$(dpkg-parsechangelog -l "$here/changelog" -S Version)+git$(git -C "$repo" rev-list --count HEAD)"
 top="$repo/build-deb"
 src="$top/undershell-$version"
 rm -rf "$top"
@@ -31,6 +32,7 @@ fi
 git -C "$repo" archive HEAD | tar -x -C "$src"
 cp -r "$here" "$src/debian"
 rm -f "$src/debian/build-deb.sh"
+sed -i "1s/^undershell (\([^)]*\))/undershell ($version)/" "$src/debian/changelog"
 
 echo ":: installing build dependencies"
 $sudo_ apt-get install -y --no-install-recommends build-essential

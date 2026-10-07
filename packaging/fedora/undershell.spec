@@ -1,6 +1,8 @@
 Name:           undershell
 Version:        1.1.0
-Release:        1%{?dist}
+# built from a checkout (build-rpm.sh), the commit count goes in the release
+# so every update is newer to dnf; a release tarball builds plain -1
+Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
 Summary:        Desktop widgets that live under your Wayland shell
 
 # GPL-3.0-or-later: undershell (and the Ryoku code it ports)
