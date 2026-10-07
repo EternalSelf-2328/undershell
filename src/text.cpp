@@ -134,8 +134,9 @@ void TextRenderer::measure(const std::string& text, const TextStyle& st, float& 
 
 TextRenderer::Ink TextRenderer::measureInk(const std::string& text, const TextStyle& st) {
   static std::unordered_map<std::string, Ink> cache;
-  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}", text, st.family, st.size, st.weight,
-                                      st.letterSpacing, st.italic ? 1 : 0, st.stroke, st.variations);
+  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}", text, st.family,
+                                      st.size, st.weight, st.letterSpacing, st.italic ? 1 : 0, st.stroke, st.variations,
+                                      st.maxWidth, st.maxLines, st.align);
   if (auto it = cache.find(key); it != cache.end()) return it->second;
   registerBundledFonts();
   cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1);
