@@ -193,6 +193,44 @@ int onReply(sd_bus_message* m, void* ud, sd_bus_error*) {
 
 std::vector<LyricLine> parseLrc(const std::string& text) { return parseLrcImpl(text); }
 
+// The file an art url points at, or "" when it is not a local one. Players
+// spell it `file:///…`, `file:/…` or a bare path.
+std::string artPath(const std::string& url) {
+  if (url.empty()) return {};
+  if (url[0] == '/') return url;
+  if (url.rfind("file:", 0) != 0) return {};
+  if (gchar* p = g_filename_from_uri(url.c_str(), nullptr, nullptr); p) {
+    std::string out(p);
+    g_free(p);
+    return out;
+  }
+  // `file:/path`, which g_filename_from_uri turns down: unescape it by hand
+  std::string rest = url.substr(5);
+  while (rest.size() > 1 && rest[0] == '/' && rest[1] == '/') rest.erase(0, 1);
+  if (rest.empty() || rest[0] != '/') return {};
+  if (gchar* u = g_uri_unescape_string(rest.c_str(), nullptr); u) {
+    std::string out(u);
+    g_free(u);
+    return out;
+  }
+  return rest;
+}
+
+// What tells one cover from another. For a local file that is the file as it
+// is right now: players that keep rewriting a single path (mpd-mpris, VLC and
+// the browsers all do) change the art without changing the url, and a file
+// named before it is written comes back as "missing" until it appears, so the
+// next poll picks it up on its own.
+std::string artKey(const std::string& url) {
+  const std::string path = artPath(url);
+  if (path.empty()) return url;
+  std::error_code ec;
+  const auto size = fs::file_size(path, ec);
+  if (ec) return url + "|missing";
+  const auto when = fs::last_write_time(path, ec);
+  return std::format("{}|{}|{}", url, ec ? 0 : when.time_since_epoch().count(), size);
+}
+
 bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out) {
   GdkPixbuf* pb = gdk_pixbuf_new_from_data(rgba, GDK_COLORSPACE_RGB, TRUE, 8, w, h, w * 4, nullptr, nullptr);
   if (!pb) return false;
@@ -338,13 +376,13 @@ void MediaService::onPlayerReply(sd_bus_message* m) {
                        s.canNext != m_state.canNext || s.canPrev != m_state.canPrev || s.lengthUs != m_state.lengthUs;
   m_state = std::move(s);
   if (trackChanged) onTrackChanged();
+  syncCover();
   if (changed) ++m_generation;
   if (m_state.playing) m_nextPoll = std::min(m_nextPoll, nowSeconds() + 1.0);
 }
 
 void MediaService::onTrackChanged() {
   m_state.hasAccent = false;
-  if (m_state.artUrl != m_coverFor) fetchCover(m_state.artUrl, m_state.trackKey);
   m_state.lyrics = MediaState::Lyrics::None;
   m_state.lines.clear();
   m_state.plain.clear();
@@ -352,35 +390,66 @@ void MediaService::onTrackChanged() {
   if (m_wantLyrics) fetchLyrics();
 }
 
+// Follows the art url wherever it goes. Only Spotify hands over a whole track
+// at once; mpd-mpris, VLC, the browsers and most of the rest publish the title
+// first and the art once they have written it, so the sleeve has to follow the
+// url, not the track.
+void MediaService::syncCover() {
+  const std::string key = artKey(m_state.artUrl);
+  if (key == m_coverFor) return;
+  fetchCover(m_state.artUrl, key);
+}
+
 void MediaService::fetchCover(const std::string& url, const std::string& key) {
-  m_coverFor = url;
+  m_coverFor = key;
   if (url.empty()) {
     m_state.coverW = m_state.coverH = 0;
+    m_state.hasAccent = false;
     return;
   }
   m_jobs.run([this, url, key]() -> Jobs::Done {
+    // nothing came of it: the sleeve goes back to the placeholder instead of
+    // keeping the last song's art
+    auto giveUp = [this, key]() -> Jobs::Done {
+      return [this, key]() {
+        if (m_coverFor != key) return;
+        m_state.coverW = m_state.coverH = 0;
+        m_state.hasAccent = false;
+        ++m_generation;
+      };
+    };
     std::string bytes;
-    if (url.rfind("file://", 0) == 0) {
-      gchar* path = g_filename_from_uri(url.c_str(), nullptr, nullptr);
-      if (path) {
-        bytes = readFile(path);
-        g_free(path);
+    if (url.rfind("data:", 0) == 0) {
+      // some players hand the art over inline (`data:image/jpeg;base64,…`)
+      const size_t comma = url.find(',');
+      if (comma != std::string::npos) {
+        const std::string head = url.substr(5, comma - 5), body = url.substr(comma + 1);
+        if (head.find("base64") != std::string::npos) {
+          gsize n = 0;
+          if (guchar* d = g_base64_decode(body.c_str(), &n); d) {
+            bytes.assign(reinterpret_cast<char*>(d), n);
+            g_free(d);
+          }
+        } else if (gchar* u = g_uri_unescape_string(body.c_str(), nullptr); u) {
+          bytes = u;
+          g_free(u);
+        }
       }
     } else if (url.rfind("http", 0) == 0) {
       const std::string cached = cacheDir("covers") + "/" + hashOf(url);
       bytes = readFile(cached);
       if (bytes.empty() && httpGet(url, bytes)) writeFileAtomic(cached, bytes);
-    } else if (!url.empty() && url[0] == '/') {
-      bytes = readFile(url);
+    } else if (const std::string path = artPath(url); !path.empty()) {
+      bytes = readFile(path);
     }
-    if (bytes.empty()) return nullptr;
+    if (bytes.empty()) return giveUp();
     GdkPixbufLoader* loader = gdk_pixbuf_loader_new();
     gdk_pixbuf_loader_write(loader, reinterpret_cast<const guchar*>(bytes.data()), bytes.size(), nullptr);
     gdk_pixbuf_loader_close(loader, nullptr);
     GdkPixbuf* pb = gdk_pixbuf_loader_get_pixbuf(loader);
     if (!pb) {
       g_object_unref(loader);
-      return nullptr;
+      return giveUp();
     }
     // at most 512 px for the texture; square-ish covers stay sharp at card size
     const int w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb);
@@ -397,8 +466,8 @@ void MediaService::fetchCover(const std::string& url, const std::string& key) {
     g_object_unref(rgba);
     g_object_unref(scaled);
     g_object_unref(loader);
-    return [this, url, key, pixels = std::move(pixels), tw, th, hasAccent, accent]() mutable {
-      if (m_coverFor != url) return;  // the track moved on
+    return [this, key, pixels = std::move(pixels), tw, th, hasAccent, accent]() mutable {
+      if (m_coverFor != key) return;  // the song moved on
       m_pendingRgba = std::move(pixels);
       m_pendingW = tw;
       m_pendingH = th;

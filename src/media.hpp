@@ -51,6 +51,11 @@ struct MediaState {
 
 // exposed for tests
 std::vector<LyricLine> parseLrc(const std::string& text);
+// The file an MPRIS art url points at, or "" when it is not a local one.
+std::string artPath(const std::string& url);
+// What tells one cover from another: the url and, for a local file, the file
+// as it is right now.
+std::string artKey(const std::string& url);
 // Ryoku's ArtColor.accentOf over RGBA pixels (w x h); false = no vivid colour
 bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out);
 
@@ -88,6 +93,7 @@ public:
 private:
   void call(const char* method, const char* sig = nullptr, int64_t arg = 0);
   void onTrackChanged();
+  void syncCover();
   void fetchCover(const std::string& url, const std::string& key);
   void fetchLyrics();
 
@@ -99,7 +105,7 @@ private:
   bool m_wanted = false, m_wantLyrics = false;
   bool m_inFlight = false;
   double m_nextPoll = 0;
-  std::string m_coverFor, m_lyricsFor;
+  std::string m_coverFor, m_lyricsFor;  // m_coverFor: the cover key, not the url
   // decoded cover waiting for upload
   std::vector<uint8_t> m_pendingRgba;
   int m_pendingW = 0, m_pendingH = 0;

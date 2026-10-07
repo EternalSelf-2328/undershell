@@ -2,6 +2,8 @@
 #include "check.hpp"
 #include "media.hpp"
 
+#include <filesystem>
+
 using namespace undershell;
 
 int main() {
@@ -33,6 +35,32 @@ int main() {
   // a grey image has nothing worth taking
   std::fill(img.begin(), img.end(), 128);
   CHECK(!accentOfPixels(img.data(), 64, 64, a));
+
+  // the art url, the way every player writes it: the sleeve has to find the
+  // file behind it, and notice when the file under one url is rewritten
+  {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "undershell-test-art";
+    fs::create_directories(dir);
+    const fs::path file = dir / "a b.png";
+    const std::string uri = "file://" + std::string(dir) + "/a%20b.png";
+    CHECK(artPath(uri) == file.string());                 // percent-escaped
+    CHECK(artPath("file:" + file.string()) == file);      // one slash, as some players write it
+    CHECK(artPath(file.string()) == file);                // a bare path
+    CHECK(artPath("https://i.scdn.co/image/ab").empty());
+    CHECK(artPath("").empty());
+
+    fs::remove(file);
+    const std::string missing = artKey(uri);
+    CHECK(missing.ends_with("|missing"));                 // named before it is written
+    writeFileAtomic(file.string(), "one");
+    const std::string first = artKey(uri);
+    CHECK(first != missing);                              // and picked up once it is there
+    writeFileAtomic(file.string(), "another cover");
+    CHECK(artKey(uri) != first);                          // one url, new art: a new key
+    CHECK(artKey("https://i.scdn.co/image/ab") == "https://i.scdn.co/image/ab");
+    fs::remove_all(dir);
+  }
 
   MediaState s;
   s.playing = true;
