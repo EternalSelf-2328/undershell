@@ -120,6 +120,24 @@ Every option is documented in [`docs/OPTIONS.md`](docs/OPTIONS.md) (generated
 from the same table the inspector uses: `undershell --doc`). For the Noctalia
 bar widget, see [Noctalia bar widget](#noctalia-bar-widget).
 
+## Update
+
+From the folder you cloned, one command for every install method:
+
+```sh
+./update.sh
+```
+
+It finds how undershell was installed (the Arch package, the Fedora RPM, the
+Debian/Ubuntu package, or by hand in `~/.local`), runs `git pull`, builds and
+installs it again the same way, and restarts the service if it was running.
+`./update.sh --dry-run` only says what it would do; `--rebuild` installs again
+even when there are no new commits. Packages built from the checkout carry
+the commit count in their version (`1.1.0-1.git92`, `1.1.0+git92`), so `dnf`
+and `apt` treat each update as newer.
+
+The Noctalia bar plugin updates from Noctalia's plugin store.
+
 ## Uninstall
 
 First stop the service, whichever way you installed it:

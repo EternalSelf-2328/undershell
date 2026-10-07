@@ -77,4 +77,5 @@ if systemctl --user is-active --quiet undershell 2>/dev/null; then
   systemctl --user restart undershell
   echo ":: restarted the service"
 fi
-echo ":: done: $(undershell --version 2>/dev/null || echo undershell)"
+bin="$(command -v undershell || echo "$HOME/.local/bin/undershell")"
+echo ":: done: $("$bin" --version 2>/dev/null || echo undershell)"
