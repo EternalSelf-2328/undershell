@@ -390,7 +390,7 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
       m_lyricIndex = idx;
       m_posterP = 0;  // the new line eases into its poster shape
     }
-    c.clip(sx, PAD, sw, COVER);
+    c.clip(sx, sy, sw, sh);  // its own area: a line must not run under the corner button
     const int centre = std::max(idx, 0);
     auto cz = measure(textFor(centre), styleFor(centre));
     // the sung line as a poster, eased in (quantised so the text cache can keep up)
@@ -402,10 +402,20 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
       cz.h = std::max(cz.h, pst.h);
     }
     float yTop = sy + sh / 2 - cz.h / 2 + m_glide;
-    // the sung line and its neighbours, fading with distance
+    // the sung line and its neighbours, fading with distance and, at the edges
+    // of the column, with how much of the line is still inside it: a line
+    // leaves whole instead of being sliced through the middle. The sung line
+    // always leads, even when its poster is taller than the column.
     auto drawLine = [&](int i, float y) {
       const int d = std::abs(i - idx);
-      const float o = idx < 0 ? 0.52F : (d == 0 ? 1.0F : (d > 4 ? 0.0F : std::max(0.10F, 0.52F - (d - 1) * 0.14F)));
+      float o = idx < 0 ? 0.52F : (d == 0 ? 1.0F : (d > 4 ? 0.0F : std::max(0.10F, 0.52F - (d - 1) * 0.14F)));
+      if (i != idx) {
+        // the first few pixels a line loses are the box's own padding; past
+        // them it is gone, so the column never shows a line sliced in half
+        const float h = measure(textFor(i), styleFor(i)).h;
+        const float hidden = h - (std::min(y + h, sy + sh) - std::max(y, sy));
+        o *= std::clamp(1 - hidden / 5, 0.0F, 1.0F);
+      }
       if (o <= 0) return;
       if (poster && i == idx) {
         for (const auto& wd : pst.words) c.text(wd.text, wd.style, sx + wd.x, y + wd.y, A(m_accent), o);
@@ -430,7 +440,7 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
     TextStyle t{.family = FONT, .size = 15, .weight = 500};
     t.maxWidth = sw;
     t.maxLines = 7;
-    c.clip(sx, PAD, sw, COVER);
+    c.clip(sx, sy, sw, sh);
     c.text(s.plain, t, sx, sy, A(ink), 0.62F);
     c.clip();
     drewLyrics = true;
