@@ -226,7 +226,7 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
       }
       size = slo;
     } else if (rowWidth(lo, base) > width) {
-      // too long for the column even at its narrowest -- one very long word,
+      // too long for the column even at its narrowest — one very long word,
       // which no wrap can break: set it smaller until it fits
       wdth = lo;
       float slo = base * 0.4F, shi = base;
@@ -502,13 +502,22 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   tS.maxWidth = kW - 2 * PAD - stZ.w - 12;
   TextStyle aS{.family = FONT, .size = 12.5F, .weight = 500};
   aS.maxWidth = tS.maxWidth;
-  const auto tZ = measure(s.title, tS);
-  const auto aZ = s.artist.empty() ? Canvas::Size{} : measure(s.artist, aS);
-  const float colH = tZ.h + (s.artist.empty() ? 0 : 2 + aZ.h);
-  float y = iy + (INFO_H - colH) / 2;
-  c.text(s.title, tS, PAD, y, A(ink));
-  if (!s.artist.empty()) c.text(s.artist, aS, PAD, y + tZ.h + 2, A(dim));
-  if (!st.empty()) c.text(st, stS, kW - PAD - stZ.w, iy + INFO_H - 2 - stZ.h, A(dim));
+  // laid out on what the pair really paints, not on its boxes: the display
+  // face leaves a third of its box empty above and below, which left the title
+  // and the artist adrift from each other and from the band (the clock faces
+  // had the same trouble)
+  const auto tI = TextRenderer::measureInk(s.title, tS);
+  const auto aI = s.artist.empty() ? TextRenderer::Ink{} : TextRenderer::measureInk(s.artist, aS);
+  const float lead = 5;  // between the title's ink and the artist's
+  const float colH = tI.h + (s.artist.empty() ? 0 : lead + aI.h);
+  const float y = iy + (INFO_H - colH) / 2;  // the top of the ink, not of the box
+  c.text(s.title, tS, PAD - tI.x, y - tI.y, A(ink));
+  if (!s.artist.empty()) c.text(s.artist, aS, PAD - aI.x, y + tI.h + lead - aI.y, A(dim));
+  // the clock sits on the same line as the artist (or as the title alone)
+  if (!st.empty()) {
+    const auto sI = TextRenderer::measureInk(st, stS);
+    c.text(st, stS, kW - PAD - stZ.w, y + colH - sI.h - sI.y, A(dim));
+  }
 
   // ── seek rail + transport ──
   const float cy = iy + INFO_H + 8 + SEEK_H / 2;
