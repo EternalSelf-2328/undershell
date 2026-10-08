@@ -63,6 +63,7 @@ void noteGlyph(Canvas& c, float cx, float cy, float size, Color col) {
 
 NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   NowPlayingConfig c;
+  c.layout = t["layout"].value_or(c.layout);
   c.plate = t["plate"].value_or(c.plate);
   c.showLyrics = t["show_lyrics"].value_or(c.showLyrics);
   c.viz = t["viz"].value_or(c.viz);
@@ -288,15 +289,39 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
   return out;
 }
 
-void NowPlayingWidget::layoutTargets(bool seekable) {
+// ── where each piece of the card goes ─────────────────────────────────────
+// A layout is drawn at its own design size and says where every piece
+// belongs. The drawing and the hit targets both read it, so they cannot
+// drift apart, and a new layout is a new block here plus nothing else.
+NowPlayingWidget::Places NowPlayingWidget::places() const {
+  Places p;
+  // Ryoku's sheet: the sleeve leads, this song's lyrics run beside it, and
+  // the track, its clock, the rail and the three moves close it out.
+  p.w = kW;
+  p.h = kH;
+  p.plate = {0, 0, kW, kH};
+  p.cover = {PAD, PAD, COVER, COVER};
+  p.side = {PAD + COVER + GAP, PAD + 26, kW - PAD - (PAD + COVER + GAP), COVER - 26};
+  const float iy = PAD + COVER + GAP;
+  p.text = {PAD, iy, kW - 2 * PAD, INFO_H};
+  p.ctrlY = iy + INFO_H + 8 + SEEK_H / 2;
+  p.nextX = kW - PAD - 15;
+  p.playX = p.nextX - 15 - 6 - 19;
+  p.prevX = p.playX - 19 - 6 - 15;
+  p.rail = {PAD, p.ctrlY - 10, p.prevX - 15 - 14 - PAD, 20};
+  p.open = {kW - PAD - 26, PAD, 26, 26};
+  return p;
+}
+
+void NowPlayingWidget::layoutTargets(const Places& p, bool seekable) {
   m_targets.clear();
-  const float cy = PAD + COVER + GAP + INFO_H + 8 + SEEK_H / 2;
-  const float nextX = kW - PAD - 15, playX = nextX - 15 - 6 - 19, prevX = playX - 19 - 6 - 15;
-  m_targets.push_back({"next", {nextX - 15, cy - 15, 30, 30}});
-  m_targets.push_back({"play", {playX - 19, cy - 19, 38, 38}});
-  m_targets.push_back({"prev", {prevX - 15, cy - 15, 30, 30}});
-  if (seekable) m_targets.push_back({"rail", {PAD, cy - 10, prevX - 15 - 14 - PAD, 20}});
-  m_targets.push_back({"open", {kW - PAD - 26, PAD, 26, 26}});
+  if (p.playR > 0) {
+    m_targets.push_back({"next", {p.nextX - p.sideR, p.ctrlY - p.sideR, p.sideR * 2, p.sideR * 2}});
+    m_targets.push_back({"play", {p.playX - p.playR, p.ctrlY - p.playR, p.playR * 2, p.playR * 2}});
+    m_targets.push_back({"prev", {p.prevX - p.sideR, p.ctrlY - p.sideR, p.sideR * 2, p.sideR * 2}});
+  }
+  if (seekable && p.rail.w > 0) m_targets.push_back({"rail", p.rail});
+  if (p.open.w > 0) m_targets.push_back({"open", p.open});
 }
 
 std::vector<Rect> NowPlayingWidget::inputRects() const {
@@ -333,80 +358,39 @@ bool NowPlayingWidget::onPointer(const PointerEvent& ev) {
   return redraw;
 }
 
-void NowPlayingWidget::draw(const DrawContext& ctx) {
-  m_media = ctx.media;
-  static const MediaState kEmpty;
-  const MediaState& s = m_media ? m_media->state() : kEmpty;
-  const double now = ctx.now > 0 ? ctx.now : m_now;
+Color NowPlayingWidget::tint(Color col, float a) const { return withAlpha(col, a * m_paint.op); }
 
-  m_accent = (m_cfg.accentSource == "album" && s.hasAccent) ? s.accent : m_theme;
-  const Color ink = m_ink, dim = withAlpha(m_ink, 0.7F);
-  const Color surface = m_noct.color("surface", Color::fromHex("#0b0b0c"));
-  const float op = static_cast<float>(m_cfg.opacity);
+// ── the pieces ────────────────────────────────────────────────────────────
 
-  m_k = std::min(ctx.w / kW, ctx.h / kH);
-  m_ox = (ctx.w - kW * m_k) / 2;
-  m_oy = (ctx.h - kH * m_k) / 2;
-  Canvas& c = m_canvas;
-  c.begin(ctx.w, ctx.h, ctx.scale, ctx.text);
-  c.setTransform(m_k, m_ox, m_oy);
-  auto A = [op](Color col, float a = 1) { return withAlpha(col, a * op); };
-
-  // ── the plate ──
-  const float R = 22;
-  if (m_cfg.plate == "cover") {
-    // the sleeve, blurred, under a near-opaque plate tinted a tenth toward it
-    if (s.present && s.cover && s.coverW > 0) c.image(s.cover, s.coverW, s.coverH, 0, 0, kW, kH, R, 0.55F * op, 28);
-    const Color plate = surface.mix(m_accent, 0.10F);
-    c.roundRect(0, 0, kW, kH, R, A(plate, 0.80F), 1, A(ink, m_hover.empty() ? 0.08F : 0.16F));
-  } else if (m_cfg.plate == "glass") {
-    c.roundRect(0, 0, kW, kH, R, A(surface, 0.35F), 1, A(ink, 0.12F));
-  }
-
-  const bool es = spanish();
-  const bool seekable = s.present && !s.radio() && s.lengthUs > 0;
-  layoutTargets(seekable);
-
-  // corner button: opens the music app
-  {
-    const float cx = kW - PAD - 13, cy = PAD + 13;
-    if (m_hover == "open") c.circle(cx, cy, 13, A(ink, 0.12F));
-    noteGlyph(c, cx, cy, 14, A(ink, m_hover.empty() ? 0.5F : 1.0F));
-  }
-
-  if (!s.present) {
-    noteGlyph(c, kW / 2, kH / 2 - 14, 40, A(dim, 0.7F));
-    const TextStyle ts{.family = FONT, .size = 13, .weight = 500};
-    const std::string msg = es ? "No suena nada" : "Nothing playing";
-    auto z = measure(msg, ts);
-    c.text(msg, ts, (kW - z.w) / 2, kH / 2 + 18, A(dim));
-    return;
-  }
-
-  // ── the sleeve ──
-  if (s.cover && s.coverW > 0) {
-    const bool shaped = m_cfg.coverShape != "rounded" && m_shapeNow.size() == 128;
-    c.image(s.cover, s.coverW, s.coverH, PAD, PAD, COVER, COVER, 10, op, 0, shaped ? m_shapeNow.data() : nullptr);
-  } else {
-    c.roundRect(PAD, PAD, COVER, COVER, 10, A(m_noct.color("surface_variant", surface)));
-    noteGlyph(c, PAD + COVER / 2, PAD + COVER / 2, 40, A(dim));
+void NowPlayingWidget::drawSleeve(Canvas& c, const MediaState& s, const Places& p) {
+  if (p.cover.w <= 0) return;
+  const Rect& r = p.cover;
+  const bool shaped = m_cfg.coverShape != "rounded" && m_shapeNow.size() == 128;
+  if (s.cover && s.coverW > 0)
+    c.image(s.cover, s.coverW, s.coverH, r.x, r.y, r.w, r.h, p.coverRadius, m_paint.op, 0, shaped ? m_shapeNow.data() : nullptr);
+  else {
+    c.roundRect(r.x, r.y, r.w, r.h, p.coverRadius, tint(m_noct.color("surface_variant", m_paint.surface)));
+    noteGlyph(c, r.x + r.w / 2, r.y + r.h / 2, std::min(40.0F, r.w * 0.24F), tint(m_paint.dim));
   }
   // now-playing pulse on the sleeve, only while sound is moving
-  if (s.playing) {
-    const float barW = 3, gap = 2.5F, maxH = 13, pw = 4 * barW + 3 * gap;
-    const float px = PAD + 8, py = PAD + COVER - 8 - 20;
-    c.roundRect(px, py, pw + 14, 20, 10, Color{0, 0, 0, 0.42F * op});
-    for (int i = 0; i < 4; ++i) {
-      const double t = now * 1000 - i * 85;
-      const float lv = 0.28F + 0.72F * static_cast<float>(0.5 + 0.5 * std::sin(t / 1120.0 * 2 * std::numbers::pi * 1.7 + i));
-      const float h = lv * maxH;
-      c.roundRect(px + 7 + i * (barW + gap), py + 10 + maxH / 2 - h, barW, h, barW / 2, Color{1, 1, 1, op});
-    }
+  if (!s.playing || r.w < 90) return;
+  const float barW = 3, gap = 2.5F, maxH = 13, pw = 4 * barW + 3 * gap;
+  const float px = r.x + 8, py = r.y + r.h - 8 - 20;
+  c.roundRect(px, py, pw + 14, 20, 10, Color{0, 0, 0, 0.42F * m_paint.op});
+  for (int i = 0; i < 4; ++i) {
+    const double t = m_paint.now * 1000 - i * 85;
+    const float lv = 0.28F + 0.72F * static_cast<float>(0.5 + 0.5 * std::sin(t / 1120.0 * 2 * std::numbers::pi * 1.7 + i));
+    const float h = lv * maxH;
+    c.roundRect(px + 7 + i * (barW + gap), py + 10 + maxH / 2 - h, barW, h, barW / 2, Color{1, 1, 1, m_paint.op});
   }
+}
 
-  // ── the side area: lyrics, or a live spectrum ──
-  const float sx = PAD + COVER + GAP, sy = PAD + 26, sw = kW - PAD - sx, sh = COVER - 26;
-  const double pos = s.positionSec(now);
+// the side area: this song's lyrics, or a live spectrum when there are none
+void NowPlayingWidget::drawSide(Canvas& c, const MediaState& s, const Places& p) {
+  if (p.side.w <= 0) return;
+  const float sx = p.side.x, sy = p.side.y, sw = p.side.w, sh = p.side.h;
+  const Color ink = m_paint.ink, dim = m_paint.dim;
+  const double now = m_paint.now, pos = s.positionSec(now);
   bool drewLyrics = false;
   if (m_cfg.showLyrics && s.lyrics == MediaState::Lyrics::Synced && !s.lines.empty()) {
     int idx = -1;
@@ -423,7 +407,9 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
       t.maxLines = 3;
       return t;
     };
-    auto textFor = [&](int i) { return s.lines[static_cast<size_t>(i)].text.empty() ? std::string("♪") : s.lines[static_cast<size_t>(i)].text; };
+    auto textFor = [&](int i) {
+      return s.lines[static_cast<size_t>(i)].text.empty() ? std::string("♪") : s.lines[static_cast<size_t>(i)].text;
+    };
     // glide: when the sung line changes, start from where the column was
     if (idx != m_lyricIndex) {
       if (m_lyricIndex >= 0 && idx >= 0) {
@@ -438,7 +424,6 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
     c.clip(sx, sy, sw, sh);  // its own area: a line must not run under the corner button
     const int centre = std::max(idx, 0);
     auto cz = measure(textFor(centre), styleFor(centre));
-    // the sung line as a poster, eased in (quantised so the text cache can keep up)
     const bool asPoster = m_cfg.lyricsStyle == "poster" && idx >= 0;
     const Poster* pst = nullptr;
     if (asPoster) {
@@ -464,10 +449,10 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
       if (asPoster && i == idx) {
         // it arrives from a little below, fading in
         const float pe = static_cast<float>(m_posterP), rise = (1 - pe) * 7;
-        for (const auto& wd : pst->words) c.text(wd.text, wd.style, sx + wd.x, y + wd.y + rise, A(m_accent), o * pe);
+        for (const auto& wd : pst->words) c.text(wd.text, wd.style, sx + wd.x, y + wd.y + rise, tint(m_accent), o * pe);
         return;
       }
-      c.text(textFor(i), styleFor(i), sx, y, i == idx ? A(m_accent) : A(ink), o);
+      c.text(textFor(i), styleFor(i), sx, y, i == idx ? tint(m_accent) : tint(ink), o);
     };
     drawLine(centre, yTop);
     float y = yTop;
@@ -487,44 +472,48 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
     t.maxWidth = sw;
     t.maxLines = 7;
     c.clip(sx, sy, sw, sh);
-    c.text(s.plain, t, sx, sy, A(ink), 0.62F);
+    c.text(s.plain, t, sx, sy, tint(ink), 0.62F);
     c.clip();
     drewLyrics = true;
   } else if (m_cfg.showLyrics && s.lyrics == MediaState::Lyrics::Searching) {
     TextStyle t{.family = FONT, .size = 15, .weight = 500};
-    const std::string msg = es ? "Buscando letra…" : "Looking for lyrics…";
+    const std::string msg = m_paint.es ? "Buscando letra…" : "Looking for lyrics…";
     auto z = measure(msg, t);
-    c.text(msg, t, sx + (sw - z.w) / 2, sy + (sh - z.h) / 2, A(dim), 0.8F);
+    c.text(msg, t, sx + (sw - z.w) / 2, sy + (sh - z.h) / 2, tint(dim), 0.8F);
     drewLyrics = true;
   }
-  if (!drewLyrics) {
-    const int n = static_cast<int>(m_viz.size());
-    const float pitch = sw / n, barW = std::max(2.0F, pitch * 0.55F), maxH = sh * 0.8F, mid = sy + sh / 2;
-    if (m_cfg.viz == "wave") {
-      for (int i = 0; i + 1 < n; ++i) {
-        const float x0 = sx + (i + 0.5F) * pitch, x1 = sx + (i + 1.5F) * pitch;
-        const float a0 = std::max(barW / 2, m_viz[static_cast<size_t>(i)] * maxH / 2);
-        const float a1 = std::max(barW / 2, m_viz[static_cast<size_t>(i + 1)] * maxH / 2);
-        c.triangle(x0, mid - a0, x1, mid - a1, x1, mid + a1, A(m_accent, 0.5F));
-        c.triangle(x0, mid - a0, x1, mid + a1, x0, mid + a0, A(m_accent, 0.5F));
-      }
-    } else {
-      for (int i = 0; i < n; ++i) {
-        const float h = std::max(barW, m_viz[static_cast<size_t>(i)] * maxH);
-        c.roundRect(sx + i * pitch + (pitch - barW) / 2, mid - h / 2, barW, h, barW / 2, A(m_accent, 0.85F));
-      }
+  if (drewLyrics) return;
+  const int n = static_cast<int>(m_viz.size());
+  const float pitch = sw / n, barW = std::max(2.0F, pitch * 0.55F), maxH = sh * 0.8F, mid = sy + sh / 2;
+  if (m_cfg.viz == "wave") {
+    for (int i = 0; i + 1 < n; ++i) {
+      const float x0 = sx + (i + 0.5F) * pitch, x1 = sx + (i + 1.5F) * pitch;
+      const float a0 = std::max(barW / 2, m_viz[static_cast<size_t>(i)] * maxH / 2);
+      const float a1 = std::max(barW / 2, m_viz[static_cast<size_t>(i + 1)] * maxH / 2);
+      c.triangle(x0, mid - a0, x1, mid - a1, x1, mid + a1, tint(m_accent, 0.5F));
+      c.triangle(x0, mid - a0, x1, mid + a1, x0, mid + a0, tint(m_accent, 0.5F));
+    }
+  } else {
+    for (int i = 0; i < n; ++i) {
+      const float h = std::max(barW, m_viz[static_cast<size_t>(i)] * maxH);
+      c.roundRect(sx + i * pitch + (pitch - barW) / 2, mid - h / 2, barW, h, barW / 2, tint(m_accent, 0.85F));
     }
   }
+}
 
-  // ── title, artist, clock ──
-  const float iy = PAD + COVER + GAP;
-  const std::string st = seekable ? stamp(pos) + " / " + stamp(s.lengthUs / 1e6) : "";
+// the title, the artist and the clock, laid out on what they really paint
+void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p) {
+  if (p.text.w <= 0) return;
+  const bool seekable = s.present && !s.radio() && s.lengthUs > 0;
+  const std::string st = seekable ? stamp(s.positionSec(m_paint.now)) + " / " + stamp(s.lengthUs / 1e6) : "";
   const TextStyle stS{.family = MONO, .size = 11, .weight = 600};
   const auto stZ = measure(st, stS);
   TextStyle tS{.family = DISPLAY, .size = 20, .weight = 600};
-  tS.maxWidth = kW - 2 * PAD - stZ.w - 12;
+  tS.maxWidth = p.text.w - stZ.w - 12;
+  tS.align = p.align;
   TextStyle aS{.family = FONT, .size = 12.5F, .weight = 500};
   aS.maxWidth = tS.maxWidth;
+  aS.align = p.align;
   // laid out on what the pair really paints, not on its boxes: the display
   // face leaves a third of its box empty above and below, which left the title
   // and the artist adrift from each other and from the band (the clock faces
@@ -533,54 +522,121 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   const auto aI = s.artist.empty() ? TextRenderer::Ink{} : TextRenderer::measureInk(s.artist, aS);
   const float lead = 5;  // between the title's ink and the artist's
   const float colH = tI.h + (s.artist.empty() ? 0 : lead + aI.h);
-  const float y = iy + (INFO_H - colH) / 2;  // the top of the ink, not of the box
-  c.text(s.title, tS, PAD - tI.x, y - tI.y, A(ink));
-  if (!s.artist.empty()) c.text(s.artist, aS, PAD - aI.x, y + tI.h + lead - aI.y, A(dim));
+  const float y = p.text.y + (p.text.h - colH) / 2;  // the top of the ink, not of the box
+  const float left = p.align == 2 ? p.text.x + p.text.w - tS.maxWidth : p.text.x;
+  c.text(s.title, tS, left - tI.x, y - tI.y, tint(m_paint.ink));
+  if (!s.artist.empty()) c.text(s.artist, aS, left - aI.x, y + tI.h + lead - aI.y, tint(m_paint.dim));
   // the clock sits on the same line as the artist (or as the title alone)
   if (!st.empty()) {
     const auto sI = TextRenderer::measureInk(st, stS);
-    c.text(st, stS, kW - PAD - stZ.w, y + colH - sI.h - sI.y, A(dim));
+    c.text(st, stS, p.text.x + p.text.w - stZ.w, y + colH - sI.h - sI.y, tint(m_paint.dim));
   }
+}
 
-  // ── seek rail + transport ──
-  const float cy = iy + INFO_H + 8 + SEEK_H / 2;
-  const float nextX = kW - PAD - 15, playX = nextX - 15 - 6 - 19, prevX = playX - 19 - 6 - 15;
-  const float railX0 = PAD, railX1 = prevX - 15 - 14;
-  if (seekable) {
-    const float frac = std::clamp(static_cast<float>(pos / (s.lengthUs / 1e6)), 0.0F, 1.0F);
-    const float px = railX0 + (railX1 - railX0) * frac;
-    c.segment(railX0, cy, railX1, cy, 2.2F, A(ink, 0.16F));
-    // the played part: a travelling wave in the sleeve's colour
-    const float phase = s.playing ? static_cast<float>(std::fmod(now, 1.1) / 1.1 * 15.0) : 0.0F;
-    c.wave(railX0, px, cy, 3, 15, phase, 2.2F, A(m_accent));
-    const float hs = m_hover == "rail" ? 1.35F : 1.0F;
-    if (s.canSeek) c.roundRect(px - 1.5F * hs, cy - 6 * hs, 3 * hs, 12 * hs, 1.5F * hs, A(m_accent));
-  } else if (s.radio()) {
+void NowPlayingWidget::drawRail(Canvas& c, const MediaState& s, const Places& p) {
+  if (p.rail.w <= 0) return;
+  const float x0 = p.rail.x, x1 = p.rail.x + p.rail.w, cy = p.rail.y + p.rail.h / 2;
+  const bool seekable = s.present && !s.radio() && s.lengthUs > 0;
+  if (!seekable) {
+    if (!s.radio()) return;
     const TextStyle lS{.family = MONO, .size = 11, .weight = 600, .letterSpacing = 1.1F};
-    c.text(es ? "En vivo" : "Live", lS, railX0, cy - 8, A(dim));
+    c.text(m_paint.es ? "En vivo" : "Live", lS, x0, cy - 8, tint(m_paint.dim));
+    return;
   }
+  const float frac = std::clamp(static_cast<float>(s.positionSec(m_paint.now) / (s.lengthUs / 1e6)), 0.0F, 1.0F);
+  const float px = x0 + (x1 - x0) * frac;
+  c.segment(x0, cy, x1, cy, 2.2F, tint(m_paint.ink, 0.16F));
+  // the played part: a travelling wave in the sleeve's colour
+  const float phase = s.playing ? static_cast<float>(std::fmod(m_paint.now, 1.1) / 1.1 * 15.0) : 0.0F;
+  c.wave(x0, px, cy, 3, 15, phase, 2.2F, tint(m_accent));
+  const float hs = m_hover == "rail" ? 1.35F : 1.0F;
+  if (s.canSeek) c.roundRect(px - 1.5F * hs, cy - 6 * hs, 3 * hs, 12 * hs, 1.5F * hs, tint(m_accent));
+}
+
+void NowPlayingWidget::drawTransport(Canvas& c, const MediaState& s, const Places& p) {
+  if (p.playR <= 0) return;
+  const float cy = p.ctrlY, k = p.playR / 19;  // the sheet's size is the measure
   auto moveBg = [&](const char* id, float x, float r, bool filled, bool enabled) {
     const bool hot = m_hover == id && enabled;
-    if (filled) c.circle(x, cy, r, A(m_accent, enabled ? 1.0F : 0.4F));
-    else if (hot) c.circle(x, cy, r, A(ink, 0.12F));
+    if (filled) c.circle(x, cy, r, tint(m_accent, enabled ? 1.0F : 0.4F));
+    else if (hot) c.circle(x, cy, r, tint(m_paint.ink, 0.12F));
   };
-  moveBg("prev", prevX, 15, false, s.canPrev);
-  moveBg("play", playX, 19, true, s.canToggle);
-  moveBg("next", nextX, 15, false, s.canNext);
-  const Color onAccent = A(surface), glyph = A(ink);
+  moveBg("prev", p.prevX, p.sideR, false, s.canPrev);
+  moveBg("play", p.playX, p.playR, true, s.canToggle);
+  moveBg("next", p.nextX, p.sideR, false, s.canNext);
+  const Color onAccent = tint(m_paint.surface), glyph = tint(m_paint.ink);
   // previous: bar + left triangle
-  c.roundRect(prevX - 5.5F, cy - 5, 2, 10, 1, withAlpha(glyph, s.canPrev ? 1 : 0.4F));
-  c.triangle(prevX + 5, cy - 5, prevX + 5, cy + 5, prevX - 3, cy, withAlpha(glyph, s.canPrev ? 1 : 0.4F));
+  c.roundRect(p.prevX - 5.5F * k, cy - 5 * k, 2 * k, 10 * k, k, withAlpha(glyph, s.canPrev ? 1 : 0.4F));
+  c.triangle(p.prevX + 5 * k, cy - 5 * k, p.prevX + 5 * k, cy + 5 * k, p.prevX - 3 * k, cy, withAlpha(glyph, s.canPrev ? 1 : 0.4F));
   // next: right triangle + bar
-  c.triangle(nextX - 5, cy - 5, nextX - 5, cy + 5, nextX + 3, cy, withAlpha(glyph, s.canNext ? 1 : 0.4F));
-  c.roundRect(nextX + 3.5F, cy - 5, 2, 10, 1, withAlpha(glyph, s.canNext ? 1 : 0.4F));
+  c.triangle(p.nextX - 5 * k, cy - 5 * k, p.nextX - 5 * k, cy + 5 * k, p.nextX + 3 * k, cy, withAlpha(glyph, s.canNext ? 1 : 0.4F));
+  c.roundRect(p.nextX + 3.5F * k, cy - 5 * k, 2 * k, 10 * k, k, withAlpha(glyph, s.canNext ? 1 : 0.4F));
   // play / pause on the filled tile
   if (s.playing) {
-    c.roundRect(playX - 5, cy - 6.5F, 3.5F, 13, 1.2F, onAccent);
-    c.roundRect(playX + 1.5F, cy - 6.5F, 3.5F, 13, 1.2F, onAccent);
+    c.roundRect(p.playX - 5 * k, cy - 6.5F * k, 3.5F * k, 13 * k, 1.2F * k, onAccent);
+    c.roundRect(p.playX + 1.5F * k, cy - 6.5F * k, 3.5F * k, 13 * k, 1.2F * k, onAccent);
   } else {
-    c.triangle(playX - 4, cy - 7, playX - 4, cy + 7, playX + 7, cy, onAccent);
+    c.triangle(p.playX - 4 * k, cy - 7 * k, p.playX - 4 * k, cy + 7 * k, p.playX + 7 * k, cy, onAccent);
   }
+}
+
+void NowPlayingWidget::draw(const DrawContext& ctx) {
+  m_media = ctx.media;
+  static const MediaState kEmpty;
+  const MediaState& s = m_media ? m_media->state() : kEmpty;
+  const Places p = places();
+
+  m_accent = (m_cfg.accentSource == "album" && s.hasAccent) ? s.accent : m_theme;
+  m_paint.ink = m_ink;
+  m_paint.dim = withAlpha(m_ink, 0.7F);
+  m_paint.surface = m_noct.color("surface", Color::fromHex("#0b0b0c"));
+  m_paint.op = static_cast<float>(m_cfg.opacity);
+  m_paint.now = ctx.now > 0 ? ctx.now : m_now;
+  m_paint.es = spanish();
+
+  m_k = std::min(ctx.w / p.w, ctx.h / p.h);
+  m_ox = (ctx.w - p.w * m_k) / 2;
+  m_oy = (ctx.h - p.h * m_k) / 2;
+  Canvas& c = m_canvas;
+  c.begin(ctx.w, ctx.h, ctx.scale, ctx.text);
+  c.setTransform(m_k, m_ox, m_oy);
+
+  // ── the plate ──
+  if (m_cfg.plate == "cover") {
+    // the sleeve, blurred, under a near-opaque plate tinted a tenth toward it
+    if (s.present && s.cover && s.coverW > 0)
+      c.image(s.cover, s.coverW, s.coverH, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, 0.55F * m_paint.op, 28);
+    const Color plate = m_paint.surface.mix(m_accent, 0.10F);
+    c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, tint(plate, 0.80F),
+                1, tint(m_paint.ink, m_hover.empty() ? 0.08F : 0.16F));
+  } else if (m_cfg.plate == "glass") {
+    c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, tint(m_paint.surface, 0.35F), 1, tint(m_paint.ink, 0.12F));
+  }
+
+  const bool seekable = s.present && !s.radio() && s.lengthUs > 0;
+  layoutTargets(p, seekable);
+
+  // corner button: opens the music app
+  if (p.open.w > 0) {
+    const float cx = p.open.x + p.open.w / 2, cy = p.open.y + p.open.h / 2;
+    if (m_hover == "open") c.circle(cx, cy, p.open.w / 2, tint(m_paint.ink, 0.12F));
+    noteGlyph(c, cx, cy, 14, tint(m_paint.ink, m_hover.empty() ? 0.5F : 1.0F));
+  }
+
+  if (!s.present) {
+    noteGlyph(c, p.w / 2, p.h / 2 - 14, 40, tint(m_paint.dim, 0.7F));
+    const TextStyle ts{.family = FONT, .size = 13, .weight = 500};
+    const std::string msg = m_paint.es ? "No suena nada" : "Nothing playing";
+    auto z = measure(msg, ts);
+    c.text(msg, ts, (p.w - z.w) / 2, p.h / 2 + 18, tint(m_paint.dim));
+    return;
+  }
+
+  drawSleeve(c, s, p);
+  drawSide(c, s, p);
+  drawText(c, s, p);
+  drawRail(c, s, p);
+  drawTransport(c, s, p);
   m_wasPlaying = s.playing;
 }
 

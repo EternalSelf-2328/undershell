@@ -14,7 +14,10 @@
 
 namespace undershell {
 
+struct MediaState;
+
 struct NowPlayingConfig {
+  std::string layout = "sheet";  // sheet (and, below, the ones that follow it)
   std::string plate = "cover";   // cover glass none
   bool showLyrics = true;
   std::string viz = "bars";      // bars wave (when there are no lyrics)
@@ -51,8 +54,41 @@ private:
     std::string id;
     Rect r;  // design units
   };
-  void layoutTargets(bool seekable);
   Canvas::Size measure(const std::string& text, const TextStyle& st);
+
+  // Where each piece of the card goes, for the layout in use: the drawing and
+  // the hit targets both read it. A rect of no width is a piece this layout
+  // does not have.
+  struct Places {
+    float w = 560, h = 302;   // the design size this layout is drawn at
+    Rect plate;               // the card itself
+    float radius = 22;
+    Rect cover;               // the sleeve
+    float coverRadius = 10;
+    Rect side;                // lyrics, or the spectrum when there are none
+    Rect text;                // title and artist
+    int align = 0;            // 0 left, 1 centre, 2 right
+    Rect rail;                // the seek rail
+    Rect open;                // the corner button
+    float prevX = 0, playX = 0, nextX = 0, ctrlY = 0;
+    float playR = 19, sideR = 15;
+  };
+  [[nodiscard]] Places places() const;
+  void layoutTargets(const Places& p, bool seekable);
+  [[nodiscard]] Color tint(Color col, float a = 1) const;
+  void drawSleeve(Canvas& c, const MediaState& s, const Places& p);
+  void drawSide(Canvas& c, const MediaState& s, const Places& p);
+  void drawText(Canvas& c, const MediaState& s, const Places& p);
+  void drawRail(Canvas& c, const MediaState& s, const Places& p);
+  void drawTransport(Canvas& c, const MediaState& s, const Places& p);
+  // what every piece draws with, for the frame in hand
+  struct Paint {
+    Color ink, dim, surface;
+    float op = 1;
+    double now = 0;
+    bool es = false;
+  };
+  Paint m_paint;
 
   NowPlayingConfig m_cfg;
   NoctaliaState m_noct;
