@@ -228,7 +228,8 @@ NowPlayingWidget::Places NowPlayingWidget::places() const {
   const bool moves = m_cfg.showTransport, rail = m_cfg.showRail;
   const bool cover = m_cfg.showCover && l != "poster";
   const float textH = textBandHeight();
-  const float clockW = m_cfg.showTime ? Canvas::measure("0:00 / 0:00", clockStyle()).w : 0;
+  // measured through the ink cache, since this runs for every frame drawn
+  const float clockW = m_cfg.showTime ? TextRenderer::measureInk("0:00 / 0:00", clockStyle()).boxW : 0;
   p.clock = m_cfg.showTime;
 
   // The rows every layout but the sheet stacks, in this order: the track, the
