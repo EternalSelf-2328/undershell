@@ -180,14 +180,22 @@ std::pair<float, float> NowPlayingWidget::designSize() const {
   return {p.w, p.h};
 }
 
-void nowPlayingDesignSize(const std::string& layout, float& w, float& h) {
+static void designSizeOf(const NowPlayingConfig& cfg, float& w, float& h) {
   NowPlayingWidget np;
-  NowPlayingConfig cfg;
-  cfg.layout = layout;
   np.configure(cfg, NoctaliaState{});
   const auto p = np.designSize();
   w = p.first;
   h = p.second;
+}
+
+void nowPlayingDesignSize(const std::string& layout, float& w, float& h) {
+  NowPlayingConfig cfg;
+  cfg.layout = layout;
+  designSizeOf(cfg, w, h);
+}
+
+void nowPlayingDesignSize(const toml::table& options, float& w, float& h) {
+  designSizeOf(NowPlayingConfig::fromTable(options), w, h);
 }
 
 // How tall the track's own band comes out, from what its faces really paint:
@@ -263,9 +271,12 @@ NowPlayingWidget::Places NowPlayingWidget::places() const {
   // A record on its deck: the sleeve is the label, and the disc turns while
   // the song plays. Everything else stands to its right.
   if (l == "vinyl") {
-    const float pad = 18, gap = 12, disc = cover ? 124.0F : 0;
+    const float pad = 18, gap = 12;
     p.w = 440;
     const float rows = rowsHeight(17, gap);
+    // the record follows what stands beside it, so a card showing little does
+    // not end up as one big disc and a line of text
+    const float disc = cover ? std::clamp(rows + 24, 92.0F, 124.0F) : 0;
     p.h = std::max(disc, rows) + 2 * pad;
     p.plate = {0, 0, p.w, p.h};
     p.radius = std::min(46.0F, p.h / 2);

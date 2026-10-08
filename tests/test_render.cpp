@@ -223,6 +223,32 @@ int main(int argc, char** argv) {
                  {"np-viz", &viz, nullptr},
                  {"np-empty", nullptr, nullptr},
                  {"np-lyrics-focus", &focus, &focusOpts}};
+    // A card closes up around the pieces it is showing: with the three moves,
+    // the rail and the artist left out, the ones that stack have to be
+    // shorter rather than keep the holes. The strip is one line, so what a
+    // missing piece frees there goes to the track and its shape does not move.
+    auto sizeOf = [](const char* layout, bool bare, float& w, float& h) {
+      toml::table o;
+      o.insert("layout", layout);
+      if (bare)
+        for (const char* off : {"show_transport", "show_rail", "show_artist"}) o.insert(off, false);
+      nowPlayingDesignSize(o, w, h);
+    };
+    for (const char* name : {"sheet", "vinyl", "tile", "poster", "portrait"}) {
+      float fw = 0, fh = 0, bw = 0, bh = 0;
+      sizeOf(name, false, fw, fh);
+      sizeOf(name, true, bw, bh);
+      if (bh >= fh) std::fprintf(stderr, "%s keeps its height with three pieces gone (%.0f -> %.0f)\n", name, fh, bh);
+      CHECK(bh < fh);
+      CHECK(bh > 20 && bw > 60);
+    }
+    {
+      float fw = 0, fh = 0, bw = 0, bh = 0;
+      sizeOf("strip", false, fw, fh);
+      sizeOf("strip", true, bw, bh);
+      CHECK(bw == fw && bh == fh);
+    }
+
     // every layout, at the size it asks for -- which now follows the pieces it
     // is showing, so a card closes up around what is left of it
     for (const char* name : {"vinyl", "tile", "poster", "strip", "portrait"}) {

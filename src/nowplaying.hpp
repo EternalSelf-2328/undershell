@@ -41,8 +41,10 @@ struct NowPlayingConfig {
   static NowPlayingConfig fromTable(const toml::table& t);
 };
 
-// The size a layout is drawn at, so a new widget starts at its own shape.
+// The size a card is drawn at, so a new widget starts at its own shape. It
+// follows the pieces the options leave on, so a card closes up around them.
 void nowPlayingDesignSize(const std::string& layout, float& w, float& h);
+void nowPlayingDesignSize(const toml::table& options, float& w, float& h);
 
 class NowPlayingWidget final : public WidgetImpl {
 public:
