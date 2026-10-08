@@ -495,6 +495,14 @@ int main(int argc, char** argv) {
   float w = 0, h = 0, b = 0;
   TextRenderer::measure("12:34", {.family = "JetBrains Mono", .size = 40, .weight = 700}, w, h, b);
   CHECK(w > 100 && b > 0 && b < h);
+  // The bundled fonts are resolved against a font map of their own, which is
+  // far quicker than matching the whole system. A script none of them covers
+  // still has to come out drawn, through the system's fallback.
+  for (const char* txt : {"夜に駆ける", "아무노래", "Пачка сигарет", "love 💔 song"}) {
+    const auto own = TextRenderer::measureInk(txt, {.family = "Google Sans Flex", .size = 20, .weight = 500});
+    if (own.w <= 0 || own.h <= 0) std::fprintf(stderr, "\"%s\" draws nothing in the bundled font map\n", txt);
+    CHECK(own.w > 0 && own.h > 0);
+  }
   if (g_goldenMismatches > 0)
     std::fprintf(stderr,
                  "%d image(s) differ from tests/golden: expected on a different GPU, driver or font stack; "

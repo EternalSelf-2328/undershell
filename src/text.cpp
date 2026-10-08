@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "text.hpp"
 
+#include <algorithm>
 #include <cairo.h>
 #include <cmath>
 #include <unordered_map>
@@ -90,8 +91,71 @@ void TextRenderer::registerBundledFonts() {
   US_DEBUG("registered fonts from {}", dir);
 }
 
-static PangoLayout* makeLayout(cairo_t* cr, const std::string& text, const TextStyle& st) {
-  PangoLayout* layout = pango_cairo_create_layout(cr);
+// undershell's own fonts, in a font map that knows only them. Matching a
+// family against every font on the system costs several milliseconds for each
+// (family, size, axes) never seen before -- about ten on a machine with a
+// large collection -- and that is paid again for every size a widget animates
+// through or every instance a variable font is asked for. Against the handful
+// in data/fonts it is about three.
+static PangoFontMap* ownFontMap() {
+  static PangoFontMap* map = [] {
+    PangoFontMap* m = nullptr;
+    const std::string dir = TextRenderer::fontsDir();
+    if (dir.empty()) return m;
+    FcConfig* cfg = FcConfigCreate();  // kept for the life of the process
+    if (!cfg) return m;
+    // a config of its own has no cache directory, and fontconfig complains
+    // on every scan without one
+    const char* xdg = std::getenv("XDG_CACHE_HOME");
+    const std::string cache = std::string(xdg && *xdg ? xdg : expandHome("~/.cache")) + "/undershell/fontconfig";
+    std::error_code ec;
+    fs::create_directories(cache, ec);
+    // The system's rules (hinting, antialiasing, subpixel order) come from
+    // conf.d and the user's own file; the directories do not, which is the
+    // whole point. Without them the bundled faces would be rendered unhinted
+    // and would not look like the rest of the desktop.
+    const std::string xml = "<?xml version=\"1.0\"?><fontconfig><cachedir>" + cache +
+                            "</cachedir>"
+                            "<include ignore_missing=\"yes\">/etc/fonts/conf.d</include>"
+                            "<include ignore_missing=\"yes\">" +
+                            expandHome("~/.config/fontconfig/conf.d") +
+                            "</include>"
+                            "<include ignore_missing=\"yes\">" +
+                            expandHome("~/.config/fontconfig/fonts.conf") + "</include></fontconfig>";
+    FcConfigParseAndLoadFromMemory(cfg, reinterpret_cast<const FcChar8*>(xml.c_str()), FcTrue);
+    if (!FcConfigAppFontAddDir(cfg, reinterpret_cast<const FcChar8*>(dir.c_str()))) return m;
+    m = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
+    pango_fc_font_map_set_config(PANGO_FC_FONT_MAP(m), cfg);
+    return m;
+  }();
+  return map;
+}
+
+// the families that map holds, by name
+static bool bundledFamily(const std::string& family) {
+  static const std::vector<std::string> names = [] {
+    std::vector<std::string> out;
+    if (PangoFontMap* m = ownFontMap()) {
+      PangoFontFamily** fam = nullptr;
+      int n = 0;
+      pango_font_map_list_families(m, &fam, &n);
+      for (int i = 0; i < n; ++i) out.emplace_back(pango_font_family_get_name(fam[i]));
+      g_free(fam);
+    }
+    return out;
+  }();
+  return std::find(names.begin(), names.end(), family) != names.end();
+}
+
+static PangoLayout* newLayout(cairo_t* cr, bool own) {
+  if (!own) return pango_cairo_create_layout(cr);
+  static PangoContext* ctx = nullptr;  // one context: making one is not free either
+  if (!ctx) ctx = pango_font_map_create_context(ownFontMap());
+  pango_cairo_update_context(cr, ctx);
+  return pango_layout_new(ctx);
+}
+
+static void applyTo(PangoLayout* layout, const std::string& text, const TextStyle& st) {
   PangoFontDescription* fd = pango_font_description_new();
   pango_font_description_set_family(fd, st.family.c_str());
   pango_font_description_set_absolute_size(fd, st.size * PANGO_SCALE);
@@ -113,6 +177,21 @@ static PangoLayout* makeLayout(cairo_t* cr, const std::string& text, const TextS
     pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
     pango_layout_set_height(layout, -std::max(1, st.maxLines));  // negative = line count
     pango_layout_set_alignment(layout, st.align == 1 ? PANGO_ALIGN_CENTER : (st.align == 2 ? PANGO_ALIGN_RIGHT : PANGO_ALIGN_LEFT));
+  }
+}
+
+static PangoLayout* makeLayout(cairo_t* cr, const std::string& text, const TextStyle& st) {
+  const bool own = ownFontMap() && bundledFamily(st.family);
+  PangoLayout* layout = newLayout(cr, own);
+  applyTo(layout, text, st);
+  // A map that holds only undershell's own fonts cannot stand in for the
+  // system's when the text asks for a glyph none of them has -- a title in
+  // Japanese, an emoji in a lyric. Then it is laid out again, the usual way,
+  // and the fallback the system offers comes back with it.
+  if (own && pango_layout_get_unknown_glyphs_count(layout) > 0) {
+    g_object_unref(layout);
+    layout = newLayout(cr, false);
+    applyTo(layout, text, st);
   }
   return layout;
 }
