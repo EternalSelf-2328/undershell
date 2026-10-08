@@ -3,6 +3,7 @@
 #include "check.hpp"
 #include "clock.hpp"
 #include "media.hpp"
+#include "nowplaying.hpp"
 #include "offscreen.hpp"
 #include "canvas.hpp"
 #include "m3shapes.hpp"
@@ -222,22 +223,21 @@ int main(int argc, char** argv) {
                  {"np-viz", &viz, nullptr},
                  {"np-empty", nullptr, nullptr},
                  {"np-lyrics-focus", &focus, &focusOpts}};
-    // every layout, at its own design size
-    struct Shape {
-      const char* name;
-      int w, h;
-    };
-    const Shape shapes[] = {{"vinyl", 440, 160}, {"tile", 320, 132}, {"poster", 300, 400},
-                            {"strip", 560, 72},  {"portrait", 280, 392}};
-    for (const auto& sh : shapes) {
+    // every layout, at the size it asks for -- which now follows the pieces it
+    // is showing, so a card closes up around what is left of it
+    for (const char* name : {"vinyl", "tile", "poster", "strip", "portrait"}) {
+      float dw = 0, dh = 0;
+      nowPlayingDesignSize(name, dw, dh);
+      const int w = static_cast<int>(dw), h = static_cast<int>(dh);
+      CHECK(w > 100 && h > 40);
       toml::table o;
-      o.insert("layout", sh.name);
-      Image img = renderNowPlaying(&st, sh.w, sh.h, pal, 500, &o);
+      o.insert("layout", name);
+      Image img = renderNowPlaying(&st, w, h, pal, 500, &o);
       size_t lit = 0;
       for (size_t i = 3; i < img.rgba.size(); i += 4) lit += img.rgba[i] > 8;
-      if (lit < static_cast<size_t>(sh.w) * sh.h / 5) std::fprintf(stderr, "np-%s draws almost nothing\n", sh.name);
-      CHECK(lit > static_cast<size_t>(sh.w) * sh.h / 5);
-      const std::string path = golden + "/np-" + sh.name + ".png";
+      if (lit < static_cast<size_t>(w) * h / 5) std::fprintf(stderr, "np-%s draws almost nothing\n", name);
+      CHECK(lit > static_cast<size_t>(w) * h / 5);
+      const std::string path = golden + "/np-" + name + ".png";
       if (update) {
         writePng(img, path, false);
         continue;
@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
       Image ref;
       CHECK(readPng(path, ref));
       const double d = imageDiff(img, ref);
-      if (d < 0 || d > 1.5) std::fprintf(stderr, "np-%s differs from golden: %.3f\n", sh.name, d);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "np-%s differs from golden: %.3f\n", name, d);
       GOLDEN(d);
     }
     for (auto& cs : cases) {

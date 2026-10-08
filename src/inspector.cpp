@@ -146,10 +146,10 @@ bool optionApplies(const Widget& w, const std::string& key) {
     if (key == "show_cover") return layout != "poster";  // the poster is the sleeve
     if (key == "show_open") return layout == "sheet";
     if (key == "show_pulse") return in(layout, {"sheet", "portrait"}) && o["show_cover"].value_or(true);
-    if (key == "show_time") return !in(layout, {"tile", "portrait"});
+
     if (key == "rail_style") return o["show_rail"].value_or(true);
     if (in(key, {"artist_size", "artist_font"})) return o["show_artist"].value_or(true);
-    if (in(key, {"time_size", "time_font"})) return o["show_time"].value_or(true) && !in(layout, {"tile", "portrait"});
+    if (in(key, {"time_size", "time_font"})) return o["show_time"].value_or(true);
     // the record is a disc and the poster is the whole card: neither is cut to a shape
     if (key == "cover_shape") return !in(layout, {"vinyl", "poster"});
     if (key == "plate") return layout != "poster";

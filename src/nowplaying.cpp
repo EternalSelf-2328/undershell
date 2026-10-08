@@ -23,6 +23,8 @@ const char* MONO = "JetBrains Mono";
 const char* DISPLAY = "Fraunces 144pt";
 // Color's own default is opaque white, which is never what an outline wants
 constexpr Color kClear{0, 0, 0, 0};
+constexpr float kLead = 5;    // between the title's ink and the artist's
+constexpr float kRailH = 18;  // the row the seek rail lives on
 
 Color withAlpha(Color c, float a) {
   c.a *= a;
@@ -174,7 +176,7 @@ bool NowPlayingWidget::animating(const TickContext& ctx) const {
 // belongs. The drawing and the hit targets both read it, so they cannot
 // drift apart, and a new layout is a new block here plus nothing else.
 std::pair<float, float> NowPlayingWidget::designSize() const {
-  const Places p = layoutPlaces();
+  const Places p = places();
   return {p.w, p.h};
 }
 
@@ -188,136 +190,224 @@ void nowPlayingDesignSize(const std::string& layout, float& w, float& h) {
   h = p.second;
 }
 
-NowPlayingWidget::Places NowPlayingWidget::places() const {
-  Places p = layoutPlaces();
-  // a piece that is not shown leaves no room and no hit target behind
-  if (!m_cfg.showCover) {
-    p.cover = {};
-    p.record = 0;
-  }
-  if (!m_cfg.showTime) p.clock = false;
-  if (!m_cfg.showRail) p.rail = {};
-  if (!m_cfg.showTransport) p.playR = 0;
-  if (!m_cfg.showOpen) p.open = {};
-  return p;
+// How tall the track's own band comes out, from what its faces really paint:
+// the title, and the artist under it when it is shown. It is measured on a
+// stand-in, not on this song's words, so the card does not resize per track.
+float NowPlayingWidget::textBandHeight() const {
+  const float th = TextRenderer::measureInk("Ag", titleStyle()).h;
+  return m_cfg.showArtist ? th + kLead + TextRenderer::measureInk("Ag", artistStyle()).h : th;
 }
 
-NowPlayingWidget::Places NowPlayingWidget::layoutPlaces() const {
+TextStyle NowPlayingWidget::titleStyle() const {
+  return {.family = m_cfg.titleFont.empty() ? DISPLAY : m_cfg.titleFont,
+          .size = 20 * static_cast<float>(m_cfg.titleSize),
+          .weight = 600};
+}
+TextStyle NowPlayingWidget::artistStyle() const {
+  return {.family = m_cfg.artistFont.empty() ? FONT : m_cfg.artistFont,
+          .size = 12.5F * static_cast<float>(m_cfg.artistSize),
+          .weight = 500};
+}
+TextStyle NowPlayingWidget::clockStyle() const {
+  return {.family = m_cfg.timeFont.empty() ? MONO : m_cfg.timeFont,
+          .size = 11 * static_cast<float>(m_cfg.timeSize),
+          .weight = 600};
+}
+
+NowPlayingWidget::Places NowPlayingWidget::places() const {
   Places p;
   const std::string& l = m_cfg.layout;
+  const bool moves = m_cfg.showTransport, rail = m_cfg.showRail;
+  const bool cover = m_cfg.showCover && l != "poster";
+  const float textH = textBandHeight();
+  const float clockW = m_cfg.showTime ? Canvas::measure("0:00 / 0:00", clockStyle()).w : 0;
+  p.clock = m_cfg.showTime;
+
+  // The rows every layout but the sheet stacks, in this order: the track, the
+  // rail (with the clock at its end where the band is too narrow to hold it)
+  // and the three moves, centred. Only the ones that are shown take any room,
+  // which is what makes a card close up around what is left of it.
+  auto rowsHeight = [&](float playR, float gap) {
+    float h = textH;
+    if (rail) h += gap + kRailH;
+    if (moves) h += gap + 2 * playR;
+    return h;
+  };
+  auto stack = [&](float x, float y, float w, float gap, float playR, float sideR, bool clockOnRail) {
+    p.text = {x, y, w, textH};
+    y += textH;
+    if (rail) {
+      y += gap;
+      float rw = w;
+      if (clockOnRail && clockW > 0) {
+        rw = std::max(40.0F, w - clockW - 12);
+        p.time = {x + w - clockW, y, clockW, kRailH};
+      }
+      p.rail = {x, y, rw, kRailH};
+      y += kRailH;
+    }
+    if (moves) {
+      y += gap;
+      p.playR = playR;
+      p.sideR = sideR;
+      p.ctrlY = y + playR;
+      p.playX = x + w / 2;
+      p.prevX = p.playX - playR - 9 - sideR;
+      p.nextX = p.playX + playR + 9 + sideR;
+      y += 2 * playR;
+    } else {
+      p.playR = 0;
+    }
+  };
+
   // A record on its deck: the sleeve is the label, and the disc turns while
-  // the song plays. Everything else sits to its right.
+  // the song plays. Everything else stands to its right.
   if (l == "vinyl") {
+    const float pad = 18, gap = 12, disc = cover ? 124.0F : 0;
     p.w = 440;
-    p.h = 160;
+    const float rows = rowsHeight(17, gap);
+    p.h = std::max(disc, rows) + 2 * pad;
     p.plate = {0, 0, p.w, p.h};
-    p.radius = 46;
-    p.record = 62;
-    p.cover = {84 - 26, 80 - 26, 52, 52};
-    p.coverRadius = 26;
-    p.text = {172, 28, 248, 36};
-    p.rail = {172, 72, 248, 16};
-    p.ctrlY = 118;
-    p.playR = 17;
-    p.sideR = 13;
-    p.playX = 296;
-    p.prevX = p.playX - 17 - 8 - 13;
-    p.nextX = p.playX + 17 + 8 + 13;
+    p.radius = std::min(46.0F, p.h / 2);
+    if (cover) {
+      p.record = disc / 2;
+      p.cover = {pad + disc / 2 - 26, (p.h - 52) / 2, 52, 52};
+      p.coverRadius = 26;
+    }
+    const float x = pad + (cover ? disc + 22 : 0);
+    stack(x, (p.h - rows) / 2, p.w - pad - x, gap, 17, 13, true);
     return p;
   }
-  // A small card with the sleeve stepping out of it on the left, the track
-  // set against the right edge, and the three moves centred under it.
+  // A small card the sleeve steps out of on the left, the track set against
+  // the right edge and the three moves centred under it.
   if (l == "tile") {
+    const float pad = 14, gap = 10, art = cover ? 80.0F : 0;
     p.w = 320;
-    p.h = 132;
-    p.plate = {40, 6, 280, 120};
+    const float rows = rowsHeight(15, gap);
+    p.h = std::max(art + 2 * pad, rows + 2 * pad + 8);
+    p.plate = {cover ? 40.0F : 0, 6, p.w - (cover ? 40 : 0), p.h - 12};
     p.radius = 26;
-    p.cover = {6, 26, 80, 80};
-    p.coverRadius = 18;
-    p.text = {100, 20, 204, 34};
+    if (cover) {
+      p.cover = {6, (p.h - art) / 2, art, art};
+      p.coverRadius = 18;
+    }
+    const float x = (cover ? 100.0F : 20);
+    stack(x, (p.h - rows) / 2, p.w - 16 - x, gap, 15, 11, true);
     p.align = 2;
-    p.clock = false;
-    p.rail = {100, 60, 204, 16};
-    p.ctrlY = 100;
-    p.playR = 15;
-    p.sideR = 11;
-    p.playX = 180;
-    p.prevX = p.playX - 15 - 8 - 11;
-    p.nextX = p.playX + 15 + 8 + 11;
     return p;
   }
   // The sleeve is the card: the track and its moves sit on it, under a veil
   // that keeps them readable whatever the artwork does.
   if (l == "poster") {
+    const float pad = 20, gap = 12;
     p.w = 300;
-    p.h = 400;
+    const float rows = rowsHeight(17, gap);
+    p.h = 300 + rows + pad;
     p.plate = {0, 0, p.w, p.h};
     p.radius = 26;
     p.coverPlate = true;
-    p.text = {20, 272, 260, 44};
-    p.rail = {20, 326, 260, 16};
-    p.ctrlY = 362;
-    p.playR = 17;
-    p.sideR = 13;
-    p.playX = 150;
-    p.prevX = p.playX - 17 - 10 - 13;
-    p.nextX = p.playX + 17 + 10 + 13;
+    stack(pad, p.h - pad - rows, p.w - 2 * pad, gap, 17, 13, true);
     return p;
   }
-  // One line of it, for a narrow gap.
+  // One line of it, for a narrow gap: everything side by side, and whatever
+  // is left out gives its width back to the track.
   if (l == "strip") {
+    const float pad = 10, gap = 14, art = cover ? 56.0F : 0;
     p.w = 560;
-    p.h = 72;
+    const float playR = 15, sideR = 11;
+    const float movesW = moves ? 2 * sideR + 9 + 2 * playR + 9 + 2 * sideR : 0;
+    const float railW = rail ? 96.0F : 0;
+    p.h = std::max({art, textH, 2 * playR, kRailH}) + 2 * pad + 6;
     p.plate = {0, 0, p.w, p.h};
-    p.radius = 22;
-    p.cover = {8, 8, 56, 56};
-    p.coverRadius = 12;
-    p.text = {76, 10, 200, 52};
-    p.time = {286, 26, 64, 20};
-    p.rail = {364, 26, 84, 20};
-    p.ctrlY = 36;
-    p.playR = 15;
-    p.sideR = 11;
-    p.nextX = p.w - 15 - 11;
-    p.playX = p.nextX - 11 - 8 - 15;
-    p.prevX = p.playX - 15 - 8 - 11;
+    p.radius = std::min(22.0F, p.h / 2);
+    float x = pad;
+    if (cover) {
+      p.cover = {x, (p.h - art) / 2, art, art};
+      p.coverRadius = 12;
+      x += art + 12;
+    }
+    float right = p.w - pad;
+    if (moves) {
+      p.playR = playR;
+      p.sideR = sideR;
+      p.ctrlY = p.h / 2;
+      p.nextX = right - sideR;
+      p.playX = p.nextX - sideR - 9 - playR;
+      p.prevX = p.playX - playR - 9 - sideR;
+      right = p.prevX - sideR - 14;
+    } else {
+      p.playR = 0;
+    }
+    if (rail) {
+      p.rail = {right - railW, p.h / 2 - kRailH / 2, railW, kRailH};
+      right -= railW + 14;
+    }
+    if (clockW > 0) {
+      p.time = {right - clockW, p.h / 2 - 10, clockW, 20};
+      right -= clockW + 14;
+    }
+    p.text = {x, (p.h - textH) / 2, std::max(60.0F, right - x), textH};
     return p;
   }
   // Standing up: the sleeve on top and everything else centred under it.
   if (l == "portrait") {
+    const float pad = 20, gap = 12, art = cover ? 240.0F : 0;
     p.w = 280;
-    p.h = 392;
+    const float rows = rowsHeight(17, gap);
+    p.h = pad + art + (cover ? 16 : 0) + rows + pad;
     p.plate = {0, 0, p.w, p.h};
     p.radius = 26;
-    p.cover = {20, 20, 240, 240};
-    p.coverRadius = 16;
-    p.text = {20, 270, 240, 44};
+    if (cover) {
+      p.cover = {pad, pad, art, art};
+      p.coverRadius = 16;
+    }
+    stack(pad, pad + art + (cover ? 16 : 0), p.w - 2 * pad, gap, 17, 13, true);
     p.align = 1;
-    p.clock = false;
-    p.rail = {20, 322, 240, 16};
-    p.ctrlY = 362;
-    p.playR = 17;
-    p.sideR = 13;
-    p.playX = 140;
-    p.prevX = p.playX - 17 - 10 - 13;
-    p.nextX = p.playX + 17 + 10 + 13;
     return p;
   }
+
   // Ryoku's sheet: the sleeve leads, this song's lyrics run beside it, and
-  // the track, its clock, the rail and the three moves close it out.
-  p.w = kW;
-  p.h = kH;
-  p.plate = {0, 0, kW, kH};
-  p.cover = {PAD, PAD, COVER, COVER};
-  p.side = {PAD + COVER + GAP, PAD + 26, kW - PAD - (PAD + COVER + GAP), COVER - 26};
-  const float iy = PAD + COVER + GAP;
-  p.text = {PAD, iy, kW - 2 * PAD, INFO_H};
-  p.ctrlY = iy + INFO_H + 8 + SEEK_H / 2;
-  p.nextX = kW - PAD - 15;
-  p.playX = p.nextX - 15 - 6 - 19;
-  p.prevX = p.playX - 19 - 6 - 15;
-  p.rail = {PAD, p.ctrlY - 10, p.prevX - 15 - 14 - PAD, 20};
-  p.open = {kW - PAD - 26, PAD, 26, 26};
+  // the track, its clock, the rail and the three moves close it out. Here the
+  // rail and the moves share a line, so the rail takes the width the moves
+  // leave it -- all of it, when they are not shown.
+  const float pad = 16, gap = 14, art = cover ? 168.0F : 0;
+  const bool side = m_cfg.showLyrics || m_cfg.showViz;
+  p.w = 560;
+  if (cover) {
+    p.cover = {pad, pad, art, art};
+    p.coverRadius = 10;
+  }
+  const float topH = side || cover ? 168.0F : 0;
+  if (side) {
+    const float sx = pad + (cover ? art + gap : 0);
+    p.side = {sx, pad + 26, p.w - pad - sx, topH - 26};
+  }
+  float y = pad + topH + (topH > 0 ? gap : 0);
+  p.text = {pad, y, p.w - 2 * pad, textH};
+  y += textH;
+  const float movesH = moves ? 38.0F : 0, rowH = std::max(rail ? 20.0F : 0, movesH);
+  if (rowH > 0) {
+    y += 8;
+    p.ctrlY = y + rowH / 2;
+    if (moves) {
+      p.playR = 19;
+      p.sideR = 15;
+      p.nextX = p.w - pad - 15;
+      p.playX = p.nextX - 15 - 6 - 19;
+      p.prevX = p.playX - 19 - 6 - 15;
+    } else {
+      p.playR = 0;
+    }
+    if (rail) {
+      const float railRight = moves ? p.prevX - 15 - 14 : p.w - pad;
+      p.rail = {pad, p.ctrlY - 10, railRight - pad, 20};
+    }
+    y += rowH;
+  }
+  p.h = y + pad;
+  if (m_cfg.showOpen) p.open = {p.w - pad - 26, pad, 26, 26};
+  p.plate = {0, 0, p.w, p.h};
+  p.radius = 22;
   return p;
 }
 
@@ -529,14 +619,14 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
   if (p.text.w <= 0) return;
   const bool seekable = s.present && !s.radio() && s.lengthUs > 0;
   const std::string st = seekable && p.clock ? stamp(s.positionSec(m_paint.now)) + " / " + stamp(s.lengthUs / 1e6) : "";
-  // the design's faces and sizes, unless the widget asks for others
-  auto face = [](const std::string& own, const char* design) { return own.empty() ? std::string(design) : own; };
-  const TextStyle stS{.family = face(m_cfg.timeFont, MONO), .size = 11 * static_cast<float>(m_cfg.timeSize), .weight = 600};
+  const TextStyle stS = clockStyle();
   const auto stZ = measure(st, stS);
-  TextStyle tS{.family = face(m_cfg.titleFont, DISPLAY), .size = 20 * static_cast<float>(m_cfg.titleSize), .weight = 600};
-  tS.maxWidth = p.text.w - (st.empty() ? 0 : stZ.w + 12);
+  // the clock shares the band only where the layout gave it no slot of its own
+  const bool clockHere = !st.empty() && p.time.w <= 0;
+  TextStyle tS = titleStyle();
+  tS.maxWidth = p.text.w - (clockHere ? stZ.w + 12 : 0);
   tS.align = p.align;
-  TextStyle aS{.family = face(m_cfg.artistFont, FONT), .size = 12.5F * static_cast<float>(m_cfg.artistSize), .weight = 500};
+  TextStyle aS = artistStyle();
   aS.maxWidth = tS.maxWidth;
   aS.align = p.align;
   // laid out on what the pair really paints, not on its boxes: the display
@@ -546,14 +636,15 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
   const auto tI = TextRenderer::measureInk(s.title, tS);
   const bool artist = m_cfg.showArtist && !s.artist.empty();
   const auto aI = artist ? TextRenderer::measureInk(s.artist, aS) : TextRenderer::Ink{};
-  const float lead = 5;  // between the title's ink and the artist's
+  const float lead = kLead;  // between the title's ink and the artist's
   const float colH = tI.h + (artist ? lead + aI.h : 0);
   const float y = p.text.y + (p.text.h - colH) / 2;  // the top of the ink, not of the box
   // ranged on what each line paints, not on its box: a line set right has to
   // end at the edge by its last letter, not by its box's trailing air
+  const float band = tS.maxWidth;  // what is left of the band once the clock has its share
   auto xOf = [&](const TextRenderer::Ink& i) {
-    if (p.align == 1) return p.text.x + (p.text.w - i.w) / 2 - i.x;
-    if (p.align == 2) return p.text.x + p.text.w - i.w - i.x;
+    if (p.align == 1) return p.text.x + (band - i.w) / 2 - i.x;
+    if (p.align == 2) return p.text.x + band - i.w - i.x;
     return p.text.x - i.x;
   };
   c.text(s.title, tS, xOf(tI), y - tI.y, tint(m_paint.ink));
@@ -672,18 +763,24 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   // ── the plate ──
   if (p.coverPlate) {
     // the artwork is the card; a veil at its foot keeps the track readable
-    if (s.present && s.cover && s.coverW > 0)
+    if (s.present && s.cover && s.coverW > 0) {
       c.image(s.cover, s.coverW, s.coverH, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, m_paint.op);
-    else
+    } else {
       c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, tint(m_paint.surface.mix(m_accent, 0.10F), 0.85F));
+      // with no artwork the card is all plate, so it says so where the
+      // artwork would have been
+      const float cy = p.plate.y + (p.text.h > 0 ? (p.text.y - p.plate.y) / 2 : p.plate.h / 2);
+      noteGlyph(c, p.plate.x + p.plate.w / 2, cy, 44, tint(m_paint.dim, 0.7F));
+    }
     // the veil, built from bands that each reach the foot of the card: the
     // faintest ones lie on top, so where their rounded corners show they are
-    // barely there at all
-    const float top = p.plate.y + p.plate.h * 0.45F, bottom = p.plate.y + p.plate.h;
-    for (int i = 0; i < 16; ++i) {
-      const float y0 = top + (bottom - top) * static_cast<float>(i) / 16;
-      const float a = 0.015F + 0.095F * static_cast<float>(i) / 15;
-      c.roundRect(p.plate.x, y0, p.plate.w, bottom - y0, p.radius, Color{0, 0, 0, a * m_paint.op});
+    // barely there at all. It has to hold against artwork of any brightness,
+    // so it closes up hard at the foot where the track sits.
+    const float top = p.plate.y + p.plate.h * 0.40F, bottom = p.plate.y + p.plate.h;
+    for (int i = 0; i < 18; ++i) {
+      const float t = static_cast<float>(i) / 17;
+      const float y0 = top + (bottom - top) * static_cast<float>(i) / 18;
+      c.roundRect(p.plate.x, y0, p.plate.w, bottom - y0, p.radius, Color{0, 0, 0, (0.012F + 0.125F * t * t) * m_paint.op});
     }
     c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, kClear, 1,
                 tint(m_paint.ink, m_hover.empty() ? 0.08F : 0.16F));

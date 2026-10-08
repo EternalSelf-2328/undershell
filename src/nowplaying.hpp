@@ -92,7 +92,10 @@ private:
     float record = 0;         // > 0: the sleeve is a record of this radius
   };
   [[nodiscard]] Places places() const;
-  [[nodiscard]] Places layoutPlaces() const;
+  [[nodiscard]] float textBandHeight() const;
+  [[nodiscard]] TextStyle titleStyle() const;
+  [[nodiscard]] TextStyle artistStyle() const;
+  [[nodiscard]] TextStyle clockStyle() const;
   void layoutTargets(const Places& p, bool seekable);
   [[nodiscard]] Color tint(Color col, float a = 1) const;
   void drawSleeve(Canvas& c, const MediaState& s, const Places& p);
