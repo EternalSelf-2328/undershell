@@ -17,7 +17,7 @@ namespace undershell {
 struct MediaState;
 
 struct NowPlayingConfig {
-  std::string layout = "sheet";  // sheet (and, below, the ones that follow it)
+  std::string layout = "sheet";  // sheet vinyl tile poster strip portrait
   std::string plate = "cover";   // cover glass none
   bool showLyrics = true;
   std::string viz = "bars";      // bars wave (when there are no lyrics)
@@ -69,14 +69,19 @@ private:
     Rect text;                // title and artist
     int align = 0;            // 0 left, 1 centre, 2 right
     Rect rail;                // the seek rail
+    Rect time;                // the clock, when it does not follow the text
     Rect open;                // the corner button
     float prevX = 0, playX = 0, nextX = 0, ctrlY = 0;
     float playR = 19, sideR = 15;
+    bool clock = true;        // the elapsed / total stamp
+    bool coverPlate = false;  // the sleeve is the card itself
+    float record = 0;         // > 0: the sleeve is a record of this radius
   };
   [[nodiscard]] Places places() const;
   void layoutTargets(const Places& p, bool seekable);
   [[nodiscard]] Color tint(Color col, float a = 1) const;
   void drawSleeve(Canvas& c, const MediaState& s, const Places& p);
+  void drawRecord(Canvas& c, const MediaState& s, const Places& p);
   void drawSide(Canvas& c, const MediaState& s, const Places& p);
   void drawText(Canvas& c, const MediaState& s, const Places& p);
   void drawRail(Canvas& c, const MediaState& s, const Places& p);
@@ -127,6 +132,7 @@ private:
   Poster m_poster;
   std::string m_posterKey;
   double m_posterP = 1;
+  double m_spin = 0;  // the record's turn, radians
 };
 
 }  // namespace undershell

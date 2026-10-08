@@ -221,7 +221,33 @@ int main(int argc, char** argv) {
     } cases[] = {{"np-lyrics", &st, nullptr},
                  {"np-viz", &viz, nullptr},
                  {"np-empty", nullptr, nullptr},
-                 {"np-poster", &poster, &posterOpts}};
+                 {"np-lyrics-poster", &poster, &posterOpts}};
+    // every layout, at its own design size
+    struct Shape {
+      const char* name;
+      int w, h;
+    };
+    const Shape shapes[] = {{"vinyl", 440, 160}, {"tile", 320, 132}, {"poster", 300, 400},
+                            {"strip", 560, 72},  {"portrait", 280, 392}};
+    for (const auto& sh : shapes) {
+      toml::table o;
+      o.insert("layout", sh.name);
+      Image img = renderNowPlaying(&st, sh.w, sh.h, pal, 500, &o);
+      size_t lit = 0;
+      for (size_t i = 3; i < img.rgba.size(); i += 4) lit += img.rgba[i] > 8;
+      if (lit < static_cast<size_t>(sh.w) * sh.h / 5) std::fprintf(stderr, "np-%s draws almost nothing\n", sh.name);
+      CHECK(lit > static_cast<size_t>(sh.w) * sh.h / 5);
+      const std::string path = golden + "/np-" + sh.name + ".png";
+      if (update) {
+        writePng(img, path, false);
+        continue;
+      }
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(img, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "np-%s differs from golden: %.3f\n", sh.name, d);
+      GOLDEN(d);
+    }
     for (auto& cs : cases) {
       Image img = renderNowPlaying(cs.s, 560, 302, pal, 500, cs.opts);
       size_t lit = 0;

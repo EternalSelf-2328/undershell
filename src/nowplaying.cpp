@@ -24,6 +24,8 @@ const char* DISPLAY = "Fraunces 144pt";
 const char* POSTER = "Google Sans Flex";
 // Every poster is measured at this one size, whatever it ends up set at.
 constexpr float kProbe = 16;
+// Color's own default is opaque white, which is never what an outline wants
+constexpr Color kClear{0, 0, 0, 0};
 
 Color withAlpha(Color c, float a) {
   c.a *= a;
@@ -128,6 +130,8 @@ void NowPlayingWidget::tick(const TickContext& ctx) {
   m_glide += (0 - m_glide) * kg;
   // the poster line eases in (critically damped: type never overshoots)
   if (m_posterP < 1) m_posterP = std::min(1.0, m_posterP + (1 - m_posterP) * (1 - std::exp(-dt / 0.14)) + dt * 0.02);
+  // the record turns while the song plays
+  if (m_media && m_media->state().playing) m_spin += dt * 1.1;
   // "cycle": each song gets its own shape (the same song, the same shape)
   if (m_cfg.coverShape == "cycle" && m_media && m_media->state().present && m_media->state().trackKey != m_shapeTrack) {
     m_shapeTrack = m_media->state().trackKey;
@@ -295,6 +299,105 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
 // drift apart, and a new layout is a new block here plus nothing else.
 NowPlayingWidget::Places NowPlayingWidget::places() const {
   Places p;
+  const std::string& l = m_cfg.layout;
+  // A record on its deck: the sleeve is the label, and the disc turns while
+  // the song plays. Everything else sits to its right.
+  if (l == "vinyl") {
+    p.w = 440;
+    p.h = 160;
+    p.plate = {0, 0, p.w, p.h};
+    p.radius = 46;
+    p.record = 62;
+    p.cover = {84 - 26, 80 - 26, 52, 52};
+    p.coverRadius = 26;
+    p.text = {172, 28, 248, 36};
+    p.rail = {172, 72, 248, 16};
+    p.ctrlY = 118;
+    p.playR = 17;
+    p.sideR = 13;
+    p.playX = 296;
+    p.prevX = p.playX - 17 - 8 - 13;
+    p.nextX = p.playX + 17 + 8 + 13;
+    return p;
+  }
+  // A small card with the sleeve stepping out of it on the left, the track
+  // set against the right edge, and the three moves centred under it.
+  if (l == "tile") {
+    p.w = 320;
+    p.h = 132;
+    p.plate = {40, 6, 280, 120};
+    p.radius = 26;
+    p.cover = {6, 26, 80, 80};
+    p.coverRadius = 18;
+    p.text = {100, 20, 204, 34};
+    p.align = 2;
+    p.clock = false;
+    p.rail = {100, 60, 204, 16};
+    p.ctrlY = 100;
+    p.playR = 15;
+    p.sideR = 11;
+    p.playX = 180;
+    p.prevX = p.playX - 15 - 8 - 11;
+    p.nextX = p.playX + 15 + 8 + 11;
+    return p;
+  }
+  // The sleeve is the card: the track and its moves sit on it, under a veil
+  // that keeps them readable whatever the artwork does.
+  if (l == "poster") {
+    p.w = 300;
+    p.h = 400;
+    p.plate = {0, 0, p.w, p.h};
+    p.radius = 26;
+    p.coverPlate = true;
+    p.text = {20, 272, 260, 44};
+    p.rail = {20, 326, 260, 16};
+    p.ctrlY = 362;
+    p.playR = 17;
+    p.sideR = 13;
+    p.playX = 150;
+    p.prevX = p.playX - 17 - 10 - 13;
+    p.nextX = p.playX + 17 + 10 + 13;
+    return p;
+  }
+  // One line of it, for a narrow gap.
+  if (l == "strip") {
+    p.w = 560;
+    p.h = 72;
+    p.plate = {0, 0, p.w, p.h};
+    p.radius = 22;
+    p.cover = {8, 8, 56, 56};
+    p.coverRadius = 12;
+    p.text = {76, 10, 200, 52};
+    p.time = {286, 26, 64, 20};
+    p.rail = {364, 26, 84, 20};
+    p.ctrlY = 36;
+    p.playR = 15;
+    p.sideR = 11;
+    p.nextX = p.w - 15 - 11;
+    p.playX = p.nextX - 11 - 8 - 15;
+    p.prevX = p.playX - 15 - 8 - 11;
+    return p;
+  }
+  // Standing up: the sleeve on top and everything else centred under it.
+  if (l == "portrait") {
+    p.w = 280;
+    p.h = 392;
+    p.plate = {0, 0, p.w, p.h};
+    p.radius = 26;
+    p.cover = {20, 20, 240, 240};
+    p.coverRadius = 16;
+    p.text = {20, 270, 240, 44};
+    p.align = 1;
+    p.clock = false;
+    p.rail = {20, 322, 240, 16};
+    p.ctrlY = 362;
+    p.playR = 17;
+    p.sideR = 13;
+    p.playX = 140;
+    p.prevX = p.playX - 17 - 10 - 13;
+    p.nextX = p.playX + 17 + 10 + 13;
+    return p;
+  }
   // Ryoku's sheet: the sleeve leads, this song's lyrics run beside it, and
   // the track, its clock, the rail and the three moves close it out.
   p.w = kW;
@@ -362,7 +465,33 @@ Color NowPlayingWidget::tint(Color col, float a) const { return withAlpha(col, a
 
 // ── the pieces ────────────────────────────────────────────────────────────
 
+// The sleeve as a record: a black disc with its grooves, the artwork for a
+// label, and marks that go round while the song plays -- the artwork itself
+// cannot turn, so the grooves say that the disc does.
+void NowPlayingWidget::drawRecord(Canvas& c, const MediaState& s, const Places& p) {
+  const float cx = p.cover.x + p.cover.w / 2, cy = p.cover.y + p.cover.h / 2, R = p.record, label = p.cover.w / 2;
+  c.circle(cx, cy, R, tint(Color{0.06F, 0.06F, 0.07F, 1}));
+  for (int i = 0; i < 6; ++i) c.circle(cx, cy, label + 7 + i * (R - label - 9) / 5, kClear, 1, tint(m_paint.ink, 0.06F));
+  // the light running over the grooves, and the lands between them
+  const auto turn = static_cast<float>(m_spin);
+  c.arc(cx, cy, (R + label) / 2, R - label - 6, turn, turn + 0.55F, tint(m_paint.ink, 0.07F), false);
+  c.arc(cx, cy, (R + label) / 2, R - label - 6, turn + 3.14159F, turn + 3.69F, tint(m_paint.ink, 0.05F), false);
+  for (int i = 0; i < 3; ++i) {
+    const float a = turn + static_cast<float>(i) * 2.0944F;
+    const float s0 = std::sin(a), c0 = std::cos(a);
+    c.segment(cx + s0 * (label + 5), cy - c0 * (label + 5), cx + s0 * (R - 4), cy - c0 * (R - 4), 1.2F,
+              tint(m_paint.ink, 0.10F));
+  }
+  if (s.cover && s.coverW > 0) c.image(s.cover, s.coverW, s.coverH, p.cover.x, p.cover.y, p.cover.w, p.cover.h, label, m_paint.op);
+  else c.circle(cx, cy, label, tint(m_noct.color("surface_variant", m_paint.surface)));
+  c.circle(cx, cy, 4, tint(m_paint.surface, 0.9F));  // the spindle hole
+}
+
 void NowPlayingWidget::drawSleeve(Canvas& c, const MediaState& s, const Places& p) {
+  if (p.record > 0) {
+    drawRecord(c, s, p);
+    return;
+  }
   if (p.cover.w <= 0) return;
   const Rect& r = p.cover;
   const bool shaped = m_cfg.coverShape != "rounded" && m_shapeNow.size() == 128;
@@ -505,11 +634,11 @@ void NowPlayingWidget::drawSide(Canvas& c, const MediaState& s, const Places& p)
 void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p) {
   if (p.text.w <= 0) return;
   const bool seekable = s.present && !s.radio() && s.lengthUs > 0;
-  const std::string st = seekable ? stamp(s.positionSec(m_paint.now)) + " / " + stamp(s.lengthUs / 1e6) : "";
+  const std::string st = seekable && p.clock ? stamp(s.positionSec(m_paint.now)) + " / " + stamp(s.lengthUs / 1e6) : "";
   const TextStyle stS{.family = MONO, .size = 11, .weight = 600};
   const auto stZ = measure(st, stS);
   TextStyle tS{.family = DISPLAY, .size = 20, .weight = 600};
-  tS.maxWidth = p.text.w - stZ.w - 12;
+  tS.maxWidth = p.text.w - (st.empty() ? 0 : stZ.w + 12);
   tS.align = p.align;
   TextStyle aS{.family = FONT, .size = 12.5F, .weight = 500};
   aS.maxWidth = tS.maxWidth;
@@ -523,13 +652,23 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
   const float lead = 5;  // between the title's ink and the artist's
   const float colH = tI.h + (s.artist.empty() ? 0 : lead + aI.h);
   const float y = p.text.y + (p.text.h - colH) / 2;  // the top of the ink, not of the box
-  const float left = p.align == 2 ? p.text.x + p.text.w - tS.maxWidth : p.text.x;
-  c.text(s.title, tS, left - tI.x, y - tI.y, tint(m_paint.ink));
-  if (!s.artist.empty()) c.text(s.artist, aS, left - aI.x, y + tI.h + lead - aI.y, tint(m_paint.dim));
-  // the clock sits on the same line as the artist (or as the title alone)
+  // ranged on what each line paints, not on its box: a line set right has to
+  // end at the edge by its last letter, not by its box's trailing air
+  auto xOf = [&](const TextRenderer::Ink& i) {
+    if (p.align == 1) return p.text.x + (p.text.w - i.w) / 2 - i.x;
+    if (p.align == 2) return p.text.x + p.text.w - i.w - i.x;
+    return p.text.x - i.x;
+  };
+  c.text(s.title, tS, xOf(tI), y - tI.y, tint(m_paint.ink));
+  if (!s.artist.empty()) c.text(s.artist, aS, xOf(aI), y + tI.h + lead - aI.y, tint(m_paint.dim));
+  // the clock, in the slot this layout gives it or, with none, on the same
+  // line as the artist (or as the title alone)
   if (!st.empty()) {
     const auto sI = TextRenderer::measureInk(st, stS);
-    c.text(st, stS, p.text.x + p.text.w - stZ.w, y + colH - sI.h - sI.y, tint(m_paint.dim));
+    if (p.time.w > 0)
+      c.text(st, stS, p.time.x + p.time.w - sI.w - sI.x, p.time.y + (p.time.h - sI.h) / 2 - sI.y, tint(m_paint.dim));
+    else
+      c.text(st, stS, p.text.x + p.text.w - stZ.w, y + colH - sI.h - sI.y, tint(m_paint.dim));
   }
 }
 
@@ -602,7 +741,24 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   c.setTransform(m_k, m_ox, m_oy);
 
   // ── the plate ──
-  if (m_cfg.plate == "cover") {
+  if (p.coverPlate) {
+    // the artwork is the card; a veil at its foot keeps the track readable
+    if (s.present && s.cover && s.coverW > 0)
+      c.image(s.cover, s.coverW, s.coverH, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, m_paint.op);
+    else
+      c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, tint(m_paint.surface.mix(m_accent, 0.10F), 0.85F));
+    // the veil, built from bands that each reach the foot of the card: the
+    // faintest ones lie on top, so where their rounded corners show they are
+    // barely there at all
+    const float top = p.plate.y + p.plate.h * 0.45F, bottom = p.plate.y + p.plate.h;
+    for (int i = 0; i < 16; ++i) {
+      const float y0 = top + (bottom - top) * static_cast<float>(i) / 16;
+      const float a = 0.015F + 0.095F * static_cast<float>(i) / 15;
+      c.roundRect(p.plate.x, y0, p.plate.w, bottom - y0, p.radius, Color{0, 0, 0, a * m_paint.op});
+    }
+    c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, kClear, 1,
+                tint(m_paint.ink, m_hover.empty() ? 0.08F : 0.16F));
+  } else if (m_cfg.plate == "cover") {
     // the sleeve, blurred, under a near-opaque plate tinted a tenth toward it
     if (s.present && s.cover && s.coverW > 0)
       c.image(s.cover, s.coverW, s.coverH, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, 0.55F * m_paint.op, 28);

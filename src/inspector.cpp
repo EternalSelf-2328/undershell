@@ -136,6 +136,16 @@ bool optionApplies(const Widget& w, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (w.cfg.type == "now_playing") {
+    const std::string layout = o["layout"].value_or(std::string("sheet"));
+    // only the sheet has a column beside the sleeve
+    if (in(key, {"show_lyrics", "lyrics_style", "viz"})) return layout == "sheet";
+    // the record is a disc and the poster is the whole card: neither is cut to a shape
+    if (key == "cover_shape") return !in(layout, {"vinyl", "poster"});
+    if (key == "plate") return layout != "poster";
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (key == "depth_level") return o["depth"].value_or(true);
   return true;
 }
