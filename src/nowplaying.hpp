@@ -83,7 +83,13 @@ private:
     std::vector<Word> words;
     float h = 0;
   };
-  Poster posterFor(const std::string& text, float width, float base, int plainWeight, float p);
+  // Setting a poster costs hundreds of text measurements, so the one on
+  // screen is kept until its line, its column or its stage in the ease
+  // changes — a line that has arrived is set once and then only drawn.
+  const Poster& poster(const std::string& text, float width, float base, int plainWeight);
+  Poster posterFor(const std::string& text, float width, float base, int plainWeight);
+  Poster m_poster;
+  std::string m_posterKey;
   double m_posterP = 1;
 };
 

@@ -22,6 +22,8 @@ const char* FONT = "Space Grotesk";
 const char* MONO = "JetBrains Mono";
 const char* DISPLAY = "Fraunces 144pt";
 const char* POSTER = "Google Sans Flex";
+// Every poster is measured at this one size, whatever it ends up set at.
+constexpr float kProbe = 16;
 
 Color withAlpha(Color c, float a) {
   c.a *= a;
@@ -155,13 +157,23 @@ bool NowPlayingWidget::animating(const TickContext& ctx) const {
 // plain lyric wraps, every word takes its own weight, roundness and slant in
 // Google Sans Flex, and each row is set on the width axis until it fills the
 // column from edge to edge (a short row is set larger instead, up to half as
-// large again). At p = 0 it is the plain line exactly; p eases it into the
-// poster as the line arrives.
-NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, float width, float base, int plainWeight,
-                                                     float p) {
+// large again). It is set once, when the line arrives, and then rises into
+// place: setting it is the dear part, and nothing about it changes afterwards.
+const NowPlayingWidget::Poster& NowPlayingWidget::poster(const std::string& text, float width, float base, int plainWeight) {
+  const std::string key = std::format("{}\x1f{:.1f}\x1f{:.2f}\x1f{}", text, width, base, plainWeight);
+  if (key != m_posterKey) {
+    m_poster = posterFor(text, width, base, plainWeight);
+    m_posterKey = key;
+  }
+  return m_poster;
+}
+
+NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, float width, float base, int plainWeight) {
   Poster out;
   // the plain line's own breaks: greedy, at the plain style
-  const TextStyle plain{.family = POSTER, .size = base, .weight = plainWeight, .variations = std::format("wght={}", plainWeight)};
+  const TextStyle plain{
+      .family = POSTER, .size = kProbe, .weight = plainWeight, .variations = std::format("wght={},wdth=100", plainWeight)};
+  const float toProbe = kProbe / base;  // the column, measured at the probe size
   std::vector<std::string> words;
   for (size_t i = 0; i < text.size();) {
     const size_t j = text.find(' ', i);
@@ -176,7 +188,7 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
   float lineW = 0;
   for (const auto& w : words) {
     const float ww = measure(w, plain).w;
-    if (!rows.back().empty() && lineW + space + ww > width) {
+    if (!rows.back().empty() && lineW + space + ww > width * toProbe) {
       rows.emplace_back();
       lineW = 0;
     }
@@ -190,74 +202,84 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
     float rond, slnt;
   };
   static const WordStyle kStyles[] = {{820, 100, 0}, {340, 0, -10}, {620, 0, 0}, {920, 100, -6}};
-  const auto mix = [p](float a, float b) { return a + (b - a) * p; };
   // what a word paints to the right of its advance
   const auto overhang = [](const std::string& w, const TextStyle& st) {
     const auto ink = TextRenderer::measureInk(w, st);
     return std::max(0.0F, ink.x + ink.w - ink.boxW);
   };
+  // Every distinct (size, axes) pair is an instance of the variable font for
+  // FreeType to build and fontconfig to match, which costs about ten
+  // milliseconds and is by far the dear part of setting a poster. So the
+  // search never asks for a new one: it measures at a fixed probe size on a
+  // short ladder of widths — advances scale with the size, so the rest is
+  // arithmetic — and only the row as it is finally set brings in a style of
+  // its own, with the size rounded to whole pixels so lines share those too.
+  const auto rung = [](float wdth) { return std::clamp(std::round((wdth - 25) / 31.5F) * 31.5F + 25, 25.0F, 151.0F); };
   auto styleOf = [&](const std::string& w, float wdth, float size) {
     const WordStyle& ws = kStyles[std::hash<std::string>{}(w) % std::size(kStyles)];
-    TextStyle t{.family = POSTER, .size = size, .weight = static_cast<int>(mix(plainWeight, ws.wght))};
-    t.variations = std::format("wght={},wdth={:.0f},ROND={:.0f},slnt={:.1f}", t.weight, mix(100, wdth), mix(0, ws.rond), mix(0, ws.slnt));
+    TextStyle t{.family = POSTER, .size = size, .weight = ws.wght};
+    t.variations = std::format("wght={},wdth={:.1f},ROND={:.0f},slnt={:.0f}", ws.wght, rung(wdth), ws.rond, ws.slnt);
     return t;
   };
   float y = 0;
   for (const auto& row : rows) {
-    // How far the row reaches: its advances and spaces, plus what the last
-    // word paints past its own advance (a slanted or round letter leans out,
-    // and that lean is what the column's edge would shave off).
-    auto rowWidth = [&](float wdth, float size) {
-      float total = 0;
-      for (size_t k = 0; k < row.size(); ++k) {
-        const TextStyle st = styleOf(row[k], wdth, size);
-        total += measure(row[k], st).w + (k ? space : 0);
-        if (k + 1 == row.size()) total += overhang(row[k], st);
-      }
+    // How far the row reaches at the probe size: its advances and spaces,
+    // plus what the last word paints past its own advance (a slanted or round
+    // letter leans out, and that lean is what the column's edge would shave
+    // off). The measure the row has to meet, at that same size, is `want`.
+    const float want = width * kProbe / base, lean = overhang(row.back(), styleOf(row.back(), 100, kProbe));
+    auto rowAt = [&](float wdth) {
+      float total = lean;
+      for (size_t k = 0; k < row.size(); ++k) total += measure(row[k], styleOf(row[k], wdth, kProbe)).w + (k ? space : 0);
       return total;
     };
-    float lo = 25, hi = 151, wdth = 100, size = base;
-    if (rowWidth(hi, base) < width) {
-      wdth = 151;  // still short at the widest: set it larger
-      float slo = base, shi = base * 1.5F;
-      for (int it = 0; it < 8; ++it) {
-        const float mid = (slo + shi) / 2;
-        (rowWidth(151, mid) < width ? slo : shi) = mid;
-      }
-      size = slo;
-    } else if (rowWidth(lo, base) > width) {
+    const float wide = rowAt(151), narrow = rowAt(25);
+    float wdth = 151, size = base;
+    if (wide <= want) {
+      size = std::min(base * 1.5F, base * want / std::max(1.0F, wide));  // short even at the widest: set it larger
+    } else if (narrow >= want) {
       // too long for the column even at its narrowest — one very long word,
       // which no wrap can break: set it smaller until it fits
-      wdth = lo;
-      float slo = base * 0.4F, shi = base;
-      for (int it = 0; it < 8; ++it) {
-        const float mid = (slo + shi) / 2;
-        (rowWidth(lo, mid) < width ? slo : shi) = mid;
-      }
-      size = slo;
+      wdth = 25;
+      size = std::max(base * 0.4F, base * want / std::max(1.0F, narrow));
     } else {
-      for (int it = 0; it < 8; ++it) {
-        const float mid = (lo + hi) / 2;
-        (rowWidth(mid, base) < width ? lo : hi) = mid;
-      }
-      wdth = lo;
+      // the row fills the column somewhere in between: straight to it by
+      // interpolation (the axis is near enough linear), then one step back
+      wdth = 25 + (151 - 25) * (want - narrow) / (wide - narrow);
+      if (const float got = rowAt(wdth); got > want)
+        wdth = std::max(25.0F, wdth - (151 - 25) * (got - want) / (wide - narrow));
     }
-    const float sz = mix(base, size);
-    float used = 0, rowH = 0, lean = 0;
+    float used = 0, rowH = 0;
     std::vector<float> ws;
-    for (const auto& w : row) {
-      const TextStyle st = styleOf(w, wdth, sz);
-      const auto z = measure(w, st);
-      ws.push_back(z.w);
-      used += z.w;
-      rowH = std::max(rowH, z.h);
-      lean = overhang(w, st);
+    auto measureRow = [&] {
+      used = 0;
+      rowH = 0;
+      ws.clear();
+      for (const auto& w : row) {
+        const auto z = measure(w, styleOf(w, wdth, size));
+        ws.push_back(z.w);
+        used += z.w;
+        rowH = std::max(rowH, z.h);
+      }
+    };
+    // A row with gaps can step its size down in twos and take back what it
+    // loses there, which lets lines share their styles; a row of one word has
+    // nothing to take it back with, so it keeps the size that fills the column.
+    const auto settle = [&](float v) { return row.size() > 1 ? std::max(6.0F, std::floor(v / 2) * 2) : v; };
+    size = settle(size);
+    measureRow();
+    const float k = size / kProbe;  // probe measures → the size it is set at
+    // whatever the search left over, the row has to fit: the size closes it
+    if (const float reach = used + (lean + space * (row.size() - 1)) * k; reach > width) {
+      size = settle(size * width / reach);
+      measureRow();
     }
     // the gaps take up the last pixels, so the row meets the measure exactly
-    const float gap = row.size() > 1 ? mix(space, std::max(space * 0.4F, (width - lean - used) / (row.size() - 1))) : 0;
+    const float room = width - lean * size / kProbe - used;
+    const float gap = row.size() > 1 ? std::max(space * size / kProbe * 0.4F, room / (row.size() - 1)) : 0;
     float x = 0;
     for (size_t k = 0; k < row.size(); ++k) {
-      out.words.push_back({row[k], styleOf(row[k], wdth, sz), x, y});
+      out.words.push_back({row[k], styleOf(row[k], wdth, size), x, y});
       x += ws[k] + gap;
     }
     y += rowH * 0.92F;
@@ -417,12 +439,11 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
     const int centre = std::max(idx, 0);
     auto cz = measure(textFor(centre), styleFor(centre));
     // the sung line as a poster, eased in (quantised so the text cache can keep up)
-    const bool poster = m_cfg.lyricsStyle == "poster" && idx >= 0;
-    Poster pst;
-    if (poster) {
-      const float q = std::round(static_cast<float>(m_posterP) * 16) / 16;
-      pst = posterFor(textFor(idx), sw, base + lift, 600, q);
-      cz.h = std::max(cz.h, pst.h);
+    const bool asPoster = m_cfg.lyricsStyle == "poster" && idx >= 0;
+    const Poster* pst = nullptr;
+    if (asPoster) {
+      pst = &poster(textFor(idx), sw, base + lift, 600);
+      cz.h = std::max(cz.h, pst->h);
     }
     float yTop = sy + sh / 2 - cz.h / 2 + m_glide;
     // the sung line and its neighbours, fading with distance and, at the edges
@@ -440,8 +461,10 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
         o *= std::clamp(1 - hidden / 5, 0.0F, 1.0F);
       }
       if (o <= 0) return;
-      if (poster && i == idx) {
-        for (const auto& wd : pst.words) c.text(wd.text, wd.style, sx + wd.x, y + wd.y, A(m_accent), o);
+      if (asPoster && i == idx) {
+        // it arrives from a little below, fading in
+        const float pe = static_cast<float>(m_posterP), rise = (1 - pe) * 7;
+        for (const auto& wd : pst->words) c.text(wd.text, wd.style, sx + wd.x, y + wd.y + rise, A(m_accent), o * pe);
         return;
       }
       c.text(textFor(i), styleFor(i), sx, y, i == idx ? A(m_accent) : A(ink), o);
