@@ -200,8 +200,10 @@ fading, or a live spectrum when there are no lyrics; wavy seek bar
 (**click to jump**), previous / play-pause / next and a button that opens your
 app (`music_app`). The player is the one from Noctalia's MPRIS aggregator
 (`dev.noctalia.Mpris`, via sd-bus), with instant updates from signals.
-Options: `plate` (cover, glass, none), `show_lyrics`, `viz` (bars, wave),
-`accent_source` (album, theme), `music_app`, `fps`.
+It comes in six **layouts** (`layout`), each drawn at its own shape, and every
+piece of it can be left out. Options: `layout`, `plate` (cover, glass, none),
+`rail_style`, `show_lyrics`, `viz` (bars, wave), `accent_source` (album,
+theme), `music_app`, `fps`, the `show_*` switches and the type options below.
 
 Widgets are click-through except on their buttons, so the desktop
 keeps working normally around them.
@@ -251,6 +253,36 @@ With the grid on (toolbar), positions snap to it (16 px) on release and are save
 without touching the rest of the file.
 
 ## Music card
+
+**Layout** (`layout`) picks the shape of the card:
+
+| | |
+|---|---|
+| `sheet` | the original: the sleeve leads, this song's lyrics run beside it, and the track, its clock, the rail and the three moves close it out (560 × 302) |
+| `vinyl` | the sleeve is the label of a record whose grooves turn while the song plays, with the track and the moves to its right (440 × 160) |
+| `tile` | a small card the sleeve steps out of, the track set against the right edge (320 × 132) |
+| `poster` | the artwork is the card, the track on it under a veil (300 × 400) |
+| `strip` | one line of it, for a narrow gap (560 × 72) |
+| `portrait` | the sleeve on top, everything else centred under it (280 × 392) |
+
+Only `sheet` has room beside the sleeve, so the lyrics and the spectrum belong
+to it. The others make their own use of the sleeve, the track and the moves.
+
+**The pieces** switch off one by one: `show_cover`, `show_artist`, `show_time`,
+`show_rail`, `show_transport`, `show_open` (the button that opens your player),
+`show_pulse` (the bars on the sleeve while sound is moving), `show_viz` and
+`show_lyrics`. A piece that is not shown leaves no hit target behind.
+
+**Seek rail** (`rail_style`): `wave` (a travelling wave), `line`, `dots`,
+`bars` (they stand taller where the song has been) or `ring`, drawn around the
+sleeve. The ring needs a round sleeve -- the record, or `cover_shape =
+"circle"` -- and anywhere else it keeps to the rail.
+
+**The track's type**: `title_size`, `artist_size` and `time_size` scale the
+sizes the card was drawn with, and `title_font`, `artist_font` and `time_font`
+take any family installed (empty keeps the design's). The block is placed by
+what the type really paints, so a decorative face that spills out of its
+metrics still sits right. See [Fonts](#fonts).
 
 **Cover shape** cuts the cover to a Material 3 shape (`cover_shape`: any of
 the 18 names), or `cycle`: each song gets its own shape (the same song, the
@@ -369,8 +401,9 @@ stay as classics.
 ## Fonts
 
 The five editable clock structures (`goodnight`, `column`, `flip`, `metal`,
-`stacked`) can use any font installed on your system. The classic faces and
-the music card keep the fonts of their design. Space Grotesk, Fraunces, Inter
+`stacked`) can use any font installed on your system, and so do the music
+card's title, artist and clock. The classic clock faces keep the fonts of
+their design. Space Grotesk, Fraunces, Inter
 Display, JetBrains Mono and Google Sans Flex come bundled, so they are always
 there.
 
