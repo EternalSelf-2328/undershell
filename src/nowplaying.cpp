@@ -68,6 +68,14 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   c.layout = t["layout"].value_or(c.layout);
   c.plate = t["plate"].value_or(c.plate);
   c.showLyrics = t["show_lyrics"].value_or(c.showLyrics);
+  c.showCover = t["show_cover"].value_or(c.showCover);
+  c.showArtist = t["show_artist"].value_or(c.showArtist);
+  c.showTime = t["show_time"].value_or(c.showTime);
+  c.showRail = t["show_rail"].value_or(c.showRail);
+  c.showTransport = t["show_transport"].value_or(c.showTransport);
+  c.showOpen = t["show_open"].value_or(c.showOpen);
+  c.showPulse = t["show_pulse"].value_or(c.showPulse);
+  c.showViz = t["show_viz"].value_or(c.showViz);
   c.viz = t["viz"].value_or(c.viz);
   c.musicApp = t["music_app"].value_or(c.musicApp);
   c.accentSource = t["accent_source"].value_or(c.accentSource);
@@ -298,6 +306,20 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
 // belongs. The drawing and the hit targets both read it, so they cannot
 // drift apart, and a new layout is a new block here plus nothing else.
 NowPlayingWidget::Places NowPlayingWidget::places() const {
+  Places p = layoutPlaces();
+  // a piece that is not shown leaves no room and no hit target behind
+  if (!m_cfg.showCover) {
+    p.cover = {};
+    p.record = 0;
+  }
+  if (!m_cfg.showTime) p.clock = false;
+  if (!m_cfg.showRail) p.rail = {};
+  if (!m_cfg.showTransport) p.playR = 0;
+  if (!m_cfg.showOpen) p.open = {};
+  return p;
+}
+
+NowPlayingWidget::Places NowPlayingWidget::layoutPlaces() const {
   Places p;
   const std::string& l = m_cfg.layout;
   // A record on its deck: the sleeve is the label, and the disc turns while
@@ -502,7 +524,7 @@ void NowPlayingWidget::drawSleeve(Canvas& c, const MediaState& s, const Places& 
     noteGlyph(c, r.x + r.w / 2, r.y + r.h / 2, std::min(40.0F, r.w * 0.24F), tint(m_paint.dim));
   }
   // now-playing pulse on the sleeve, only while sound is moving
-  if (!s.playing || r.w < 90) return;
+  if (!s.playing || !m_cfg.showPulse || r.w < 90) return;
   const float barW = 3, gap = 2.5F, maxH = 13, pw = 4 * barW + 3 * gap;
   const float px = r.x + 8, py = r.y + r.h - 8 - 20;
   c.roundRect(px, py, pw + 14, 20, 10, Color{0, 0, 0, 0.42F * m_paint.op});
@@ -611,7 +633,7 @@ void NowPlayingWidget::drawSide(Canvas& c, const MediaState& s, const Places& p)
     c.text(msg, t, sx + (sw - z.w) / 2, sy + (sh - z.h) / 2, tint(dim), 0.8F);
     drewLyrics = true;
   }
-  if (drewLyrics) return;
+  if (drewLyrics || !m_cfg.showViz) return;
   const int n = static_cast<int>(m_viz.size());
   const float pitch = sw / n, barW = std::max(2.0F, pitch * 0.55F), maxH = sh * 0.8F, mid = sy + sh / 2;
   if (m_cfg.viz == "wave") {
@@ -648,9 +670,10 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
   // and the artist adrift from each other and from the band (the clock faces
   // had the same trouble)
   const auto tI = TextRenderer::measureInk(s.title, tS);
-  const auto aI = s.artist.empty() ? TextRenderer::Ink{} : TextRenderer::measureInk(s.artist, aS);
+  const bool artist = m_cfg.showArtist && !s.artist.empty();
+  const auto aI = artist ? TextRenderer::measureInk(s.artist, aS) : TextRenderer::Ink{};
   const float lead = 5;  // between the title's ink and the artist's
-  const float colH = tI.h + (s.artist.empty() ? 0 : lead + aI.h);
+  const float colH = tI.h + (artist ? lead + aI.h : 0);
   const float y = p.text.y + (p.text.h - colH) / 2;  // the top of the ink, not of the box
   // ranged on what each line paints, not on its box: a line set right has to
   // end at the edge by its last letter, not by its box's trailing air
@@ -660,7 +683,7 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
     return p.text.x - i.x;
   };
   c.text(s.title, tS, xOf(tI), y - tI.y, tint(m_paint.ink));
-  if (!s.artist.empty()) c.text(s.artist, aS, xOf(aI), y + tI.h + lead - aI.y, tint(m_paint.dim));
+  if (artist) c.text(s.artist, aS, xOf(aI), y + tI.h + lead - aI.y, tint(m_paint.dim));
   // the clock, in the slot this layout gives it or, with none, on the same
   // line as the artist (or as the title alone)
   if (!st.empty()) {

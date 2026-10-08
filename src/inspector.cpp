@@ -139,7 +139,13 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (w.cfg.type == "now_playing") {
     const std::string layout = o["layout"].value_or(std::string("sheet"));
     // only the sheet has a column beside the sleeve
-    if (in(key, {"show_lyrics", "lyrics_style", "viz"})) return layout == "sheet";
+    if (in(key, {"show_lyrics", "lyrics_style", "show_viz"})) return layout == "sheet";
+    if (key == "viz") return layout == "sheet" && o["show_viz"].value_or(true);
+    if (key == "lyrics_style") return layout == "sheet" && o["show_lyrics"].value_or(true);
+    if (key == "show_cover") return layout != "poster";  // the poster is the sleeve
+    if (key == "show_open") return layout == "sheet";
+    if (key == "show_pulse") return in(layout, {"sheet", "portrait"}) && o["show_cover"].value_or(true);
+    if (key == "show_time") return !in(layout, {"tile", "portrait"});
     // the record is a disc and the poster is the whole card: neither is cut to a shape
     if (key == "cover_shape") return !in(layout, {"vinyl", "poster"});
     if (key == "plate") return layout != "poster";

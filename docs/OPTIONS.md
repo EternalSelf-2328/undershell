@@ -90,7 +90,15 @@ Ryoku's now-playing card.
 | `cover_shape` | `rounded`, `cycle`, `circle`, `cookie12Sided`, `cookie9Sided`, `cookie7Sided`, `cookie6Sided`, `cookie4Sided`, `flower`, `clover8Leaf`, `clover4Leaf`, `softBurst`, `burst`, `sunny`, `verySunny`, `puffyDiamond`, `pentagon`, `pill`, `square`, `oval` | `"rounded"` | Cover shape |
 | `show_lyrics` | `true` / `false` | `true` | Lyrics |
 | `lyrics_style` | `plain`, `poster` | `"plain"` | Lyrics style |
-| `viz` | `bars`, `wave` | `"bars"` | Spectrum |
+| `show_viz` | `true` / `false` | `true` | Spectrum |
+| `viz` | `bars`, `wave` | `"bars"` | Spectrum look |
+| `show_cover` | `true` / `false` | `true` | Sleeve |
+| `show_artist` | `true` / `false` | `true` | Artist |
+| `show_time` | `true` / `false` | `true` | Clock |
+| `show_rail` | `true` / `false` | `true` | Seek rail |
+| `show_transport` | `true` / `false` | `true` | Transport |
+| `show_open` | `true` / `false` | `true` | Open button |
+| `show_pulse` | `true` / `false` | `true` | Playing pulse |
 | `accent_source` | `album`, `theme` | `"album"` | Accent |
 | `ink` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Ink |
 | `opacity` | 0.1 – 1 | `1` | Opacity |

@@ -20,6 +20,9 @@ struct NowPlayingConfig {
   std::string layout = "sheet";  // sheet vinyl tile poster strip portrait
   std::string plate = "cover";   // cover glass none
   bool showLyrics = true;
+  // the pieces, each of which can be left out
+  bool showCover = true, showArtist = true, showTime = true, showRail = true;
+  bool showTransport = true, showOpen = true, showPulse = true, showViz = true;
   std::string viz = "bars";      // bars wave (when there are no lyrics)
   std::string musicApp = "spotify";
   std::string accentSource = "album";  // album theme
@@ -78,6 +81,7 @@ private:
     float record = 0;         // > 0: the sleeve is a record of this radius
   };
   [[nodiscard]] Places places() const;
+  [[nodiscard]] Places layoutPlaces() const;
   void layoutTargets(const Places& p, bool seekable);
   [[nodiscard]] Color tint(Color col, float a = 1) const;
   void drawSleeve(Canvas& c, const MediaState& s, const Places& p);
