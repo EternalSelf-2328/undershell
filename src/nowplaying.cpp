@@ -84,6 +84,12 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   c.fps = static_cast<int>(std::clamp<int64_t>(t["fps"].value_or(int64_t{30}), 5, 120));
   c.coverShape = t["cover_shape"].value_or(c.coverShape);
   c.railStyle = t["rail_style"].value_or(c.railStyle);
+  c.titleSize = std::clamp(t["title_size"].value_or(c.titleSize), 0.4, 2.5);
+  c.artistSize = std::clamp(t["artist_size"].value_or(c.artistSize), 0.4, 2.5);
+  c.timeSize = std::clamp(t["time_size"].value_or(c.timeSize), 0.4, 2.5);
+  c.titleFont = t["title_font"].value_or(c.titleFont);
+  c.artistFont = t["artist_font"].value_or(c.artistFont);
+  c.timeFont = t["time_font"].value_or(c.timeFont);
   c.lyricsStyle = t["lyrics_style"].value_or(c.lyricsStyle);
   return c;
 }
@@ -658,12 +664,14 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
   if (p.text.w <= 0) return;
   const bool seekable = s.present && !s.radio() && s.lengthUs > 0;
   const std::string st = seekable && p.clock ? stamp(s.positionSec(m_paint.now)) + " / " + stamp(s.lengthUs / 1e6) : "";
-  const TextStyle stS{.family = MONO, .size = 11, .weight = 600};
+  // the design's faces and sizes, unless the widget asks for others
+  auto face = [](const std::string& own, const char* design) { return own.empty() ? std::string(design) : own; };
+  const TextStyle stS{.family = face(m_cfg.timeFont, MONO), .size = 11 * static_cast<float>(m_cfg.timeSize), .weight = 600};
   const auto stZ = measure(st, stS);
-  TextStyle tS{.family = DISPLAY, .size = 20, .weight = 600};
+  TextStyle tS{.family = face(m_cfg.titleFont, DISPLAY), .size = 20 * static_cast<float>(m_cfg.titleSize), .weight = 600};
   tS.maxWidth = p.text.w - (st.empty() ? 0 : stZ.w + 12);
   tS.align = p.align;
-  TextStyle aS{.family = FONT, .size = 12.5F, .weight = 500};
+  TextStyle aS{.family = face(m_cfg.artistFont, FONT), .size = 12.5F * static_cast<float>(m_cfg.artistSize), .weight = 500};
   aS.maxWidth = tS.maxWidth;
   aS.align = p.align;
   // laid out on what the pair really paints, not on its boxes: the display

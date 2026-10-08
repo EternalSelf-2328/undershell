@@ -94,6 +94,12 @@ Ryoku's now-playing card.
 | `viz` | `bars`, `wave` | `"bars"` | Spectrum look |
 | `show_cover` | `true` / `false` | `true` | Sleeve |
 | `show_artist` | `true` / `false` | `true` | Artist |
+| `title_size` | 0.4 – 2.5 | `1` | Title size × |
+| `title_font` |  | `"Fraunces 144pt"` | Title font |
+| `artist_size` | 0.4 – 2.5 | `1` | Artist size × |
+| `artist_font` |  | `"Space Grotesk"` | Artist font |
+| `time_size` | 0.4 – 2.5 | `1` | Clock size × |
+| `time_font` |  | `"JetBrains Mono"` | Clock font |
 | `show_time` | `true` / `false` | `true` | Clock |
 | `show_rail` | `true` / `false` | `true` | Seek rail |
 | `rail_style` | `wave`, `line`, `dots`, `bars`, `ring` | `"wave"` | Rail look |

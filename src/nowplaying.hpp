@@ -31,6 +31,10 @@ struct NowPlayingConfig {
   int fps = 30;
   std::string coverShape = "rounded";
   std::string railStyle = "wave";  // wave line dots bars ring
+  // the track's type: a scale on the design's size, and a font of your own
+  // ("" keeps the one the card was drawn with)
+  double titleSize = 1, artistSize = 1, timeSize = 1;
+  std::string titleFont, artistFont, timeFont;
   std::string lyricsStyle = "plain";   // plain | poster (Google Sans Flex, every word its own shape)  // rounded | cycle (a new Material shape each song) | a shape name
 
   static NowPlayingConfig fromTable(const toml::table& t);
