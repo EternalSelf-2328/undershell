@@ -312,6 +312,21 @@ NowPlayingWidget::Poster NowPlayingWidget::posterFor(const std::string& text, fl
 // A layout is drawn at its own design size and says where every piece
 // belongs. The drawing and the hit targets both read it, so they cannot
 // drift apart, and a new layout is a new block here plus nothing else.
+std::pair<float, float> NowPlayingWidget::designSize() const {
+  const Places p = layoutPlaces();
+  return {p.w, p.h};
+}
+
+void nowPlayingDesignSize(const std::string& layout, float& w, float& h) {
+  NowPlayingWidget np;
+  NowPlayingConfig cfg;
+  cfg.layout = layout;
+  np.configure(cfg, NoctaliaState{});
+  const auto p = np.designSize();
+  w = p.first;
+  h = p.second;
+}
+
 NowPlayingWidget::Places NowPlayingWidget::places() const {
   Places p = layoutPlaces();
   // a piece that is not shown leaves no room and no hit target behind

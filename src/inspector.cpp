@@ -10,6 +10,7 @@
 #include <cmath>
 #include "clockparts.hpp"
 #include "m3shapes.hpp"
+#include "nowplaying.hpp"
 
 #include <fontconfig/fontconfig.h>
 #include <glib.h>
@@ -399,8 +400,10 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   }
   // sizes designed on a 1080-px-high screen, scaled to this one
   const double k = std::clamp(oh / 1080.0, 0.5, 3.0);
-  const int w = static_cast<int>(std::lround((type == "visualizer" ? 1000 : 560) * k));
-  const int h = static_cast<int>(std::lround((type == "clock" ? 240 : (type == "now_playing" ? 302 : 280)) * k));
+  float dw = type == "visualizer" ? 1000 : 560, dh = type == "clock" ? 240 : 280;
+  if (type == "now_playing") nowPlayingDesignSize(look, dw, dh);  // its layout sets its shape
+  const int w = static_cast<int>(std::lround(dw * k));
+  const int h = static_cast<int>(std::lround(dh * k));
   if (x == INT_MIN) x = (ow - w) / 2;
   if (y == INT_MIN) y = (oh - h) / 2;
   const std::string block = Config::defaultBlock(type, id, o ? o->name : "", x, y, w, h, look, ow, oh);

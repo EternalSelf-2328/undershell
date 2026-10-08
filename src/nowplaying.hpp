@@ -9,6 +9,7 @@
 #include "widget.hpp"
 
 #include <string>
+#include <utility>
 #include <unordered_map>
 #include <vector>
 
@@ -40,6 +41,9 @@ struct NowPlayingConfig {
   static NowPlayingConfig fromTable(const toml::table& t);
 };
 
+// The size a layout is drawn at, so a new widget starts at its own shape.
+void nowPlayingDesignSize(const std::string& layout, float& w, float& h);
+
 class NowPlayingWidget final : public WidgetImpl {
 public:
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
@@ -54,6 +58,8 @@ public:
   [[nodiscard]] const char* cursor() const override { return m_hover.empty() ? "default" : "pointer"; }
   [[nodiscard]] bool wantsMedia() const override { return true; }
   [[nodiscard]] bool wantsLyrics() const override { return m_cfg.showLyrics; }
+  // the design size of the layout in use
+  [[nodiscard]] std::pair<float, float> designSize() const;
 
   static constexpr float kW = 560, kH = 302;  // Ryoku's design size
 

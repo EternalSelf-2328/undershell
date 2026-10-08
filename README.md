@@ -216,6 +216,9 @@ undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
 undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing
+                               # the second word is its look: a clock face, a
+                               # visualizer style or a card layout, and the new
+                               # widget comes out at that layout's own shape
 undershell msg remove clock    # remove it
 undershell msg select clock    # select it in the editor (scripts)
 undershell msg gallery         # open the editor with the gallery
