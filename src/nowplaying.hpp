@@ -30,6 +30,7 @@ struct NowPlayingConfig {
   double opacity = 1.0;
   int fps = 30;
   std::string coverShape = "rounded";
+  std::string railStyle = "wave";  // wave line dots bars ring
   std::string lyricsStyle = "plain";   // plain | poster (Google Sans Flex, every word its own shape)  // rounded | cycle (a new Material shape each song) | a shape name
 
   static NowPlayingConfig fromTable(const toml::table& t);

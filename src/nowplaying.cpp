@@ -83,6 +83,7 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   c.opacity = std::clamp(t["opacity"].value_or(c.opacity), 0.0, 1.0);
   c.fps = static_cast<int>(std::clamp<int64_t>(t["fps"].value_or(int64_t{30}), 5, 120));
   c.coverShape = t["cover_shape"].value_or(c.coverShape);
+  c.railStyle = t["rail_style"].value_or(c.railStyle);
   c.lyricsStyle = t["lyrics_style"].value_or(c.lyricsStyle);
   return c;
 }
@@ -706,13 +707,45 @@ void NowPlayingWidget::drawRail(Canvas& c, const MediaState& s, const Places& p)
     return;
   }
   const float frac = std::clamp(static_cast<float>(s.positionSec(m_paint.now) / (s.lengthUs / 1e6)), 0.0F, 1.0F);
+  const Color spent = tint(m_accent), left = tint(m_paint.ink, 0.16F);
+  const std::string& look = m_cfg.railStyle;
+  // A ring around the sleeve instead of a rail across the card. It only suits
+  // a round sleeve -- the record, or a cover cut to a circle -- since around a
+  // square one it would cut the corners off; anywhere else it keeps to the rail.
+  const bool roundSleeve = p.record > 0 || (p.cover.w > 0 && (m_cfg.coverShape == "circle" || m_cfg.coverShape == "oval"));
+  if (look == "ring" && roundSleeve) {
+    const float r = (p.record > 0 ? p.record : p.cover.w / 2) + 8;
+    const float ccx = p.cover.x + p.cover.w / 2, ccy = p.cover.y + p.cover.h / 2;
+    const float w = m_hover == "rail" ? 4.4F : 3.2F;
+    c.arc(ccx, ccy, r, w, 0, 6.2831F, left, false);
+    if (frac > 0.002F) c.arc(ccx, ccy, r, w, 0, frac * 6.2831F, spent);
+    return;
+  }
   const float px = x0 + (x1 - x0) * frac;
-  c.segment(x0, cy, x1, cy, 2.2F, tint(m_paint.ink, 0.16F));
-  // the played part: a travelling wave in the sleeve's colour
-  const float phase = s.playing ? static_cast<float>(std::fmod(m_paint.now, 1.1) / 1.1 * 15.0) : 0.0F;
-  c.wave(x0, px, cy, 3, 15, phase, 2.2F, tint(m_accent));
+  if (look == "dots" || look == "bars") {
+    const int n = std::max(6, static_cast<int>((x1 - x0) / 11));
+    const float pitch = (x1 - x0) / n;
+    for (int i = 0; i < n; ++i) {
+      const float cx = x0 + (i + 0.5F) * pitch, done = (i + 0.5F) / n <= frac ? 1.0F : 0.0F;
+      const Color col = done > 0 ? spent : left;
+      if (look == "dots") c.circle(cx, cy, 1.9F, col);
+      else {
+        // the played bars stand taller, the way a meter fills
+        const float h = done > 0 ? 11 : 5;
+        c.roundRect(cx - 1.3F, cy - h / 2, 2.6F, h, 1.3F, col);
+      }
+    }
+  } else if (look == "line") {
+    c.segment(x0, cy, x1, cy, 3, left);
+    if (frac > 0.002F) c.segment(x0, cy, px, cy, 3, spent);
+  } else {
+    c.segment(x0, cy, x1, cy, 2.2F, left);
+    // the played part: a travelling wave in the sleeve's colour
+    const float phase = s.playing ? static_cast<float>(std::fmod(m_paint.now, 1.1) / 1.1 * 15.0) : 0.0F;
+    c.wave(x0, px, cy, 3, 15, phase, 2.2F, spent);
+  }
   const float hs = m_hover == "rail" ? 1.35F : 1.0F;
-  if (s.canSeek) c.roundRect(px - 1.5F * hs, cy - 6 * hs, 3 * hs, 12 * hs, 1.5F * hs, tint(m_accent));
+  if (s.canSeek) c.roundRect(px - 1.5F * hs, cy - 6 * hs, 3 * hs, 12 * hs, 1.5F * hs, spent);
 }
 
 void NowPlayingWidget::drawTransport(Canvas& c, const MediaState& s, const Places& p) {

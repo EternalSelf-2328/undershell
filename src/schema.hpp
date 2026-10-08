@@ -89,6 +89,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Bool, "show_artist", "Artist", "Artista", {}, 0, 1, 1, 1},
       {K::Bool, "show_time", "Clock", "Reloj", {}, 0, 1, 1, 1},
       {K::Bool, "show_rail", "Seek rail", "Barra de avance", {}, 0, 1, 1, 1},
+      {K::Enum, "rail_style", "Rail look", "Estilo de barra", {"wave", "line", "dots", "bars", "ring"}, 0, 0, 0, 0, "wave"},
       {K::Bool, "show_transport", "Transport", "Controles", {}, 0, 1, 1, 1},
       {K::Bool, "show_open", "Open button", "Botón de abrir", {}, 0, 1, 1, 1},
       {K::Bool, "show_pulse", "Playing pulse", "Pulso al sonar", {}, 0, 1, 1, 1},

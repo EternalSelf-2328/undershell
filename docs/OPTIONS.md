@@ -96,6 +96,7 @@ Ryoku's now-playing card.
 | `show_artist` | `true` / `false` | `true` | Artist |
 | `show_time` | `true` / `false` | `true` | Clock |
 | `show_rail` | `true` / `false` | `true` | Seek rail |
+| `rail_style` | `wave`, `line`, `dots`, `bars`, `ring` | `"wave"` | Rail look |
 | `show_transport` | `true` / `false` | `true` | Transport |
 | `show_open` | `true` / `false` | `true` | Open button |
 | `show_pulse` | `true` / `false` | `true` | Playing pulse |
