@@ -207,13 +207,13 @@ int main(int argc, char** argv) {
     viz.lyrics = MediaState::Lyrics::None;
     viz.lines.clear();
     viz.playing = false;
-    // the poster: a line too long for the column, so the row that fills the
-    // measure and the one set smaller to fit both get drawn
-    MediaState poster = st;
-    poster.lines = parseLrc("[00:31.84]La luz se queda quieta en la ventana y el reloj no sabe esperar\n"
-                            "[00:39.50]Electroencefalografistas\n[00:48.00]fin\n");
-    toml::table posterOpts;
-    posterOpts.insert("lyrics_style", "poster");
+    // `focus`: the sung line well apart from its neighbours, with a long line
+    // that has to wrap at the larger size
+    MediaState focus = st;
+    focus.lines = parseLrc("[00:31.84]La luz se queda quieta en la ventana y el reloj no sabe esperar\n"
+                           "[00:39.50]Electroencefalografistas\n[00:48.00]fin\n");
+    toml::table focusOpts;
+    focusOpts.insert("lyrics_style", "focus");
     struct Case {
       const char* name;
       const MediaState* s;
@@ -221,7 +221,7 @@ int main(int argc, char** argv) {
     } cases[] = {{"np-lyrics", &st, nullptr},
                  {"np-viz", &viz, nullptr},
                  {"np-empty", nullptr, nullptr},
-                 {"np-lyrics-poster", &poster, &posterOpts}};
+                 {"np-lyrics-focus", &focus, &focusOpts}};
     // every layout, at its own design size
     struct Shape {
       const char* name;

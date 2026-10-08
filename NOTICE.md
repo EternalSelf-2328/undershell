@@ -32,5 +32,5 @@ Project).
 
 `data/fonts/GoogleSansFlex.ttf` is Google Sans Flex (variable: wght, wdth,
 ROND, slnt, opsz, GRAD), Copyright 2015 The Google Sans Flex Authors, under
-the SIL Open Font License 1.1 (`data/fonts/OFL-GoogleSansFlex.txt`). The
-poster lyric line follows Sung's `qml/PosterLine.qml` (MIT, (c) yappologistic).
+the SIL Open Font License 1.1 (`data/fonts/OFL-GoogleSansFlex.txt`). It is
+bundled so it can be picked for a clock face or for the music card's type.

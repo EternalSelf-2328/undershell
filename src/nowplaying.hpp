@@ -36,7 +36,7 @@ struct NowPlayingConfig {
   // ("" keeps the one the card was drawn with)
   double titleSize = 1, artistSize = 1, timeSize = 1;
   std::string titleFont, artistFont, timeFont;
-  std::string lyricsStyle = "plain";   // plain | poster (Google Sans Flex, every word its own shape)  // rounded | cycle (a new Material shape each song) | a shape name
+  std::string lyricsStyle = "plain";   // plain | focus (the sung line set well apart)
 
   static NowPlayingConfig fromTable(const toml::table& t);
 };
@@ -129,24 +129,6 @@ private:
   double m_morph = 1, m_morphVel = 0;
   std::string m_shapeTrack, m_shapeName;
   void setCoverShape(const std::string& name, bool animate);
-  // the poster lyric line
-  struct Poster {
-    struct Word {
-      std::string text;
-      TextStyle style;
-      float x, y;
-    };
-    std::vector<Word> words;
-    float h = 0;
-  };
-  // Setting a poster costs hundreds of text measurements, so the one on
-  // screen is kept until its line, its column or its stage in the ease
-  // changes — a line that has arrived is set once and then only drawn.
-  const Poster& poster(const std::string& text, float width, float base, int plainWeight);
-  Poster posterFor(const std::string& text, float width, float base, int plainWeight);
-  Poster m_poster;
-  std::string m_posterKey;
-  double m_posterP = 1;
   double m_spin = 0;  // the record's turn, radians
 };
 

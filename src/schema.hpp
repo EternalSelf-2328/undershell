@@ -82,7 +82,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
         "clover8Leaf", "clover4Leaf", "softBurst", "burst", "sunny", "verySunny", "puffyDiamond", "pentagon", "pill", "square", "oval"},
        0, 0, 0, 0, "rounded"},
       {K::Bool, "show_lyrics", "Lyrics", "Letra", {}, 0, 1, 1, 1},
-      {K::Enum, "lyrics_style", "Lyrics style", "Estilo de letra", {"plain", "poster"}, 0, 0, 0, 0, "plain"},
+      {K::Enum, "lyrics_style", "Lyrics style", "Estilo de letra", {"plain", "focus"}, 0, 0, 0, 0, "plain"},
       {K::Bool, "show_viz", "Spectrum", "Espectro", {}, 0, 1, 1, 1},
       {K::Enum, "viz", "Spectrum look", "Estilo de espectro", {"bars", "wave"}, 0, 0, 0, 0, "bars"},
       {K::Bool, "show_cover", "Sleeve", "Portada", {}, 0, 1, 1, 1},

@@ -292,11 +292,12 @@ the 18 names), or `cycle`: each song gets its own shape (the same song, the
 same shape) and the cover morphs into it on Material's expressive spring,
 overshooting a little. `rounded` keeps the rounded square.
 
-**Lyrics style** `poster` sets the sung line as a poster in Google Sans Flex
-(bundled): each word takes its own weight, roundness and slant, each row is
-set on the font's width axis until it fills the column from edge to edge (a
-short one is set larger instead), and the line rises into place as it
-arrives. `plain` keeps the plain lines.
+**Lyrics style** sets how far the sung line stands out from the ones around
+it. `plain` is Ryoku's gentle step: a couple of pixels larger, a weight up,
+and the album's colour. `focus` takes it much further -- the sung line is
+set half again as large and bold, and its neighbours fall back -- while
+keeping one face and one size per line, so no lyric in any language can come
+out uneven.
 
 ## With nothing playing
 
