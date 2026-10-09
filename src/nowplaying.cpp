@@ -398,6 +398,7 @@ NowPlayingWidget::Places NowPlayingWidget::places() const {
   p.text = {pad, y, p.w - 2 * pad, textH};
   y += textH;
   const float movesH = moves ? 38.0F : 0, rowH = std::max(rail ? 20.0F : 0, movesH);
+  p.playR = 0;  // no moves unless the row below has them (it used to keep the default, a button at 0,0)
   if (rowH > 0) {
     y += 8;
     p.ctrlY = y + rowH / 2;

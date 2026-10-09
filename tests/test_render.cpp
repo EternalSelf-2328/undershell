@@ -292,6 +292,23 @@ int main(int argc, char** argv) {
     }
   }
 
+  // the sheet with every piece but the track off draws no stray button in its corner
+  {
+    MediaState st;
+    st.present = st.playing = true;
+    st.title = "Web";
+    st.artist = "070 Shake";
+    toml::table o;
+    o.insert("plate", "none");
+    for (const char* k : {"show_cover", "show_lyrics", "show_viz", "show_time", "show_rail", "show_transport", "show_open", "show_pulse"})
+      o.insert(k, false);
+    const Image bare = renderNowPlaying(&st, 420, 90, pal, 500, &o);
+    size_t corner = 0;
+    for (int y = 0; y < 8; ++y)
+      for (int x = 0; x < 8; ++x) corner += bare.rgba[(static_cast<size_t>(y) * bare.w + x) * 4 + 3] > 8;
+    CHECK(corner == 0);
+  }
+
   // a turned widget: at 0° the blit reproduces the picture (orientation is
   // right), and a 30° turn matches its golden
   {
