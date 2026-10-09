@@ -115,14 +115,17 @@ static double normalise(double x, double& floor, double& peak, double dt, double
   return std::clamp((x - floor) / range, 0.0, 1.0);
 }
 
-// The halo's motion, from the raw spectrum (the bars' smoothing would make
-// kicks late), every signal normalised to the song's own recent range:
+// The halo's motion, from the analyser's bands, every signal normalised to
+// the song's own recent range:
 //   pump  - the bass envelope (fast up, slower down): the light pulses with the groove
 //   breath - the energy relative to its recent level, on a damped spring: the size
 //            swells with the phrasing
-//   kicks - bass spectral flux over mean + 1.6 sd of itself: a flash, and a wave
+//   kicks - the analyser's own kick detector, which reads the samples (the bands
+//           come from an 85 ms window and are smoothed, so kicks from them land
+//           ~100 ms late); the demo spectrum has none, so there it falls back to
+//           bass flux over mean + 1.6 sd of itself: a flash, and a wave
 //   tone  - the spectral centroid: the colour drifts toward the secondary
-void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
+void Visualizer::tickRing(double dt, const std::vector<float>* raw, const AudioFrame& audio) {
   m_ringTime += dt;
   const bool live = raw && !raw->empty() && m_motion.fade() > 0.01;
   const size_t n = live ? raw->size() : 0;
@@ -171,10 +174,13 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
   const double threshold = m_fluxMean + 1.6 * std::sqrt(m_fluxVar) + 0.03;
   m_sinceBeat += dt;
   m_trace = {energyN, bassN, flux, threshold, m_breath, m_hit, m_tone, false};
-  if (live && warm > 0.6 && flux > threshold && bassN > 0.35 && m_sinceBeat > 0.15) {
+  const bool kicked = audio.onsets ? audio.kicks != m_lastKicks : flux > threshold && bassN > 0.35 && m_sinceBeat > 0.15;
+  m_lastKicks = audio.kicks;
+  if (live && warm > 0.6 && kicked) {
     m_trace.kick = true;
     m_sinceBeat = 0;
-    const double strength = std::clamp((flux - threshold) / std::max(threshold, 0.02) * 0.5 + 0.5, 0.3, 1.0);
+    const double strength = audio.onsets ? audio.kickStrength
+                                         : std::clamp((flux - threshold) / std::max(threshold, 0.02) * 0.5 + 0.5, 0.3, 1.0);
     m_hit = std::max(m_hit, strength * m_haloHits * loud);
     if (m_haloWaves && m_haloHits > 0 && strength * loud > 0.55) {  // only the strong hits send a wave
       size_t slot = 0;
@@ -214,11 +220,13 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw) {
   if (m_styleIndex == 15 && !m_mPreview) {
     for (double& a : m_shotAge)
       if (a >= 0) a = a + dt > 2.0 ? -1 : a + dt;
-    if (m_trace.kick) shoot(std::clamp(0.45 + 0.55 * m_hit / std::max(0.05, m_haloHits), 0.45, 1.0));
+    // the shot starts as old as the kick already is (a frame at most)
+    if (m_trace.kick)
+      shoot(std::clamp(0.45 + 0.55 * m_hit / std::max(0.05, m_haloHits), 0.45, 1.0), audio.onsets ? std::min(audio.kickAge, 0.05) : 0.0);
   }
 }
 
-void Visualizer::shoot(double gain) {
+void Visualizer::shoot(double gain, double age) {
   size_t slot = 0;  // a free slot, else the oldest shot
   for (size_t i = 0; i < m_shotAge.size(); ++i) {
     if (m_shotAge[i] < 0) {
@@ -227,7 +235,7 @@ void Visualizer::shoot(double gain) {
     }
     if (m_shotAge[i] > m_shotAge[slot]) slot = i;
   }
-  m_shotAge[slot] = 0;
+  m_shotAge[slot] = age;
   m_shotGain[slot] = gain;
   m_shotCounter = std::fmod(m_shotCounter + 1, 997.0);
   m_shotSeed[slot] = m_shotCounter * 1.618 + 0.37;  // every shot its own shape
@@ -368,7 +376,7 @@ void Visualizer::tick(const TickContext& ctx) {
   if (std::abs(m_hideFade - (m_hidden ? 0.0 : 1.0)) < 0.002) m_hideFade = m_hidden ? 0.0 : 1.0;
   static const std::vector<float> kEmpty;
   m_motion.tick(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? kEmpty : *ctx.audio.bands, ctx.audio.energy);
-  if (m_styleIndex >= 12) tickRing(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? nullptr : ctx.audio.bands);
+  if (m_styleIndex >= 12) tickRing(ctx.dt, (ctx.audio.silent || !ctx.audio.bands) ? nullptr : ctx.audio.bands, ctx.audio);
 }
 
 void Visualizer::draw(const DrawContext& ctx) {

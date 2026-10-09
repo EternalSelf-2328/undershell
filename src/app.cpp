@@ -770,6 +770,12 @@ AudioFrame App::audioFrame(const Widget* w) {
   f.bands = &bands;
   f.silent = silent;
   f.energy = silent ? 0.0 : (demo ? 0.3 : m_audio.energy());
+  if (!demo && m_audioOk) {
+    f.onsets = true;
+    f.kicks = m_audio.kickCount();
+    f.kickStrength = m_audio.kickStrength();
+    f.kickAge = m_audio.kickAge();
+  }
   return f;
 }
 

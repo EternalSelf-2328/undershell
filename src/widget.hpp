@@ -33,6 +33,11 @@ struct AudioFrame {
   const std::vector<float>* bands = nullptr;  // 0..1, empty when silent
   double energy = 0;
   bool silent = true;
+  // kicks from the analyser's own detector (Audio::kickCount): a counter that
+  // steps per kick; onsets is false for the demo spectrum, which has none
+  bool onsets = false;
+  uint64_t kicks = 0;
+  double kickStrength = 0, kickAge = 0;
 };
 
 struct TickContext {

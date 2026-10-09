@@ -51,7 +51,7 @@ private:
   void drawRing(const DrawContext& ctx);
   void drawVortex(const DrawContext& ctx);
   void drawFire(const DrawContext& ctx);
-  void tickRing(double dt, const std::vector<float>* raw);
+  void tickRing(double dt, const std::vector<float>* raw, const AudioFrame& audio);
 
   VisualizerConfig m_cfg;
   HaloTrace m_trace{};
@@ -78,11 +78,12 @@ private:
   double m_shotCounter = 0;
   bool m_mManga = false, m_mTheme = false, m_mPreview = false;  // preview: one shot frozen in time
   double m_mLength = 0.85, m_mSpikes = 4, m_mSparks = 0.6, m_mSmoke = 0.5;
-  void shoot(double gain);
+  void shoot(double gain, double age);
   void drawMuzzle(const DrawContext& ctx);
   double m_breath = 0, m_breathVel = 0, m_hit = 0, m_tone = 0.3, m_prevBass = 0, m_fluxMean = 0, m_fluxVar = 0, m_sinceBeat = 1,
          m_ringTime = 0, m_pump = 0, m_energySlow = 0, m_loud = 0.5, m_liveTime = 0;
   double m_bassFloor = 0, m_bassPeak = 0, m_energyFloor = 0, m_energyPeak = 0;  // recent ranges
+  uint64_t m_lastKicks = 0;  // the analyser's kick counter, as last seen
   std::array<double, 4> m_waveAges{-1, -1, -1, -1}, m_waveGain{0, 0, 0, 0};
   bool m_haloWaves = true;
   double m_haloWidth = 0.012, m_haloSpread = 0.09, m_haloInner = 0.7, m_haloBloom = 0.8;
