@@ -91,6 +91,9 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   c.timeFont = t["time_font"].value_or(c.timeFont);
   c.lyricsStyle = t["lyrics_style"].value_or(c.lyricsStyle);
   if (c.lyricsStyle == "poster") c.lyricsStyle = "focus";  // what replaced it
+  c.textForm = t["text_form"].value_or(c.textForm);
+  c.textAlign = t["text_align"].value_or(c.textAlign);
+  c.textValign = t["text_valign"].value_or(c.textValign);
   return c;
 }
 
@@ -166,6 +169,7 @@ void NowPlayingWidget::tick(const TickContext& ctx) {
 }
 
 bool NowPlayingWidget::animating(const TickContext& ctx) const {
+  if (m_cfg.layout == "text") return false;  // nothing on it moves; a new song redraws it
   const MediaService* m = ctx.media;
   const bool playing = m && m->state().present && m->state().playing;
   return playing || std::abs(m_glide) > 0.5F || m_morph < 1 || std::abs(m_morphVel) > 1e-4;
@@ -269,6 +273,17 @@ NowPlayingWidget::Places NowPlayingWidget::places() const {
     }
   };
 
+  // Only the track: drawn at the widget's own box, which it fills
+  if (l == "text") {
+    p.w = m_boxW;
+    p.h = m_boxH;
+    p.plate = {0, 0, p.w, p.h};
+    p.radius = std::min(22.0F, p.h / 2);
+    p.text = {0, 0, p.w, p.h};
+    p.playR = 0;
+    p.clock = false;
+    return p;
+  }
   // A record on its deck: the sleeve is the label, and the disc turns while
   // the song plays. Everything else stands to its right.
   if (l == "vinyl") {
@@ -673,6 +688,121 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
   }
 }
 
+// The text layout: only the track, as large as the box allows. The title and
+// the artist keep their sizes' proportion and are scaled together until the
+// pair meets the box one way or the other, measured on what they really paint.
+// Stacked, a long title takes two lines when that lets it be clearly larger;
+// on one line the artist follows the title after a dot, on the same baseline.
+void NowPlayingWidget::drawTrackOnly(Canvas& c, const MediaState& s, const Places& p) {
+  if (s.title.empty()) return;
+  const bool artist = m_cfg.showArtist && !s.artist.empty();
+  const float pad = m_cfg.plate == "none" ? 0.0F : std::min(p.w, p.h) * 0.14F;  // off a plate's rounded edge
+  const float aw = std::max(1.0F, p.w - 2 * pad), ah = std::max(1.0F, p.h - 2 * pad);
+  const int align = m_cfg.textAlign == "center" ? 1 : m_cfg.textAlign == "right" ? 2 : 0;
+  constexpr float R = 64;  // the size it is measured at, before it is scaled to the box
+  // the artist at half the title by default (the card's 0.625 let a short
+  // title and its artist come out nearly alike); artist_size still sets it
+  const float ratio = std::clamp(0.8F * artistStyle().size / titleStyle().size, 0.2F, 2.0F);
+  TextStyle tS = titleStyle(), aS = artistStyle();
+  tS.size = R;
+  aS.size = R * ratio;
+  tS.align = aS.align = align;
+  using Ink = TextRenderer::Ink;
+  // where a block of `bw` x `bh` starts in the box, by the alignment
+  auto blockX = [&](float bw) { return pad + (align == 1 ? (aw - bw) / 2 : align == 2 ? aw - bw : 0); };
+  auto blockY = [&](float bh) {
+    return pad + (m_cfg.textValign == "top" ? 0 : m_cfg.textValign == "bottom" ? ah - bh : (ah - bh) / 2);
+  };
+
+  if (m_cfg.textForm == "line") {
+    const std::string sep = "  ·  ";
+    struct Run {
+      const std::string* text;
+      TextStyle st;
+      Color col;
+    };
+    const std::string* sepText = &sep;
+    std::vector<Run> runs = {{&s.title, tS, m_paint.ink}};
+    if (artist) {
+      runs.push_back({sepText, aS, withAlpha(m_paint.dim, 0.6F)});
+      runs.push_back({&s.artist, aS, m_paint.dim});
+    }
+    // the runs side by side on one baseline: their painted extent around it
+    struct Placed {
+      float x, baseline;
+      Ink ink;
+    };
+    auto lay = [&](std::vector<Placed>& out, float& left, float& right, float& top, float& bottom) {
+      out.clear();
+      float x = 0;
+      left = top = 1e9F;
+      right = bottom = -1e9F;
+      for (const Run& r : runs) {
+        float w, h, base;
+        TextRenderer::measure(*r.text, r.st, w, h, base);
+        const Ink ink = TextRenderer::measureInk(*r.text, r.st);
+        out.push_back({x, base, ink});
+        left = std::min(left, x + ink.x);
+        right = std::max(right, x + ink.x + ink.w);
+        top = std::min(top, ink.y - base);
+        bottom = std::max(bottom, ink.y + ink.h - base);
+        x += w;
+      }
+    };
+    std::vector<Placed> placed;
+    float l, r, t, b;
+    lay(placed, l, r, t, b);
+    const float k = 0.98F * std::min(aw / std::max(1.0F, r - l), ah / std::max(1.0F, b - t));
+    for (Run& run : runs) run.st.size *= k;
+    lay(placed, l, r, t, b);  // again at the size drawn, which does not scale quite linearly
+    const float x0 = blockX(r - l) - l, base = blockY(b - t) - t;
+    for (size_t i = 0; i < runs.size(); ++i)
+      c.text(*runs[i].text, runs[i].st, x0 + placed[i].x, base - placed[i].baseline, tint(runs[i].col));
+    return;
+  }
+
+  // stacked: the title (on one line or two) over the artist
+  const float leadR = R * 0.14F;
+  const Ink aR = artist ? TextRenderer::measureInk(s.artist, aS) : Ink{};
+  auto scaleFor = [&](const TextStyle& ts) {
+    const Ink tI = TextRenderer::measureInk(s.title, ts);
+    const float bw = std::max(tI.w, aR.w), bh = tI.h + (artist ? leadR + aR.h : 0);
+    return std::min(aw / std::max(1.0F, bw), ah / std::max(1.0F, bh));
+  };
+  float k = scaleFor(tS);
+  if (s.title.find(' ') != std::string::npos) {
+    // two lines, broken at the space that leaves the wider of them narrowest
+    // (a word is never split, and nothing is left over for a third line)
+    float wrap = 1e9F;
+    for (size_t at = s.title.find(' '); at != std::string::npos; at = s.title.find(' ', at + 1)) {
+      const float a = TextRenderer::measureInk(s.title.substr(0, at), tS).boxW;
+      const float b = TextRenderer::measureInk(s.title.substr(at + 1), tS).boxW;
+      wrap = std::min(wrap, std::max(a, b) * 1.02F + 1);
+    }
+    TextStyle two = tS;
+    two.maxWidth = wrap;
+    two.maxLines = 2;
+    const float k2 = scaleFor(two);
+    if (k2 > k * 1.15F) {
+      tS = two;
+      k = k2;
+    }
+  }
+  k *= 0.98F;
+  tS.size *= k;
+  tS.maxWidth *= k;
+  aS.size *= k;
+  const float lead = leadR * k;
+  const Ink tI = TextRenderer::measureInk(s.title, tS);
+  const Ink aI = artist ? TextRenderer::measureInk(s.artist, aS) : Ink{};
+  const float bw = std::max(tI.w, aI.w), bh = tI.h + (artist ? lead + aI.h : 0);
+  const float bx = blockX(bw), by = blockY(bh);
+  // each line ranged in the block by what it paints
+  auto lineX = [&](const Ink& i) { return bx + (align == 1 ? (bw - i.w) / 2 : align == 2 ? bw - i.w : 0) - i.x; };
+  c.text(s.title, tS, lineX(tI), by - tI.y, tint(m_paint.ink));
+  if (artist) c.text(s.artist, aS, lineX(aI), by + tI.h + lead - aI.y, tint(m_paint.dim));
+}
+
 void NowPlayingWidget::drawRail(Canvas& c, const MediaState& s, const Places& p) {
   if (p.rail.w <= 0) return;
   const float x0 = p.rail.x, x1 = p.rail.x + p.rail.w, cy = p.rail.y + p.rail.h / 2;
@@ -756,6 +886,8 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   m_media = ctx.media;
   static const MediaState kEmpty;
   const MediaState& s = m_media ? m_media->state() : kEmpty;
+  m_boxW = std::max(1.0F, ctx.w);
+  m_boxH = std::max(1.0F, ctx.h);
   const Places p = places();
 
   m_accent = (m_cfg.accentSource == "album" && s.hasAccent) ? s.accent : m_theme;
@@ -827,6 +959,10 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
     return;
   }
 
+  if (m_cfg.layout == "text") {
+    drawTrackOnly(c, s, p);
+    return;
+  }
   drawSleeve(c, s, p);
   drawSide(c, s, p);
   drawText(c, s, p);

@@ -200,7 +200,7 @@ fading, or a live spectrum when there are no lyrics; wavy seek bar
 (**click to jump**), previous / play-pause / next and a button that opens your
 app (`music_app`). The player is the one from Noctalia's MPRIS aggregator
 (`dev.noctalia.Mpris`, via sd-bus), with instant updates from signals.
-It comes in six **layouts** (`layout`), each drawn at its own shape, and every
+It comes in seven **layouts** (`layout`), each drawn at its own shape, and every
 piece of it can be left out. Options: `layout`, `plate` (cover, glass, none),
 `rail_style`, `show_lyrics`, `viz` (bars, wave), `accent_source` (album,
 theme), `music_app`, `fps`, the `show_*` switches and the type options below.
@@ -267,9 +267,20 @@ without touching the rest of the file.
 | `poster` | the artwork is the card, the track on it under a veil (300 × 400) |
 | `strip` | one line of it, for a narrow gap (560 × 72) |
 | `portrait` | the sleeve on top, everything else centred under it (280 × 392) |
+| `text` | only the title and the artist, as large as the widget's box allows (any size) |
 
 Only `sheet` has room beside the sleeve, so the lyrics and the spectrum belong
 to it. The others make their own use of the sleeve, the track and the moves.
+
+**Just the track** (`layout = "text"`): no sleeve, no clock, no controls -- the
+title and the artist, scaled together until they meet the box one way or the
+other, so resizing the widget resizes the type. `text_form` is `stacked` (the
+title over the artist; a long title breaks into two balanced lines when that
+lets it be clearly larger) or `line` (`Title · Artist` on one baseline).
+`text_align` (left, center, right) and `text_valign` (top, center, bottom) set
+where it sits in the box. The fonts, `artist_size` (the artist's share: half
+the title by default), `show_artist`, `plate` and `ink` still apply. Nothing on
+it moves, so it only redraws when the song changes.
 
 **The pieces** switch off one by one: `show_cover`, `show_artist`, `show_time`,
 `show_rail`, `show_transport`, `show_open` (the button that opens your player),

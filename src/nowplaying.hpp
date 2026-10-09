@@ -18,7 +18,7 @@ namespace undershell {
 struct MediaState;
 
 struct NowPlayingConfig {
-  std::string layout = "sheet";  // sheet vinyl tile poster strip portrait
+  std::string layout = "sheet";  // sheet vinyl tile poster strip portrait text
   std::string plate = "cover";   // cover glass none
   bool showLyrics = true;
   // the pieces, each of which can be left out
@@ -37,6 +37,10 @@ struct NowPlayingConfig {
   double titleSize = 1, artistSize = 1, timeSize = 1;
   std::string titleFont, artistFont, timeFont;
   std::string lyricsStyle = "plain";   // plain | focus (the sung line set well apart)
+  // the text layout: only the track, as large as the box allows
+  std::string textForm = "stacked";    // stacked | line ("Title · Artist")
+  std::string textAlign = "left";      // left | center | right
+  std::string textValign = "center";   // top | center | bottom
 
   static NowPlayingConfig fromTable(const toml::table& t);
 };
@@ -106,6 +110,7 @@ private:
   void drawText(Canvas& c, const MediaState& s, const Places& p);
   void drawRail(Canvas& c, const MediaState& s, const Places& p);
   void drawTransport(Canvas& c, const MediaState& s, const Places& p);
+  void drawTrackOnly(Canvas& c, const MediaState& s, const Places& p);
   // what every piece draws with, for the frame in hand
   struct Paint {
     Color ink, dim, surface;
@@ -123,6 +128,7 @@ private:
   std::vector<Target> m_targets;
   std::string m_hover;
   float m_k = 1, m_ox = 0, m_oy = 0;   // design → surface
+  float m_boxW = 420, m_boxH = 120;   // the widget's box: the text layout is drawn at it
   double m_now = 0;
   float m_glide = 0;                  // lyric column offset, eased
   int m_lyricIndex = -1;

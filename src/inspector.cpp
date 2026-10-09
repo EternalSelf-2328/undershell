@@ -139,6 +139,14 @@ bool optionApplies(const Widget& w, const std::string& key) {
   }
   if (w.cfg.type == "now_playing") {
     const std::string layout = o["layout"].value_or(std::string("sheet"));
+    // the text layout is the track and nothing else: its fonts, the artist's
+    // share of it, where it sits, and the plate
+    if (in(key, {"text_form", "text_align", "text_valign"})) return layout == "text";
+    if (layout == "text")
+      return in(key, {"layout", "plate", "show_artist", "title_font", "artist_font", "artist_size", "accent_source", "ink",
+                      "opacity", "rotation", "depth", "depth_level", "layer"}) &&
+             (key != "depth_level" || o["depth"].value_or(true)) &&
+             (!in(key, {"artist_size", "artist_font"}) || o["show_artist"].value_or(true));
     // only the sheet has a column beside the sleeve
     if (in(key, {"show_lyrics", "lyrics_style", "show_viz"})) return layout == "sheet";
     if (key == "viz") return layout == "sheet" && o["show_viz"].value_or(true);

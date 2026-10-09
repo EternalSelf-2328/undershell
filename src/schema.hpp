@@ -75,7 +75,10 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "layer", "Layer", "Capa", {}, -10, 10, 1, 0, "", true},
   };
   static const std::vector<PropSpec> nowPlaying = {
-      {K::Enum, "layout", "Layout", "Disposición", {"sheet", "vinyl", "tile", "poster", "strip", "portrait"}, 0, 0, 0, 0, "sheet"},
+      {K::Enum, "layout", "Layout", "Disposición", {"sheet", "vinyl", "tile", "poster", "strip", "portrait", "text"}, 0, 0, 0, 0, "sheet"},
+      {K::Enum, "text_form", "Text form", "Forma del texto", {"stacked", "line"}, 0, 0, 0, 0, "stacked"},
+      {K::Enum, "text_align", "Align", "Alinear", {"left", "center", "right"}, 0, 0, 0, 0, "left"},
+      {K::Enum, "text_valign", "Vertical", "Vertical", {"top", "center", "bottom"}, 0, 0, 0, 0, "center"},
       {K::Enum, "plate", "Plate", "Fondo", {"cover", "glass", "none"}, 0, 0, 0, 0, "cover"},
       {K::Enum, "cover_shape", "Cover shape", "Forma de portada",
        {"rounded", "cycle", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided", "cookie4Sided", "flower",

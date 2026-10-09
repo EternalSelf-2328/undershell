@@ -292,6 +292,52 @@ int main(int argc, char** argv) {
     }
   }
 
+  // the text layout: only the track, filling the box; ranged where asked; a
+  // long title broken in two without losing its end
+  {
+    MediaState st;
+    st.present = st.playing = true;
+    st.title = "Web";
+    st.artist = "070 Shake";
+    // the columns and rows with ink, as a box
+    struct Span {
+      int x0 = 1 << 30, x1 = -1, y0 = 1 << 30, y1 = -1;
+    };
+    auto inkOf = [](const Image& im) {
+      Span s;
+      for (int y = 0; y < im.h; ++y)
+        for (int x = 0; x < im.w; ++x)
+          if (im.rgba[(static_cast<size_t>(y) * im.w + x) * 4 + 3] > 40) {
+            s.x0 = std::min(s.x0, x), s.x1 = std::max(s.x1, x), s.y0 = std::min(s.y0, y), s.y1 = std::max(s.y1, y);
+          }
+      return s;
+    };
+    auto card = [&](const MediaState& m, const char* form, const char* align, int w, int h) {
+      toml::table o;
+      o.insert("layout", "text");
+      o.insert("plate", "none");
+      o.insert("text_form", form);
+      o.insert("text_align", align);
+      return renderNowPlaying(&m, w, h, pal, 500, &o);
+    };
+    for (const char* form : {"stacked", "line"}) {
+      const Image img = card(st, form, "right", 420, 140);
+      const Span s = inkOf(img);
+      const bool fills = s.x1 - s.x0 > 420 * 0.85 || s.y1 - s.y0 > 140 * 0.85;
+      if (!fills) std::fprintf(stderr, "text %s: ink %d..%d x %d..%d does not fill the box\n", form, s.x0, s.x1, s.y0, s.y1);
+      CHECK(fills);
+      CHECK(s.x1 >= 420 - 6);  // ranged right
+    }
+    // a long title stacked in a squarish box takes two lines and keeps them
+    // both: its ink is far taller than one line of the same width would be
+    MediaState lng = st;
+    lng.title = "Don't Dream It's Over (Remastered 2023 Version)";
+    lng.artist = "Crowded House";
+    const Span two = inkOf(card(lng, "stacked", "left", 300, 220));
+    const Span one = inkOf(card(lng, "line", "left", 300, 220));
+    CHECK(two.y1 - two.y0 > 3 * (one.y1 - one.y0));
+  }
+
   // the sheet with every piece but the track off draws no stray button in its corner
   {
     MediaState st;
