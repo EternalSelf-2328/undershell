@@ -834,6 +834,10 @@ void App::render(Widget& w) {
 
   const bool show = w.impl->visible();
   if (!show && w.drewEmpty) {
+    // nothing to draw, but it keeps ticking at its own rate (no frame
+    // callback paces it now): the demo's kicks are read from one tick to the
+    // next and are lost at the main loop's pace
+    w.lastRender = now;
     w.needsRender = false;
     return;
   }
