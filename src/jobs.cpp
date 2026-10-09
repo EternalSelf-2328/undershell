@@ -4,6 +4,7 @@
 #include "common.hpp"
 
 #include <cstdint>
+#include <malloc.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
 
@@ -67,6 +68,10 @@ void Jobs::dispatch() {
     done.swap(m_done);
   }
   for (auto& d : done) d();
+  // A job's scratch (a whole wallpaper decoded to refine its depth, a cover)
+  // stays in its thread's malloc arena after it is freed: ~50 MB a thread
+  // that the process never uses again. Hand it back.
+  malloc_trim(0);
 }
 
 }  // namespace undershell
