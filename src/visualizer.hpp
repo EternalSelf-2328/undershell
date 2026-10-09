@@ -24,11 +24,12 @@ public:
     if (m_hidden || m_hideFade < 0.997) return true;  // fading
     return m_motion.animating(ctx.audio.energy) || m_breath > 0.003 || std::abs(m_breathVel) > 0.003 || m_hit > 0 || m_pump > 0.003 ||
            (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 ||
-           (m_styleIndex == 15 && (m_shotAge[0] >= 0 || m_shotAge[1] >= 0 || m_shotAge[2] >= 0 || m_shotAge[3] >= 0)) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
+           (m_styleIndex == 15 && muzzleShows()) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
            m_waveAges[3] >= 0;
   }
   [[nodiscard]] bool visible() const override {
     if (m_hidden && m_hideFade < 0.003) return false;  // faded out: nothing to draw, no frames spent
+    if (m_styleIndex == 15) return muzzleShows();      // between shots there is nothing to draw
     return m_styleIndex >= 12 || m_motion.fade() > 0.002;  // halo, vortex and fire rest visible
   }
   [[nodiscard]] int fps() const override { return m_cfg.fps; }
@@ -78,7 +79,19 @@ private:
   double m_shotCounter = 0;
   bool m_mManga = false, m_mTheme = false, m_mPreview = false;  // preview: one shot frozen in time
   double m_mLength = 0.85, m_mSpikes = 4, m_mSparks = 0.6, m_mSmoke = 0.5;
+  // each shot's shape, drawn once when it is fired (the shader only draws
+  // it): 3 forward tongues then 6 side spikes (cos, sin, length as a share
+  // of the reach, width), 14 sparks (direction, speed, life; life < 0: none)
+  // and 4 smoke puffs (along as a share of the reach, across, swell)
+  std::array<float, 4 * 9 * 4> m_lobes{};
+  std::array<float, 4 * 14 * 4> m_sparks{};
+  std::array<float, 4 * 4 * 4> m_puffs{};
   void shoot(double gain, double age);
+  void shapeShot(size_t slot);
+  // a shot alive (its smoke too), or the realistic ember glowing with the bass
+  [[nodiscard]] bool muzzleShows() const {
+    return m_shotAge[0] >= 0 || m_shotAge[1] >= 0 || m_shotAge[2] >= 0 || m_shotAge[3] >= 0 || (!m_mManga && m_pump * m_haloPulse > 0.003);
+  }
   void drawMuzzle(const DrawContext& ctx);
   double m_breath = 0, m_breathVel = 0, m_hit = 0, m_tone = 0.3, m_prevBass = 0, m_fluxMean = 0, m_fluxVar = 0, m_sinceBeat = 1,
          m_ringTime = 0, m_pump = 0, m_energySlow = 0, m_loud = 0.5, m_liveTime = 0;

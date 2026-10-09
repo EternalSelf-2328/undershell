@@ -7,7 +7,9 @@
 // in a fan and die in half a second; smoke stays, swelling and rising, for
 // about a second and a half. Realistic: light (white -> yellow -> orange, or
 // the theme's colours), tone mapped like the fire. Manga: flat white with a
-// black ink outline, for black-and-white artwork.
+// black ink outline, for black-and-white artwork. Each shot's shape (angles,
+// lengths, sparks, puffs) is drawn at random once, on the CPU, when it is
+// fired; here every pixel only measures itself against it.
 static const char* kMuzzleFrag = R"(#version 300 es
 precision highp float;
 in vec2 v_uv;
@@ -16,6 +18,9 @@ uniform vec2 res;
 uniform float u_age[4];   // seconds since each shot (< 0: no shot)
 uniform float u_seed[4];
 uniform float u_gain[4];  // 0..1, how hard the kick was
+uniform vec4 u_lobe[36];  // per shot, 3 tongues then 6 spikes: cos, sin, length (share of the reach), width
+uniform vec4 u_spark[56]; // per shot, 14 sparks: direction, speed, life (< 0: none)
+uniform vec4 u_puff[16];  // per shot, 4 smoke puffs: along (share of the reach), across, swell
 uniform float u_pump;     // the bass envelope: an ember between shots
 uniform float u_manga;    // 0 realistic light, 1 manga ink
 uniform float u_theme;    // 1: the theme's colours instead of a flame's
@@ -27,8 +32,12 @@ uniform float u_sparks;   // 0..1
 uniform float u_smoke;    // 0..1
 uniform float u_opacity;
 
-float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float h1(float n) { return fract(sin(n * 91.3458 + 7.13) * 47453.5453); }
+// a hash without sin (Dave Hoskins'): cheaper on small GPUs
+float hash(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
 float vnoise(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
@@ -43,15 +52,19 @@ float fbm(vec2 p) {
     return v / 0.92;
 }
 
-// one tongue of the flash: pointed at its tip, ragged at its sides
-float lobe(vec2 p, float ang, float width, float len, float seed) {
-    float c = cos(ang), s = sin(ang);
-    vec2 q = vec2(c * p.x + s * p.y, -s * p.x + c * p.y);
-    if (q.x < -0.06 || len < 1e-3) return 0.0;
+// one tongue of the flash, along direction cs: pointed at its tip, ragged
+// at its sides
+float lobe(vec2 p, vec2 cs, float width, float len, float seed) {
+    if (len < 1e-3) return 0.0;
+    vec2 q = vec2(cs.x * p.x + cs.y * p.y, -cs.y * p.x + cs.x * p.y);
     float d = q.x / len;
-    if (d > 1.15) return 0.0;
+    if (q.x < -0.06 || d > 1.15) return 0.0;
+    float taper = width * len * pow(clamp(1.0 - d, 0.0, 1.0), 0.8) * smoothstep(-0.05, 0.22, d);
+    // even at its most ragged (x 1.35) it is gone 2.7 widths off its axis:
+    // most pixels stop here, before the noise
+    if (abs(q.y) > 2.7 * (taper * 1.35 + 0.012)) return 0.0;
     float rag = 0.65 + 0.7 * fbm(vec2(q.x / len * 5.0, q.y * 9.0) + seed * 13.7);
-    float w = width * len * pow(clamp(1.0 - d, 0.0, 1.0), 0.8) * smoothstep(-0.05, 0.22, d) * rag + 0.012;
+    float w = taper * rag + 0.012;
     float across = exp(-(q.y * q.y) / (w * w));
     float along = (1.0 - smoothstep(0.75, 1.1, d)) * (1.0 - 0.55 * clamp(d, 0.0, 1.0));
     return across * along;
@@ -75,30 +88,22 @@ void main() {
     float flashSum = 0.0;  // the flash's density (all shots)
     vec3 light = vec3(0.0);
     float sparkMass = 0.0;
-    float smoke = 0.0;
+    float smoke = 0.0, smokeBody = 0.0, tornAge = 9.0, tornSeed = 0.0;
     for (int i = 0; i < 4; ++i) {
         float a = u_age[i];
         if (a < 0.0) continue;
         float sd = u_seed[i], g = u_gain[i];
         float grow = smoothstep(0.0, 0.03, a);
         float flash = g * exp(-max(a - 0.02, 0.0) / 0.055);
-        if (flash > 0.003) {
-            // forward: three tongues fanned a little, the middle one longest
+        // manga fills only past 0.75, which a flash this faint cannot reach
+        if (flash > (u_manga > 0.5 ? 0.07 : 0.003)) {
+            // forward tongues, then the side spikes
             float f = 0.0;
-            for (int t = 0; t < 3; ++t) {
-                float ft = float(t) - 1.0;
-                float ang = ft * mix(0.1, 0.24, h1(sd + 1.0 + float(t))) + (h1(sd + 5.0) - 0.5) * 0.06;
-                float lt = reach * (t == 1 ? mix(0.8, 1.0, h1(sd)) : mix(0.45, 0.75, h1(sd + 2.0 + float(t)))) * grow;
-                f += lobe(p, ang, t == 1 ? 0.13 : 0.1, lt, sd + float(t) * 1.7);
-            }
-            // sideways: short, sharp spikes
-            int n = int(u_spikes + 0.5);
-            for (int k = 0; k < 6; ++k) {
-                if (k >= n) break;
-                float side = (k % 2 == 0) ? 1.0 : -1.0;
-                float ang = side * mix(0.75, 1.45, h1(sd + 3.0 + float(k)));
-                float lk = reach * mix(0.14, 0.32, h1(sd + 9.0 + float(k))) * grow;
-                f += 0.9 * lobe(p, ang, 0.065, lk, sd + float(k) * 2.3);
+            int n = 3 + int(u_spikes + 0.5);
+            for (int l = 0; l < 9; ++l) {
+                if (l >= n) break;
+                vec4 L = u_lobe[i * 9 + l];
+                f += (l < 3 ? 1.0 : 0.9) * lobe(p, L.xy, L.w, reach * L.z * grow, sd + float(l) * 1.7);
             }
             vec2 cq = p * vec2(0.7, 1.2);
             f += 3.0 * exp(-dot(cq, cq) / 0.018);           // the white-hot core
@@ -110,36 +115,42 @@ void main() {
         }
         // sparks: a fan of streaks flying out
         if (u_sparks > 0.001 && a < 0.7) {
+            float spread = 0.4 + 0.6 * reach;
             for (int j = 0; j < 14; ++j) {
-                float fj = float(j);
-                if (h1(sd + 20.0 + fj) > u_sparks) continue;
-                float life = 0.3 + 0.35 * h1(sd + 30.0 + fj);
-                if (a > life) continue;
-                float ang = (h1(sd + 40.0 + fj) - 0.5) * 1.3;
-                vec2 dir = vec2(cos(ang), sin(ang));
-                float speed = mix(1.2, 3.6, h1(sd + 60.0 + fj)) * (0.4 + 0.6 * reach);
-                vec2 head = dir * (0.08 + speed * a) + vec2(0.0, 0.25 * a * a);  // a touch of gravity
-                vec2 tail = head - dir * (0.05 + 0.04 * speed) * (1.0 - a / life);
+                vec4 S = u_spark[i * 14 + j];
+                if (a > S.w) continue;  // burnt out, or never there
+                float speed = S.z * spread;
+                vec2 head = S.xy * (0.08 + speed * a) + vec2(0.0, 0.25 * a * a);  // a touch of gravity
+                float streak = (0.05 + 0.04 * speed) * (1.0 - a / S.w);
+                vec2 off = p - head;
+                if (dot(off, off) > (streak + 0.04) * (streak + 0.04)) continue;  // nowhere near it
+                vec2 tail = head - S.xy * streak;
                 float dd = segDist(p, tail, head);
-                sparkMass += exp(-(dd * dd) / 0.00012) * (1.0 - a / life) * g;
+                sparkMass += exp(-(dd * dd) / 0.00012) * (1.0 - a / S.w) * g;
             }
         }
         // smoke: a few puffs that swell, drift ahead and rise
         if (u_smoke > 0.001 && a < 1.6) {
-            float fade = pow(1.0 - a / 1.6, 1.5) * smoothstep(0.0, 0.08, a);
-            // a cloud along the shot's path, torn into wisps by noise
+            float body = 0.0;
             for (int k = 0; k < 4; ++k) {
-                float fk = float(k);
-                vec2 c = vec2(mix(0.08, 0.6, (fk + h1(sd + 70.0 + fk)) / 4.0) * reach + a * 0.3,
-                              (h1(sd + 80.0 + fk) - 0.5) * 0.18 - a * 0.25);
-                float rad = 0.1 + a * mix(0.3, 0.5, h1(sd + 90.0 + fk));
+                vec4 P = u_puff[i * 4 + k];
+                vec2 c = vec2(P.x * reach + a * 0.3, P.y - a * 0.25);
+                float rad = 0.1 + a * P.z;
                 vec2 dp = (p - c) / (rad * vec2(1.6, 1.0));  // drawn out along the shot
-                float body = exp(-dot(dp, dp) * 0.8);
-                float wisp = smoothstep(0.3, 0.8, fbm(p * 3.2 + sd + vec2(-a * 0.5, a * 0.6)));
-                smoke += body * wisp * fade * u_smoke * 0.75 * (0.5 + 0.5 * g);
+                body += exp(-dot(dp, dp) * 0.8);
+            }
+            smokeBody += body * pow(1.0 - a / 1.6, 1.5) * smoothstep(0.0, 0.08, a) * u_smoke * 0.75 * (0.5 + 0.5 * g);
+            if (a < tornAge) {
+                tornAge = a;
+                tornSeed = sd;
             }
         }
     }
+    // the smoke torn into wisps by one noise, the youngest shot's (its puffs
+    // the thickest): only where it can show - manga draws none under 0.12,
+    // the light under about 1/255
+    if (smokeBody > (u_manga > 0.5 ? 0.06 : 0.004))
+        smoke = smokeBody * smoothstep(0.3, 0.8, fbm(p * 3.2 + tornSeed + vec2(-tornAge * 0.5, tornAge * 0.6)));
     // an ember with the bass between shots (realistic only)
     float ember = u_pump * 0.22 * exp(-dot(p, p) / 0.01) * (1.0 - u_manga);
     light += warm * ember + hot * sparkMass * 1.6;

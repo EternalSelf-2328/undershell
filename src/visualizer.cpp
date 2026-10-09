@@ -96,6 +96,8 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
     m_shotSeed[0] = 7;
     m_shotGain[0] = 1;
   }
+  for (size_t i = 0; i < m_shotAge.size(); ++i)  // the spark count may have changed
+    if (m_shotAge[i] >= 0) shapeShot(i);
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -219,7 +221,7 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw, const AudioF
   // the muzzle flash: every kick is a shot, as hard as the kick
   if (m_styleIndex == 15 && !m_mPreview) {
     for (double& a : m_shotAge)
-      if (a >= 0) a = a + dt > 2.0 ? -1 : a + dt;
+      if (a >= 0) a = a + dt > 1.6 ? -1 : a + dt;  // the smoke is gone at 1.6 s
     // the shot starts as old as the kick already is (a frame at most)
     if (m_trace.kick)
       shoot(std::clamp(0.45 + 0.55 * m_hit / std::max(0.05, m_haloHits), 0.45, 1.0), audio.onsets ? std::min(audio.kickAge, 0.05) : 0.0);
@@ -239,6 +241,52 @@ void Visualizer::shoot(double gain, double age) {
   m_shotGain[slot] = gain;
   m_shotCounter = std::fmod(m_shotCounter + 1, 997.0);
   m_shotSeed[slot] = m_shotCounter * 1.618 + 0.37;  // every shot its own shape
+  shapeShot(slot);
+}
+
+// a number in 0..1 from a shot's seed and a salt (lowbias32)
+static float shotRandom(double seed, uint32_t salt) {
+  uint32_t x = static_cast<uint32_t>(std::llround(seed * 1000.0)) ^ (salt * 0x9E3779B9U);
+  x ^= x >> 16;
+  x *= 0x7FEB352DU;
+  x ^= x >> 15;
+  x *= 0x846CA68BU;
+  x ^= x >> 16;
+  return static_cast<float>(x >> 8) / 16777216.0F;
+}
+
+void Visualizer::shapeShot(size_t slot) {
+  const double sd = m_shotSeed[slot];
+  auto R = [sd](uint32_t salt) { return shotRandom(sd, salt); };
+  auto mix = [](float a, float b, float t) { return a + (b - a) * t; };
+  auto put = [](auto& arr, size_t at, float x, float y, float z, float w) {
+    arr[at * 4] = x;
+    arr[at * 4 + 1] = y;
+    arr[at * 4 + 2] = z;
+    arr[at * 4 + 3] = w;
+  };
+  // forward: three tongues fanned a little, the middle one longest
+  const float tilt = (R(5) - 0.5F) * 0.06F;
+  for (int t = 0; t < 3; ++t) {
+    const float ang = static_cast<float>(t - 1) * mix(0.1F, 0.24F, R(1 + t)) + tilt;
+    const float len = t == 1 ? mix(0.8F, 1.0F, R(0)) : mix(0.45F, 0.75F, R(10 + t));
+    put(m_lobes, slot * 9 + t, std::cos(ang), std::sin(ang), len, t == 1 ? 0.13F : 0.1F);
+  }
+  // sideways: short, sharp spikes, alternating sides
+  for (int k = 0; k < 6; ++k) {
+    const float ang = (k % 2 == 0 ? 1.0F : -1.0F) * mix(0.75F, 1.45F, R(20 + k));
+    put(m_lobes, slot * 9 + 3 + k, std::cos(ang), std::sin(ang), mix(0.14F, 0.32F, R(30 + k)), 0.065F);
+  }
+  // sparks: a fan of streaks (a share of them, by muzzle_sparks)
+  for (int j = 0; j < 14; ++j) {
+    const float ang = (R(40 + j) - 0.5F) * 1.3F;
+    const bool on = R(60 + j) <= m_mSparks;
+    put(m_sparks, slot * 14 + j, std::cos(ang), std::sin(ang), mix(1.2F, 3.6F, R(80 + j)), on ? 0.3F + 0.35F * R(100 + j) : -1.0F);
+  }
+  // smoke: puffs spread along the shot's path
+  for (int k = 0; k < 4; ++k)
+    put(m_puffs, slot * 4 + k, mix(0.08F, 0.6F, (static_cast<float>(k) + R(120 + k)) / 4.0F), (R(130 + k) - 0.5F) * 0.18F,
+        mix(0.3F, 0.5F, R(140 + k)), 0.0F);
 }
 
 void Visualizer::drawMuzzle(const DrawContext& ctx) {
@@ -255,6 +303,9 @@ void Visualizer::drawMuzzle(const DrawContext& ctx) {
   glUniform1fv(U("u_age"), 4, age);
   glUniform1fv(U("u_seed"), 4, seed);
   glUniform1fv(U("u_gain"), 4, gain);
+  glUniform4fv(U("u_lobe"), 4 * 9, m_lobes.data());
+  glUniform4fv(U("u_spark"), 4 * 14, m_sparks.data());
+  glUniform4fv(U("u_puff"), 4 * 4, m_puffs.data());
   glUniform1f(U("u_pump"), static_cast<float>(m_pump * m_haloPulse));
   glUniform1f(U("u_manga"), m_mManga ? 1.0F : 0.0F);
   glUniform1f(U("u_theme"), m_mTheme ? 1.0F : 0.0F);
