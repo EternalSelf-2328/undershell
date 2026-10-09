@@ -106,7 +106,6 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
       }
     }
     if (st.depthPluginEnabled && !wall.empty() && mask.empty()) m_missing = true;
-    auto& m = m_masks[out];
     // wallpaper_depth may (re)write the map while the wallpaper changes: key it
     // by time and size too, so the finished file is read again
     std::string key;
@@ -115,6 +114,26 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
       const auto t = fs::last_write_time(npy, ec).time_since_epoch().count();
       key = std::format("{}@{}:{}", npy, t, fs::file_size(npy, ec));
     }
+    auto& slot = m_masks[out];
+    const auto same = [&](const DepthMask& d) { return d.wallpaper == wall && d.maskPath == mask && d.fieldKey == key; };
+    if (!slot || !same(*slot)) {
+      // another output with this very depth (the same wallpaper on both
+      // monitors): share it rather than decode and refine it twice
+      std::shared_ptr<DepthMask> twin;
+      if (!wall.empty())
+        for (auto& [o, d] : m_masks)
+          if (o != out && d && same(*d)) twin = d;
+      if (twin) {
+        if (slot && slot.use_count() == 1) m_retired.push_back(slot);
+        slot = twin;
+        changed = true;
+        continue;
+      }
+      // its own from here (it was shared, the other output keeps that one);
+      // one of its own is updated in place below
+      if (!slot || slot.use_count() > 1) slot = std::make_shared<DepthMask>();
+    }
+    auto& m = *slot;
     if (m.fieldKey != key) {
       // a new depth map: refine it against the image off the main thread
       m.fieldNpy = npy;
@@ -147,25 +166,26 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
           }
           return [this, out, npy, key, ok, iw, ih, sha, hasEdits, refined = std::move(refined), guide = std::move(guide),
                   edits = std::move(edits), half = std::move(half), colour = std::move(colour)]() mutable {
-            auto it = m_masks.find(out);
-            if (it == m_masks.end() || it->second.fieldKey != key) return;  // superseded
+            auto found = m_masks.find(out);
+            if (found == m_masks.end() || !found->second || found->second->fieldKey != key) return;  // superseded
+            DepthMask* it = found->second.get();
             if (!ok) {  // e.g. still being written: its close brings it back (inotify)
               US_WARN("could not refine the depth map {}", fs::path(npy).filename().string());
               return;
             }
             const int fw = refined.w, fh = refined.h;
-            it->second.fieldPixels = std::move(half);
-            it->second.fieldW = fw;
-            it->second.fieldH = fh;
-            it->second.imageW = iw;
-            it->second.imageH = ih;
-            it->second.sha = sha;
-            it->second.base = std::move(refined);
-            it->second.guide = std::move(guide);
-            it->second.edits = std::move(edits);
-            it->second.hasEdits = hasEdits;
-            it->second.colour = std::move(colour);
-            it->second.wallStale = it->second.wallTexture != 0;
+            it->fieldPixels = std::move(half);
+            it->fieldW = fw;
+            it->fieldH = fh;
+            it->imageW = iw;
+            it->imageH = ih;
+            it->sha = sha;
+            it->base = std::move(refined);
+            it->guide = std::move(guide);
+            it->edits = std::move(edits);
+            it->hasEdits = hasEdits;
+            it->colour = std::move(colour);
+            it->wallStale = it->wallTexture != 0;
             US_INFO("depth field for {}: {}x{}", out, fw, fh);
             if (m_fieldReady) m_fieldReady();
           };
@@ -195,10 +215,21 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
   return changed;
 }
 
+void DepthMasks::freeRetired() {
+  for (auto& r : m_retired) {
+    if (r.use_count() > 1) continue;  // taken back by an output
+    if (r->texture) glDeleteTextures(1, &r->texture);
+    if (r->field) glDeleteTextures(1, &r->field);
+    if (r->wallTexture) glDeleteTextures(1, &r->wallTexture);
+  }
+  m_retired.clear();
+}
+
 const DepthMask* DepthMasks::get(const std::string& output) {
+  if (!m_retired.empty()) freeRetired();
   auto it = m_masks.find(output);
-  if (it == m_masks.end()) return nullptr;
-  auto& m = it->second;
+  if (it == m_masks.end() || !it->second) return nullptr;
+  auto& m = *it->second;
   if (m.fieldStale) {
     if (m.field) glDeleteTextures(1, &m.field);
     m.field = 0;
@@ -235,8 +266,8 @@ const DepthMask* DepthMasks::get(const std::string& output) {
 
 DepthMask* DepthMasks::paintable(const std::string& output) {
   auto it = m_masks.find(output);
-  if (it == m_masks.end() || !it->second.field || it->second.base.v.empty()) return nullptr;
-  return &it->second;
+  if (it == m_masks.end() || !it->second || !it->second->field || it->second->base.v.empty()) return nullptr;
+  return it->second.get();
 }
 
 GLuint DepthMasks::wallpaperTexture(DepthMask& m) {
@@ -310,11 +341,13 @@ bool DepthMasks::saveEdits(DepthMask& m) {
 }
 
 void DepthMasks::releaseGl() {
+  freeRetired();
   for (auto& [k, m] : m_masks) {
-    if (m.texture) glDeleteTextures(1, &m.texture);
-    if (m.field) glDeleteTextures(1, &m.field);
-    if (m.wallTexture) glDeleteTextures(1, &m.wallTexture);
-    m.texture = m.field = m.wallTexture = 0;
+    if (!m) continue;
+    if (m->texture) glDeleteTextures(1, &m->texture);  // a shared one is zeroed on its first visit
+    if (m->field) glDeleteTextures(1, &m->field);
+    if (m->wallTexture) glDeleteTextures(1, &m->wallTexture);
+    m->texture = m->field = m->wallTexture = 0;
   }
 }
 

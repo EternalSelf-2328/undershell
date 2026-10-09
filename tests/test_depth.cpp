@@ -184,14 +184,17 @@ int main() {
     const std::filesystem::path cache = std::filesystem::path(DepthMasks::maskDir()).parent_path();
     std::filesystem::create_directories(cache / "masks");
     std::filesystem::create_directories(cache / "depth");
+    auto paintWall = [](const std::string& path, double r) {
+      cairo_surface_t* img = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 64, 36);
+      cairo_t* cr = cairo_create(img);
+      cairo_set_source_rgb(cr, r, 0.4, 0.6);
+      cairo_paint(cr);
+      cairo_destroy(cr);
+      cairo_surface_write_to_png(img, path.c_str());
+      cairo_surface_destroy(img);
+    };
     const std::string wall = dir + "/wall.png";
-    cairo_surface_t* img = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 64, 36);
-    cairo_t* cr = cairo_create(img);
-    cairo_set_source_rgb(cr, 0.2, 0.4, 0.6);
-    cairo_paint(cr);
-    cairo_destroy(cr);
-    cairo_surface_write_to_png(img, wall.c_str());
-    cairo_surface_destroy(img);
+    paintWall(wall, 0.2);
 
     Jobs jobs(1);
     DepthMasks masks;
@@ -207,7 +210,7 @@ int main() {
       }
       jobs.dispatch();
     };
-    auto writeMap = [&](int w, int h) {
+    auto writeMap = [&](int w, int h, const std::string& forWall) {
       std::string hd = std::format("{{'descr': '<f4', 'fortran_order': False, 'shape': ({}, {}), }}", h, w);
       while ((10 + hd.size() + 1) % 64) hd += ' ';
       hd += '\n';
@@ -217,23 +220,40 @@ int main() {
       data += hd;
       std::vector<float> v(static_cast<size_t>(w) * h, 0.5F);
       data.append(reinterpret_cast<const char*>(v.data()), v.size() * sizeof(float));
-      writeFileAtomic((cache / "depth" / (masks.sha256Of(wall) + "-m-d2-i518.npy")).string(), data);
+      writeFileAtomic((cache / "depth" / (masks.sha256Of(forWall) + "-m-d2-i518.npy")).string(), data);
     };
     masks.update(st, {"T-1"});  // no map yet
     settle(1, 300);
     CHECK(ready == 0);
-    writeMap(16, 9);  // the plugin finishes it
+    writeMap(16, 9, wall);  // the plugin finishes it
     masks.update(st, {"T-1"});
     settle(1, 5000);
     CHECK(ready == 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    writeMap(32, 18);  // rewritten under the same name
+    writeMap(32, 18, wall);  // rewritten under the same name
     masks.update(st, {"T-1"});
     settle(2, 5000);
     CHECK(ready == 2);
     masks.update(st, {"T-1"});  // nothing new: no work
     settle(3, 300);
     CHECK(ready == 2);
+
+    // a second monitor with the same wallpaper shares the field: no second
+    // refine, one copy; it gets its own when its wallpaper changes
+    st.wallpaperByOutput["T-2"] = wall;
+    masks.update(st, {"T-1", "T-2"});
+    settle(3, 300);
+    CHECK(ready == 2);
+    const std::string wall2 = dir + "/wall2.png";
+    paintWall(wall2, 0.8);
+    writeMap(16, 9, wall2);
+    st.wallpaperByOutput["T-2"] = wall2;
+    masks.update(st, {"T-1", "T-2"});
+    settle(3, 5000);
+    CHECK(ready == 3);
+    masks.update(st, {"T-1", "T-2"});  // T-1 kept its own: nothing to redo
+    settle(4, 300);
+    CHECK(ready == 3);
   }
 
   std::filesystem::remove_all(dir);

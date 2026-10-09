@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -80,7 +81,11 @@ private:
   static std::string findMask(const std::string& sha, double threshold, double feather);
   static bool loadPng(const std::string& path, DepthMask& out);
 
-  std::map<std::string, DepthMask> m_masks;
+  // per output; outputs showing the same wallpaper share one (one refine,
+  // one set of CPU copies and textures)
+  std::map<std::string, std::shared_ptr<DepthMask>> m_masks;
+  std::vector<std::shared_ptr<DepthMask>> m_retired;  // left by every output: textures to free with GL current
+  void freeRetired();
   struct HashEntry {
     std::int64_t mtime = 0, size = 0;
     std::string sha;
