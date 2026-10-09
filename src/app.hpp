@@ -88,6 +88,7 @@ struct Widget {
   bool surfaceFullscreen = false;  // how the current surface was created
   int idleState = 0;               // 0 normal, 1 hidden, 2 demo (nothing playing)
   double lastTick = 0, lastRender = 0;
+  double wakeAt = 0;  // when it must redraw though nothing moves (a clock's next minute), fixed at its last tick
   bool hovered = false;
   // the surface position pointer events are currently relative to: updated
   // only once the compositor has processed our margin change (wl_display.sync)

@@ -824,6 +824,7 @@ void App::render(Widget& w) {
   const double now = nowSeconds();
   const double dt = w.lastTick > 0 ? std::min(0.1, now - w.lastTick) : 1.0 / 60;
   w.lastTick = now;
+  w.wakeAt = w.impl->nextWakeup(now);
 
   TickContext tctx;
   tctx.now = now;
@@ -1468,7 +1469,7 @@ int App::computeTimeout() {
   for (auto& w : m_widgets) {
     if (!w->configured || !w->impl) continue;
     if (!w->needsRender) {
-      next = std::min(next, w->impl->nextWakeup(now));
+      next = std::min(next, w->wakeAt);
       continue;
     }
     if (w->frameCb) continue;
@@ -1622,7 +1623,9 @@ int App::run() {
         destroySurface(*w);
         createSurface(*w);
       }
-      if (w->impl && !w->needsRender && now >= w->impl->nextWakeup(now)) w->needsRender = true;
+      // nextWakeup(now) is always ahead of `now` (a clock's next minute, from
+      // now): compare with the time fixed at the last tick, or it never comes
+      if (w->impl && !w->needsRender && now >= w->wakeAt) w->needsRender = true;
       if (!w->needsRender) continue;
       if (now + 0.0005 < w->lastRender + 1.0 / std::max(1, w->impl->fps())) continue;
       render(*w);
