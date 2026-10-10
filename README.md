@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 22 looks
+## Visualizer: 23 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples` and `neon` (see below).
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon` and `fireworks` (see below).
 
 ## Clock: 12 faces
 
@@ -479,6 +479,15 @@ and then a letter or a piece of the shape fails and stutters back, and an
 unlit tube still shows as dark glass. Colour (any palette role or hex), Size
 and Beat flash set the rest. Pin it to a wall or a shop front in the
 wallpaper.
+
+## Fireworks
+
+The `fireworks` look bursts one on every kick -- at the kick, the shell's
+trail shown as already risen, so it lands on the beat -- and hard kicks
+burst two. Kind: `peony` (a sphere of sparks), `willow` (gold, long trails
+that droop), `ring`, or `mix`. The sparks slow, fall, trail and crackle out.
+Drawn as `flash` (light, classic colours or the theme's) or `manga` (inked
+sparks); Amount (which kicks), Size and Beat burst set the rest.
 
 ## Clock structures
 

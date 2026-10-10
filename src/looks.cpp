@@ -7,6 +7,7 @@ std::unique_ptr<StrokeLook> makeSpeedLines();
 std::unique_ptr<StrokeLook> makeRain();
 std::unique_ptr<StrokeLook> makeRipples();
 std::unique_ptr<StrokeLook> makeNeon();
+std::unique_ptr<StrokeLook> makeFireworks();
 
 namespace {
 struct Entry {
@@ -18,6 +19,7 @@ const Entry kLooks[] = {
     {"rain", makeRain},
     {"ripples", makeRipples},
     {"neon", makeNeon},
+    {"fireworks", makeFireworks},
 };
 }  // namespace
 

@@ -381,6 +381,35 @@ int main(int argc, char** argv) {
     }
   }
 
+  // fireworks: a peony a quarter of a second after it burst is a ring of
+  // sparks round its centre, inside the box, and matches its golden
+  {
+    toml::table o;
+    o.insert_or_assign("fw_preview", 0.25);
+    const Image img = renderLook("fireworks", 400, 260, pal, &o);
+    int x0 = 400, x1 = -1, y0 = 260, y1 = -1;
+    size_t n = 0;
+    for (int y = 0; y < 260; ++y)
+      for (int x = 0; x < 400; ++x)
+        if (img.rgba[(static_cast<size_t>(y) * 400 + x) * 4 + 3] > 50) {
+          ++n;
+          x0 = std::min(x0, x), x1 = std::max(x1, x), y0 = std::min(y0, y), y1 = std::max(y1, y);
+        }
+    CHECK(n > 400);
+    CHECK(std::abs((x0 + x1) / 2 - 200) < 25);  // round where it burst
+    CHECK(x1 - x0 > 60 && x1 - x0 < 390);
+    const std::string path = golden + "/fireworks.png";
+    if (update) {
+      writePng(img, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(img, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "fireworks differs from golden: %.3f\n", d);
+      GOLDEN(d);
+    }
+  }
+
   // the line floats in its box: its glow fades below it too, with no cut
   // where a bar look's root would be
   {

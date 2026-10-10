@@ -96,6 +96,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
   if (key == "muzzle_colors") return o["muzzle_style"].value_or(std::string("flash")) != "manga";  // ink is black and white
   if (key == "electric_colors" || key == "electric_glow") return o["electric_style"].value_or(std::string("flash")) != "manga";
+  if (key == "fw_colors") return o["fw_style"].value_or(std::string("flash")) != "manga";
   if (key == "neon_font") return o["neon_shape"].value_or(std::string("text")) == "text";
   if (key == "ripple_colors") return o["ripple_style"].value_or(std::string("flash")) != "manga";
   if (key == "rain_lightning") return o["rain_kind"].value_or(std::string("rain")) == "rain";
@@ -116,7 +117,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   };
   if (w.cfg.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
-    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon"});  // the newer looks draw their own way
+    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -225,6 +226,17 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "halo_pulse", "Ember (groove)", "Brasa (ritmo)", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, m.begin(), m.end());
+  }
+  if (look == "fireworks") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "fw_kind", "Kind", "Tipo", {"mix", "peony", "willow", "ring"}, 0, 0, 0, 0, "mix"},
+        {K::Enum, "fw_style", "Drawn as", "Dibujo", {"flash", "manga"}, 0, 0, 0, 0, "flash"},
+        {K::Enum, "fw_colors", "Colours", "Colores", {"classic", "theme"}, 0, 0, 0, 0, "classic"},
+        {K::Number, "fw_amount", "Amount", "Cantidad", {}, 0, 1, 0.05, 0.7},
+        {K::Number, "fw_size", "Size", "Tamaño", {}, 0.3, 1.6, 0.05, 1},
+        {K::Number, "halo_hits", "Beat burst", "Fuerza del golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
   }
   if (look == "neon") {
     std::vector<PropSpec> f = {
