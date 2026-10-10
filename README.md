@@ -29,7 +29,11 @@ runs on Umbriel/niri/Hyprland. Its first widgets are ports of
   the widgets use their own colors and no depth. **PipeWire** for live audio
   in the visualizers.
 - **Libraries:** wayland, EGL / GLES 3, libpipewire-0.3, toml++, glib, cairo,
-  pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl.
+  pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl,
+  and FFmpeg's libavformat, libavcodec, libswscale and libavutil for the TV
+  look's videos (optional: built without them, `-Dvideo=disabled`, GIFs still
+  play). On Fedora, `ffmpeg-free` plays GIF, VP9 and AV1; H.264 needs the
+  `ffmpeg` from RPM Fusion.
 - **To build:** a C++20 compiler, meson, ninja, wayland-protocols,
   nlohmann-json, git.
 
@@ -38,7 +42,7 @@ On Arch and derivatives, all of it:
 ```sh
 sudo pacman -S --needed base-devel git meson ninja wayland wayland-protocols libglvnd \
   libpipewire tomlplusplus glib2 cairo pango fontconfig libxkbcommon systemd-libs \
-  gdk-pixbuf2 curl nlohmann-json
+  gdk-pixbuf2 curl nlohmann-json ffmpeg
 ```
 
 On Debian 13 and Ubuntu 24.04 or newer, the package script below installs

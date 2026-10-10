@@ -35,6 +35,11 @@ BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  pkgconfig(gdk-pixbuf-2.0)
 BuildRequires:  pkgconfig(libcurl)
 BuildRequires:  pkgconfig(nlohmann_json)
+# the TV look's videos (Fedora's ffmpeg-free: GIF, VP9, AV1; H.264 needs RPM Fusion's)
+BuildRequires:  pkgconfig(libavformat)
+BuildRequires:  pkgconfig(libavcodec)
+BuildRequires:  pkgconfig(libswscale)
+BuildRequires:  pkgconfig(libavutil)
 
 %{?systemd_requires}
 
@@ -48,7 +53,7 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %autosetup
 
 %build
-%meson -Ddev_paths=false
+%meson -Ddev_paths=false -Dvideo=enabled
 %meson_build
 
 %install

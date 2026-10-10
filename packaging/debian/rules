@@ -4,7 +4,7 @@
 	dh $@ --buildsystem=meson
 
 override_dh_auto_configure:
-	dh_auto_configure -- -Ddev_paths=false
+	dh_auto_configure -- -Ddev_paths=false -Dvideo=enabled
 
 # the user service is installed, not enabled for every user
 override_dh_installsystemduser:

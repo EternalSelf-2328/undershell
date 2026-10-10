@@ -20,7 +20,11 @@ Build-Depends: debhelper-compat (= 13),
                libsystemd-dev,
                libgdk-pixbuf-2.0-dev,
                libcurl4-openssl-dev | libcurl-dev,
-               nlohmann-json3-dev
+               nlohmann-json3-dev,
+               libavformat-dev,
+               libavcodec-dev,
+               libswscale-dev,
+               libavutil-dev
 Standards-Version: 4.7.0
 Homepage: https://github.com/EternalSelf-2328/undershell
 Rules-Requires-Root: no
