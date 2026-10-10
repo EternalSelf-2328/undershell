@@ -1,22 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Electricity: lightning paths built on the CPU (midpoint displacement, with
-// forks) and drawn as narrow strips around each segment -- a white-hot core in
-// a glow, or a manga stroke with a black ink outline. The GPU only shades the
-// pixels near a bolt, so a big box costs no more than a small one.
+// forks), drawn as strokes (strokes.hpp): a white-hot core in a glow, or a
+// manga stroke with a black ink outline.
 #pragma once
 
-#include "gl.hpp"
+#include "strokes.hpp"
 
 #include <cstdint>
 #include <vector>
 
 namespace undershell {
-
-struct BoltSeg {
-  float x0, y0, x1, y1;
-  float width;      // the core, logical px
-  float intensity;  // 0..1+: how bright (or, in manga, how thick) it is
-};
 
 // A small deterministic random source (one per bolt, from its seed).
 class BoltRandom {
@@ -42,27 +35,6 @@ struct BoltShape {
 };
 
 // A bolt from (ax, ay) to (bx, by), its forks appended after it.
-void lightning(std::vector<BoltSeg>& out, float ax, float ay, float bx, float by, const BoltShape& shape, uint32_t seed);
-
-class BoltRenderer {
-public:
-  struct Look {
-    bool manga = false;
-    float glow = 14;      // the glow's reach, logical px
-    float ink = 2.2F;     // manga: the outline around the white
-    float core[3] = {1, 1, 1};
-    float halo[3] = {0.45F, 0.62F, 1.0F};
-    float opacity = 1;
-  };
-  // Draws `segs` on the current framebuffer of `w` x `h` logical px.
-  void draw(const std::vector<BoltSeg>& segs, float w, float h, const Look& look);
-  void release() { m_prog.destroy(); }
-
-private:
-  void pass(const std::vector<BoltSeg>& segs, float w, float h, float reach, int mode, const Look& look);
-  Program m_prog;
-  std::vector<float> m_verts;
-  std::vector<BoltSeg> m_coarse;
-};
+void lightning(std::vector<Stroke>& out, float ax, float ay, float bx, float by, const BoltShape& shape, uint32_t seed);
 
 }  // namespace undershell

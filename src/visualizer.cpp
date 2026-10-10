@@ -459,8 +459,8 @@ void Visualizer::drawElectric(const DrawContext& ctx) {
     m_boltSegs.push_back({w - mx, h / 2, w - mx, h / 2, core * 2.4F, endI});
   }
 
-  BoltRenderer::Look look;
-  look.manga = m_eManga;
+  StrokeRenderer::Look look;
+  look.mode = m_eManga ? StrokeRenderer::Mode::Ink : StrokeRenderer::Mode::Light;
   look.glow = glow;
   look.ink = 1.6F * ui;
   look.opacity = opacityNow();

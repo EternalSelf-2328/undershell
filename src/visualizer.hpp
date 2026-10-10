@@ -100,8 +100,8 @@ private:
   // plasma globe; its paths are built each frame from seeds that change
   // faster the louder it is
   SfxLayer m_sfx;  // onomatopoeia: a sound effect lettered on the kicks
-  BoltRenderer m_bolts;
-  std::vector<BoltSeg> m_boltSegs;
+  StrokeRenderer m_bolts;
+  std::vector<Stroke> m_boltSegs;
   std::string m_eForm = "arc";  // arc bolts plasma
   bool m_eManga = false, m_eTheme = false, m_eLive = false;
   double m_eAmount = 0.5, m_eBranches = 0.5, m_eGlow = 0.6, m_eWidth = 1.0;
