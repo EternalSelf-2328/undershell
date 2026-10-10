@@ -6,6 +6,7 @@ namespace undershell {
 std::unique_ptr<StrokeLook> makeSpeedLines();
 std::unique_ptr<StrokeLook> makeRain();
 std::unique_ptr<StrokeLook> makeRipples();
+std::unique_ptr<StrokeLook> makeNeon();
 
 namespace {
 struct Entry {
@@ -16,6 +17,7 @@ const Entry kLooks[] = {
     {"speedlines", makeSpeedLines},
     {"rain", makeRain},
     {"ripples", makeRipples},
+    {"neon", makeNeon},
 };
 }  // namespace
 

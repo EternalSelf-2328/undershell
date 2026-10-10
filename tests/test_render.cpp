@@ -346,6 +346,41 @@ int main(int argc, char** argv) {
     }
   }
 
+  // the neon sign: its words lit in its colour round the box's middle, a shape
+  // drawn in tubes; the text matches its golden (its face is bundled)
+  {
+    auto sign = [&](const char* shape, int w, int h) {
+      toml::table o;
+      o.insert_or_assign("neon_preview", 0.1);
+      o.insert_or_assign("neon_shape", shape);
+      o.insert_or_assign("neon_flicker", 0.0);
+      return renderLook("neon", w, h, pal, &o);
+    };
+    const Image words = sign("text", 400, 180);
+    // pink: red well over green, and lit across the middle
+    double red = 0, green = 0, lit = 0;
+    for (size_t i = 0; i < words.rgba.size(); i += 4)
+      if (words.rgba[i + 3] > 40) red += words.rgba[i], green += words.rgba[i + 1], ++lit;
+    CHECK(lit > 400 * 180 * 0.05 && red > green * 1.5);
+    for (const char* shape : {"heart", "star", "circle", "bolt", "note", "arrow"}) {
+      const Image img = sign(shape, 200, 200);
+      size_t n = 0;
+      for (size_t i = 3; i < img.rgba.size(); i += 4) n += img.rgba[i] > 40;
+      if (n < 200 * 200 / 50) std::fprintf(stderr, "neon %s draws almost nothing\n", shape);
+      CHECK(n > 200 * 200 / 50);
+    }
+    const std::string path = golden + "/neon.png";
+    if (update) {
+      writePng(words, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(words, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "neon differs from golden: %.3f\n", d);
+      GOLDEN(d);
+    }
+  }
+
   // the line floats in its box: its glow fades below it too, with no cut
   // where a bar look's root would be
   {

@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 21 looks
+## Visualizer: 22 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain` and `ripples` (see below).
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples` and `neon` (see below).
 
 ## Clock: 12 faces
 
@@ -468,6 +468,17 @@ with the music. The rings are flattened as water seen at an angle
 (light on water, or the theme's colours) or `manga` (inked rings that thin
 as they fade); Rings, Size, Drops between and Beat drop set the rest. Put it
 on a lake or a puddle in the wallpaper, with tilt or corners for the angle.
+
+## Neon sign
+
+The `neon` look is a sign in glass tubes: your words (`neon_text = "OPEN"` in
+the config; `LIVE` until you set it, in any font with Font) or a Shape:
+`heart`, `star`, `circle`, `bolt`, `note` or `arrow`. It hums a little
+brighter with the music and flares on every kick; with Failing tubes up, now
+and then a letter or a piece of the shape fails and stutters back, and an
+unlit tube still shows as dark glass. Colour (any palette role or hex), Size
+and Beat flash set the rest. Pin it to a wall or a shop front in the
+wallpaper.
 
 ## Clock structures
 

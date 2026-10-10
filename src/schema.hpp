@@ -29,7 +29,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   static const std::vector<PropSpec> visualizer = {
       {K::Enum, "style", "Look", "Estilo",
        {"bars", "split", "dots", "segments", "wave", "ribbon", "curtain", "line", "frame", "radial", "orb", "spiral", "halo",
-        "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples"}, 0, 0, 0,
+        "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon"}, 0, 0, 0,
        0, "bars"},
       {K::Enum, "color_mode", "Colour", "Color", {"theme", "gradient", "custom"}, 0, 0, 0, 0, "theme"},
       {K::Color, "color", "Colour 1", "Color 1", {}, 0, 0, 0, 0, "primary"},
