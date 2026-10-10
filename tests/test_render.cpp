@@ -292,6 +292,36 @@ int main(int argc, char** argv) {
     }
   }
 
+  // rain, snow and petals fill the box (three seconds of it, then frozen);
+  // the rain matches its golden
+  {
+    for (const char* kind : {"rain", "snow", "petals"}) {
+      toml::table o;
+      o.insert_or_assign("rain_preview", 0.1);
+      o.insert_or_assign("rain_kind", kind);
+      o.insert_or_assign("rain_amount", 0.8);
+      const Image img = renderLook("rain", 320, 240, pal, &o);
+      // drops in the top half and in the bottom half: falling through, not piled up
+      size_t top = 0, bottom = 0;
+      for (int y = 0; y < 240; ++y)
+        for (int x = 0; x < 320; ++x)
+          if (img.rgba[(static_cast<size_t>(y) * 320 + x) * 4 + 3] > 20) (y < 120 ? top : bottom)++;
+      if (bottom < 30 || top < 30) std::fprintf(stderr, "%s: %zu lit above, %zu below\n", kind, top, bottom);
+      CHECK(top > 30 && bottom > 30);
+      if (std::string(kind) != "rain") continue;
+      const std::string path = golden + "/rain.png";
+      if (update) {
+        writePng(img, path, false);
+      } else {
+        Image ref;
+        CHECK(readPng(path, ref));
+        const double d = imageDiff(img, ref);
+        if (d < 0 || d > 1.5) std::fprintf(stderr, "rain differs from golden: %.3f\n", d);
+        GOLDEN(d);
+      }
+    }
+  }
+
   // the line floats in its box: its glow fades below it too, with no cut
   // where a bar look's root would be
   {

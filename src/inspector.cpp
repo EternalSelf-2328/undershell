@@ -96,6 +96,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
   if (key == "muzzle_colors") return o["muzzle_style"].value_or(std::string("flash")) != "manga";  // ink is black and white
   if (key == "electric_colors" || key == "electric_glow") return o["electric_style"].value_or(std::string("flash")) != "manga";
+  if (key == "rain_lightning") return o["rain_kind"].value_or(std::string("rain")) == "rain";
   if (key == "lines_clear") return o["lines_form"].value_or(std::string("focus")) == "focus";
   if (key == "sfx_colors") return o["sfx_style"].value_or(std::string("comic")) != "manga";  // manga letters in black and white
   if (key.starts_with("mesh_")) {
@@ -113,7 +114,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   };
   if (w.cfg.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
-    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines"});  // the newer looks draw their own way
+    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -222,6 +223,18 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "halo_pulse", "Ember (groove)", "Brasa (ritmo)", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, m.begin(), m.end());
+  }
+  if (look == "rain") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "rain_kind", "Falling", "Cae", {"rain", "snow", "petals"}, 0, 0, 0, 0, "rain"},
+        {K::Enum, "rain_colors", "Colours", "Colores", {"classic", "theme"}, 0, 0, 0, 0, "classic"},
+        {K::Number, "rain_amount", "Amount", "Cantidad", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "rain_wind", "Wind", "Viento", {}, -1, 1, 0.05, 0.2},
+        {K::Number, "rain_speed", "Speed", "Velocidad", {}, 0.3, 2, 0.05, 1},
+        {K::Bool, "rain_lightning", "Far lightning", "Relámpagos lejanos", {}, 0, 1, 1, 0},
+        {K::Number, "halo_hits", "Beat gust", "Ráfaga al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
   }
   if (look == "speedlines") {
     std::vector<PropSpec> f = {

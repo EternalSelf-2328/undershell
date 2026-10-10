@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 19 looks
+## Visualizer: 20 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx` and `speedlines` (see below).
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines` and `rain` (see below).
 
 ## Clock: 12 faces
 
@@ -448,6 +448,16 @@ box's edges toward a clear centre, drawn anew a dozen times a second
 streaks racing across the box. Colour `black` (ink), `white` or `theme`;
 Amount, Clear centre, Thickness and Beat rush set the rest. Lay it over an
 action wallpaper, or put the clear centre on a face.
+
+## Rain
+
+The `rain` look lets something fall through the box (Falling, `rain_kind`):
+`rain` (streaks that splash at the foot of the box), `snow` (drifting
+flakes) or `petals` (sakura, tumbling as they fall). There is more of it the
+louder the music, and every kick sends a gust; with Far lightning on, the
+hardest kicks strike a faint bolt in the distance. Amount, Wind (its slant
+and drift, either way), Speed and Colours (`classic` or `theme`) set the
+rest. Turn depth on and it falls behind the wallpaper's subject.
 
 ## Clock structures
 

@@ -4,6 +4,7 @@
 namespace undershell {
 
 std::unique_ptr<StrokeLook> makeSpeedLines();
+std::unique_ptr<StrokeLook> makeRain();
 
 namespace {
 struct Entry {
@@ -12,6 +13,7 @@ struct Entry {
 };
 const Entry kLooks[] = {
     {"speedlines", makeSpeedLines},
+    {"rain", makeRain},
 };
 }  // namespace
 
