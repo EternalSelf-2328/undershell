@@ -303,4 +303,17 @@ void Canvas::text(const std::string& text, const TextStyle& style, float x, floa
   m_text->drawEx(img, m_ox + x * m_scale, m_oy + y * m_scale, color, m_w, m_h, 1, sy, blur * m_scale, opacity);
 }
 
+void Canvas::textAt(const std::string& text, const TextStyle& style, float cx, float cy, Color color, float opacity, float scale,
+                    float angle) {
+  if (!m_text || text.empty()) return;
+  TextStyle st = style;
+  st.size = style.size * m_scale;
+  st.letterSpacing = style.letterSpacing * m_scale;
+  st.stroke = style.stroke * m_scale;
+  st.maxWidth = style.maxWidth * m_scale;
+  const TextImage& img = m_text->get(text, st, m_pixelScale);
+  const float x = m_ox + cx * m_scale - img.w / 2, y = m_oy + cy * m_scale - img.h / 2;
+  m_text->drawEx(img, x, y, color, m_w, m_h, scale, scale, 0, opacity, angle);
+}
+
 }  // namespace undershell

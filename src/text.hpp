@@ -67,10 +67,11 @@ public:
 
   // Draws at (x, y) = top-left of the logical box, in surface logical px.
   void draw(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float opacity = 1);
-  // Full control: scale the quad about the box centre (sx, sy) and optionally
-  // blur the glyph alpha (a soft halo), `blur` in logical px.
+  // Full control: scale the quad about the box centre (sx, sy), turn it about
+  // that centre (`angle`, radians, clockwise on screen) and optionally blur
+  // the glyph alpha (a soft halo), `blur` in logical px.
   void drawEx(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float sx, float sy,
-              float blur, float opacity = 1);
+              float blur, float opacity = 1, float angle = 0);
 
   // Evicts textures unused for `maxAgeSec`. Call once in a while.
   void collect(double maxAgeSec = 30);

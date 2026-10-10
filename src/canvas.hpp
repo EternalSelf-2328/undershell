@@ -45,6 +45,10 @@ public:
   static Size measure(const std::string& text, const TextStyle& style);
   void text(const std::string& text, const TextStyle& style, float x, float y, Color color, float opacity = 1,
             float sy = 1, float blur = 0);
+  // Text whose logical box is centred on (cx, cy), scaled about that centre
+  // (without rasterising it again) and turned by `angle` (radians, clockwise).
+  void textAt(const std::string& text, const TextStyle& style, float cx, float cy, Color color, float opacity, float scale,
+              float angle);
 
 private:
   void shape(int kind, float x0, float y0, float x1, float y1, const float* params, Color fill, float strokeW, Color stroke);

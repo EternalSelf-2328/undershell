@@ -378,10 +378,13 @@ precision highp float;
 layout(location = 0) in vec2 a_pos;
 uniform vec4 u_rect;     // x, y, w, h in surface logical px
 uniform vec2 u_surface;  // surface logical size
+uniform vec3 u_turn;     // the centre it turns about (logical px) and the angle
 out vec2 v_uv;
 void main() {
     v_uv = a_pos;
-    vec2 p = (u_rect.xy + a_pos * u_rect.zw) / u_surface;
+    vec2 q = u_rect.xy + a_pos * u_rect.zw - u_turn.xy;
+    float c = cos(u_turn.z), s = sin(u_turn.z);
+    vec2 p = (u_turn.xy + vec2(c * q.x - s * q.y, s * q.x + c * q.y)) / u_surface;
     gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
 }
 )";
@@ -392,7 +395,7 @@ void TextRenderer::draw(const TextImage& img, float x, float y, Color color, flo
 }
 
 void TextRenderer::drawEx(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float sx,
-                          float sy, float blur, float opacity) {
+                          float sy, float blur, float opacity, float angle) {
   if (!img.texture || surfaceW <= 0 || surfaceH <= 0) return;
   if (!m_prog.valid()) m_prog.create(kTextVert, kTextFrag, "text");
   glUseProgram(m_prog.id());
@@ -405,7 +408,8 @@ void TextRenderer::drawEx(const TextImage& img, float x, float y, Color color, f
   // scale about the logical box centre
   const float cx = x + img.w / 2, cy = y + img.h / 2;
   float qx = cx + (x + img.quadX - cx) * sx, qy = cy + (y + img.quadY - cy) * sy;
-  if (sx == 1 && sy == 1 && blur <= 0) {
+  glUniform3f(m_prog.uniform("u_turn"), cx, cy, angle);
+  if (sx == 1 && sy == 1 && blur <= 0 && angle == 0) {
     // texels on device pixels: a quad between pixels is resampled soft
     qx = std::round(qx * img.scale) / img.scale;
     qy = std::round(qy * img.scale) / img.scale;
