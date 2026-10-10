@@ -58,13 +58,14 @@ std::string optionLabel(const std::string& value, bool es) {
       {"flat", "Plana"}, {"arc", "Arco"}, {"bulge", "Abombar"}, {"flag", "Bandera"}, {"cylinder", "Cilindro"},
       {"smooth", "Suave"}, {"text", "Solo texto"}, {"electric", "Electricidad"}, {"bolts", "Rayos"}, {"plasma", "Plasma"}, {"blue", "Azul eléctrico"}, {"sfx", "Onomatopeyas"}, {"mix", "Mezcla"},
       {"english", "Inglés"}, {"japanese", "Japonés"}, {"korean", "Coreano"}, {"chinese", "Chino"}, {"comic", "Cómic"},
-      {"classic", "Clásicos"}, {"top", "Arriba"}, {"bottom", "Abajo"}, {"straight", "Recto"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
+      {"classic", "Clásicos"}, {"speedlines", "Líneas manga"}, {"focus", "Enfoque"},
+      {"parallel", "Velocidad"}, {"black", "Negro"}, {"white", "Blanco"}, {"top", "Arriba"}, {"bottom", "Abajo"}, {"straight", "Recto"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
   };
   static const std::map<std::string_view, const char*> kEn = {
       {"bighour", "Big hour"}, {"goodnight", "Good night"}, {"en", "English"}, {"es", "Spanish"},
       {"clover4Leaf", "Clover 4"}, {"clover8Leaf", "Clover 8"}, {"cookie12Sided", "Cookie 12"}, {"cookie4Sided", "Cookie 4"},
       {"cookie6Sided", "Cookie 6"}, {"cookie7Sided", "Cookie 7"}, {"cookie9Sided", "Cookie 9"}, {"slash", "Slash /"},
-      {"on_surface", "Text"}, {"pin", "Corners"}, {"muzzle", "Muzzle flash"}, {"electric", "Electricity"}, {"sfx", "Onomatopoeia"}, {"comic", "Comic"}, {"blue", "Electric blue"}, {"flash", "Realistic"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
+      {"on_surface", "Text"}, {"pin", "Corners"}, {"muzzle", "Muzzle flash"}, {"electric", "Electricity"}, {"sfx", "Onomatopoeia"}, {"speedlines", "Speed lines"}, {"comic", "Comic"}, {"blue", "Electric blue"}, {"flash", "Realistic"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
   };
   const auto& table = es ? kEs : kEn;
   if (auto it = table.find(value); it != table.end()) return it->second;

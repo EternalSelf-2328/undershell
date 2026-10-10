@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 18 looks
+## Visualizer: 19 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric` and `sfx` (see below).
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx` and `speedlines` (see below).
 
 ## Clock: 12 faces
 
@@ -438,6 +438,16 @@ Bangers for English, the heaviest Noto Sans CJK for the rest) set the rest;
 
 The CJK words need a CJK font: `noto-fonts-cjk` (Arch), `google-noto-sans-cjk-fonts`
 (Fedora) or `fonts-noto-cjk` (Debian, Ubuntu). Bangers comes bundled.
+
+## Speed lines
+
+The `speedlines` look is manga's lines of motion (Form, `lines_form`):
+`focus` -- the focus lines (集中線) that close in on a moment, wedges from the
+box's edges toward a clear centre, drawn anew a dozen times a second
+(faster with the music) and rushing in on every kick -- or `parallel`,
+streaks racing across the box. Colour `black` (ink), `white` or `theme`;
+Amount, Clear centre, Thickness and Beat rush set the rest. Lay it over an
+action wallpaper, or put the clear centre on a face.
 
 ## Clock structures
 

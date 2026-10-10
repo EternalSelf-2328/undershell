@@ -3,6 +3,7 @@
 
 #include "electric.hpp"
 #include "gl.hpp"
+#include "looks.hpp"
 #include "sfx.hpp"
 #include "motion.hpp"
 #include "widget.hpp"
@@ -24,6 +25,7 @@ public:
   [[nodiscard]] bool animating(const TickContext& ctx) const override {
     if (m_hidden && m_hideFade < 0.003) return false;
     if (m_hidden || m_hideFade < 0.997) return true;  // fading
+    if (m_look) return m_look->moving();
     return m_motion.animating(ctx.audio.energy) || m_breath > 0.003 || std::abs(m_breathVel) > 0.003 || m_hit > 0 || m_pump > 0.003 ||
            (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 ||
            (m_styleIndex == 15 && muzzleShows()) || (m_styleIndex == 16 && electricMoves()) || (m_styleIndex == 17 && m_sfx.alive()) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
@@ -34,11 +36,13 @@ public:
     if (m_styleIndex == 15) return muzzleShows();      // between shots there is nothing to draw
     if (m_styleIndex == 16) return m_eForm != "bolts" || boltsAlive();  // bolts: nothing between strikes
     if (m_styleIndex == 17) return m_sfx.alive();                        // a word only while one is up
+    if (m_look) return m_look->visible();
     return m_styleIndex >= 12 || m_motion.fade() > 0.002;  // halo, vortex and fire rest visible
   }
   [[nodiscard]] int fps() const override { return m_cfg.fps; }
   // the arc and the plasma still crackle in silence, a few times a second
   [[nodiscard]] double nextWakeup(double now) const override {
+    if (m_look && !m_hidden && !m_look->moving()) return now + m_look->idleFrame();
     return m_styleIndex == 16 && m_eForm != "bolts" && !m_hidden ? now + 0.09 : 1e18;
   }
   [[nodiscard]] bool fullscreen() const override { return m_cfg.style == "frame"; }
@@ -100,6 +104,9 @@ private:
   // plasma globe; its paths are built each frame from seeds that change
   // faster the louder it is
   SfxLayer m_sfx;  // onomatopoeia: a sound effect lettered on the kicks
+  // the looks drawn in strokes that keep their own state (looks.hpp)
+  std::unique_ptr<StrokeLook> m_look;
+  std::string m_lookStyle;
   StrokeRenderer m_bolts;
   std::vector<Stroke> m_boltSegs;
   std::string m_eForm = "arc";  // arc bolts plasma

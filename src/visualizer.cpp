@@ -19,7 +19,7 @@ namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
                                 "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle",
-                                "electric", "sfx"};
+                                "electric", "sfx", "speedlines"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);
@@ -31,6 +31,10 @@ void Visualizer::configure(const VisualizerConfig& cfg, const NoctaliaState& noc
   m_styleIndex = 0;
   for (int i = 0; i < static_cast<int>(std::size(kStyles)); ++i)
     if (cfg.style == kStyles[i]) m_styleIndex = i;
+  if (cfg.style != m_lookStyle) {  // a new look starts fresh; the same one keeps its state
+    m_look = makeLook(cfg.style);
+    m_lookStyle = cfg.style;
+  }
   const bool polar = m_styleIndex >= 9 && m_styleIndex <= 13;  // radial, orb, spiral, halo, vortex
   m_motion.gain = cfg.gain;
   m_motion.smoothing = cfg.smoothing;
@@ -100,6 +104,7 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   for (size_t i = 0; i < m_shotAge.size(); ++i)  // the spark count may have changed
     if (m_shotAge[i] >= 0) shapeShot(i);
   m_sfx.configure(t, noct);
+  if (m_look) m_look->configure(t, noct);
   m_eForm = t["electric_form"].value_or(std::string("arc"));
   if (m_eForm != "bolts" && m_eForm != "plasma") m_eForm = "arc";
   m_eManga = t["electric_style"].value_or(std::string("flash")) == "manga";
@@ -255,6 +260,15 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw, const AudioF
     // the shot starts as old as the kick already is (a frame at most)
     if (m_trace.kick)
       shoot(std::clamp(0.45 + 0.55 * m_hit / std::max(0.05, m_haloHits), 0.45, 1.0), audio.onsets ? std::min(audio.kickAge, 0.05) : 0.0);
+  }
+  if (m_look) {
+    Beat b;
+    b.dt = dt;
+    b.kick = m_trace.kick;
+    b.strength = std::clamp(m_hit / std::max(0.05, m_haloHits * loud), 0.3, 1.0);
+    b.energy = std::clamp(0.7 * m_breath + 0.6 * m_pump, 0.0, 1.0);
+    b.live = live;
+    m_look->tick(b);
   }
   if (m_styleIndex == 17) m_sfx.tick(dt, m_trace.kick, std::clamp(m_hit / std::max(0.05, m_haloHits * loud), 0.3, 1.0));
   if (m_styleIndex == 16) {
@@ -639,6 +653,10 @@ void Visualizer::draw(const DrawContext& ctx) {
   }
   if (m_styleIndex == 17) {
     m_sfx.draw(ctx, opacityNow());
+    return;
+  }
+  if (m_look) {
+    m_look->draw(ctx, opacityNow());
     return;
   }
   const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;

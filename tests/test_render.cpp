@@ -260,6 +260,38 @@ int main(int argc, char** argv) {
     }
   }
 
+  // speed lines: focus lines leave the centre clear and ink the edges; motion
+  // lines streak across; the focus lines match their golden
+  {
+    auto lines = [&](const char* form, int w, int h) {
+      toml::table o;
+      o.insert_or_assign("lines_preview", 0.05);
+      o.insert_or_assign("lines_form", form);
+      return renderLook("speedlines", w, h, pal, &o);
+    };
+    auto alphaIn = [](const Image& im, int x0, int x1, int y0, int y1) {
+      double a = 0;
+      for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x) a += im.rgba[(static_cast<size_t>(y) * im.w + x) * 4 + 3];
+      return a / ((x1 - x0) * (y1 - y0) * 255.0);
+    };
+    const Image focus = lines("focus", 400, 240);
+    CHECK(alphaIn(focus, 180, 220, 105, 135) < 0.02);  // the clear centre
+    CHECK(alphaIn(focus, 0, 40, 0, 40) > 0.25);         // inked corners
+    const Image par = lines("parallel", 400, 160);
+    CHECK(alphaIn(par, 0, 400, 0, 160) > 0.03);
+    const std::string path = golden + "/speedlines-focus.png";
+    if (update) {
+      writePng(focus, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(focus, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "speedlines-focus differs from golden: %.3f\n", d);
+      GOLDEN(d);
+    }
+  }
+
   // the line floats in its box: its glow fades below it too, with no cut
   // where a bar look's root would be
   {
