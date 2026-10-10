@@ -181,6 +181,7 @@ Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noc
   if (options)
     for (auto&& [k, v] : *options) wc.options.insert_or_assign(k, v);
   viz.configure(wc, noct);
+  TextRenderer tr;
   std::vector<float> raw(64);
   for (int step = 0; step < 90; ++step) {
     const double t = step / 60.0;
@@ -196,14 +197,17 @@ Image renderLook(const std::string& look, int w, int h, const NoctaliaState& noc
     tc.audio.silent = false;
     viz.tick(tc);
   }
-  return renderToImage(w, h, [&] {
+  Image img = renderToImage(w, h, [&] {
     DrawContext dc;
     dc.w = static_cast<float>(w);
     dc.h = static_cast<float>(h);
     dc.outputW = frame ? static_cast<float>(w) : 1920.0F;
     dc.outputH = frame ? static_cast<float>(h) : 1080.0F;
+    dc.text = &tr;  // the looks that letter (onomatopoeia)
     viz.draw(dc);
   });
+  tr.releaseGl();
+  return img;
 }
 
 Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noct, long fixedTime, const toml::table* options) {

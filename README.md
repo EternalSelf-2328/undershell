@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 17 looks
+## Visualizer: 18 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`). Plus five of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle` and `electric` (see below).
+and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
+ring), `vortex`, `fire`, `muzzle`, `electric` and `sfx` (see below).
 
 ## Clock: 12 faces
 
@@ -414,6 +414,31 @@ second. The paths are built on the CPU and only the pixels near them are
 shaded, so a big box costs no more than a small one (about 1.5 ms of GPU a
 frame for a 1074 × 621 arc on an Intel HD 520).
 
+## Onomatopoeia
+
+The `sfx` look letters a sound effect on the kicks, the way comics do, in
+four traditions (Language, `sfx_language`):
+
+| | soft kick | kick | hard kick |
+|---|---|---|---|
+| `english` (comics) | THUD, BUMP | BAM!, POW!, WHAM! | BOOM!, KABOOM! |
+| `japanese` (manga, anime) | トン, ズン | ドン!, バン! | ドカーン!!, ドドン!! |
+| `korean` (manhwa) | 통, 쿵 | 쾅!, 펑! | 콰광!!, 두둥!! |
+| `chinese` (manhua, donghua) | 咚, 噔 | 砰!, 轰! | 轰隆!!, 嘭!! |
+
+`mix` picks a language per hit. The word slams in past its size in 70 ms
+with a shake, holds (longer the harder the kick), and shrinks away when the
+next one lands -- one hit at a time, the way a panel letters it. In a tall
+box the CJK words run top to bottom. Drawn as `comic` (a colour fill, a
+black outline and a solid shadow; Colours `classic` or `theme`) or `manga`
+(white with a black outline), with a spiky burst behind it (Burst behind).
+Size, Amount (every kick at 1, only the hardest toward 0) and Font (`auto`:
+Bangers for English, the heaviest Noto Sans CJK for the rest) set the rest;
+`sfx_words = "ZAP!, KRAK!"` in the config letters your own words instead.
+
+The CJK words need a CJK font: `noto-fonts-cjk` (Arch), `google-noto-sans-cjk-fonts`
+(Fedora) or `fonts-noto-cjk` (Debian, Ubuntu). Bangers comes bundled.
+
 ## Clock structures
 
 Five clock faces are **editable structures**: `goodnight` (the card),
@@ -438,8 +463,8 @@ The five editable clock structures (`goodnight`, `column`, `flip`, `metal`,
 `stacked`) can use any font installed on your system, and so do the music
 card's title, artist and clock. The classic clock faces keep the fonts of
 their design. Space Grotesk, Fraunces, Inter
-Display, JetBrains Mono and Google Sans Flex come bundled, so they are always
-there.
+Display, JetBrains Mono, Google Sans Flex and Bangers come bundled, so they are
+always there.
 
 **Adding your own:**
 
@@ -634,7 +659,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/noctalia.*`, `src/depth.*`, `src/depthfield.*`, `src/depthpaint.cpp` | Noctalia palette, depth masks, per-widget depth planes, the depth brush |
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
-| `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex (OFL) |
+| `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex, Bangers (OFL) |
 | `integrations/noctalia/undershell/` | the Noctalia bar plugin |
 | `packaging/arch/` | PKGBUILD |
 

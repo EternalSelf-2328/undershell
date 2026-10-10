@@ -34,3 +34,10 @@ Project).
 ROND, slnt, opsz, GRAD), Copyright 2015 The Google Sans Flex Authors, under
 the SIL Open Font License 1.1 (`data/fonts/OFL-GoogleSansFlex.txt`). It is
 bundled so it can be picked for a clock face or for the music card's type.
+
+## Bangers
+
+`data/fonts/Bangers-Regular.ttf` is Bangers, Copyright 2010 The Bangers
+Project Authors (https://github.com/googlefonts/bangers), under the SIL Open
+Font License 1.1 (`data/fonts/OFL-Bangers.txt`). It is bundled for the
+English words of the onomatopoeia look.

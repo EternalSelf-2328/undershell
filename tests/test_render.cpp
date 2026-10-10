@@ -5,6 +5,7 @@
 #include "media.hpp"
 #include "nowplaying.hpp"
 #include "offscreen.hpp"
+#include "sfx.hpp"
 #include "canvas.hpp"
 #include "m3shapes.hpp"
 #include "overlay.hpp"
@@ -212,6 +213,50 @@ int main(int argc, char** argv) {
         if (d < 0 || d > 1.5) std::fprintf(stderr, "%s differs from golden: %.3f\n", gg.name, d);
         GOLDEN(d);
       }
+    }
+  }
+
+  // onomatopoeia: each language letters a word (CJK down a tall box), ink is
+  // only greys, the words follow the kick's strength, and the English one
+  // (its face is bundled) matches its golden
+  {
+    CHECK(SfxLayer::vertical("ドカーン!!") == "ド\nカ\n｜\nン\n‼");
+    CHECK(SfxLayer::vertical("쾅!") == "쾅\n！");
+    CHECK(std::string(SfxLayer::words(SfxLayer::English, 1.0)[0]) == "BOOM!");
+    CHECK(std::string(SfxLayer::words(SfxLayer::Japanese, 0.6)[0]) == "ドン!");
+    CHECK(SfxLayer::words(SfxLayer::Korean, 0.2).size() == 3 && SfxLayer::words(SfxLayer::Chinese, 0.9).size() == 4);
+    auto word = [&](const char* lang, const char* style, int w, int h) {
+      toml::table o;
+      o.insert_or_assign("sfx_preview", 0.2);
+      o.insert_or_assign("sfx_language", lang);
+      o.insert_or_assign("sfx_style", style);
+      return renderLook("sfx", w, h, pal, &o);
+    };
+    auto lit = [](const Image& im) {
+      size_t n = 0;
+      for (size_t i = 3; i < im.rgba.size(); i += 4) n += im.rgba[i] > 8;
+      return n;
+    };
+    for (const char* lang : {"english", "japanese", "korean", "chinese"}) {
+      const Image wide = word(lang, "comic", 420, 200), tall = word(lang, "manga", 200, 360);
+      if (lit(wide) < 420u * 200u / 10) std::fprintf(stderr, "sfx %s letters almost nothing\n", lang);
+      CHECK(lit(wide) > 420u * 200u / 10);
+      CHECK(lit(tall) > 200u * 360u / 10);
+      bool greys = true;
+      for (size_t i = 0; i < tall.rgba.size(); i += 4)
+        if (std::abs(tall.rgba[i] - tall.rgba[i + 1]) > 3 || std::abs(tall.rgba[i + 1] - tall.rgba[i + 2]) > 3) greys = false;
+      CHECK(greys);
+    }
+    const Image en = word("english", "comic", 420, 200);
+    const std::string path = golden + "/sfx-english.png";
+    if (update) {
+      writePng(en, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(en, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "sfx-english differs from golden: %.3f\n", d);
+      GOLDEN(d);
     }
   }
 

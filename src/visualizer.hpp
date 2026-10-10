@@ -3,6 +3,7 @@
 
 #include "electric.hpp"
 #include "gl.hpp"
+#include "sfx.hpp"
 #include "motion.hpp"
 #include "widget.hpp"
 
@@ -25,13 +26,14 @@ public:
     if (m_hidden || m_hideFade < 0.997) return true;  // fading
     return m_motion.animating(ctx.audio.energy) || m_breath > 0.003 || std::abs(m_breathVel) > 0.003 || m_hit > 0 || m_pump > 0.003 ||
            (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 ||
-           (m_styleIndex == 15 && muzzleShows()) || (m_styleIndex == 16 && electricMoves()) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
+           (m_styleIndex == 15 && muzzleShows()) || (m_styleIndex == 16 && electricMoves()) || (m_styleIndex == 17 && m_sfx.alive()) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
            m_waveAges[3] >= 0;
   }
   [[nodiscard]] bool visible() const override {
     if (m_hidden && m_hideFade < 0.003) return false;  // faded out: nothing to draw, no frames spent
     if (m_styleIndex == 15) return muzzleShows();      // between shots there is nothing to draw
     if (m_styleIndex == 16) return m_eForm != "bolts" || boltsAlive();  // bolts: nothing between strikes
+    if (m_styleIndex == 17) return m_sfx.alive();                        // a word only while one is up
     return m_styleIndex >= 12 || m_motion.fade() > 0.002;  // halo, vortex and fire rest visible
   }
   [[nodiscard]] int fps() const override { return m_cfg.fps; }
@@ -97,6 +99,7 @@ private:
   // electricity: an arc across the box, bolts striking on the kicks, or a
   // plasma globe; its paths are built each frame from seeds that change
   // faster the louder it is
+  SfxLayer m_sfx;  // onomatopoeia: a sound effect lettered on the kicks
   BoltRenderer m_bolts;
   std::vector<BoltSeg> m_boltSegs;
   std::string m_eForm = "arc";  // arc bolts plasma
