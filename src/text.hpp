@@ -70,6 +70,11 @@ public:
   // top-left (curves flattened to within `tolerance` px). No GL needed.
   using Contour = std::vector<std::pair<float, float>>;
   static std::vector<Contour> outline(const std::string& text, const TextStyle& style, float tolerance = 0.4F);
+  // A sheet of cells, `perRow` across, each `cellW` x `cellH` device px, with
+  // one glyph (a UTF-8 string) in each: centred across, all on one baseline
+  // (`style.size` in device px). Alpha, one byte a pixel, rows packed.
+  static std::vector<std::uint8_t> glyphSheet(const std::vector<std::string>& glyphs, const TextStyle& style, int cellW, int cellH,
+                                              int perRow);
 
   // Draws at (x, y) = top-left of the logical box, in surface logical px.
   void draw(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float opacity = 1);

@@ -4,6 +4,7 @@
 #include "visualizer.hpp"
 
 #include "m3shapes.hpp"
+#include "media.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -19,7 +20,7 @@ namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
                                 "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle",
-                                "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks"};
+                                "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);
@@ -268,6 +269,16 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw, const AudioF
     b.strength = std::clamp(m_hit / std::max(0.05, m_haloHits * loud), 0.3, 1.0);
     b.energy = std::clamp(0.7 * m_breath + 0.6 * m_pump, 0.0, 1.0);
     b.live = live;
+    b.bands = raw;
+    if (m_media && m_look->wantsMedia()) {
+      const MediaState& s = m_media->state();
+      b.track = s.present;
+      b.playing = s.playing;
+      b.title = s.title;
+      b.artist = s.artist;
+      b.position = s.positionSec(nowSeconds());
+      b.length = static_cast<double>(s.lengthUs) / 1e6;
+    }
     m_look->tick(b);
   }
   if (m_styleIndex == 17) m_sfx.tick(dt, m_trace.kick, std::clamp(m_hit / std::max(0.05, m_haloHits * loud), 0.3, 1.0));
@@ -622,6 +633,7 @@ void Visualizer::drawRing(const DrawContext& ctx) {
 }
 
 void Visualizer::tick(const TickContext& ctx) {
+  m_media = ctx.media;
   // hiding with nothing playing: a smooth fade either way
   m_hideFade += ((m_hidden ? 0.0 : 1.0) - m_hideFade) * (1 - std::exp(-ctx.dt / (m_hidden ? 0.18 : 0.15)));
   if (std::abs(m_hideFade - (m_hidden ? 0.0 : 1.0)) < 0.002) m_hideFade = m_hidden ? 0.0 : 1.0;

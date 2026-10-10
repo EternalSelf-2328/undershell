@@ -410,6 +410,46 @@ int main(int argc, char** argv) {
     }
   }
 
+  // the terminal: every mode lights its screen in its phosphor (green: green
+  // over red), on the dark glass; code and monitor match their goldens
+  {
+    auto screen = [&](const char* mode, const char* colour) {
+      toml::table o;
+      o.insert_or_assign("term_preview", 0.5);
+      o.insert_or_assign("term_mode", mode);
+      o.insert_or_assign("term_color", colour);
+      return renderLook("terminal", 480, 300, pal, &o);
+    };
+    for (const char* mode : {"code", "spectrum", "matrix", "monitor"}) {
+      const Image img = screen(mode, "green");
+      double r = 0, g = 0;
+      size_t lit = 0, glass = 0;
+      for (size_t i = 0; i < img.rgba.size(); i += 4) {
+        if (img.rgba[i + 3] > 200) ++glass;
+        if (img.rgba[i + 1] > 90) {
+          ++lit;
+          r += img.rgba[i];
+          g += img.rgba[i + 1];
+        }
+      }
+      if (lit < 480 * 300 / 60) std::fprintf(stderr, "terminal %s shows almost nothing (%zu)\n", mode, lit);
+      CHECK(lit > 480 * 300 / 60);
+      CHECK(g > r * 1.5);
+      CHECK(glass > 480 * 300 / 2);  // the glass behind it
+      if (std::string(mode) != "code" && std::string(mode) != "monitor") continue;
+      const std::string path = golden + "/terminal-" + mode + ".png";
+      if (update) {
+        writePng(img, path, false);
+      } else {
+        Image ref;
+        CHECK(readPng(path, ref));
+        const double d = imageDiff(img, ref);
+        if (d < 0 || d > 1.5) std::fprintf(stderr, "terminal-%s differs from golden: %.3f\n", mode, d);
+        GOLDEN(d);
+      }
+    }
+  }
+
   // the line floats in its box: its glow fades below it too, with no cut
   // where a bar look's root would be
   {

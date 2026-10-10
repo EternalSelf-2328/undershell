@@ -47,6 +47,7 @@ public:
   }
   [[nodiscard]] bool fullscreen() const override { return m_cfg.style == "frame"; }
   [[nodiscard]] bool usesAudio() const override { return true; }
+  [[nodiscard]] bool wantsMedia() const override { return m_look && m_look->wantsMedia(); }
   [[nodiscard]] Color accent() const override { return m_ramp[4]; }
   void rest() override { m_motion.rest(); }
   void setHidden(bool hidden) override { m_hidden = hidden; }
@@ -106,6 +107,7 @@ private:
   SfxLayer m_sfx;  // onomatopoeia: a sound effect lettered on the kicks
   // the looks drawn in strokes that keep their own state (looks.hpp)
   std::unique_ptr<StrokeLook> m_look;
+  MediaService* m_media = nullptr;  // the player, for looks that show the song
   std::string m_lookStyle;
   StrokeRenderer m_bolts;
   std::vector<Stroke> m_boltSegs;

@@ -416,6 +416,46 @@ std::vector<TextRenderer::Contour> TextRenderer::outline(const std::string& text
   return out;
 }
 
+std::vector<std::uint8_t> TextRenderer::glyphSheet(const std::vector<std::string>& glyphs, const TextStyle& style, int cellW, int cellH,
+                                                    int perRow) {
+  registerBundledFonts();
+  const int rowsN = (static_cast<int>(glyphs.size()) + perRow - 1) / perRow;
+  const int W = perRow * cellW, H = std::max(1, rowsN) * cellH;
+  cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_A8, W, H);
+  cairo_t* cr = cairo_create(surf);
+  cairo_set_source_rgba(cr, 1, 1, 1, 1);
+  // the baseline every cell shares: an "M" centred in its cell
+  PangoLayout* ref = makeLayout(cr, "M", style);
+  PangoRectangle ink, logical;
+  pango_layout_get_extents(ref, &ink, &logical);
+  const double baseY = (cellH - static_cast<double>(logical.height) / PANGO_SCALE) / 2 +
+                       static_cast<double>(pango_layout_get_baseline(ref)) / PANGO_SCALE;
+  g_object_unref(ref);
+  for (size_t i = 0; i < glyphs.size(); ++i) {
+    if (glyphs[i].empty() || glyphs[i] == " ") continue;
+    const int cx = static_cast<int>(i % perRow) * cellW, cy = static_cast<int>(i / perRow) * cellH;
+    PangoLayout* l = makeLayout(cr, glyphs[i], style);
+    pango_layout_get_extents(l, &ink, &logical);
+    const double w = static_cast<double>(logical.width) / PANGO_SCALE;
+    const double base = static_cast<double>(pango_layout_get_baseline(l)) / PANGO_SCALE;
+    cairo_save(cr);
+    cairo_rectangle(cr, cx, cy, cellW, cellH);  // a wide fallback glyph keeps to its cell
+    cairo_clip(cr);
+    cairo_move_to(cr, cx + (cellW - w) / 2 - static_cast<double>(logical.x) / PANGO_SCALE, cy + baseY - base);
+    pango_cairo_show_layout(cr, l);
+    cairo_restore(cr);
+    g_object_unref(l);
+  }
+  cairo_destroy(cr);
+  cairo_surface_flush(surf);
+  std::vector<std::uint8_t> out(static_cast<size_t>(W) * H);
+  const int stride = cairo_image_surface_get_stride(surf);
+  const unsigned char* data = cairo_image_surface_get_data(surf);
+  for (int y = 0; y < H; ++y) std::copy_n(data + static_cast<size_t>(y) * stride, W, out.data() + static_cast<size_t>(y) * W);
+  cairo_surface_destroy(surf);
+  return out;
+}
+
 void TextRenderer::draw(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH,
                         float opacity) {
   drawEx(img, x, y, color, surfaceW, surfaceH, 1, 1, 0, opacity);

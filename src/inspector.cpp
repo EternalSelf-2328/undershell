@@ -117,7 +117,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   };
   if (w.cfg.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
-    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks"});  // the newer looks draw their own way
+    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -226,6 +226,20 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "halo_pulse", "Ember (groove)", "Brasa (ritmo)", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, m.begin(), m.end());
+  }
+  if (look == "terminal") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "term_mode", "Shows", "Muestra", {"code", "spectrum", "matrix", "monitor"}, 0, 0, 0, 0, "code"},
+        {K::Enum, "term_color", "Phosphor", "Fósforo", {"green", "amber", "white", "theme"}, 0, 0, 0, 0, "green"},
+        {K::Number, "term_size", "Text size", "Tamaño de letra", {}, 0.5, 2, 0.05, 1},
+        {K::Number, "term_glow", "Glow", "Brillo", {}, 0, 1, 0.05, 0.6},
+        {K::Number, "term_scan", "Scanlines", "Líneas de barrido", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "term_flicker", "Flicker", "Parpadeo", {}, 0, 1, 0.05, 0.2},
+        {K::Number, "term_curve", "Tube curve", "Curvatura", {}, 0, 1, 0.05, 0.3},
+        {K::Number, "term_background", "Screen glass", "Fondo de pantalla", {}, 0, 1, 0.05, 0.85},
+        {K::Number, "halo_hits", "Beat flash", "Destello al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
   }
   if (look == "fireworks") {
     std::vector<PropSpec> f = {

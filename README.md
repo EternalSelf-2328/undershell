@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 23 looks
+## Visualizer: 24 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon` and `fireworks` (see below).
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks` and `terminal` (see below).
 
 ## Clock: 12 faces
 
@@ -488,6 +488,25 @@ burst two. Kind: `peony` (a sphere of sparks), `willow` (gold, long trails
 that droop), `ring`, or `mix`. The sparks slow, fall, trail and crackle out.
 Drawn as `flash` (light, classic colours or the theme's) or `manga` (inked
 sparks); Amount (which kicks), Size and Beat burst set the rest.
+
+## Terminal
+
+The `terminal` look is a terminal on a CRT, for the computer screens in a
+wallpaper (pin its corners to the screen). It Shows (`term_mode`):
+
+| | |
+|---|---|
+| `code` | a shell session typing itself -- a pull and a build, code, a ping, and the song that is playing -- faster with the music, its output pouring on the kicks |
+| `spectrum` | the spectrum in block characters, the song and its time above it, where it is along the foot |
+| `matrix` | columns of katakana and digits falling, faster with the music, a glitch on a kick |
+| `monitor` | this machine's CPU (each core), memory, network and busiest processes, read from `/proc` once a second, and the music's pulse |
+
+The screen is phosphor -- `green`, `amber`, `white` or `theme` -- with Glow,
+Scanlines, Flicker, Tube curve and Screen glass (the dark glass behind the
+text) each from 0 (off) to 1, and Text size. A kick lights the screen up
+(Beat flash). The characters come from a sheet built once (JetBrains Mono;
+katakana from the system's CJK font) and the whole screen is two passes:
+about 0.7 ms of GPU a frame at 1074 × 621.
 
 ## Clock structures
 

@@ -12,6 +12,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace undershell {
 
@@ -24,6 +25,11 @@ struct Beat {
   double strength = 0;  // 0..1: how hard the kick was
   double energy = 0;    // 0..1: the groove right now
   bool live = false;    // sound is playing
+  const std::vector<float>* bands = nullptr;  // the analyser's bands, 0..1 (null in silence)
+  // the song, when a player is up (and a look asked for it: wantsMedia)
+  bool track = false, playing = false;
+  std::string title, artist;
+  double position = 0, length = 0;  // seconds
 };
 
 class StrokeLook {
@@ -38,6 +44,8 @@ public:
   [[nodiscard]] virtual bool moving() const = 0;
   // in silence, how soon it wants another frame (seconds); large: never
   [[nodiscard]] virtual double idleFrame() const { return 1e18; }
+  // it shows the song (title, artist, time)
+  [[nodiscard]] virtual bool wantsMedia() const { return false; }
 };
 
 // the look for a style name, or nullptr for the visualizer's own looks
