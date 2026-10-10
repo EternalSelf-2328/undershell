@@ -6,6 +6,7 @@
 #include "looks.hpp"
 
 #include "canvas.hpp"
+#include "text.hpp"
 #include "widget.hpp"
 
 #include <algorithm>
@@ -155,53 +156,65 @@ public:
   [[nodiscard]] double idleFrame() const override { return m_flicker > 0 ? 0.1 : 0.5; }
 
 private:
+  // The words as tubes along each letter's outline, through the same strokes
+  // as the shapes (a blurred text glow costs ten times as much on a big sign).
   template <class Lit>
   void drawText(const DrawContext& ctx, float W, float H, float opacity, Lit lit) {
-    if (!ctx.text) return;
-    Canvas& c = m_canvas;
-    c.begin(W, H, ctx.scale, ctx.text);
-    c.setTransform(1, 0, 0);
-    // the letters' places, measured once for this box (measuring has no cache)
+    (void)ctx;
+    // the letters' outlines, placed once for this box (measuring has no cache)
     const std::string key = std::format("{}|{}|{}|{}|{}", m_text, m_font, W, H, m_size);
     if (key != m_layoutKey) {
       m_layoutKey = key;
-      TextStyle ref;
-      ref.family = m_font;
-      ref.size = 100;
-      ref.weight = 700;
-      const Canvas::Size whole = Canvas::measure(m_text, ref);
-      const float px = 100 * std::min(W * static_cast<float>(m_size) * 0.86F / std::max(1.0F, whole.w),
-                                      H * static_cast<float>(m_size) * 0.7F / std::max(1.0F, whole.h));
-      m_style = ref;
-      m_style.size = px;
-      const Canvas::Size z = Canvas::measure(m_text, m_style);
-      m_x0 = (W - z.w) / 2;
-      m_y0 = (H - z.h) / 2;
-      m_offsets.clear();
+      TextStyle st;
+      st.family = m_font;
+      st.size = 100;
+      st.weight = 700;
+      const Canvas::Size whole = Canvas::measure(m_text, st);
+      st.size = 100 * std::min(W * static_cast<float>(m_size) * 0.86F / std::max(1.0F, whole.w),
+                               H * static_cast<float>(m_size) * 0.7F / std::max(1.0F, whole.h));
+      m_px = st.size;
+      const Canvas::Size z = Canvas::measure(m_text, st);
+      const float x0 = (W - z.w) / 2, y0 = (H - z.h) / 2;
+      m_glyphs.clear();
       std::string prefix;
       for (const std::string& l : m_letters) {
-        m_offsets.push_back(prefix.empty() ? 0.0F : Canvas::measure(prefix, m_style).w);
+        const float off = prefix.empty() ? 0.0F : Canvas::measure(prefix, st).w;
         prefix += l;
+        std::vector<Polyline> letter;
+        for (const auto& contour : TextRenderer::outline(l, st)) {
+          Polyline p;
+          for (const auto& [x, y] : contour) p.push_back({x0 + off + x, y0 + y});
+          letter.push_back(std::move(p));
+        }
+        m_glyphs.push_back(std::move(letter));
       }
     }
-    const float px = m_style.size, tube = std::max(1.2F, px * 0.045F);
-    auto tubeStyle = [&](float stroke) {
-      TextStyle s = m_style;
-      s.stroke = stroke;
-      return s;
+    const float tube = std::max(1.3F, m_px * 0.035F);
+    auto strokesOf = [&](const std::vector<Polyline>& letter, float intensity, float width) {
+      for (const Polyline& p : letter)
+        for (size_t k = 0; k < p.size(); ++k) {
+          const Pt a = p[k], b = p[(k + 1) % p.size()];
+          m_strokes.push_back({a.x, a.y, b.x, b.y, width, intensity});
+        }
     };
-    const TextStyle glass = tubeStyle(tube), wide = tubeStyle(tube * 3.0F), mid = tubeStyle(tube * 1.7F), core = tubeStyle(tube * 0.8F);
-    const Color hot = lighter(m_colour, 0.7F);
-    for (size_t i = 0; i < m_letters.size(); ++i) {
-      const std::string& l = m_letters[i];
-      if (l == " ") continue;
-      const float x = m_x0 + m_offsets[i], I = lit(i);
-      c.text(l, glass, x, m_y0, Color{0.22F, 0.22F, 0.25F, 1}, 0.4F * opacity);  // the glass, lit or not
-      if (I < 0.1F) continue;
-      c.text(l, wide, x, m_y0, m_colour, std::min(1.0F, I * 0.5F) * opacity, 1, px * 0.08F);
-      c.text(l, mid, x, m_y0, m_colour, std::min(1.0F, I * 0.85F) * opacity, 1, px * 0.035F);
-      c.text(l, core, x, m_y0, hot, std::min(1.0F, I * 1.3F) * opacity);
+    m_strokes.clear();
+    for (const auto& letter : m_glyphs) strokesOf(letter, 0.4F, tube);
+    StrokeRenderer::Look glass;
+    glass.mode = StrokeRenderer::Mode::Flat;
+    glass.opacity = opacity;
+    setColours(glass, Color{0.22F, 0.22F, 0.25F, 1}, Color{0.22F, 0.22F, 0.25F, 1});
+    m_renderer.draw(m_strokes, W, H, glass);
+    m_strokes.clear();
+    for (size_t i = 0; i < m_glyphs.size(); ++i) {
+      const float I = lit(i);
+      if (I >= 0.1F) strokesOf(m_glyphs[i], std::min(1.3F, I), tube * 0.7F);
     }
+    StrokeRenderer::Look light;
+    light.mode = StrokeRenderer::Mode::Light;
+    light.glow = tube * 4.5F;
+    light.opacity = opacity;
+    setColours(light, lighter(m_colour, 0.7F), m_colour);
+    m_renderer.draw(m_strokes, W, H, light);
   }
 
   template <class Lit>
@@ -246,13 +259,11 @@ private:
   std::vector<std::string> m_letters;
   std::vector<double> m_fail;  // per piece: failing until this time (< 0: lit)
   Shape m_figure;
-  // the text's layout for the box in hand
+  // the letters' outlines for the box in hand
   std::string m_layoutKey;
-  TextStyle m_style;
-  float m_x0 = 0, m_y0 = 0;
-  std::vector<float> m_offsets;
+  float m_px = 0;
+  std::vector<std::vector<Polyline>> m_glyphs;
   BoltRandom m_rng{31};
-  Canvas m_canvas;
   std::vector<Stroke> m_strokes;
   StrokeRenderer m_renderer;
 };

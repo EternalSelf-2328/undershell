@@ -389,6 +389,33 @@ void main() {
 }
 )";
 
+std::vector<TextRenderer::Contour> TextRenderer::outline(const std::string& text, const TextStyle& style, float tolerance) {
+  std::vector<Contour> out;
+  if (text.empty()) return out;
+  registerBundledFonts();
+  cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1);
+  cairo_t* cr = cairo_create(surface);
+  PangoLayout* layout = makeLayout(cr, text, style);
+  PangoRectangle ink, logical;
+  pango_layout_get_extents(layout, &ink, &logical);
+  cairo_set_tolerance(cr, tolerance);
+  cairo_move_to(cr, -static_cast<double>(logical.x) / PANGO_SCALE, -static_cast<double>(logical.y) / PANGO_SCALE);
+  pango_cairo_layout_path(cr, layout);
+  cairo_path_t* path = cairo_copy_path_flat(cr);
+  for (int i = 0; i < path->num_data; i += path->data[i].header.length) {
+    const cairo_path_data_t& d = path->data[i];
+    if (d.header.type == CAIRO_PATH_MOVE_TO) out.emplace_back();
+    if ((d.header.type == CAIRO_PATH_MOVE_TO || d.header.type == CAIRO_PATH_LINE_TO) && !out.empty())
+      out.back().emplace_back(static_cast<float>(path->data[i + 1].point.x), static_cast<float>(path->data[i + 1].point.y));
+  }
+  cairo_path_destroy(path);
+  g_object_unref(layout);
+  cairo_destroy(cr);
+  cairo_surface_destroy(surface);
+  std::erase_if(out, [](const Contour& c) { return c.size() < 2; });
+  return out;
+}
+
 void TextRenderer::draw(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH,
                         float opacity) {
   drawEx(img, x, y, color, surfaceW, surfaceH, 1, 1, 0, opacity);

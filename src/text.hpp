@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace undershell {
 
@@ -64,6 +66,10 @@ public:
     float boxW = 0, boxH = 0;          // logical box
   };
   static Ink measureInk(const std::string& text, const TextStyle& style);
+  // The glyphs' outlines as closed polylines, relative to the logical box's
+  // top-left (curves flattened to within `tolerance` px). No GL needed.
+  using Contour = std::vector<std::pair<float, float>>;
+  static std::vector<Contour> outline(const std::string& text, const TextStyle& style, float tolerance = 0.4F);
 
   // Draws at (x, y) = top-left of the logical box, in surface logical px.
   void draw(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float opacity = 1);
