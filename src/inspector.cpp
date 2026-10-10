@@ -96,6 +96,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
   if (key == "muzzle_colors") return o["muzzle_style"].value_or(std::string("flash")) != "manga";  // ink is black and white
   if (key == "electric_colors" || key == "electric_glow") return o["electric_style"].value_or(std::string("flash")) != "manga";
+  if (key == "ripple_colors") return o["ripple_style"].value_or(std::string("flash")) != "manga";
   if (key == "rain_lightning") return o["rain_kind"].value_or(std::string("rain")) == "rain";
   if (key == "lines_clear") return o["lines_form"].value_or(std::string("focus")) == "focus";
   if (key == "sfx_colors") return o["sfx_style"].value_or(std::string("comic")) != "manga";  // manga letters in black and white
@@ -114,7 +115,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   };
   if (w.cfg.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
-    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain"});  // the newer looks draw their own way
+    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -223,6 +224,18 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "halo_pulse", "Ember (groove)", "Brasa (ritmo)", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, m.begin(), m.end());
+  }
+  if (look == "ripples") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "ripple_style", "Drawn as", "Dibujo", {"flash", "manga"}, 0, 0, 0, 0, "flash"},
+        {K::Enum, "ripple_colors", "Colours", "Colores", {"water", "theme"}, 0, 0, 0, 0, "water"},
+        {K::Number, "ripple_flatten", "Perspective", "Perspectiva", {}, 0, 0.9, 0.05, 0.6},
+        {K::Number, "ripple_rings", "Rings", "Anillos", {}, 1, 4, 1, 3, "", true},
+        {K::Number, "ripple_size", "Size", "Tamaño", {}, 0.2, 1, 0.05, 0.6},
+        {K::Number, "ripple_amount", "Drops between", "Gotas entre golpes", {}, 0, 1, 0.05, 0.3},
+        {K::Number, "halo_hits", "Beat drop", "Gota al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
   }
   if (look == "rain") {
     std::vector<PropSpec> f = {

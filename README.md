@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 20 looks
+## Visualizer: 21 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines` and `rain` (see below).
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain` and `ripples` (see below).
 
 ## Clock: 12 faces
 
@@ -458,6 +458,16 @@ louder the music, and every kick sends a gust; with Far lightning on, the
 hardest kicks strike a faint bolt in the distance. Amount, Wind (its slant
 and drift, either way), Speed and Colours (`classic` or `theme`) set the
 rest. Turn depth on and it falls behind the wallpaper's subject.
+
+## Ripples
+
+The `ripples` look is water: every kick drops a drop that opens rings,
+slowing as they spread and fading, and smaller drops fall between the kicks
+with the music. The rings are flattened as water seen at an angle
+(Perspective) and their near side catches more light. Drawn as `flash`
+(light on water, or the theme's colours) or `manga` (inked rings that thin
+as they fade); Rings, Size, Drops between and Beat drop set the rest. Put it
+on a lake or a puddle in the wallpaper, with tilt or corners for the angle.
 
 ## Clock structures
 
