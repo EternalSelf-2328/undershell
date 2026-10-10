@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "electric.hpp"
 #include "gl.hpp"
 #include "motion.hpp"
 #include "widget.hpp"
@@ -24,15 +25,20 @@ public:
     if (m_hidden || m_hideFade < 0.997) return true;  // fading
     return m_motion.animating(ctx.audio.energy) || m_breath > 0.003 || std::abs(m_breathVel) > 0.003 || m_hit > 0 || m_pump > 0.003 ||
            (m_styleIndex == 12 && m_haloAurora > 0) || (m_styleIndex == 13 && m_vSpeed > 0) || m_styleIndex == 14 ||
-           (m_styleIndex == 15 && muzzleShows()) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
+           (m_styleIndex == 15 && muzzleShows()) || (m_styleIndex == 16 && electricMoves()) || m_waveAges[0] >= 0 || m_waveAges[1] >= 0 || m_waveAges[2] >= 0 ||
            m_waveAges[3] >= 0;
   }
   [[nodiscard]] bool visible() const override {
     if (m_hidden && m_hideFade < 0.003) return false;  // faded out: nothing to draw, no frames spent
     if (m_styleIndex == 15) return muzzleShows();      // between shots there is nothing to draw
+    if (m_styleIndex == 16) return m_eForm != "bolts" || boltsAlive();  // bolts: nothing between strikes
     return m_styleIndex >= 12 || m_motion.fade() > 0.002;  // halo, vortex and fire rest visible
   }
   [[nodiscard]] int fps() const override { return m_cfg.fps; }
+  // the arc and the plasma still crackle in silence, a few times a second
+  [[nodiscard]] double nextWakeup(double now) const override {
+    return m_styleIndex == 16 && m_eForm != "bolts" && !m_hidden ? now + 0.09 : 1e18;
+  }
   [[nodiscard]] bool fullscreen() const override { return m_cfg.style == "frame"; }
   [[nodiscard]] bool usesAudio() const override { return true; }
   [[nodiscard]] Color accent() const override { return m_ramp[4]; }
@@ -88,6 +94,34 @@ private:
   std::array<float, 4 * 4 * 4> m_puffs{};
   void shoot(double gain, double age);
   void shapeShot(size_t slot);
+  // electricity: an arc across the box, bolts striking on the kicks, or a
+  // plasma globe; its paths are built each frame from seeds that change
+  // faster the louder it is
+  BoltRenderer m_bolts;
+  std::vector<BoltSeg> m_boltSegs;
+  std::string m_eForm = "arc";  // arc bolts plasma
+  bool m_eManga = false, m_eTheme = false, m_eLive = false;
+  double m_eAmount = 0.5, m_eBranches = 0.5, m_eGlow = 0.6, m_eWidth = 1.0;
+  double m_ePreview = -1;  // >= 0: frozen this long after a kick (previews, tests)
+  double m_eTime = 0, m_eFlash = 0, m_eEnergy = 0;
+  uint32_t m_eCounter = 1;
+  BoltRandom m_eRnd{20261009};
+  std::array<uint32_t, 4> m_arcSeed{};
+  std::array<double, 4> m_arcAt{};
+  std::array<double, 4> m_boltAge{-1, -1, -1, -1}, m_boltGain{};
+  std::array<uint32_t, 4> m_boltSeed{};
+  std::array<float, 4> m_boltX0{}, m_boltX1{}, m_boltY1{};
+  static constexpr size_t kFilaments = 12;
+  std::array<double, kFilaments> m_filAngle{}, m_filSpeed{}, m_filAt{};
+  std::array<uint32_t, kFilaments> m_filSeed{};
+  [[nodiscard]] bool boltsAlive() const {
+    return m_boltAge[0] >= 0 || m_boltAge[1] >= 0 || m_boltAge[2] >= 0 || m_boltAge[3] >= 0;
+  }
+  [[nodiscard]] bool electricMoves() const { return m_eLive || m_eFlash > 0.01 || boltsAlive(); }
+  uint32_t nextSeed() { return (m_eCounter++) * 2654435761U + 12345U; }
+  void electricTick(double dt, bool kicked, double strength);
+  void strike(double gain, double age);
+  void drawElectric(const DrawContext& ctx);
   // a shot alive (its smoke too), or the realistic ember glowing with the bass
   [[nodiscard]] bool muzzleShows() const {
     return m_shotAge[0] >= 0 || m_shotAge[1] >= 0 || m_shotAge[2] >= 0 || m_shotAge[3] >= 0 || (!m_mManga && m_pump * m_haloPulse > 0.003);

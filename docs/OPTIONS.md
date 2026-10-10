@@ -33,7 +33,7 @@ Ryoku's desktop spectrum.
 
 | Key | Values | Default | |
 |---|---|---|---|
-| `style` | `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`, `frame`, `radial`, `orb`, `spiral`, `halo`, `vortex`, `fire`, `muzzle` | `"bars"` | Look |
+| `style` | `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`, `frame`, `radial`, `orb`, `spiral`, `halo`, `vortex`, `fire`, `muzzle`, `electric` | `"bars"` | Look |
 | `color_mode` | `theme`, `gradient`, `custom` | `"theme"` | Colour |
 | `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour 1 |
 | `color2` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"tertiary"` | Colour 2 |

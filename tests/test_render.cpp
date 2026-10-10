@@ -165,6 +165,56 @@ int main(int argc, char** argv) {
     }
   }
 
+  // electricity, frozen just after a kick: the arc runs end to end across the
+  // box, a bolt comes down from the top edge, the plasma stays in its globe;
+  // ink is only greys; and each matches its golden
+  {
+    auto look = [&](const char* form, const char* style, int w, int h) {
+      toml::table o;
+      o.insert_or_assign("electric_preview", 0.04);
+      o.insert_or_assign("electric_form", form);
+      o.insert_or_assign("electric_style", style);
+      return renderLook("electric", w, h, pal, &o);
+    };
+    auto colAlpha = [](const Image& im, int x0, int x1, int y0, int y1) {
+      double a = 0;
+      for (int y = y0; y < y1; ++y)
+        for (int x = x0; x < x1; ++x) a += im.rgba[(static_cast<size_t>(y) * im.w + x) * 4 + 3];
+      return a;
+    };
+    const Image arc = look("arc", "flash", 480, 160);
+    CHECK(colAlpha(arc, 10, 40, 0, 160) > 0 && colAlpha(arc, 440, 470, 0, 160) > 0);  // both ends lit
+    CHECK(colAlpha(arc, 200, 280, 60, 100) > 0);                                     // and the middle
+    const Image bolt = look("bolts", "flash", 320, 320);
+    CHECK(colAlpha(bolt, 0, 320, 0, 20) > 0);       // from the top edge
+    CHECK(colAlpha(bolt, 0, 320, 260, 320) > 0);    // down to the ground
+    const Image globe = look("plasma", "flash", 300, 300);
+    // nothing much outside the globe's circle (its glow fades by the edge)
+    CHECK(colAlpha(globe, 0, 20, 0, 20) < colAlpha(globe, 140, 160, 140, 160) * 0.05);
+    const Image ink = look("arc", "manga", 480, 160);
+    bool greys = true;
+    for (size_t i = 0; i < ink.rgba.size(); i += 4)
+      if (std::abs(ink.rgba[i] - ink.rgba[i + 1]) > 3 || std::abs(ink.rgba[i + 1] - ink.rgba[i + 2]) > 3) greys = false;
+    CHECK(greys);
+    CHECK(colAlpha(ink, 0, 480, 0, 160) > 0);
+    struct G {
+      const char* name;
+      const Image* img;
+    };
+    for (const G& gg : {G{"electric-arc", &arc}, G{"electric-bolts", &bolt}, G{"electric-plasma", &globe}, G{"electric-manga", &ink}}) {
+      const std::string path = golden + "/" + gg.name + ".png";
+      if (update) {
+        writePng(*gg.img, path, false);
+      } else {
+        Image ref;
+        CHECK(readPng(path, ref));
+        const double d = imageDiff(*gg.img, ref);
+        if (d < 0 || d > 1.5) std::fprintf(stderr, "%s differs from golden: %.3f\n", gg.name, d);
+        GOLDEN(d);
+      }
+    }
+  }
+
   // the line floats in its box: its glow fades below it too, with no cut
   // where a bar look's root would be
   {

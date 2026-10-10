@@ -28,7 +28,7 @@ namespace {
 constexpr double kSnapPx = 8.0;
 constexpr double kCoalesceSec = 0.8;
 const char* kLooks[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                        "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle"};
+                        "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle", "electric"};
 
 // The resize grip under the pointer: 0 top-left, 1 top-right, 2 bottom-left,
 // 3 bottom-right, -1 none (the grips turn with the widget)

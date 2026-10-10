@@ -95,6 +95,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "tilt_x" || key == "tilt_y" || key == "skew") return !frameLook && mode == "tilt";
   if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
   if (key == "muzzle_colors") return o["muzzle_style"].value_or(std::string("flash")) != "manga";  // ink is black and white
+  if (key == "electric_colors" || key == "electric_glow") return o["electric_style"].value_or(std::string("flash")) != "manga";
   if (key.starts_with("mesh_")) {
     if (!w.cfg.meshed) return false;
     if (key == "mesh_amount") {
@@ -110,7 +111,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   };
   if (w.cfg.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
-    const bool own = in(look, {"halo", "vortex", "fire", "muzzle"});  // the newer looks draw their own way
+    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -219,6 +220,20 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "halo_pulse", "Ember (groove)", "Brasa (ritmo)", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, m.begin(), m.end());
+  }
+  if (look == "electric") {
+    std::vector<PropSpec> e = {
+        {K::Enum, "electric_form", "Form", "Forma", {"arc", "bolts", "plasma"}, 0, 0, 0, 0, "arc"},
+        {K::Enum, "electric_style", "Drawn as", "Dibujo", {"flash", "manga"}, 0, 0, 0, 0, "flash"},
+        {K::Enum, "electric_colors", "Colours", "Colores", {"blue", "theme"}, 0, 0, 0, 0, "blue"},
+        {K::Number, "electric_amount", "Amount", "Cantidad", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "electric_branches", "Branches", "Ramas", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "electric_glow", "Glow", "Brillo", {}, 0, 1, 0.05, 0.6},
+        {K::Number, "electric_width", "Thickness", "Grosor", {}, 0.3, 3, 0.05, 1},
+        {K::Number, "halo_hits", "Beat flash", "Destello al golpe", {}, 0, 1, 0.05, 0.7},
+        {K::Number, "halo_breathe", "Follows the music", "Sigue la música", {}, 0, 1, 0.05, 0.6},
+    };
+    s.insert(s.begin() + 1, e.begin(), e.end());
   }
   if (look == "vortex") {
     // the vortex's shape, then the halo's music (it shares the halo's motion)
@@ -355,7 +370,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     return false;
   };
   auto section = [&](const std::string& k) {
-    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors"})) return 1;
+    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors"})) return 1;
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;

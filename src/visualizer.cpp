@@ -18,7 +18,8 @@
 namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
-                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle"};
+                                "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle",
+                                "electric"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);
@@ -98,6 +99,34 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
   }
   for (size_t i = 0; i < m_shotAge.size(); ++i)  // the spark count may have changed
     if (m_shotAge[i] >= 0) shapeShot(i);
+  m_eForm = t["electric_form"].value_or(std::string("arc"));
+  if (m_eForm != "bolts" && m_eForm != "plasma") m_eForm = "arc";
+  m_eManga = t["electric_style"].value_or(std::string("flash")) == "manga";
+  m_eTheme = t["electric_colors"].value_or(std::string("blue")) == "theme";
+  m_eAmount = std::clamp(t["electric_amount"].value_or(0.5), 0.0, 1.0);
+  m_eBranches = std::clamp(t["electric_branches"].value_or(0.5), 0.0, 1.0);
+  m_eGlow = std::clamp(t["electric_glow"].value_or(0.6), 0.0, 1.0);
+  m_eWidth = std::clamp(t["electric_width"].value_or(1.0), 0.3, 3.0);
+  m_ePreview = t["electric_preview"].value_or(-1.0);
+  {
+    // the globe's filaments: spread round it (the golden angle), each drifting
+    // its own way at its own pace
+    BoltRandom r(7);
+    for (size_t i = 0; i < kFilaments; ++i) {
+      m_filAngle[i] = static_cast<double>(i) * 2.39996 + r.range(-0.3F, 0.3F);
+      m_filSpeed[i] = (r.next() < 0.5F ? -1 : 1) * r.range(0.25F, 0.8F);
+      m_filSeed[i] = 101 + static_cast<uint32_t>(i) * 7919;
+    }
+    for (size_t k = 0; k < m_arcSeed.size(); ++k) m_arcSeed[k] = 3 + static_cast<uint32_t>(k) * 104729;
+    if (m_ePreview >= 0) {  // one strike, frozen
+      m_boltAge = {m_ePreview, -1, -1, -1};
+      m_boltGain[0] = 1;
+      m_boltSeed[0] = 17;
+      m_boltX0[0] = 0.42F;
+      m_boltX1[0] = 0.58F;
+      m_boltY1[0] = 0.95F;
+    }
+  }
   if (m_cfg.colorMode == "theme") {
     m_haloA = noct.color("primary");
     m_haloB = noct.color("secondary");
@@ -226,6 +255,64 @@ void Visualizer::tickRing(double dt, const std::vector<float>* raw, const AudioF
     if (m_trace.kick)
       shoot(std::clamp(0.45 + 0.55 * m_hit / std::max(0.05, m_haloHits), 0.45, 1.0), audio.onsets ? std::min(audio.kickAge, 0.05) : 0.0);
   }
+  if (m_styleIndex == 16) {
+    m_eLive = live;
+    electricTick(dt, m_trace.kick, std::clamp(m_hit / std::max(0.05, m_haloHits), 0.3, 1.0));
+  }
+}
+
+// Electricity's time: the louder, the faster its paths are drawn anew (an arc
+// re-forms 7 to 28 times a second); a kick flashes it, re-forms everything at
+// once and, as bolts, strikes.
+void Visualizer::electricTick(double dt, bool kicked, double strength) {
+  if (m_ePreview >= 0) {
+    m_eLive = true;
+    m_eEnergy = 0.6;
+    m_eFlash = std::exp(-m_ePreview / 0.18);
+    return;
+  }
+  m_eTime += dt;
+  m_eEnergy = std::clamp(0.7 * m_breath + 0.6 * m_pump, 0.0, 1.0);
+  const double flashGain = std::clamp(m_haloHits / 0.7, 0.0, 1.45);
+  if (kicked) m_eFlash = std::max(m_eFlash, strength * flashGain);
+  m_eFlash *= std::exp(-dt / 0.18);
+  if (m_eFlash < 0.003) m_eFlash = 0;
+  const double interval = m_eLive ? 0.14 - 0.105 * m_eEnergy : 0.12;
+  for (size_t k = 0; k < m_arcSeed.size(); ++k)
+    if (kicked || m_eTime >= m_arcAt[k]) {
+      m_arcSeed[k] = nextSeed();
+      m_arcAt[k] = m_eTime + interval * m_eRnd.range(0.7F, 1.3F);
+    }
+  for (size_t i = 0; i < kFilaments; ++i) {
+    m_filAngle[i] += dt * m_filSpeed[i] * (0.4 + 1.2 * m_eEnergy + 2.0 * m_eFlash);
+    if (kicked || m_eTime >= m_filAt[i]) {
+      m_filSeed[i] = nextSeed();
+      m_filAt[i] = m_eTime + (m_eLive ? 0.09 - 0.04 * m_eEnergy : 0.12) * m_eRnd.range(0.7F, 1.3F);
+    }
+  }
+  for (double& a : m_boltAge)
+    if (a >= 0) a = a + dt > 0.6 ? -1 : a + dt;
+  if (kicked && m_eForm == "bolts") {
+    strike(strength, 0);
+    if (m_eAmount > 0.6 && strength > 0.7) strike(strength * 0.7, 0);  // a hard kick, a second fork of the sky
+  }
+}
+
+void Visualizer::strike(double gain, double age) {
+  size_t slot = 0;  // a free slot, else the oldest bolt
+  for (size_t i = 0; i < m_boltAge.size(); ++i) {
+    if (m_boltAge[i] < 0) {
+      slot = i;
+      break;
+    }
+    if (m_boltAge[i] > m_boltAge[slot]) slot = i;
+  }
+  m_boltAge[slot] = age;
+  m_boltGain[slot] = gain;
+  m_boltSeed[slot] = nextSeed();
+  m_boltX0[slot] = m_eRnd.range(0.12F, 0.88F);
+  m_boltX1[slot] = std::clamp(m_boltX0[slot] + m_eRnd.range(-0.3F, 0.3F), 0.05F, 0.95F);
+  m_boltY1[slot] = m_eRnd.range(0.7F, 1.0F);
 }
 
 void Visualizer::shoot(double gain, double age) {
@@ -287,6 +374,103 @@ void Visualizer::shapeShot(size_t slot) {
   for (int k = 0; k < 4; ++k)
     put(m_puffs, slot * 4 + k, mix(0.08F, 0.6F, (static_cast<float>(k) + R(120 + k)) / 4.0F), (R(130 + k) - 0.5F) * 0.18F,
         mix(0.3F, 0.5F, R(140 + k)), 0.0F);
+}
+
+void Visualizer::drawElectric(const DrawContext& ctx) {
+  const float w = ctx.w, h = ctx.h;
+  const float energy = static_cast<float>(m_eEnergy), flash = static_cast<float>(std::min(1.0, m_eFlash));
+  const float ui = std::clamp(std::min(w, h) / 200.0F, 0.7F, 2.2F);  // a big box, a bigger bolt
+  const float live = m_eLive ? 1.0F : 0.0F;
+  // ink wants a bolder stroke than light, which has its glow around it
+  const float core = (1.3F + 1.1F * energy * live + 1.6F * flash) * static_cast<float>(m_eWidth) * ui * (m_eManga ? 1.8F : 1.0F);
+  const float glow = (6 + 12 * static_cast<float>(m_eGlow)) * ui * (0.8F + 0.4F * energy * live + 0.5F * flash);
+  auto depthFor = [](float len) { return std::clamp(static_cast<int>(std::lround(std::log2(std::max(16.0F, len) / 7))), 3, 7); };
+  m_boltSegs.clear();
+
+  if (m_eForm == "bolts") {
+    // each strike: the leader comes down in ~30 ms, then the return strokes
+    // flicker -- the first, a second at ~90 ms, a faint third at ~200
+    for (size_t i = 0; i < m_boltAge.size(); ++i) {
+      const double a = m_boltAge[i];
+      if (a < 0) continue;
+      const double I = m_boltGain[i] * (std::exp(-a / 0.07) + (a > 0.09 ? 0.75 * std::exp(-(a - 0.09) / 0.05) : 0) +
+                                        (a > 0.2 ? 0.4 * std::exp(-(a - 0.2) / 0.06) : 0));
+      if (I < 0.02) continue;
+      BoltShape b;
+      const float x0 = m_boltX0[i] * w, x1 = m_boltX1[i] * w, y1 = m_boltY1[i] * h;
+      const float len = std::hypot(x1 - x0, y1);
+      b.rough = 0.16F;
+      b.branches = static_cast<float>(m_eBranches) * 0.9F;
+      b.width = (1.6F + 1.6F * static_cast<float>(m_boltGain[i])) * static_cast<float>(m_eWidth) * ui;
+      b.intensity = static_cast<float>(std::min(1.3, I));
+      b.depth = depthFor(len);
+      b.reveal = static_cast<float>(std::clamp(a / 0.03, 0.0, 1.0));
+      b.width *= m_eManga ? 1.6F : 1.0F;
+      b.boundX0 = 2, b.boundY0 = 0, b.boundX1 = w - 2, b.boundY1 = h - 2;
+      lightning(m_boltSegs, x0, -2, x1, y1, b, m_boltSeed[i]);
+    }
+  } else if (m_eForm == "plasma") {
+    const float cx = w / 2, cy = h / 2, R = std::max(8.0F, std::min(w, h) / 2 - glow * 0.7F), r0 = R * 0.1F;
+    // the glass, faint (or an inked circle), and the electrode at its heart
+    const int ringN = 72;
+    for (int k = 0; k < ringN; ++k) {
+      const float a0 = 6.2831853F * k / ringN, a1 = 6.2831853F * (k + 1) / ringN;
+      m_boltSegs.push_back({cx + R * std::cos(a0), cy + R * std::sin(a0), cx + R * std::cos(a1), cy + R * std::sin(a1),
+                            m_eManga ? 1.4F * ui : 1.0F * ui, m_eManga ? 1.0F : 0.10F});
+    }
+    m_boltSegs.push_back({cx, cy, cx, cy, r0 * 2, std::min(1.2F, 0.75F + 0.5F * flash)});
+    const int n = std::min<int>(kFilaments, 3 + static_cast<int>(std::lround(m_eAmount * 6)) + (flash > 0.3F ? 3 : 0));
+    for (int i = 0; i < n; ++i) {
+      const float ang = static_cast<float>(m_filAngle[static_cast<size_t>(i)]);
+      const float dx = std::cos(ang), dy = std::sin(ang);
+      BoltRandom flick(m_filSeed[static_cast<size_t>(i)]);
+      BoltShape b;
+      b.rough = 0.11F + 0.08F * energy * live + 0.06F * flash;
+      b.branches = static_cast<float>(m_eBranches) * (0.35F + 0.5F * flash);
+      b.width = core * 0.7F;
+      b.intensity = (m_eLive ? 0.4F + 0.6F * energy : 0.3F) * flick.range(0.75F, 1.0F) + 0.5F * flash;
+      b.depth = depthFor(R);
+      b.boundCx = cx, b.boundCy = cy, b.boundR = R * 0.97F;
+      const float ex = cx + dx * R * 0.985F, ey = cy + dy * R * 0.985F;
+      lightning(m_boltSegs, cx + dx * r0, cy + dy * r0, ex, ey, b, m_filSeed[static_cast<size_t>(i)]);
+      m_boltSegs.push_back({ex, ey, ex, ey, b.width * 2.2F, b.intensity});  // where it touches the glass
+    }
+  } else {
+    // the arc: end to end across the box, the zigzag kept inside it
+    const float mx = w * 0.04F, len = w - 2 * mx;
+    const float rough = std::min(0.10F + 0.10F * energy * live + 0.12F * flash, h * 0.42F / std::max(1.0F, 2 * len));
+    const int strands = 1 + static_cast<int>(std::lround(m_eAmount * 2)) + (flash > 0.3F ? 1 : 0);
+    for (int k = 0; k < std::min<int>(strands, static_cast<int>(m_arcSeed.size())); ++k) {
+      BoltShape b;
+      b.rough = rough * (k == 0 ? 1.0F : 1.25F);
+      b.branches = static_cast<float>(m_eBranches) * (0.25F + 0.3F * energy * live + 0.7F * flash);
+      b.width = core * (k == 0 ? 1.0F : 0.6F);
+      b.intensity = (k == 0 ? 1.0F : 0.55F) * (m_eLive ? 0.45F + 0.55F * energy : 0.3F) + 0.6F * flash;
+      b.depth = depthFor(len);
+      const float edge = std::min(h * 0.08F, glow * 0.5F);  // its glow too should mostly stay in
+      b.boundX0 = edge, b.boundY0 = edge, b.boundX1 = w - edge, b.boundY1 = h - edge;
+      lightning(m_boltSegs, mx, h / 2, w - mx, h / 2, b, m_arcSeed[static_cast<size_t>(k)]);
+    }
+    // the two ends glow where the charge leaves and lands
+    const float endI = std::min(1.2F, (m_eLive ? 0.5F + 0.5F * energy : 0.35F) + 0.5F * flash);
+    m_boltSegs.push_back({mx, h / 2, mx, h / 2, core * 2.4F, endI});
+    m_boltSegs.push_back({w - mx, h / 2, w - mx, h / 2, core * 2.4F, endI});
+  }
+
+  BoltRenderer::Look look;
+  look.manga = m_eManga;
+  look.glow = glow;
+  look.ink = 1.6F * ui;
+  look.opacity = opacityNow();
+  if (m_eTheme) {
+    const Color c = m_haloA.mix(Color{1, 1, 1, 1}, 0.8F);
+    look.core[0] = c.r, look.core[1] = c.g, look.core[2] = c.b;
+    look.halo[0] = m_haloA.r, look.halo[1] = m_haloA.g, look.halo[2] = m_haloA.b;
+  } else {
+    look.core[0] = 0.95F, look.core[1] = 0.97F, look.core[2] = 1.0F;
+    look.halo[0] = 0.42F, look.halo[1] = 0.62F, look.halo[2] = 1.0F;
+  }
+  m_bolts.draw(m_boltSegs, w, h, look);
 }
 
 void Visualizer::drawMuzzle(const DrawContext& ctx) {
@@ -445,6 +629,10 @@ void Visualizer::draw(const DrawContext& ctx) {
   }
   if (m_styleIndex == 15) {
     drawMuzzle(ctx);
+    return;
+  }
+  if (m_styleIndex == 16) {
+    drawElectric(ctx);
     return;
   }
   const float w = ctx.w, h = ctx.h, outputW = ctx.outputW, outputH = ctx.outputH;

@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 16 looks
+## Visualizer: 17 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`). Plus four of its own: `halo` (a glowing
-ring), `vortex`, `fire` and `muzzle` (see below).
+and Ryoku's motion (`Motion.qml`). Plus five of its own: `halo` (a glowing
+ring), `vortex`, `fire`, `muzzle` and `electric` (see below).
 
 ## Clock: 12 faces
 
@@ -394,6 +394,25 @@ widget onto the barrel (see Shape). Options: Drawn as (`flash`, light in
 white, yellow and orange, or the theme's colours with Colours `theme`;
 `manga`, flat white with a black ink outline, for black-and-white artwork),
 Reach, Side spikes, Sparks, Smoke, Ember.
+
+## Electricity
+
+The `electric` look is electricity in three forms (Form, `electric_form`):
+
+| | |
+|---|---|
+| `arc` | an arc from the box's left edge to its right, re-forming faster the louder the music (7 to 28 times a second); every kick flashes it, adds a strand and throws off forks. Pin or mesh its ends onto two things in the wallpaper |
+| `bolts` | every kick strikes: a bolt comes down from the top edge in about 30 ms, flickers with two more return strokes and is gone in half a second; a hard kick can strike twice |
+| `plasma` | a plasma globe: filaments from the electrode at its heart to the glass, drifting round it, more of them and brighter with the music, all flashing on a kick |
+
+Its forks stay inside the box (or the globe). Drawn as `flash` (a white-hot
+core in a glow, electric blue or the theme's colours with Colours `theme`) or
+`manga` (white with a black ink outline). Amount (strands, filaments, a second
+bolt), Branches, Glow, Thickness, Beat flash and Follows the music set the
+rest. In silence the arc and the globe keep crackling faintly, a few frames a
+second. The paths are built on the CPU and only the pixels near them are
+shaded, so a big box costs no more than a small one (about 1.5 ms of GPU a
+frame for a 1074 × 621 arc on an Intel HD 520).
 
 ## Clock structures
 
