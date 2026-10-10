@@ -20,7 +20,7 @@ namespace undershell {
 
 static const char* kStyles[] = {"bars", "split", "dots", "segments", "wave", "ribbon",
                                 "curtain", "line", "frame", "radial", "orb", "spiral", "halo", "vortex", "fire", "muzzle",
-                                "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal"};
+                                "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal", "tv"};
 
 void Visualizer::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(VisualizerConfig::fromTable(cfg.options), noct);

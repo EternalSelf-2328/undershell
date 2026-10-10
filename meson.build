@@ -23,6 +23,22 @@ deps = [
   dependency('nlohmann_json'),
   dependency('threads'),
 ]
+# the TV look's videos (GIFs play without it, through gdk-pixbuf)
+video_deps = [
+  dependency('libavformat', required : get_option('video')),
+  dependency('libavcodec', required : get_option('video')),
+  dependency('libswscale', required : get_option('video')),
+  dependency('libavutil', required : get_option('video')),
+]
+have_video = true
+foreach d : video_deps
+  have_video = have_video and d.found()
+endforeach
+if have_video
+  deps += video_deps
+  add_project_arguments('-DUS_HAVE_FFMPEG=1', language : 'cpp')
+endif
+summary({'videos (FFmpeg)' : have_video}, section : 'Features')
 wayland_protos = dependency('wayland-protocols')
 
 datadir = get_option('prefix') / get_option('datadir') / 'undershell'
@@ -94,7 +110,9 @@ core = static_library('undershell-core',
   'src/strokes.cpp',
   'src/terminal.cpp',
   'src/termscreen.cpp',
+  'src/tv.cpp',
   'src/text.cpp',
+  'src/video.cpp',
   'src/visualizer.cpp',
   'src/wallkind.cpp',
   'src/widget.cpp',

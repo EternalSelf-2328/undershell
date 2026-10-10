@@ -59,7 +59,8 @@ std::string optionLabel(const std::string& value, bool es) {
       {"smooth", "Suave"}, {"text", "Solo texto"}, {"electric", "Electricidad"}, {"bolts", "Rayos"}, {"plasma", "Plasma"}, {"blue", "Azul eléctrico"}, {"sfx", "Onomatopeyas"}, {"mix", "Mezcla"},
       {"english", "Inglés"}, {"japanese", "Japonés"}, {"korean", "Coreano"}, {"chinese", "Chino"}, {"comic", "Cómic"},
       {"classic", "Clásicos"}, {"speedlines", "Líneas manga"}, {"focus", "Enfoque"},
-      {"parallel", "Velocidad"}, {"rain", "Lluvia"}, {"ripples", "Ondas en el agua"}, {"water", "Agua"}, {"neon", "Neón"}, {"fireworks", "Fuegos artificiales"}, {"terminal", "Terminal"}, {"code", "Código"},
+      {"parallel", "Velocidad"}, {"rain", "Lluvia"}, {"ripples", "Ondas en el agua"}, {"water", "Agua"}, {"neon", "Neón"}, {"fireworks", "Fuegos artificiales"}, {"terminal", "Terminal"}, {"tv", "Televisión"}, {"static", "Estática"}, {"colorbars", "Carta de ajuste"},
+      {"nosignal", "Sin señal"}, {"media", "Tus videos"}, {"channels", "Canales"}, {"fill", "Llenar"}, {"fit", "Encajar"}, {"code", "Código"},
       {"spectrum", "Espectro"}, {"matrix", "Matrix"}, {"monitor", "Monitor del sistema"}, {"green", "Verde"}, {"amber", "Ámbar"}, {"peony", "Peonía"}, {"willow", "Sauce"}, {"heart", "Corazón"}, {"star", "Estrella"},
       {"bolt", "Rayo"}, {"note", "Nota"}, {"arrow", "Flecha"}, {"snow", "Nieve"}, {"petals", "Pétalos"}, {"black", "Negro"}, {"white", "Blanco"}, {"top", "Arriba"}, {"bottom", "Abajo"}, {"straight", "Recto"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
   };
@@ -67,7 +68,8 @@ std::string optionLabel(const std::string& value, bool es) {
       {"bighour", "Big hour"}, {"goodnight", "Good night"}, {"en", "English"}, {"es", "Spanish"},
       {"clover4Leaf", "Clover 4"}, {"clover8Leaf", "Clover 8"}, {"cookie12Sided", "Cookie 12"}, {"cookie4Sided", "Cookie 4"},
       {"cookie6Sided", "Cookie 6"}, {"cookie7Sided", "Cookie 7"}, {"cookie9Sided", "Cookie 9"}, {"slash", "Slash /"},
-      {"on_surface", "Text"}, {"pin", "Corners"}, {"muzzle", "Muzzle flash"}, {"electric", "Electricity"}, {"sfx", "Onomatopoeia"}, {"speedlines", "Speed lines"}, {"petals", "Sakura petals"}, {"ripples", "Ripples"}, {"neon", "Neon sign"}, {"fireworks", "Fireworks"}, {"monitor", "System monitor"}, {"comic", "Comic"}, {"blue", "Electric blue"}, {"flash", "Realistic"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
+      {"on_surface", "Text"}, {"pin", "Corners"}, {"muzzle", "Muzzle flash"}, {"electric", "Electricity"}, {"sfx", "Onomatopoeia"}, {"speedlines", "Speed lines"}, {"petals", "Sakura petals"}, {"ripples", "Ripples"}, {"neon", "Neon sign"}, {"fireworks", "Fireworks"}, {"monitor", "System monitor"}, {"tv", "TV"}, {"static", "Static"}, {"colorbars", "Colour bars"},
+      {"nosignal", "No signal"}, {"media", "Your videos"}, {"comic", "Comic"}, {"blue", "Electric blue"}, {"flash", "Realistic"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
   };
   const auto& table = es ? kEs : kEn;
   if (auto it = table.find(value); it != table.end()) return it->second;

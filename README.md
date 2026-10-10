@@ -171,13 +171,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 24 looks
+## Visualizer: 25 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks` and `terminal` (see below).
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `terminal` and `tv` (see below).
 
 ## Clock: 12 faces
 
@@ -507,6 +507,39 @@ text) each from 0 (off) to 1, and Text size. A kick lights the screen up
 (Beat flash). The characters come from a sheet built once (JetBrains Mono;
 katakana from the system's CJK font) and the whole screen is two passes:
 about 0.7 ms of GPU a frame at 1074 × 621.
+
+## TV
+
+The `tv` look is an old television, for the screens in a wallpaper. It
+Shows (`tv_mode`) `static` (snow), `colorbars` (the SMPTE bars), `nosignal`
+(the blue screen), `media` (your GIFs and videos) or `channels` (all of
+them, your files first, flipping between them). With the music:
+
+- **Beat interference**: a kick throws bands sideways, splits the colours
+  and sends a burst of snow across the picture.
+- **Speed with music**: videos and GIFs play faster as the song rises
+  (0.5× to 1.8×).
+- **Channel changes**: hard kicks change the channel, with a moment of snow
+  and `CH 03` in the corner.
+- **Off in silence**: when the music stops the set switches off the old
+  way, into a white line and then a dot, and comes back with the music.
+
+**VHS tape** adds tracking noise, a wobble, worn colour and `PLAY ▶` with a
+counter; **Snow over it** lays a little static on any picture. The tube is
+the terminal's: Glow, Scanlines, Flicker, Tube curve and Screen glass.
+
+Your files go in the config, as paths or folders (the media files in a
+folder, in order; up to eight):
+
+```toml
+tv_files = ["~/Videos/loops/", "~/Pictures/cat.gif"]
+```
+
+Picture `fill` crops them to the screen, `fit` letterboxes them. Each is
+decoded on its own thread, scaled down to the widget's size; a short clip
+(up to 32 MB once scaled) is kept after its first loop and never decoded
+again. Videos need undershell built with FFmpeg (`-Dvideo=enabled`, on by
+default when its libraries are found); without it, GIFs still play.
 
 ## Clock structures
 

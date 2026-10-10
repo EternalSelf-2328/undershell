@@ -96,6 +96,10 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
   if (key == "muzzle_colors") return o["muzzle_style"].value_or(std::string("flash")) != "manga";  // ink is black and white
   if (key == "electric_colors" || key == "electric_glow") return o["electric_style"].value_or(std::string("flash")) != "manga";
+  if (key == "tv_fit" || key == "tv_speed" || key == "tv_zap") {  // only where your videos are
+    const std::string m = o["tv_mode"].value_or(std::string("static"));
+    return m == "media" || m == "channels";
+  }
   if (key == "fw_colors") return o["fw_style"].value_or(std::string("flash")) != "manga";
   if (key == "neon_font") return o["neon_shape"].value_or(std::string("text")) == "text";
   if (key == "ripple_colors") return o["ripple_style"].value_or(std::string("flash")) != "manga";
@@ -117,7 +121,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   };
   if (w.cfg.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
-    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal"});  // the newer looks draw their own way
+    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal", "tv"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -226,6 +230,24 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "halo_pulse", "Ember (groove)", "Brasa (ritmo)", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, m.begin(), m.end());
+  }
+  if (look == "tv") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "tv_mode", "Shows", "Muestra", {"static", "colorbars", "nosignal", "media", "channels"}, 0, 0, 0, 0, "static"},
+        {K::Enum, "tv_fit", "Picture", "Imagen", {"fill", "fit"}, 0, 0, 0, 0, "fill"},
+        {K::Number, "tv_glitch", "Beat interference", "Interferencia al golpe", {}, 0, 1, 0.05, 0.6},
+        {K::Number, "tv_speed", "Speed with music", "Velocidad con la música", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "tv_zap", "Channel changes", "Cambio de canal", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "tv_static", "Snow over it", "Nieve encima", {}, 0, 1, 0.02, 0.06},
+        {K::Bool, "tv_vhs", "VHS tape", "Cinta VHS", {}, 0, 1, 1, 0},
+        {K::Bool, "tv_poweroff", "Off in silence", "Apagar en silencio", {}, 0, 1, 1, 1},
+        {K::Number, "tv_glow", "Glow", "Brillo", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "tv_scan", "Scanlines", "Líneas de barrido", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "tv_flicker", "Flicker", "Parpadeo", {}, 0, 1, 0.05, 0.2},
+        {K::Number, "tv_curve", "Tube curve", "Curvatura", {}, 0, 1, 0.05, 0.3},
+        {K::Number, "tv_background", "Screen glass", "Fondo de pantalla", {}, 0, 1, 0.05, 0.9},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
   }
   if (look == "terminal") {
     std::vector<PropSpec> f = {

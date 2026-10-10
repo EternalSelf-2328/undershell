@@ -5,6 +5,10 @@
 #include "media.hpp"
 #include "nowplaying.hpp"
 #include "offscreen.hpp"
+#include <array>
+#include <chrono>
+#include <thread>
+#include "video.hpp"
 #include "sfx.hpp"
 #include "canvas.hpp"
 #include "m3shapes.hpp"
@@ -448,6 +452,75 @@ int main(int argc, char** argv) {
         GOLDEN(d);
       }
     }
+  }
+
+  // the TV: snow is noise (no two neighbours alike), the bars sit in their
+  // SMPTE colours, NO SIGNAL is blue; and a GIF decodes and plays on its own
+  // clock (red, then green after 0.2 s), with FFmpeg or through gdk-pixbuf
+  {
+    auto set = [&](const char* mode) {
+      toml::table o;
+      o.insert_or_assign("tv_preview", 1.0);
+      o.insert_or_assign("tv_mode", mode);
+      o.insert_or_assign("tv_curve", 0.0);
+      o.insert_or_assign("tv_scan", 0.0);
+      o.insert_or_assign("tv_static", 0.0);
+      return renderLook("tv", 420, 300, pal, &o);
+    };
+    auto px = [](const Image& im, int x, int y) {
+      const size_t i = (static_cast<size_t>(y) * im.w + x) * 4;
+      return std::array<int, 3>{im.rgba[i], im.rgba[i + 1], im.rgba[i + 2]};
+    };
+    const Image snow = set("static");
+    int differ = 0;
+    for (int x = 100; x < 140; x += 2) differ += std::abs(px(snow, x, 150)[1] - px(snow, x + 2, 150)[1]) > 20;
+    CHECK(differ > 8);
+    const Image bars = set("colorbars");
+    const auto yellow = px(bars, 90, 80), blue = px(bars, 390, 80);
+    CHECK(yellow[0] > 120 && yellow[1] > 120 && yellow[2] < 60);
+    CHECK(blue[2] > 120 && blue[0] < 60 && blue[1] < 60);
+    const auto sky = px(set("nosignal"), 60, 60);
+    CHECK(sky[2] > 100 && sky[2] > 2 * sky[0]);
+
+    const std::string gif = std::string(US_SOURCE_DIR) + "/tests/data/tv-colors.gif";
+    VideoSource v;
+    v.open(gif, 64, 48);
+    bool first = false;
+    for (int i = 0; i < 400 && !first; ++i) {
+      first = v.advance(0, 1);
+      if (!first) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(first);
+    // the centre's colour, from its three planes, the way the TV's shader reads them
+    auto colour = [&] {
+      auto plane = [&](GLuint tex, int x, int y) {
+        GLuint fbo;
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+        unsigned char p[4] = {0, 0, 0, 0};
+        glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(1, &fbo);
+        return p[0] / 255.0;
+      };
+      const double y = plane(v.texture(), v.width() / 2, v.height() / 2);
+      const double u = plane(v.textureU(), v.width() / 4, v.height() / 4) - 0.5, w = plane(v.textureV(), v.width() / 4, v.height() / 4) - 0.5;
+      auto c = [](double x) { return static_cast<int>(std::clamp(x, 0.0, 1.0) * 255); };
+      return std::array<int, 3>{c(y + 1.402 * w), c(y - 0.344136 * u - 0.714136 * w), c(y + 1.772 * u)};
+    };
+    const auto red = colour();
+    CHECK(red[0] > 200 && red[1] < 60);
+    bool moved = false;
+    for (int i = 0; i < 400 && !moved; ++i) {
+      moved = v.advance(i == 0 ? 0.25 : 0, 1);
+      if (!moved) std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    const auto green = colour();
+    if (!(green[1] > 200 && green[0] < 60)) std::fprintf(stderr, "tv gif: after 0.25 s %d %d %d\n", green[0], green[1], green[2]);
+    CHECK(green[1] > 200 && green[0] < 60);
+    v.close();
+    v.releaseGl();
   }
 
   // the line floats in its box: its glow fades below it too, with no cut
