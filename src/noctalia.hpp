@@ -9,6 +9,7 @@
 
 #include "common.hpp"
 #include "plasma.hpp"
+#include "shells.hpp"
 
 #include <map>
 #include <string>
@@ -45,8 +46,13 @@ public:
   // each screen's connector and pixel size (picks images out of Plasma's
   // wallpaper packages); true when they changed
   bool setScreens(std::map<std::string, std::pair<int, int>> screens);
-  // which source refresh() reads now
-  static std::string pickSource();
+  // which source refresh() reads now ("shell": `shell` says which one)
+  static std::string pickSource(ShellState* shell = nullptr);
+  // directories to watch for the current source (beyond Noctalia's and
+  // Plasma's own), and whether it must be asked again every few seconds (a
+  // daemon with no file, or a shell that may start later)
+  [[nodiscard]] const std::vector<std::string>& watchDirs() const { return m_watchDirs; }
+  [[nodiscard]] bool polls() const { return m_lastSource == "shell" || m_lastSource == "none"; }
 
   static std::string settingsPath();
   static std::string configDir();
@@ -54,6 +60,7 @@ public:
 private:
   bool refreshNoctalia(NoctaliaState& s);
   bool refreshPlasma(NoctaliaState& s);
+  bool refreshShell(NoctaliaState& s, ShellState shell);
   void refreshPalette(NoctaliaState& s);
   void compose();
   NoctaliaState m_base;   // what the source says
@@ -61,6 +68,8 @@ private:
   std::string m_paletteKey;
   std::string m_lastExport;
   std::string m_lastSource;
+  std::string m_shellKey;
+  std::vector<std::string> m_watchDirs;
   std::string m_manual, m_manualFill;
   std::map<std::string, std::pair<int, int>> m_screens;
   Plasma m_plasma;

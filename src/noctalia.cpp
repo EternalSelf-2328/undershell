@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "noctalia.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <glib.h>
 #include <regex>
@@ -121,9 +122,17 @@ bool Noctalia::refreshPlasma(NoctaliaState& out) {
   return true;
 }
 
-std::string Noctalia::pickSource() {
+std::string Noctalia::pickSource(ShellState* shell) {
   // inside Plasma, Plasma draws the wallpaper whatever else is installed
   if (Plasma::session()) return "plasma";
+  const std::vector<Argv> procs = userProcesses();
+  if (std::ranges::any_of(procs, [](const Argv& a) { return !a.empty() && fs::path(a[0]).filename() == "noctalia"; })) return "noctalia";
+  // another shell or wallpaper tool that is running
+  ShellState found;
+  if (readShell(procs, found)) {
+    if (shell) *shell = std::move(found);
+    return "shell";
+  }
   if (gchar* p = g_find_program_in_path("noctalia"); p) {
     g_free(p);
     return "noctalia";
@@ -131,10 +140,38 @@ std::string Noctalia::pickSource() {
   return Plasma::present() ? "plasma" : "none";
 }
 
+// caelestia, DankMaterialShell, awww, hyprpaper, … (shells.hpp)
+bool Noctalia::refreshShell(NoctaliaState& out, ShellState sh) {
+  std::string key = sh.name + "|" + std::to_string(sh.fillMode) + "|" + sh.fallback + (sh.dark ? "|d" : "|l");
+  for (auto& [o, p] : sh.byOutput) key += "|" + o + "=" + p;
+  for (auto& [r, c] : sh.palette) key += std::format("|{}:{:.3f},{:.3f},{:.3f}", r, c.r, c.g, c.b);
+  m_watchDirs = sh.watch;
+  if (key == m_shellKey && m_lastSource == "shell") return false;
+  m_shellKey = key;
+  NoctaliaState s;
+  s.source = sh.name;
+  s.wallpaperByOutput = sh.byOutput;
+  s.defaultWallpaper = sh.fallback.empty() && !sh.byOutput.empty() ? sh.byOutput.begin()->second : sh.fallback;
+  s.fillMode = sh.fillMode;
+  s.themeMode = sh.dark ? "dark" : "light";
+  m_paletteKey.clear();
+  refreshPalette(s);
+  for (auto& [role, c] : sh.palette) s.palette[role] = c;
+  US_INFO("{}: wallpaper {} ({} output(s) named), fill {}, palette {}", sh.name, fs::path(s.defaultWallpaper).filename().string(),
+          sh.byOutput.size(), s.fillMode, sh.palette.empty() ? "default" : std::format("{} roles", sh.palette.size()));
+  out = std::move(s);
+  return true;
+}
+
 bool Noctalia::refresh() {
-  const std::string source = pickSource();
+  ShellState shell;
+  const std::string source = pickSource(&shell);
   bool changed = false;
-  if (source == "noctalia") {
+  if (source != "shell") m_watchDirs.clear();
+  if (source == "shell") {
+    changed = refreshShell(m_base, std::move(shell));
+    m_ready = true;
+  } else if (source == "noctalia") {
     changed = refreshNoctalia(m_base);
     m_ready = !m_lastExport.empty();
   } else if (source == "plasma") {
@@ -147,7 +184,8 @@ bool Noctalia::refresh() {
       m_paletteKey.clear();
       refreshPalette(s);
       m_base = std::move(s);
-      if (m_manual.empty()) US_INFO("no Noctalia or Plasma here: name the wallpaper in [general] wallpaper for depth and per-wallpaper layouts");
+      if (m_manual.empty())
+        US_INFO("no known shell or wallpaper tool here: name the wallpaper in [general] wallpaper for depth and per-wallpaper layouts");
     }
     m_ready = true;
   }

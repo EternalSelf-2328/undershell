@@ -717,7 +717,7 @@ of these that is there:
 
 1. **`[general] wallpaper`** (and `wallpaper_fill`) in `config.toml`, if set:
    over any of the others.
-2. **KDE Plasma**, inside a Plasma session (or when Noctalia is not installed):
+2. **KDE Plasma**, inside a Plasma session (or when nothing else is found):
    each screen's desktop wallpaper (`plasma-org.kde.plasma.desktop-appletsrc`,
    the current activity, Plasma's numbering of the screens from
    `kwinoutputconfig.json`; for a wallpaper package such as the default
@@ -726,7 +726,28 @@ of these that is there:
    accent colour in `kdeglobals` (`primary` is the accent). A change in
    Plasma's settings is picked up at once. A slideshow keeps its current image
    to itself, so it has no depth.
-3. **Noctalia**, as described above.
+3. **Noctalia**, when it is running (or installed and nothing below is).
+4. **Another shell or wallpaper tool that is running**, read from its own
+   files (each format taken from the project's source):
+
+   | | Wallpaper | Colours |
+   |---|---|---|
+   | [caelestia](https://github.com/caelestia-dots/shell) | `~/.local/state/caelestia/wallpaper/path.txt` | `scheme.json` |
+   | [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) | `session.json` (per monitor, fill mode) | `dms-colors.json` |
+   | [end-4's illogical-impulse](https://github.com/end-4/dots-hyprland) | `~/.config/illogical-impulse/config.json` | `generated/colors.json` |
+   | [Ambxst](https://github.com/Axenide/Ambxst) | `~/.cache/ambxst/wallpapers.json` | `colors.json` |
+   | [HyprPanel](https://github.com/Jas-SinghFSU/HyprPanel) | `config.json` (`wallpaper.image`) | — |
+   | COSMIC | cosmic-bg's state, per output | — |
+   | mpvpaper | its command line (a video: no depth) | — |
+   | awww / swww | its cache, per output, with the resize mode | pywal |
+   | hyprpaper | `hyprctl hyprpaper listactive`, `hyprpaper.conf` | pywal |
+   | wpaperd | its links in `~/.local/state/wpaperd` | pywal |
+   | swaybg | its command line | pywal |
+   | waypaper | `config.ini` / `state.ini` | pywal |
+
+   "pywal" means `~/.cache/wal/colors.json`, used when it was made from that
+   same wallpaper. A shell or tool that starts or stops is noticed within a
+   few seconds.
 
 The music card reads the MPRIS players directly when Noctalia's aggregator is
 not on the bus. `undershell msg status` shows which source is in use
@@ -830,6 +851,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/audio.*` | PipeWire capture + FFT |
 | `src/noctalia.*`, `src/depth.*`, `src/depthfield.*`, `src/depthpaint.cpp` | Noctalia palette, depth masks, per-widget depth planes, the depth brush |
 | `src/plasma.*` | KDE Plasma: wallpapers per screen, fill mode, palette from the colour scheme |
+| `src/shells.*` | Other shells and wallpaper tools: caelestia, DMS, illogical-impulse, Ambxst, HyprPanel, COSMIC, awww, hyprpaper, wpaperd, swaybg, … |
 | `src/depthgen.*`, `src/depthhelper.cpp` | Depth without Noctalia: the model download and `undershell-depth`, which runs it |
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |

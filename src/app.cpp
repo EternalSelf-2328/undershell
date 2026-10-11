@@ -385,6 +385,18 @@ void App::syncScreens() {
 
 void App::refreshNoctalia() {
   if (m_noctalia.refresh()) noctaliaChanged();
+  syncSourceWatches();
+}
+
+// the files a shell or wallpaper tool keeps its wallpaper in (shells.hpp)
+void App::syncSourceWatches() {
+  if (m_inotify < 0 || m_noctalia.watchDirs() == m_sourceDirs) return;
+  for (int wd : m_wdSource) inotify_rm_watch(m_inotify, wd);
+  m_wdSource.clear();
+  m_sourceDirs = m_noctalia.watchDirs();
+  for (const auto& d : m_sourceDirs)
+    if (const int wd = inotify_add_watch(m_inotify, d.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE); wd >= 0)
+      m_wdSource.push_back(wd);
 }
 
 void App::noctaliaChanged() {
@@ -1530,6 +1542,7 @@ void App::handleInotify() {
       if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
+      if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
       if (ev->wd == m_wdMasks && name.ends_with(".png")) m_refreshDepthAt = now + 0.3;
       if (ev->wd == m_wdDepthMaps && name.ends_with(".npy")) m_refreshDepthAt = now + 0.3;
       p += sizeof(inotify_event) + ev->len;
@@ -1543,6 +1556,7 @@ int App::computeTimeout() {
   for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt})
     if (t > 0) next = std::min(next, t);
   if (!m_noctalia.ready()) next = std::min(next, m_noctRetryAt);
+  if (m_noctalia.polls()) next = std::min(next, m_sourcePollAt);
   // wake when the silence becomes "nothing playing", if a visualizer cares
   if (m_silentSince >= 0 && !m_nothingPlaying)
     for (auto& w : m_widgets)
@@ -1617,6 +1631,7 @@ int App::run() {
   m_wdConfig = inotify_add_watch(m_inotify, fs::path(m_configPath).parent_path().c_str(), mask);
   m_wdNoctState = inotify_add_watch(m_inotify, fs::path(Noctalia::settingsPath()).parent_path().c_str(), mask);
   m_wdNoctConfig = inotify_add_watch(m_inotify, Noctalia::configDir().c_str(), mask);
+  syncSourceWatches();
   // KDE Plasma's desktop, colour and activity files (written by rename)
   if (Plasma::present() || Plasma::session()) m_wdPlasma = inotify_add_watch(m_inotify, Plasma::configDir().c_str(), mask);
   m_wdMasks = inotify_add_watch(m_inotify, DepthMasks::maskDir().c_str(), mask);
@@ -1668,6 +1683,12 @@ int App::run() {
     if (m_refreshDepthAt > 0 && now >= m_refreshDepthAt) {
       m_refreshDepthAt = 0;
       updateDepth();
+    }
+    // a daemon with nothing to watch (swaybg, hyprpaper's IPC), or a shell
+    // that may start later: ask again every few seconds
+    if (m_noctalia.polls() && now >= m_sourcePollAt) {
+      m_sourcePollAt = now + 5;
+      refreshNoctalia();
     }
     // until Noctalia's config has been read once, retry every few seconds
     if (!m_noctalia.ready() && now >= m_noctRetryAt) {

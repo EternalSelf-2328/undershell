@@ -379,6 +379,111 @@ int main() {
     CHECK(!dark && std::abs(pal["primary"].g - 100 / 255.0F) < 1e-4F);
     CHECK(plasmaPalette("", "", dark).empty());
   }
+  // other shells and wallpaper tools (shells.hpp): each format as its project writes it
+  {
+    using namespace std::string_literals;
+    auto near = [](Color c, int r, int g, int b) {
+      return std::abs(c.r - r / 255.0F) < 0.003F && std::abs(c.g - g / 255.0F) < 0.003F && std::abs(c.b - b / 255.0F) < 0.003F;
+    };
+    CHECK(snakeRole("onSurfaceVariant") == "on_surface_variant" && snakeRole("overPrimary") == "on_primary" &&
+          snakeRole("surface_container") == "surface_container" && snakeRole("overall") == "overall");
+    bool dark = false;
+    // caelestia scheme.json: camelCase roles, hex without '#'
+    auto pal = caelestiaScheme(R"({"name":"dynamic","mode":"dark","colours":{"primary":"a6c8ff","onSurface":"dce8e6","surface":"0a0f0f"}})", dark);
+    CHECK(dark && pal.size() == 3 && near(pal["primary"], 0xa6, 0xc8, 0xff) && pal.contains("on_surface"));
+    // DMS dms-colors.json: both modes, the one in "mode"
+    pal = dmsColors(R"({"mode":"light","colors":{"dark":{"primary":"#000000"},"light":{"primary":"#ff8800","surface_container":"#eeeeee"}}})", dark);
+    CHECK(!dark && near(pal["primary"], 255, 0x88, 0) && pal.contains("surface_container"));
+    // end-4 / Ambxst: flat; Ambxst's "over" roles
+    pal = flatPalette(R"({"background":"#111318","primary":"#a8c8ff","overSurface":"#e2e2e9","sourceColor":"x"})", dark);
+    CHECK(dark && pal.size() == 3 && pal.contains("on_surface"));
+    // pywal: its wallpaper and a reading of the sixteen colours
+    std::string walWall;
+    pal = pywalPalette(R"({"wallpaper":"/w/a.jpg","special":{"background":"#f0f0f0","foreground":"#101010"},"colors":{"color4":"#3366cc","color1":"#cc3333"}})",
+                       walWall, dark);
+    CHECK(walWall == "/w/a.jpg" && !dark && near(pal["primary"], 0x33, 0x66, 0xcc) && near(pal["error"], 0xcc, 0x33, 0x33));
+
+    // DMS session.json + settings.json
+    ShellState sh;
+    CHECK(dmsSession(R"({"wallpaperPath":"~/w/all.png","perMonitorWallpaper":true,"monitorWallpapers":{"DP-1":"/w/dp1.png","HDMI-A-1":"#1e1e2e"}})",
+                     R"({"wallpaperFillMode":"Fit"})", true, sh));
+    CHECK(sh.fallback == expandHome("~/w/all.png") && sh.byOutput.size() == 1 && sh.byOutput["DP-1"] == "/w/dp1.png" && sh.fillMode == 2);
+    sh = {};
+    CHECK(dmsSession(R"({"perModeWallpaper":true,"wallpaperPathDark":"/w/d.png","wallpaperPathLight":"/w/l.png"})", "", false, sh));
+    CHECK(sh.fallback == "/w/l.png" && sh.fillMode == 1);
+    // Ambxst wallpapers.json
+    sh = {};
+    CHECK(ambxstWallpapers(R"({"currentWall":"/w/a.jpg","perScreenWallpapers":{"DP-1":"/w/b.jpg"}})", sh));
+    CHECK(sh.fallback == "/w/a.jpg" && sh.byOutput["DP-1"] == "/w/b.jpg");
+    // end-4 config.json; HyprPanel flat or nested keys, only when enabled
+    CHECK(iiWallpaper(R"({"background":{"wallpaperPath":"/w/ii.png","thumbnailPath":"/t"}})") == "/w/ii.png");
+    CHECK(hyprpanelWallpaper(R"({"wallpaper.enable":true,"wallpaper.image":"/w/hp.png"})") == "/w/hp.png");
+    CHECK(hyprpanelWallpaper(R"({"wallpaper":{"enable":true,"image":"/w/n.png"}})") == "/w/n.png");
+    CHECK(hyprpanelWallpaper(R"({"wallpaper.enable":false,"wallpaper.image":"/w/hp.png"})").empty());
+    // COSMIC: the state file per output, scaling from the `all` entry
+    sh = {};
+    CHECK(cosmicWallpapers(R"([("eDP-1", Path("/usr/share/backgrounds/a b.jpg")), ("DP-2", Path("/w/c.png"))])",
+                           "(\n output: \"all\",\n source: Path(\"/x\"),\n filter_by_theme: #true,\n scaling_mode: Fit((0.0, 0.0, 0.0)),\n)", sh));
+    CHECK(sh.byOutput["eDP-1"] == "/usr/share/backgrounds/a b.jpg" && sh.byOutput["DP-2"] == "/w/c.png" && sh.fillMode == 2);
+    // awww cache: namespace, resize[:gravity], filter, path (NUL-separated)
+    auto e = awwwCacheEntry("\0crop:center\0Lanczos3\0/w/aw.png\0"s);
+    CHECK(e.first == "/w/aw.png" && fillFrom("awww", e.second) == 1);
+    e = awwwCacheEntry("other\0fit\0Nearest\0/w/o.png\0\0no\0Lanczos3\0/w/default.png"s);
+    CHECK(e.first == "/w/default.png" && fillFrom("awww", e.second) == 0);
+    CHECK(awwwCacheEntry("fit\0/w/old.png"s).first == "/w/old.png");
+    // hyprpaper: listactive (0.8 and 0.7), the config (0.8 blocks, 0.7 lines)
+    sh = {};
+    CHECK(hyprpaperActive("DP-1: /w/h1.png\nHDMI-A-1 = /w/h2.png\n", sh) && sh.byOutput.size() == 2 && sh.byOutput["HDMI-A-1"] == "/w/h2.png");
+    sh = {};
+    CHECK(!hyprpaperActive("no wallpapers active\n", sh));
+    sh = {};
+    CHECK(hyprpaperConfig("splash = 1\nwallpaper {\n    monitor = DP-1\n    path = /w/c1.png  # mine\n    fit_mode = contain\n}\n", sh));
+    CHECK(sh.byOutput["DP-1"] == "/w/c1.png" && sh.fillMode == 2);
+    sh = {};
+    CHECK(hyprpaperConfig("preload = /w/t.png\nwallpaper = ,tile:/w/t.png\n", sh) && sh.fallback == "/w/t.png" && sh.fillMode == 4);
+    // swaybg: global options, then per output; no -m = stretch
+    sh = {};
+    CHECK(swaybgArgs({"swaybg", "-o", "DP-1", "-i", "/w/s1.png", "-m", "fill", "-o", "HDMI-A-1", "-i", "/w/s2.jpg", "-m", "fit"}, sh));
+    CHECK(sh.byOutput["DP-1"] == "/w/s1.png" && sh.byOutput["HDMI-A-1"] == "/w/s2.jpg" && sh.fillMode == 1);
+    sh = {};
+    CHECK(swaybgArgs({"swaybg", "-i", "/w/all.png"}, sh) && sh.fallback == "/w/all.png" && sh.fillMode == 3);
+    // mpvpaper: the last two words
+    sh = {};
+    CHECK(mpvpaperArgs({"mpvpaper", "-o", "no-audio loop", "ALL", "/w/v.mp4"}, sh) && sh.fallback == "/w/v.mp4");
+    // waypaper: continuation lines, index-aligned
+    sh = {};
+    CHECK(waypaperIni("[Settings]\nbackend = awww\nmonitors = DP-1\n\tHDMI-A-1\nwallpaper = /w/p1.jpg\n\t/w/p2.png\nfill = center\n", sh));
+    CHECK(sh.byOutput["DP-1"] == "/w/p1.jpg" && sh.byOutput["HDMI-A-1"] == "/w/p2.png" && sh.fillMode == 0);
+    // fill names across tools
+    CHECK(fillFrom("wpaperd", "center") == 1 && fillFrom("swaybg", "center") == 0 && fillFrom("hyprpaper", "fill") == 3 &&
+          fillFrom("dms", "Pad") == 0 && fillFrom("cosmic", "Zoom") == 1 && fillFrom("wpaperd", "fit-border-color") == 2);
+
+    // detection: the running process picks the tool, its files say the rest
+    const std::string home = dir + "/shellhome";
+    setenv("XDG_STATE_HOME", (home + "/state").c_str(), 1);
+    setenv("XDG_CACHE_HOME", (home + "/cache").c_str(), 1);
+    setenv("XDG_CONFIG_HOME", (home + "/config").c_str(), 1);
+    std::filesystem::create_directories(home + "/state/caelestia/wallpaper");
+    writeFileAtomic(home + "/state/caelestia/wallpaper/path.txt", "/w/cael.jpg");
+    writeFileAtomic(home + "/state/caelestia/scheme.json", R"({"mode":"dark","colours":{"primary":"a6c8ff"}})");
+    sh = {};
+    CHECK(readShell({{"/usr/bin/qs", "-c", "caelestia", "-n"}}, sh) && sh.name == "caelestia" && sh.fallback == "/w/cael.jpg" &&
+          sh.palette.contains("primary"));
+    std::filesystem::create_directories(home + "/cache/awww/0.12.1");
+    writeFileAtomic(home + "/cache/awww/0.12.1/eDP-1", "\0stretch\0Lanczos3\0/w/aw2.png"s);
+    std::filesystem::create_directories(home + "/cache/wal");
+    writeFileAtomic(home + "/cache/wal/colors.json",
+                    R"({"wallpaper":"/w/aw2.png","special":{"background":"#101010","foreground":"#eeeeee"},"colors":{"color4":"#3366cc"}})");
+    sh = {};
+    CHECK(readShell({{"awww-daemon"}, {"bash"}}, sh) && sh.name == "awww" && sh.byOutput["eDP-1"] == "/w/aw2.png" && sh.fillMode == 3 &&
+          sh.palette.contains("primary"));  // pywal made it from this very wallpaper
+    sh = {};
+    CHECK(!readShell({{"bash"}, {"vim", "hyprpanel.conf"}}, sh));  // nothing of the kind running
+    unsetenv("XDG_STATE_HOME");
+    unsetenv("XDG_CACHE_HOME");
+    unsetenv("XDG_CONFIG_HOME");
+  }
+
   std::filesystem::remove_all(dir);
 
   return TEST_RESULT();

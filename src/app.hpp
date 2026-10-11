@@ -368,6 +368,10 @@ private:
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1, m_wdDepthMaps = -1, m_wdPlasma = -1;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
   double m_depthTick = 0;  // redraws the editor's download progress
+  double m_sourcePollAt = 0;  // asks a shell or wallpaper tool again (polls())
+  std::vector<int> m_wdSource;  // the source's own directories (watchDirs())
+  std::vector<std::string> m_sourceDirs;
+  void syncSourceWatches();
 
   std::vector<const Widget*> m_mapped;    // widget surfaces, bottom to top, in the order they were made
   bool m_motion = false;          // a video or scene is on screen: no depth
