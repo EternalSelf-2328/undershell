@@ -5,15 +5,15 @@
 // at a time; poll fd() and call dispatch() when it is readable.
 #pragma once
 
+// the real header: older systemd types sd_bus_error as an anonymous struct,
+// which a forward declaration would contradict
+#include <systemd/sd-bus.h>
+
 #include <functional>
 #include <string>
 #include <sys/types.h>
 #include <vector>
 
-struct sd_bus;
-struct sd_bus_slot;
-struct sd_bus_message;
-struct sd_bus_error;
 
 namespace undershell {
 
