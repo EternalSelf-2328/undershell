@@ -203,7 +203,9 @@ button (Ryoku's `accentOf`), synced lyrics from **LRCLIB** (cached in
 fading, or a live spectrum when there are no lyrics; wavy seek bar
 (**click to jump**), previous / play-pause / next and a button that opens your
 app (`music_app`). The player is the one from Noctalia's MPRIS aggregator
-(`dev.noctalia.Mpris`, via sd-bus), with instant updates from signals.
+(`dev.noctalia.Mpris`, via sd-bus) or, without Noctalia (KDE, GNOME, any other
+desktop), the MPRIS player that is playing, staying with it while it plays and
+falling back to the one heard last; updates are instant, from signals.
 It comes in seven **layouts** (`layout`), each drawn at its own shape, and every
 piece of it can be left out. Options: `layout`, `plate` (cover, glass, none),
 `rail_style`, `show_lyrics`, `viz` (bars, wave), `accent_source` (album,

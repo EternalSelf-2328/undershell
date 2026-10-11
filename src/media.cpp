@@ -189,6 +189,146 @@ int onReply(sd_bus_message* m, void* ud, sd_bus_error*) {
   static_cast<MediaService*>(ud)->onPlayerReply(m);
   return 0;
 }
+
+constexpr const char* kMprisPrefix = "org.mpris.MediaPlayer2.";
+constexpr const char* kMprisPath = "/org/mpris/MediaPlayer2";
+constexpr const char* kMprisPlayer = "org.mpris.MediaPlayer2.Player";
+
+// NameOwnerChanged (name, old owner, new owner)
+int onOwner(sd_bus_message* m, void* ud, sd_bus_error*) {
+  const char *name = nullptr, *from = nullptr, *to = nullptr;
+  if (sd_bus_message_read(m, "sss", &name, &from, &to) < 0 || !name) return 0;
+  auto* self = static_cast<MediaService*>(ud);
+  if (std::string_view(name) == kDest) self->onAggregator(to && *to);
+  else self->requestRefresh();
+  return 0;
+}
+
+struct ScanCall {
+  MediaService* self;
+  uint64_t scan;
+  std::string name;
+  bool root;
+};
+
+int onNames(sd_bus_message* m, void* ud, sd_bus_error*) {
+  auto* c = static_cast<ScanCall*>(ud);
+  c->self->onPlayerNames(m, c->scan);
+  delete c;
+  return 0;
+}
+
+int onProps(sd_bus_message* m, void* ud, sd_bus_error*) {
+  auto* c = static_cast<ScanCall*>(ud);
+  c->self->onPlayerProps(m, c->scan, c->name, c->root);
+  delete c;
+  return 0;
+}
+
+// An integer however the player typed it (mpris:length is an x by the spec,
+// but t, i, u and even d turn up).
+int64_t readNumber(sd_bus_message* m, const char* contents) {
+  const char t = contents && contents[0] && !contents[1] ? contents[0] : 0;
+  int64_t out = 0;
+  if (t == 'x' || t == 't') sd_bus_message_read(m, "v", contents, &out);
+  else if (t == 'i' || t == 'u') {
+    int32_t v = 0;
+    sd_bus_message_read(m, "v", contents, &v);
+    out = t == 'u' ? static_cast<uint32_t>(v) : v;
+  } else if (t == 'd') {
+    double v = 0;
+    sd_bus_message_read(m, "v", "d", &v);
+    out = static_cast<int64_t>(v);
+  } else sd_bus_message_skip(m, "v");
+  return out;
+}
+
+std::string readString(sd_bus_message* m, const char* contents) {
+  const char* v = nullptr;
+  if (contents && (std::string_view(contents) == "s" || std::string_view(contents) == "o")) sd_bus_message_read(m, "v", contents, &v);
+  else sd_bus_message_skip(m, "v");
+  return v ? v : "";
+}
+
+bool readBool(sd_bus_message* m, const char* contents) {
+  int v = 0;
+  if (contents && std::string_view(contents) == "b") sd_bus_message_read(m, "v", "b", &v);
+  else sd_bus_message_skip(m, "v");
+  return v;
+}
+
+// xesam:artist is an `as` by the spec; a few players send one string
+std::string readStrings(sd_bus_message* m, const char* contents) {
+  if (!contents || std::string_view(contents) != "as") return readString(m, contents);
+  std::string out;
+  sd_bus_message_enter_container(m, 'v', "as");
+  sd_bus_message_enter_container(m, 'a', "s");
+  const char* a = nullptr;
+  while (sd_bus_message_read(m, "s", &a) > 0) out += (out.empty() ? "" : ", ") + std::string(a ? a : "");
+  sd_bus_message_exit_container(m);
+  sd_bus_message_exit_container(m);
+  return out;
+}
+
+// One a{sv} of properties: the player's (Metadata, PlaybackStatus, Position,
+// Can*) or the root object's (Identity, DesktopEntry).
+void readMprisProps(sd_bus_message* m, MediaState& s, std::string& trackId) {
+  if (sd_bus_message_enter_container(m, 'a', "{sv}") < 0) return;
+  bool canPlay = false, canPause = false;
+  while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
+    const char* key = nullptr;
+    sd_bus_message_read(m, "s", &key);
+    char type = 0;
+    const char* contents = nullptr;
+    sd_bus_message_peek_type(m, &type, &contents);
+    const std::string_view k = key ? key : "";
+    if (k == "Metadata" && contents && std::string_view(contents) == "a{sv}") {
+      sd_bus_message_enter_container(m, 'v', "a{sv}");
+      sd_bus_message_enter_container(m, 'a', "{sv}");
+      while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
+        const char* mk = nullptr;
+        sd_bus_message_read(m, "s", &mk);
+        const char* mc = nullptr;
+        sd_bus_message_peek_type(m, &type, &mc);
+        const std::string_view n = mk ? mk : "";
+        if (n == "xesam:title") s.title = readString(m, mc);
+        else if (n == "xesam:album") s.album = readString(m, mc);
+        else if (n == "xesam:artist") s.artist = readStrings(m, mc);
+        else if (n == "mpris:artUrl") s.artUrl = readString(m, mc);
+        else if (n == "mpris:trackid") trackId = readString(m, mc);
+        else if (n == "mpris:length") s.lengthUs = readNumber(m, mc);
+        else sd_bus_message_skip(m, "v");
+        sd_bus_message_exit_container(m);
+      }
+      sd_bus_message_exit_container(m);
+      sd_bus_message_exit_container(m);
+    } else if (k == "PlaybackStatus") s.playing = readString(m, contents) == "Playing";
+    else if (k == "Position") s.positionUs = readNumber(m, contents);
+    else if (k == "CanGoNext") s.canNext = readBool(m, contents);
+    else if (k == "CanGoPrevious") s.canPrev = readBool(m, contents);
+    else if (k == "CanPlay") canPlay = readBool(m, contents);
+    else if (k == "CanPause") canPause = readBool(m, contents);
+    else if (k == "CanSeek") s.canSeek = readBool(m, contents);
+    else if (k == "Identity") s.identity = readString(m, contents);
+    else if (k == "DesktopEntry") s.desktopEntry = readString(m, contents);
+    else sd_bus_message_skip(m, "v");
+    sd_bus_message_exit_container(m);
+  }
+  sd_bus_message_exit_container(m);
+  s.canToggle = s.canToggle || canPlay || canPause;
+}
+
+// a method call that gives up after a second: a hung player must not hold
+// the card back
+int callAsync(sd_bus* bus, const char* dest, const char* path, const char* iface, const char* method,
+              sd_bus_message_handler_t cb, void* ud, const char* arg = nullptr) {
+  sd_bus_message* msg = nullptr;
+  int r = sd_bus_message_new_method_call(bus, &msg, dest, path, iface, method);
+  if (r >= 0 && arg) r = sd_bus_message_append(msg, "s", arg);
+  if (r >= 0) r = sd_bus_call_async(bus, nullptr, msg, cb, ud, 1'000'000);
+  sd_bus_message_unref(msg);
+  return r;
+}
 }  // namespace
 
 std::vector<LyricLine> parseLrc(const std::string& text) { return parseLrcImpl(text); }
@@ -249,6 +389,8 @@ double MediaState::positionSec(double now) const {
 MediaService::MediaService(Jobs& jobs) : m_jobs(jobs) { curl_global_init(CURL_GLOBAL_DEFAULT); }
 
 MediaService::~MediaService() {
+  for (sd_bus_slot* sl : {m_ownerSlot, m_aggSlot, m_propsSlot, m_seekSlot})
+    if (sl) sd_bus_slot_unref(sl);
   if (m_matchSlot) sd_bus_slot_unref(m_matchSlot);
   if (m_bus) sd_bus_flush_close_unref(m_bus);
   if (m_state.cover) glDeleteTextures(1, &m_state.cover);
@@ -264,6 +406,11 @@ bool MediaService::start() {
   // any change on the aggregator (track, player, playback) → refresh
   const std::string match = std::format("type='signal',sender='{}',path='{}',interface='{}'", kDest, kPath, kIface);
   sd_bus_add_match(m_bus, &m_matchSlot, match.c_str(), onSignal, this);
+  // Noctalia starting or quitting switches between the aggregator and the
+  // players themselves
+  sd_bus_add_match(m_bus, &m_aggSlot,
+                   std::format("type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='{}'", kDest).c_str(),
+                   onOwner, this);
   return true;
 }
 
@@ -293,30 +440,43 @@ void MediaService::poll(double now) {
   // playing: 1 s keeps the position honest; paused/idle: slow heartbeat,
   // signals bring changes in immediately
   m_nextPoll = now + (m_state.playing ? 1.0 : 5.0);
+  if (m_direct) {
+    scanPlayers();
+    return;
+  }
   if (sd_bus_call_method_async(m_bus, nullptr, kDest, kPath, kIface, "GetActivePlayer", onReply, this, "") >= 0)
     m_inFlight = true;
+}
+
+void MediaService::clearPlayer() {
+  m_activeBus.clear();
+  m_activeTrack.clear();
+  if (!m_state.present) return;
+  const GLuint keepTex = m_state.cover;
+  m_state = MediaState{};
+  m_state.cover = keepTex;
+  m_state.coverW = m_state.coverH = 0;
+  m_coverFor.clear();
+  ++m_generation;
 }
 
 void MediaService::onPlayerReply(sd_bus_message* m) {
   m_inFlight = false;
   if (sd_bus_message_is_method_error(m, nullptr)) {
-    if (m_state.present) {
-      m_state = MediaState{};
-      ++m_generation;
+    // no aggregator on this bus (no Noctalia): ask the players themselves
+    if (sd_bus_message_is_method_error(m, "org.freedesktop.DBus.Error.ServiceUnknown") ||
+        sd_bus_message_is_method_error(m, "org.freedesktop.DBus.Error.NameHasNoOwner")) {
+      enterDirect();
+      scanPlayers();
+      return;
     }
+    clearPlayer();
     return;
   }
   int found = 0;
   if (sd_bus_message_read(m, "b", &found) < 0) return;
   if (!found) {
-    if (m_state.present) {
-      const GLuint keepTex = m_state.cover;
-      m_state = MediaState{};
-      m_state.cover = keepTex;
-      m_state.coverW = m_state.coverH = 0;
-      m_coverFor.clear();
-      ++m_generation;
-    }
+    clearPlayer();
     return;
   }
   MediaState s = m_state;
@@ -369,6 +529,11 @@ void MediaService::onPlayerReply(sd_bus_message* m) {
     sd_bus_message_exit_container(m);
   }
   sd_bus_message_exit_container(m);
+  apply(std::move(s), busName, trackId);
+}
+
+void MediaService::apply(MediaState s, const std::string& busName, const std::string& trackId) {
+  s.present = true;
   s.positionAt = nowSeconds();
   s.trackKey = busName + "|" + trackId + "|" + s.title;
   const bool trackChanged = s.trackKey != m_state.trackKey;
@@ -379,6 +544,150 @@ void MediaService::onPlayerReply(sd_bus_message* m) {
   syncCover();
   if (changed) ++m_generation;
   if (m_state.playing) m_nextPoll = std::min(m_nextPoll, nowSeconds() + 1.0);
+}
+
+// ── without Noctalia: the MPRIS players themselves ──────────────────────────
+
+void MediaService::enterDirect() {
+  if (m_direct) return;
+  m_direct = true;
+  US_INFO("media: no {} on the bus, reading the MPRIS players directly", kDest);
+  // players appearing and leaving, and anything they change, refresh at once
+  sd_bus_add_match(m_bus, &m_ownerSlot,
+                   "type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0namespace='org.mpris.MediaPlayer2'",
+                   onOwner, this);
+  sd_bus_add_match(m_bus, &m_propsSlot,
+                   "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path='/org/mpris/MediaPlayer2'",
+                   onSignal, this);
+  sd_bus_add_match(m_bus, &m_seekSlot,
+                   "type='signal',interface='org.mpris.MediaPlayer2.Player',member='Seeked',path='/org/mpris/MediaPlayer2'", onSignal,
+                   this);
+}
+
+// Noctalia came (back): its aggregator knows which player the bar shows
+void MediaService::onAggregator(bool present) {
+  if (!present || !m_direct) return;
+  m_direct = false;
+  for (sd_bus_slot** sl : {&m_ownerSlot, &m_propsSlot, &m_seekSlot}) *sl = sd_bus_slot_unref(*sl);
+  US_INFO("media: {} is back", kDest);
+  requestRefresh();
+}
+
+void MediaService::scanPlayers() {
+  if (m_scanPending > 0) return;
+  ++m_scan;
+  m_players.clear();
+  if (callAsync(m_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames", onNames,
+                new ScanCall{this, m_scan, {}, false}) >= 0) {
+    m_scanPending = 1;
+    m_inFlight = true;
+  }
+}
+
+void MediaService::onPlayerNames(sd_bus_message* m, uint64_t scan) {
+  if (scan != m_scan) return;
+  m_scanPending = 0;
+  std::vector<std::string> names;
+  if (!sd_bus_message_is_method_error(m, nullptr) && sd_bus_message_enter_container(m, 'a', "s") >= 0) {
+    const char* n = nullptr;
+    while (sd_bus_message_read(m, "s", &n) > 0)
+      // playerctld only mirrors another player
+      if (n && std::string_view(n).starts_with(kMprisPrefix) && std::string_view(n) != "org.mpris.MediaPlayer2.playerctld")
+        names.emplace_back(n);
+    sd_bus_message_exit_container(m);
+  }
+  for (auto it = m_idents.begin(); it != m_idents.end();)
+    it = std::ranges::find(names, it->first) == names.end() ? m_idents.erase(it) : std::next(it);
+  for (auto& n : names) {
+    m_players[n];
+    if (callAsync(m_bus, n.c_str(), kMprisPath, "org.freedesktop.DBus.Properties", "GetAll", onProps,
+                  new ScanCall{this, scan, n, false}, kMprisPlayer) >= 0)
+      ++m_scanPending;
+    // the name and the .desktop entry never change: once per player
+    if (!m_idents.contains(n) && callAsync(m_bus, n.c_str(), kMprisPath, "org.freedesktop.DBus.Properties", "GetAll", onProps,
+                                           new ScanCall{this, scan, n, true}, "org.mpris.MediaPlayer2") >= 0)
+      ++m_scanPending;
+  }
+  if (m_scanPending == 0) finishScan();
+}
+
+void MediaService::onPlayerProps(sd_bus_message* m, uint64_t scan, const std::string& name, bool root) {
+  if (scan != m_scan) return;
+  if (!sd_bus_message_is_method_error(m, nullptr)) {
+    if (root) {
+      MediaState s;
+      std::string unused;
+      readMprisProps(m, s, unused);
+      m_idents[name] = {s.identity, s.desktopEntry};
+    } else {
+      Player& p = m_players[name];
+      readMprisProps(m, p.s, p.trackId);
+      p.props = true;
+    }
+  }
+  if (--m_scanPending == 0) finishScan();
+}
+
+// The player the card follows: the one playing (staying with the current one
+// while it plays), else the current one, else the one heard last.
+void MediaService::finishScan() {
+  m_inFlight = false;
+  const double now = nowSeconds();
+  std::erase_if(m_players, [](const auto& kv) { return !kv.second.props; });
+  for (auto it = m_lastPlaying.begin(); it != m_lastPlaying.end();)
+    it = m_players.contains(it->first) ? std::next(it) : m_lastPlaying.erase(it);
+  for (auto& [n, p] : m_players)
+    if (p.s.playing) m_lastPlaying[n] = now;
+  std::string pick;
+  auto playing = [&](const std::string& n) { return m_players.contains(n) && m_players[n].s.playing; };
+  if (playing(m_activeBus)) pick = m_activeBus;
+  for (auto& [n, p] : m_players)
+    if (pick.empty() && p.s.playing) pick = n;
+  if (pick.empty() && m_players.contains(m_activeBus)) pick = m_activeBus;
+  double last = -1;
+  if (pick.empty())
+    for (auto& [n, t] : m_lastPlaying)
+      if (t > last) {
+        last = t;
+        pick = n;
+      }
+  if (pick.empty() && !m_players.empty()) pick = m_players.begin()->first;
+  if (pick.empty()) {
+    clearPlayer();
+    return;
+  }
+  const Player& p = m_players[pick];
+  MediaState s = m_state;
+  s.title = p.s.title;
+  s.artist = p.s.artist;
+  s.album = p.s.album;
+  s.artUrl = p.s.artUrl;
+  s.playing = p.s.playing;
+  s.lengthUs = p.s.lengthUs;
+  s.positionUs = p.s.positionUs;
+  s.canNext = p.s.canNext;
+  s.canPrev = p.s.canPrev;
+  s.canToggle = p.s.canToggle;
+  s.canSeek = p.s.canSeek;
+  const auto& id = m_idents[pick];
+  s.identity = id.first.empty() ? pick.substr(std::string_view(kMprisPrefix).size()) : id.first;
+  s.desktopEntry = id.second;
+  m_activeBus = pick;
+  m_activeTrack = p.trackId;
+  apply(std::move(s), pick, p.trackId);
+}
+
+void MediaService::callPlayer(const char* method, const char* sig, const void* a, const void* b) {
+  if (m_activeBus.empty()) return;
+  const char* bus = m_activeBus.c_str();
+  if (!sig) sd_bus_call_method_async(m_bus, nullptr, bus, kMprisPath, kMprisPlayer, method, nullptr, nullptr, "");
+  else if (std::string_view(sig) == "x")
+    sd_bus_call_method_async(m_bus, nullptr, bus, kMprisPath, kMprisPlayer, method, nullptr, nullptr, sig,
+                             *static_cast<const int64_t*>(a));
+  else  // "ox"
+    sd_bus_call_method_async(m_bus, nullptr, bus, kMprisPath, kMprisPlayer, method, nullptr, nullptr, sig,
+                             static_cast<const char*>(a), *static_cast<const int64_t*>(b));
+  requestRefresh();
 }
 
 void MediaService::onTrackChanged() {
@@ -567,12 +876,19 @@ void MediaService::call(const char* method, const char* sig, int64_t arg) {
   requestRefresh();
 }
 
-void MediaService::toggle() { call("PlayPauseActive"); }
-void MediaService::next() { call("NextActive"); }
-void MediaService::previous() { call("PreviousActive"); }
+void MediaService::toggle() { m_direct ? callPlayer("PlayPause") : call("PlayPauseActive"); }
+void MediaService::next() { m_direct ? callPlayer("Next") : call("NextActive"); }
+void MediaService::previous() { m_direct ? callPlayer("Previous") : call("PreviousActive"); }
 void MediaService::seek(double seconds) {
-  call("SetPositionActive", "x", static_cast<int64_t>(std::max(0.0, seconds) * 1e6));
-  m_state.positionUs = static_cast<int64_t>(std::max(0.0, seconds) * 1e6);
+  const int64_t to = static_cast<int64_t>(std::max(0.0, seconds) * 1e6);
+  if (!m_direct) call("SetPositionActive", "x", to);
+  else if (sd_bus_object_path_is_valid(m_activeTrack.c_str())) callPlayer("SetPosition", "ox", m_activeTrack.c_str(), &to);
+  else {
+    // no track id to aim at: a relative seek from where it is now
+    const int64_t by = to - static_cast<int64_t>(m_state.positionSec(nowSeconds()) * 1e6);
+    callPlayer("Seek", "x", &by);
+  }
+  m_state.positionUs = to;
   m_state.positionAt = nowSeconds();
 }
 

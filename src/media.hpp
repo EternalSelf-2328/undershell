@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The media feed every music widget reads: the active player from Noctalia's
-// MPRIS aggregator (dev.noctalia.Mpris, over sd-bus), the cover (downloaded
+// MPRIS aggregator (dev.noctalia.Mpris, over sd-bus) or, without Noctalia,
+// from the MPRIS players themselves (KDE, GNOME, …), the cover (downloaded
 // and decoded off-thread), the album accent (Ryoku's ArtColor.accentOf) and
 // synced lyrics from LRCLIB, cached on disk.
 #pragma once
@@ -11,6 +12,7 @@
 #include <GLES3/gl3.h>
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -89,9 +91,20 @@ public:
   // internals used by the sd-bus callbacks
   void onPlayerReply(sd_bus_message* m);
   void requestRefresh();
+  void onAggregator(bool present);
+  void onPlayerNames(sd_bus_message* m, uint64_t scan);
+  void onPlayerProps(sd_bus_message* m, uint64_t scan, const std::string& name, bool root);
 
 private:
   void call(const char* method, const char* sig = nullptr, int64_t arg = 0);
+  void apply(MediaState s, const std::string& busName, const std::string& trackId);
+  void clearPlayer();
+  // without the aggregator: the MPRIS players on the bus, the one playing first
+  void enterDirect();
+  void scanPlayers();
+  void finishScan();
+  void callPlayer(const char* method, const char* sig = nullptr, const void* a = nullptr, const void* b = nullptr);
+
   void onTrackChanged();
   void syncCover();
   void fetchCover(const std::string& url, const std::string& key);
@@ -110,6 +123,23 @@ private:
   std::vector<uint8_t> m_pendingRgba;
   int m_pendingW = 0, m_pendingH = 0;
   std::string m_pendingKey;
+  // direct MPRIS (no Noctalia)
+  struct Player {
+    MediaState s;
+    std::string trackId;
+    bool props = false;
+  };
+  bool m_direct = false;
+  sd_bus_slot* m_ownerSlot = nullptr;   // NameOwnerChanged: players and the aggregator coming and going
+  sd_bus_slot* m_aggSlot = nullptr;
+  sd_bus_slot* m_propsSlot = nullptr;   // PropertiesChanged / Seeked on any player
+  sd_bus_slot* m_seekSlot = nullptr;
+  uint64_t m_scan = 0;                  // the scan replies belong to
+  int m_scanPending = 0;
+  std::map<std::string, Player> m_players;  // this scan's
+  std::map<std::string, std::pair<std::string, std::string>> m_idents;  // bus → identity, desktop entry
+  std::map<std::string, double> m_lastPlaying;  // bus → when it was last seen playing
+  std::string m_activeBus, m_activeTrack;
 };
 
 }  // namespace undershell
