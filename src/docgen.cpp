@@ -51,7 +51,9 @@ std::string optionsMarkdown() {
   md += "| `grid` | px | `16` | editor snap step |\n";
   md += "| `noise_reduction` | 0 – 1 | `0.45` | analyser smoothing (Ryoku's cava used 45) |\n";
   md += "| `monstercat` | `true` / `false` | `false` | spread peaks to neighbours |\n";
-  md += "| `language` | `system`, `en`, `es` | `\"system\"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |\n\n";
+  md += "| `language` | `system`, `en`, `es` | `\"system\"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |\n";
+  md += "| `wallpaper` | path | `\"\"` | the wallpaper, when neither Noctalia nor KDE Plasma says which it is (or to override them): depth and per-wallpaper layouts follow it |\n";
+  md += "| `wallpaper_fill` | `center`, `crop`, `fit`, `stretch`, `repeat` | the source's, else `crop` | how that wallpaper is fitted to the screen |\n\n";
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";

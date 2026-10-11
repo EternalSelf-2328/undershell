@@ -5,6 +5,8 @@
 #include "anchor.hpp"
 #include "config.hpp"
 #include "i18n.hpp"
+#include "noctalia.hpp"
+#include "plasma.hpp"
 
 #include <filesystem>
 
@@ -279,6 +281,105 @@ int main() {
     CHECK(Config::splitBlocks("").empty());
   }
 
+  // [general] wallpaper: read, and expanded over whatever the source says
+  {
+    std::filesystem::create_directories(dir);
+    writeFileAtomic(path, "[general]\nwallpaper = \"~/w/a b.jpg\"\nwallpaper_fill = \"fit\"\n");
+    const Config c = Config::load(path);
+    CHECK(c.wallpaper == "~/w/a b.jpg" && c.wallpaperFill == "fit");
+    Noctalia n;
+    CHECK(n.setManual(c.wallpaper, c.wallpaperFill));
+    CHECK(!n.setManual(c.wallpaper, c.wallpaperFill));
+    CHECK(n.state().manualWallpaper && n.state().defaultWallpaper == expandHome("~/w/a b.jpg") && n.state().fillMode == 2);
+    CHECK(n.state().wallpaperFor("HDMI-A-1") == expandHome("~/w/a b.jpg"));
+    CHECK(n.setManual("", ""));
+    CHECK(!n.state().manualWallpaper);
+  }
+
+  // KDE Plasma: KConfig groups, escapes, translations and [$e] keys
+  {
+    const KConfig k = parseKConfig("[A][B]\nx=1\nName[de]=Hallo\nName=Hi\nPath[$e]=$HOME/x\n[C][$i]\nv=\\sa\\tb\\\\c\n");
+    CHECK(k.at("A][B").at("x") == "1" && k.at("A][B").at("Name") == "Hi" && k.at("A][B").contains("Path"));
+    CHECK(k.at("C").at("v") == " a\tb\\c");
+  }
+  // a wallpaper package: the image of the screen's shape, then size; dark
+  // variant when the scheme is dark
+  {
+    const std::string pkg = dir + "/Next";
+    for (const char* f : {"/contents/images/1440x2960.png", "/contents/images/5120x2880.png", "/contents/images/7680x2160.png",
+                          "/contents/images/1920x1080.jpg", "/contents/images_dark/5120x2880.png"}) {
+      std::filesystem::create_directories(std::filesystem::path(pkg + f).parent_path());
+      writeFileAtomic(pkg + f, "x");
+    }
+    CHECK(plasmaPackageImage(pkg, 1920, 1080, false) == pkg + "/contents/images/1920x1080.jpg");
+    CHECK(plasmaPackageImage(pkg, 3840, 2160, false) == pkg + "/contents/images/5120x2880.png");
+    CHECK(plasmaPackageImage(pkg, 5120, 1440, false) == pkg + "/contents/images/7680x2160.png");
+    CHECK(plasmaPackageImage(pkg, 1080, 2340, false) == pkg + "/contents/images/1440x2960.png");
+    CHECK(plasmaPackageImage(pkg, 1366, 768, true) == pkg + "/contents/images_dark/5120x2880.png");
+    CHECK(plasmaPackageImage("/a/file.jpg", 1, 1, false) == "/a/file.jpg");
+
+    // two screens, two activities, a panel; one desktop names a file url
+    const std::string applets =
+        "[Containments][1]\nactivityId=act-1\nformfactor=0\nlastScreen=0\nlocation=0\nplugin=org.kde.plasma.folder\n"
+        "wallpaperplugin=org.kde.image\n\n"
+        "[Containments][1][Wallpaper][org.kde.image][General]\nFillMode=1\nImage=file://" + dir + "/caf%C3%A9.jpg\n\n"
+        "[Containments][2]\nactivityId=act-1\nformfactor=0\nlastScreen=1\nlocation=0\nplugin=org.kde.desktopcontainment\n"
+        "wallpaperplugin=org.kde.image\n\n"
+        "[Containments][2][Wallpaper][org.kde.image][General]\nImage=" + pkg + "/\n\n"
+        "[Containments][3]\nactivityId=act-2\nformfactor=0\nlastScreen=0\nplugin=org.kde.plasma.folder\nwallpaperplugin=org.kde.image\n\n"
+        "[Containments][3][Wallpaper][org.kde.image][General]\nImage=/other/activity.jpg\n\n"
+        "[Containments][4]\nactivityId=\nformfactor=2\nlastScreen=0\nlocation=4\nplugin=org.kde.panel\nwallpaperplugin=org.kde.image\n";
+    const std::string shellrc = "[ScreenConnectors]\n0=eDP-1\n1=HDMI-A-1\n";
+    const std::string acts = "[activities]\nact-1=Default\nact-2=Work\n\n[main]\ncurrentActivity=act-1\n";
+    const std::map<std::string, std::pair<int, int>> screens = {{"eDP-1", {1920, 1080}}, {"HDMI-A-1", {1366, 768}}};
+    PlasmaWallpapers w = plasmaWallpapers(applets, plasmaScreenNumbers("", shellrc, screens), acts, screens, false);
+    CHECK(w.byOutput.size() == 2);
+    CHECK(w.byOutput["eDP-1"] == dir + "/café.jpg");
+    CHECK(w.byOutput["HDMI-A-1"] == pkg + "/contents/images/1920x1080.jpg");
+    CHECK(w.fallback == dir + "/café.jpg");
+    CHECK(w.fillMode == 2);  // Qt's PreserveAspectFit
+    // the other activity
+    w = plasmaWallpapers(applets, plasmaScreenNumbers("", shellrc, screens), "[main]\ncurrentActivity=act-2\n", screens, false);
+    CHECK(w.byOutput.size() == 1 && w.byOutput["eDP-1"] == "/other/activity.jpg" && w.fillMode == 1);
+    // one screen and no connector list: that screen
+    w = plasmaWallpapers(applets, {}, acts, {{"Virtual-1", {1280, 800}}}, false);
+    CHECK(w.byOutput["Virtual-1"] == dir + "/café.jpg");
+    // a slideshow is noted, not guessed
+    w = plasmaWallpapers("[Containments][1]\nformfactor=0\nlastScreen=0\nplugin=org.kde.plasma.folder\nwallpaperplugin=org.kde.slideshow\n", {}, "",
+                         screens, false);
+    CHECK(w.slideshow && w.byOutput.empty() && w.fallback.empty());
+    // Plasma 6: screens numbered by KWin's priority, in the setup of the
+    // screens connected now
+    const std::string kwin = R"([{"name":"outputs","data":[{"connectorName":"eDP-1"},{"connectorName":"HDMI-A-1"},{"connectorName":"DP-2"}]},
+      {"name":"setups","data":[{"outputs":[{"enabled":true,"outputIndex":0,"priority":0}]},
+                               {"outputs":[{"enabled":true,"outputIndex":0,"priority":1},{"enabled":true,"outputIndex":1,"priority":0}]},
+                               {"outputs":[{"enabled":true,"outputIndex":2,"priority":0},{"enabled":true,"outputIndex":0,"priority":1}]}]}])";
+    auto nums = plasmaScreenNumbers(kwin, shellrc, screens);
+    CHECK(nums.size() == 2 && nums["0"] == "HDMI-A-1" && nums["1"] == "eDP-1");
+    nums = plasmaScreenNumbers(kwin, "", {{"eDP-1", {1920, 1080}}});
+    CHECK(nums.size() == 1 && nums["0"] == "eDP-1");
+    w = plasmaWallpapers(applets, plasmaScreenNumbers(kwin, "", screens), acts, screens, false);
+    CHECK(w.byOutput["HDMI-A-1"] == dir + "/café.jpg" && w.byOutput["eDP-1"] == pkg + "/contents/images/1920x1080.jpg");
+    // no Wallpaper group at all (a fresh desktop): Plasma's default package
+    w = plasmaWallpapers("[Containments][1]\nformfactor=0\nlastScreen=0\nplugin=org.kde.plasma.folder\nwallpaperplugin=org.kde.image\n", {}, "",
+                         {{"Virtual-0", {1366, 768}}}, false);
+    CHECK(w.byOutput.size() == (std::filesystem::is_directory("/usr/share/wallpapers/Next") ? 1U : 0U));
+  }
+  // the palette: accent over the selection colour, dark from the window
+  {
+    const std::string scheme = "[Colors:Window]\nBackgroundNormal=32,35,38\nForegroundNormal=252,252,252\nForegroundInactive=161,169,177\n"
+                               "[Colors:Selection]\nBackgroundNormal=61,174,233\nForegroundNormal=255,255,255\n"
+                               "[Colors:View]\nBackgroundAlternate=29,31,34\nForegroundNegative=218,68,83\nForegroundLink=29,153,243\n";
+    bool dark = false;
+    auto pal = plasmaPalette("", scheme, dark);
+    CHECK(dark && pal.size() >= 8);
+    CHECK(std::abs(pal["primary"].r - 61 / 255.0F) < 1e-4F && std::abs(pal["surface"].g - 35 / 255.0F) < 1e-4F);
+    CHECK(std::abs(pal["error"].r - 218 / 255.0F) < 1e-4F);
+    pal = plasmaPalette("[General]\nAccentColor=233,100,10\n[Colors:Window]\nBackgroundNormal=239,240,241\n", scheme, dark);
+    CHECK(!dark && std::abs(pal["primary"].g - 100 / 255.0F) < 1e-4F);
+    CHECK(plasmaPalette("", "", dark).empty());
+  }
   std::filesystem::remove_all(dir);
+
   return TEST_RESULT();
 }

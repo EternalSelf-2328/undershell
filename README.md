@@ -3,7 +3,8 @@
 Desktop widgets that live **under** your shell and **apart** from it: a
 standalone Wayland client in C++ (GLES 3) that doesn't depend on any shell or
 dotfiles. It integrates with Noctalia (palette, `wallpaper_depth` depth) and
-runs on Umbriel/niri/Hyprland. Its first widgets are ports of
+KDE Plasma (wallpaper, colour scheme), and runs on Umbriel/niri/Hyprland/KDE
+Plasma. Its first widgets are ports of
 [Ryoku](https://github.com/ryoku-dev/ryoku)'s.
 
 - **Same layer as Noctalia's widgets** (layer-shell *bottom*): above the
@@ -23,11 +24,13 @@ runs on Umbriel/niri/Hyprland. Its first widgets are ports of
 ## Requirements
 
 - **A Wayland compositor with `wlr-layer-shell`**: Umbriel, niri, Hyprland,
-  Sway, …
+  Sway, KDE Plasma (KWin), …
 - **Optional:** [Noctalia](https://github.com/noctalia-dev/noctalia) for the
-  palette and the depth effect (with its `wallpaper_depth` plugin); without it
-  the widgets use their own colors and no depth. **PipeWire** for live audio
-  in the visualizers.
+  palette and the depth effect (with its `wallpaper_depth` plugin). On KDE
+  Plasma, undershell reads the wallpaper and the colour scheme itself; anywhere
+  else, name the wallpaper in `[general]` (see
+  [Without Noctalia](#without-noctalia-kde-plasma-and-others)). **PipeWire**
+  for live audio in the visualizers.
 - **Libraries:** wayland, EGL / GLES 3, libpipewire-0.3, toml++, glib, cairo,
   pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl,
   and FFmpeg's libavformat, libavcodec, libswscale and libavutil for the TV
@@ -704,6 +707,28 @@ them too. From a terminal: `undershell msg saves | save [name] |
 save-load <id> | save-overwrite <id> | save-rename <id> <name> |
 save-delete <id>`.
 
+## Without Noctalia (KDE Plasma and others)
+
+undershell takes the wallpaper, its fill mode and the colours from the first
+of these that is there:
+
+1. **`[general] wallpaper`** (and `wallpaper_fill`) in `config.toml`, if set:
+   over any of the others.
+2. **KDE Plasma**, inside a Plasma session (or when Noctalia is not installed):
+   each screen's desktop wallpaper (`plasma-org.kde.plasma.desktop-appletsrc`,
+   the current activity, Plasma's numbering of the screens from
+   `kwinoutputconfig.json`; for a wallpaper package such as the default
+   *Next*, the image that fits the screen and its dark variant with a dark
+   colour scheme), its fill mode, and a palette from the colour scheme and
+   accent colour in `kdeglobals` (`primary` is the accent). A change in
+   Plasma's settings is picked up at once. A slideshow keeps its current image
+   to itself, so it has no depth.
+3. **Noctalia**, as described above.
+
+The music card reads the MPRIS players directly when Noctalia's aggregator is
+not on the bus. `undershell msg status` shows which source is in use
+(`source=plasma`, `source=noctalia`, `+manual`).
+
 ## Noctalia bar widget
 
 `integrations/noctalia/undershell` is a Noctalia plugin
@@ -773,6 +798,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/text.*` | text: Pango → cached textures |
 | `src/audio.*` | PipeWire capture + FFT |
 | `src/noctalia.*`, `src/depth.*`, `src/depthfield.*`, `src/depthpaint.cpp` | Noctalia palette, depth masks, per-widget depth planes, the depth brush |
+| `src/plasma.*` | KDE Plasma: wallpapers per screen, fill mode, palette from the colour scheme |
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex, Bangers (OFL) |

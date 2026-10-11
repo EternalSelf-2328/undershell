@@ -279,12 +279,14 @@ void App::onGlobalRemove(uint32_t name) {
     if ((*it)->xdg) zxdg_output_v1_destroy((*it)->xdg);
     wl_output_destroy((*it)->wl);
     m_outputs.erase(it);
+    syncScreens();
     return;
   }
 }
 
 void App::onOutputDone(Output*) {
   // outputs can appear after startup (hotplug): (re)attach widgets
+  syncScreens();
   if (m_eglContext != EGL_NO_CONTEXT) syncWidgets();
 }
 
@@ -366,21 +368,33 @@ void App::loadConfig() {
   m_audio.setBandCount(maxBars);
   m_audio.setNoiseReduction(static_cast<float>(m_config.noiseReduction));
   m_audio.setMonstercat(m_config.monstercat);
+  // a wallpaper named in [general]: over whatever the source says
+  const bool manual = m_noctalia.setManual(m_config.wallpaper, m_config.wallpaperFill);
   syncWidgets();
+  if (manual && m_eglContext != EGL_NO_CONTEXT) noctaliaChanged();
+}
+
+void App::syncScreens() {
+  std::map<std::string, std::pair<int, int>> screens;
+  for (auto& o : m_outputs)
+    if (!o->name.empty()) screens[o->name] = {o->modeW, o->modeH};
+  if (m_noctalia.setScreens(std::move(screens)) && m_noctalia.state().source == "plasma") m_refreshNoctAt = nowSeconds() + 0.2;
 }
 
 void App::refreshNoctalia() {
-  if (m_noctalia.refresh()) {
-    for (auto& w : m_widgets) {
-      if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
-      w->needsRender = true;
-    }
-    updateDepth();
-    checkProfile();
-    checkWallpaperKind();
-    if (anchorKey() != m_anchorKey) syncWidgets();  // another wallpaper or fill: re-anchor the layout
-    restack();  // the plugin's plane may have moved
+  if (m_noctalia.refresh()) noctaliaChanged();
+}
+
+void App::noctaliaChanged() {
+  for (auto& w : m_widgets) {
+    if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
+    w->needsRender = true;
   }
+  updateDepth();
+  checkProfile();
+  checkWallpaperKind();
+  if (anchorKey() != m_anchorKey) syncWidgets();  // another wallpaper or fill: re-anchor the layout
+  restack();  // the plugin's plane may have moved
 }
 
 // Layer-shell surfaces on one layer stack in the order they were mapped, so
@@ -1403,9 +1417,9 @@ std::string App::handleCommand(const std::string& cmd) {
       }
     std::string s = std::format(
         "{{\"motion\":{},\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
-        "\"depth\":{{\"mask\":{},\"field\":{},\"plugin_threshold\":{:.0f}}},\"outputs\":[",
+        "\"depth\":{{\"mask\":{},\"field\":{},\"plugin_threshold\":{:.0f}}},\"source\":{},\"outputs\":[",
         m_motion, m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, mask, field,
-        m_noctalia.state().depthThreshold * 100);
+        m_noctalia.state().depthThreshold * 100, q(m_noctalia.state().source));
     // the monitors (logical size), and how many widgets each shows
     for (size_t i = 0; i < m_outputs.size(); ++i) {
       const Output& o = *m_outputs[i];
@@ -1437,9 +1451,10 @@ std::string App::handleCommand(const std::string& cmd) {
                                                          : ms.lyrics == MediaState::Lyrics::Plain ? "plain"
                                                          : ms.lyrics == MediaState::Lyrics::Searching ? "searching" : "none")
                                            : std::string());
-    s += std::format("widgets={} edit={} audio={} palette_roles={} fill_mode={}\n", m_widgets.size(),
+    s += std::format("widgets={} edit={} audio={} palette_roles={} fill_mode={} source={}{}\n", m_widgets.size(),
                                 m_edit, m_audioOk ? (m_audio.idle() ? "idle" : "active") : "off",
-                                m_noctalia.state().palette.size(), m_noctalia.state().fillMode);
+                                m_noctalia.state().palette.size(), m_noctalia.state().fillMode, m_noctalia.state().source,
+                                m_noctalia.state().manualWallpaper ? "+manual" : "");
     s += profileStatus() + "\n";
     if (m_motion) s += "wallpaper: moving (video or scene) — depth off and locked\n";
     for (auto& w : m_widgets) {
@@ -1472,6 +1487,7 @@ void App::handleInotify() {
       if (ev->wd == m_wdConfig && name == fs::path(m_configPath).filename().string()) m_reloadConfigAt = now + 0.15;
       if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
+      if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdMasks && name.ends_with(".png")) m_refreshDepthAt = now + 0.3;
       if (ev->wd == m_wdDepthMaps && name.ends_with(".npy")) m_refreshDepthAt = now + 0.3;
       p += sizeof(inotify_event) + ev->len;
@@ -1531,7 +1547,15 @@ int App::run() {
   m_depth.setJobs(&m_jobs, [this] {
     for (auto& w : m_widgets) w->needsRender = true;
   });
+  // the wallpaper named in [general] (if any) before the first look at the source
+  try {
+    const Config c = Config::load(m_configPath);
+    m_noctalia.setManual(c.wallpaper, c.wallpaperFill);
+  } catch (...) {
+  }
+  syncScreens();
   m_noctalia.refresh();
+  US_INFO("wallpaper source: {}{}", m_noctalia.state().source, m_noctalia.state().manualWallpaper ? " (wallpaper from [general])" : "");
   m_depth.update(m_noctalia.state(), outputNames());
   loadConfig();
   checkProfile();  // the wallpaper may have changed while undershell was not running
@@ -1544,6 +1568,8 @@ int App::run() {
   m_wdConfig = inotify_add_watch(m_inotify, fs::path(m_configPath).parent_path().c_str(), mask);
   m_wdNoctState = inotify_add_watch(m_inotify, fs::path(Noctalia::settingsPath()).parent_path().c_str(), mask);
   m_wdNoctConfig = inotify_add_watch(m_inotify, Noctalia::configDir().c_str(), mask);
+  // KDE Plasma's desktop, colour and activity files (written by rename)
+  if (Plasma::present() || Plasma::session()) m_wdPlasma = inotify_add_watch(m_inotify, Plasma::configDir().c_str(), mask);
   m_wdMasks = inotify_add_watch(m_inotify, DepthMasks::maskDir().c_str(), mask);
   // the depth maps (.npy) the per-widget planes are cut from; only finished
   // writes, never a half-written file

@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "noctalia.hpp"
 
+#include <filesystem>
 #include <glib.h>
 #include <regex>
 #include <toml++/toml.hpp>
 
 namespace undershell {
+
+namespace fs = std::filesystem;
 
 std::string Noctalia::settingsPath() {
   const char* st = std::getenv("NOCTALIA_STATE_HOME");
@@ -31,14 +34,14 @@ Color NoctaliaState::color(const std::string& roleOrHex, Color fallback) const {
   return it != palette.end() ? it->second : fallback;
 }
 
-static int fillModeIndex(const std::string& s) {
+int fillModeIndex(const std::string& s) {
   static const char* kModes[] = {"center", "crop", "fit", "stretch", "repeat", "span"};
   for (int i = 0; i < 6; ++i)
     if (s == kModes[i]) return i;
   return 1;
 }
 
-bool Noctalia::refresh() {
+bool Noctalia::refreshNoctalia(NoctaliaState& out) {
   std::string exported = runCommand("noctalia config export", 8);
   if (exported.empty()) {
     if (!m_warned) US_WARN("`noctalia config export` returned nothing; retrying (is Noctalia installed?)");
@@ -47,7 +50,7 @@ bool Noctalia::refresh() {
   }
   if (m_warned) US_INFO("Noctalia config available");
   m_warned = false;
-  if (exported == m_lastExport) return false;
+  if (exported == m_lastExport && m_lastSource == "noctalia") return false;
   m_lastExport = exported;
 
   toml::table root;
@@ -59,7 +62,8 @@ bool Noctalia::refresh() {
   }
 
   NoctaliaState s;
-  s.palette = m_state.palette;
+  s.source = "noctalia";
+  s.palette = out.palette;
   if (auto* wp = root["wallpaper"].as_table()) {
     s.defaultWallpaper = expandHome((*wp)["default"]["path"].value_or(std::string{}));
     s.fillMode = fillModeIndex((*wp)["fill_mode"].value_or(std::string("crop")));
@@ -88,16 +92,103 @@ bool Noctalia::refresh() {
     s.builtin = (*th)["builtin"].value_or(std::string("Noctalia"));
     s.communityPalette = (*th)["community_palette"].value_or(std::string{});
   }
-  m_state = std::move(s);
-  refreshPalette();
+  if (m_lastSource != "noctalia") m_paletteKey.clear();
+  refreshPalette(s);
+  out = std::move(s);
   return true;
 }
+
+// KDE Plasma: its wallpapers and fill mode, and the palette of its colour
+// scheme. There is no depth plugin there (depth comes from undershell's own
+// model, depthgen.hpp).
+bool Noctalia::refreshPlasma(NoctaliaState& out) {
+  if (!m_plasma.refresh(m_screens) && m_lastSource == "plasma") return false;
+  NoctaliaState s;
+  s.source = "plasma";
+  const PlasmaWallpapers& w = m_plasma.wallpapers();
+  s.wallpaperByOutput = w.byOutput;
+  s.defaultWallpaper = w.fallback;
+  s.fillMode = w.fillMode;
+  s.themeMode = m_plasma.dark() ? "dark" : "light";
+  m_paletteKey.clear();
+  refreshPalette(s);
+  for (auto& [role, c] : m_plasma.palette()) s.palette[role] = c;
+  if (w.slideshow && w.byOutput.empty() && w.fallback.empty())
+    US_INFO("plasma: the wallpaper is a slideshow; its current image is not known, so there is no depth");
+  US_INFO("plasma: wallpaper {} ({} screen(s)), fill {}, palette {}", fs::path(s.defaultWallpaper).filename().string(),
+          s.wallpaperByOutput.size(), s.fillMode, m_plasma.palette().empty() ? "default" : "from the colour scheme");
+  out = std::move(s);
+  return true;
+}
+
+std::string Noctalia::pickSource() {
+  // inside Plasma, Plasma draws the wallpaper whatever else is installed
+  if (Plasma::session()) return "plasma";
+  if (gchar* p = g_find_program_in_path("noctalia"); p) {
+    g_free(p);
+    return "noctalia";
+  }
+  return Plasma::present() ? "plasma" : "none";
+}
+
+bool Noctalia::refresh() {
+  const std::string source = pickSource();
+  bool changed = false;
+  if (source == "noctalia") {
+    changed = refreshNoctalia(m_base);
+    m_ready = !m_lastExport.empty();
+  } else if (source == "plasma") {
+    changed = refreshPlasma(m_base);
+    m_ready = true;
+  } else {
+    changed = m_lastSource != "none";
+    if (changed) {
+      NoctaliaState s;
+      m_paletteKey.clear();
+      refreshPalette(s);
+      m_base = std::move(s);
+      if (m_manual.empty()) US_INFO("no Noctalia or Plasma here: name the wallpaper in [general] wallpaper for depth and per-wallpaper layouts");
+    }
+    m_ready = true;
+  }
+  if (m_ready) m_lastSource = source;
+  if (!changed) return false;
+  compose();
+  return true;
+}
+
+void Noctalia::compose() {
+  NoctaliaState s = m_base;
+  if (!m_manual.empty()) {
+    s.manualWallpaper = true;
+    s.defaultWallpaper = m_manual;
+    s.wallpaperByOutput.clear();
+    if (!m_manualFill.empty()) s.fillMode = fillModeIndex(m_manualFill);
+  }
+  m_state = std::move(s);
+}
+
+bool Noctalia::setManual(const std::string& wallpaper, const std::string& fill) {
+  const std::string w = wallpaper.empty() ? std::string() : expandHome(wallpaper);
+  if (w == m_manual && fill == m_manualFill) return false;
+  m_manual = w;
+  m_manualFill = fill;
+  compose();
+  return true;
+}
+
+bool Noctalia::setScreens(std::map<std::string, std::pair<int, int>> screens) {
+  if (screens == m_screens) return false;
+  m_screens = std::move(screens);
+  return true;
+}
+
+
 
 // Palette roles as Noctalia renders them. Wallpaper themes are regenerated
 // with Noctalia's own generator; everything else falls back to the gtk4
 // template output (accent) plus Ryoku's paper-and-ink defaults.
-void Noctalia::refreshPalette() {
-  auto& s = m_state;
+void Noctalia::refreshPalette(NoctaliaState& s) {
   const bool dark = s.themeMode != "light";
   std::string key = s.themeSource + "|" + s.themeScheme + "|" + s.themeMode + "|" + s.defaultWallpaper + "|" +
                     s.builtin + "|" + s.communityPalette;
@@ -149,7 +240,7 @@ void Noctalia::refreshPalette() {
     pal[snake] = Color::fromHex((*it)[2].str());
     ++found;
   }
-  US_INFO("palette: source={} roles={} primary=({:.2f},{:.2f},{:.2f})", s.themeSource, found, pal["primary"].r,
+  US_INFO("palette: source={} roles={} primary=({:.2f},{:.2f},{:.2f})", s.themeSource.empty() ? s.source : s.themeSource, found, pal["primary"].r,
           pal["primary"].g, pal["primary"].b);
   s.palette = std::move(pal);
 }

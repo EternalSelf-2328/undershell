@@ -28,6 +28,8 @@ monstercat = false        # spread peaks to neighbours (cava's monstercat)
 idle = "show"             # visualizers with nothing playing: show | hide | demo
 language = "system"       # editor language: system (follows the locale) | en | es
 profiles = true           # remember a widget layout for each wallpaper
+# wallpaper = "~/Pictures/wall.jpg"   # only without Noctalia or KDE Plasma: the wallpaper
+# wallpaper_fill = "crop"             # (for depth and per-wallpaper layouts) and how it is fitted
 
 [[widget]]
 id = "visualizer"
@@ -96,6 +98,8 @@ Config Config::load(const std::string& path) {
     if (cfg.idle != "hide" && cfg.idle != "demo") cfg.idle = "show";
     cfg.language = get<std::string>(*g, "language", "system");
     if (cfg.language != "en" && cfg.language != "es") cfg.language = "system";
+    cfg.wallpaper = get<std::string>(*g, "wallpaper", "");
+    cfg.wallpaperFill = get<std::string>(*g, "wallpaper_fill", "");
   }
   if (auto* arr = root["widget"].as_array()) {
     int n = 0;
