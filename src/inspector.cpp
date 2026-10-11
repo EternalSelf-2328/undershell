@@ -85,22 +85,25 @@ std::string formatNumber(const PropSpec& p, double v) {
 // an editable structure an "Elements" section: one row per element (show,
 // order, open) and the open element's own options. `expanded` "*" opens all
 // (used to find any key's default).
+}  // namespace
+
 // Whether an option does anything for the widget as it is now configured
 // (its look, face, colour mode…): the inspector hides the rest.
-bool optionApplies(const Widget& w, const std::string& key) {
-  const toml::table& o = w.cfg.options;
-  const bool frameLook = w.cfg.type == "visualizer" && o["style"].value_or(std::string()) == "frame";
-  const std::string mode = w.cfg.meshed ? "mesh" : w.cfg.pinned ? "pin" : o["warp"].value_or(std::string(warped(w.cfg) ? "tilt" : "none"));
+bool optionApplies(const WidgetConfig& c, const std::string& key) {
+  const toml::table& o = c.options;
+  const bool frameLook = c.type == "visualizer" && o["style"].value_or(std::string()) == "frame";
+  const std::string mode = c.meshed ? "mesh" : c.pinned ? "pin" : o["warp"].value_or(std::string(warped(c) ? "tilt" : "none"));
   if (key == "warp") return !frameLook;  // a frame owns the whole screen
-  if (key == "rotation" && handPlaced(w.cfg)) return false;  // the points decide the shape
+  if (key == "rotation" && handPlaced(c)) return false;  // the points decide the shape
   if (key == "tilt_x" || key == "tilt_y" || key == "skew") return !frameLook && mode == "tilt";
-  if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
+  if (key == "perspective") return mode == "tilt" && (std::abs(c.tiltX) > 0.01 || std::abs(c.tiltY) > 0.01);  // only a tilt is seen in depth
   if (key == "muzzle_colors") return o["muzzle_style"].value_or(std::string("flash")) != "manga";  // ink is black and white
   if (key == "electric_colors" || key == "electric_glow") return o["electric_style"].value_or(std::string("flash")) != "manga";
   if (key == "tv_fit" || key == "tv_speed" || key == "tv_zap" || key == "tv_files") {  // only where your videos are
     const std::string m = o["tv_mode"].value_or(std::string("static"));
     return m == "media" || m == "channels";
   }
+  if (key == "tv_static") return o["tv_mode"].value_or(std::string("static")) != "static";  // it is all snow already
   if (key == "fw_colors") return o["fw_style"].value_or(std::string("flash")) != "manga";
   if (key == "neon_font") return o["neon_shape"].value_or(std::string("text")) == "text";
   if (key == "ripple_colors") return o["ripple_style"].value_or(std::string("flash")) != "manga";
@@ -108,7 +111,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "lines_clear") return o["lines_form"].value_or(std::string("focus")) == "focus";
   if (key == "sfx_colors") return o["sfx_style"].value_or(std::string("comic")) != "manga";  // manga letters in black and white
   if (key.starts_with("mesh_")) {
-    if (!w.cfg.meshed) return false;
+    if (!c.meshed) return false;
     if (key == "mesh_amount") {
       const std::string preset = o["mesh_preset"].value_or(std::string("flat"));
       return preset != "flat" && preset != "custom";
@@ -120,16 +123,32 @@ bool optionApplies(const Widget& w, const std::string& key) {
       if (v == x) return true;
     return false;
   };
-  if (w.cfg.type == "visualizer") {
+  if (c.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
     const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal", "tv"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
-    if (key == "color") return mode != "theme";
-    if (key == "color2") return mode == "gradient";
-    if (in(key, {"bars", "thickness", "glow", "shape", "idle_wave"})) return !own;
-    if (in(key, {"grow", "mirror", "reflection"})) return linear;
+    // the shared colours: every classic look, the halo and the vortex; the
+    // fire, the muzzle flash and electricity only when set to the theme's
+    // (electricity takes one colour); the other looks bring their own
+    const bool manga = (look == "muzzle" ? o["muzzle_style"] : o["electric_style"]).value_or(std::string("flash")) == "manga";
+    const bool shared = !own || in(look, {"halo", "vortex"}) ||
+                        (look == "fire" && o["fire_colors"].value_or(std::string("fire")) == "theme") ||
+                        (look == "muzzle" && !manga && o["muzzle_colors"].value_or(std::string("fire")) == "theme") ||
+                        (look == "electric" && !manga && o["electric_colors"].value_or(std::string("blue")) == "theme");
+    if (key == "color_mode") return shared;
+    if (key == "color") return shared && mode != "theme";
+    if (key == "color2") return shared && mode == "gradient" && look != "electric";
+    if (in(key, {"bars", "glow", "idle_wave"})) return !own;
+    // a bar's width and corners: the looks drawn in bars (the dots are discs)
+    if (key == "thickness") return in(look, {"bars", "split", "dots", "segments", "frame", "radial"});
+    if (key == "shape") return in(look, {"bars", "split", "segments", "frame", "radial"});
+    // mirrored below a baseline at the bottom: not split nor the line, which float
+    if (key == "reflection")
+      return in(look, {"bars", "dots", "segments", "wave", "ribbon", "curtain"}) && o["grow"].value_or(std::string("up")) == "up";
+    if (key == "halo_pulse" && look == "muzzle") return !manga;  // the ember is the realistic flash's
+    if (in(key, {"grow", "mirror"})) return linear;
     if (key == "segments") return look == "segments";
     if (key == "peaks") return in(look, {"bars", "segments", "frame"});
     if (key == "spin") return polar;
@@ -137,23 +156,43 @@ bool optionApplies(const Widget& w, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
-  if (w.cfg.type == "clock") {
+  if (c.type == "clock") {
     const std::string face = o["face"].value_or(std::string("digital"));
+    // the date strip under the face takes the accent, the ink and the words
+    const bool strip = face != "stacked" && o["date"].value_or(std::string("inline")) != "none";
+    // an editable structure paints its parts in the colours they name
+    const ClockStructure* cs = clockStructure(face);
+    auto partsIn = [&](const char* colour) {
+      if (cs)
+        for (const auto& e : clockElements(o, *cs))
+          if (e.show && e.color == colour) return true;
+      return false;
+    };
+    const bool accented = strip || face == "flip" || partsIn("accent") || (!cs && face != "bighour");  // flip's cards are edged in it
     if (key == "date") return face != "stacked";
-    if (key == "seconds") return in(face, {"banner", "bighour", "column", "digital", "flip", "grand", "minimal"});
-    if (key == "clock_24h") return !in(face, {"analog", "bighour", "outline"});
-    if (key == "accent") return face != "bighour";
-    if (key == "accent_color") return face != "bighour" && o["accent"].value_or(std::string("primary")) == "custom";
+    if (key == "seconds") return in(face, {"bighour", "column", "digital", "flip", "grand", "minimal"});
+    if (key == "clock_24h") return face != "analog";
+    if (key == "accent") return accented;
+    if (key == "accent_color") return accented && o["accent"].value_or(std::string("primary")) == "custom";
+    if (key == "ink") return !cs || strip || partsIn("ink");
+    if (key == "language") return strip || in(face, {"bighour", "metal", "stacked", "goodnight"});  // weekdays, months, greetings
     if (key == "weather") return face == "metal";
     if (key == "fahrenheit") return face == "metal" && o["weather"].value_or(true);
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
-  if (w.cfg.type == "now_playing") {
+  if (c.type == "now_playing") {
     const std::string layout = o["layout"].value_or(std::string("sheet"));
     // the text layout is the track and nothing else: its fonts, the artist's
     // share of it, where it sits, and the plate
     if (in(key, {"text_form", "text_align", "text_valign"})) return layout == "text";
+    // the album's colour tints the plate, the rail, the play button and the sheet's lyrics and spectrum
+    if (key == "accent_source") {
+      if (layout == "poster" || o["plate"].value_or(std::string("cover")) == "cover") return true;
+      if (layout == "text") return false;
+      return o["show_rail"].value_or(true) || o["show_transport"].value_or(true) ||
+             (layout == "sheet" && (o["show_lyrics"].value_or(true) || o["show_viz"].value_or(true)));
+    }
     if (layout == "text")
       return in(key, {"layout", "plate", "show_artist", "title_font", "artist_font", "artist_size", "accent_source", "ink",
                       "opacity", "rotation", "depth", "depth_level", "layer"}) &&
@@ -171,7 +210,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
     if (in(key, {"artist_size", "artist_font"})) return o["show_artist"].value_or(true);
     if (in(key, {"time_size", "time_font"})) return o["show_time"].value_or(true);
     // the record is a disc and the poster is the whole card: neither is cut to a shape
-    if (key == "cover_shape") return !in(layout, {"vinyl", "poster"});
+    if (key == "cover_shape") return !in(layout, {"vinyl", "poster"}) && o["show_cover"].value_or(true);
     if (key == "plate") return layout != "poster";
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
@@ -179,6 +218,9 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "depth_level") return o["depth"].value_or(true);
   return true;
 }
+
+namespace {
+
 
 // A list of paths as the inspector shows it: one row per entry, named by its
 // file (a folder ends in "/"), or a hint when the list is empty.
@@ -258,7 +300,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   all.push_back({K::Enum, "mesh_between", "Between points", "Entre puntos", {"smooth", "straight"}, 0, 0, 0, 0, "smooth"});
   all.push_back({K::Action, "mesh_reset", "Reset mesh", "Restablecer malla"});
   for (const auto& p : all)
-    if (expanded == "*" || optionApplies(w, p.key)) s.push_back(p);
+    if (expanded == "*" || optionApplies(w.cfg, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
   if (w.cfg.type == "visualizer") {
     // with nothing playing: follow [general] idle, or its own choice
@@ -451,7 +493,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
     s.insert(s.begin() + 1, halo.begin(), halo.end());
   }
   // a look's own rows go in after the shared ones were sifted: sift them too
-  if (expanded != "*") std::erase_if(s, [&w](const PropSpec& p) { return !optionApplies(w, p.key); });
+  if (expanded != "*") std::erase_if(s, [&w](const PropSpec& p) { return !optionApplies(w.cfg, p.key); });
   if (w.cfg.type != "clock") return s;
   const std::string face = w.cfg.options["face"].value_or(std::string("digital"));
   const ClockStructure* cs = clockStructure(face);

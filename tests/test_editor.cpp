@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "config.hpp"
 #include "geom.hpp"
+#include "schema.hpp"
 #include "snap.hpp"
 
 #include <cmath>
@@ -192,6 +193,53 @@ int main() {
     CHECK(vc.widgets.size() == 1 && vc.widgets[0].meshed);
     CHECK(VisualizerConfig::fromTable(vc.widgets[0].options).shape == "square");
     std::filesystem::remove_all(dir);
+  }
+
+  // the inspector shows only the options a widget uses as it is set now
+  {
+    auto shows = [](const char* type, const char* options, const char* key) {
+      WidgetConfig c;
+      c.type = type;
+      c.options = toml::parse(options);
+      return optionApplies(c, key);
+    };
+    // a bar's width and corners only where there are bars
+    CHECK(shows("visualizer", "style = 'bars'", "thickness") && shows("visualizer", "style = 'bars'", "shape"));
+    CHECK(shows("visualizer", "style = 'radial'", "thickness") && shows("visualizer", "style = 'radial'", "shape"));
+    CHECK(shows("visualizer", "style = 'dots'", "thickness") && !shows("visualizer", "style = 'dots'", "shape"));
+    for (const char* look : {"style = 'wave'", "style = 'ribbon'", "style = 'curtain'", "style = 'line'", "style = 'orb'", "style = 'spiral'"})
+      CHECK(!shows("visualizer", look, "thickness") && !shows("visualizer", look, "shape"));
+    // the reflection: under a baseline at the bottom
+    CHECK(shows("visualizer", "style = 'wave'", "reflection"));
+    CHECK(!shows("visualizer", "style = 'wave'\ngrow = 'center'", "reflection"));
+    CHECK(!shows("visualizer", "style = 'split'", "reflection") && !shows("visualizer", "style = 'line'", "reflection"));
+    // the shared colours: classic looks, halo, vortex; the others when they take the theme's
+    CHECK(shows("visualizer", "style = 'bars'", "color_mode") && shows("visualizer", "style = 'halo'", "color_mode"));
+    for (const char* look : {"style = 'sfx'", "style = 'rain'", "style = 'neon'", "style = 'terminal'", "style = 'tv'", "style = 'fireworks'"})
+      CHECK(!shows("visualizer", look, "color_mode") && !shows("visualizer", (std::string(look) + "\ncolor_mode = 'custom'").c_str(), "color"));
+    CHECK(!shows("visualizer", "style = 'fire'", "color_mode") && shows("visualizer", "style = 'fire'\nfire_colors = 'theme'", "color_mode"));
+    CHECK(shows("visualizer", "style = 'muzzle'\nmuzzle_colors = 'theme'", "color_mode"));
+    CHECK(!shows("visualizer", "style = 'muzzle'\nmuzzle_colors = 'theme'\nmuzzle_style = 'manga'", "color_mode"));
+    CHECK(shows("visualizer", "style = 'muzzle'", "halo_pulse") && !shows("visualizer", "style = 'muzzle'\nmuzzle_style = 'manga'", "halo_pulse"));
+    const char* themedBolt = "style = 'electric'\nelectric_colors = 'theme'\ncolor_mode = 'gradient'";
+    CHECK(shows("visualizer", themedBolt, "color") && !shows("visualizer", themedBolt, "color2"));
+    // snow over a picture, not over the snow
+    CHECK(!shows("visualizer", "style = 'tv'", "tv_static") && shows("visualizer", "style = 'tv'\ntv_mode = 'media'", "tv_static"));
+    // clocks: seconds where they are drawn, 12/24 h wherever the hour is digits
+    CHECK(!shows("clock", "face = 'banner'", "seconds") && shows("clock", "face = 'bighour'", "seconds"));
+    CHECK(shows("clock", "face = 'bighour'", "clock_24h") && shows("clock", "face = 'outline'", "clock_24h"));
+    CHECK(!shows("clock", "face = 'analog'", "clock_24h"));
+    // the accent, the ink and the language where something takes them
+    CHECK(shows("clock", "face = 'bighour'", "accent") && !shows("clock", "face = 'bighour'\ndate = 'none'", "accent"));
+    CHECK(!shows("clock", "face = 'metal'\ndate = 'none'", "accent") && shows("clock", "face = 'metal'\ndate = 'none'", "ink"));
+    CHECK(shows("clock", "face = 'column'\ndate = 'none'", "accent"));  // its minutes
+    CHECK(!shows("clock", "face = 'metal'\ndate = 'none'\naccent = 'custom'", "accent_color"));
+    CHECK(!shows("clock", "face = 'digital'\ndate = 'none'", "language") && shows("clock", "face = 'digital'", "language"));
+    CHECK(shows("clock", "face = 'goodnight'\ndate = 'none'", "language"));
+    // the card: a sleeve's shape needs the sleeve; the album colour something to tint
+    CHECK(!shows("now_playing", "layout = 'sheet'\nshow_cover = false", "cover_shape"));
+    CHECK(shows("now_playing", "layout = 'text'", "accent_source") && !shows("now_playing", "layout = 'text'\nplate = 'glass'", "accent_source"));
+    CHECK(!shows("now_playing", "layout = 'tile'\nplate = 'none'\nshow_rail = false\nshow_transport = false", "accent_source"));
   }
 
   return TEST_RESULT();

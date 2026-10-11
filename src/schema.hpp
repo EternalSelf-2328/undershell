@@ -9,6 +9,8 @@
 
 namespace undershell {
 
+struct WidgetConfig;
+
 struct PropSpec {
   // Header, Element and Font rows only appear in the inspector's generated
   // list (clock structures); the config documents the four value kinds
@@ -25,6 +27,10 @@ struct PropSpec {
   bool indent = false;  // an element's own option, under its row
   std::string face;     // Element: the structure it belongs to
 };
+
+// Whether an option does anything for a widget as it is configured now (its
+// look, face, layout, colour mode…); the inspector shows only those.
+bool optionApplies(const WidgetConfig& c, const std::string& key);
 
 inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   using K = PropSpec::Kind;
