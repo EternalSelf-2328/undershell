@@ -383,6 +383,8 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
     };
     s.insert(s.begin() + 1, halo.begin(), halo.end());
   }
+  // a look's own rows go in after the shared ones were sifted: sift them too
+  if (expanded != "*") std::erase_if(s, [&w](const PropSpec& p) { return !optionApplies(w, p.key); });
   if (w.cfg.type != "clock") return s;
   const std::string face = w.cfg.options["face"].value_or(std::string("digital"));
   const ClockStructure* cs = clockStructure(face);
