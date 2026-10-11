@@ -6,6 +6,7 @@
 #include "config.hpp"
 #include "i18n.hpp"
 #include "noctalia.hpp"
+#include "gnome.hpp"
 #include "plasma.hpp"
 
 #include <filesystem>
@@ -482,6 +483,23 @@ int main() {
     unsetenv("XDG_STATE_HOME");
     unsetenv("XDG_CACHE_HOME");
     unsetenv("XDG_CONFIG_HOME");
+  }
+
+  // GNOME: gsettings' five values, one per line
+  {
+    GnomeSettings g = parseGnomeSettings("'file:///usr/share/backgrounds/gnome/caf%C3%A9-l.jpg'\n'file:///usr/share/backgrounds/gnome/d.jpg'\n'zoom'\n'default'\n'green'\n");
+    CHECK(g.wallpaper == "/usr/share/backgrounds/gnome/café-l.jpg" && g.fillMode == 1 && !g.dark);
+    CHECK(std::abs(g.palette["primary"].g - 0x94 / 255.0F) < 0.003F);  // libadwaita's green #3a944a
+    g = parseGnomeSettings("'file:///a/l.png'\n'file:///a/d.png'\n'scaled'\n'prefer-dark'\n'blue'\n");
+    CHECK(g.wallpaper == "/a/d.png" && g.fillMode == 2 && g.dark);  // the dark picture only under prefer-dark
+    g = parseGnomeSettings("'file:///a/l.png'\n''\n'spanned'\n'prefer-light'\n'slate'\n");
+    CHECK(g.wallpaper == "/a/l.png" && g.fillMode == 5 && !g.dark);
+    g = parseGnomeSettings("'file:///usr/share/backgrounds/gnome/adwaita-timed.xml'\n''\n'zoom'\n'default'\n'blue'\n");
+    CHECK(g.wallpaper.empty());  // an XML slideshow: no single picture
+    g = parseGnomeSettings("'file:///a/l.png'\n''\n'none'\n'default'\n'blue'\n");
+    CHECK(g.wallpaper.empty());  // a plain colour
+    g = parseGnomeSettings("'file:///a/l.png'\n''\n'wallpaper'\n'default'\n");  // GNOME 46: no accent-color
+    CHECK(g.fillMode == 4 && std::abs(g.palette["primary"].b - 0xe4 / 255.0F) < 0.003F);
   }
 
   std::filesystem::remove_all(dir);

@@ -122,9 +122,28 @@ bool Noctalia::refreshPlasma(NoctaliaState& out) {
   return true;
 }
 
+// GNOME: gsettings' wallpaper and fill, a palette from the accent colour
+bool Noctalia::refreshGnome(NoctaliaState& out) {
+  if (!m_gnome.refresh() && m_lastSource == "gnome") return false;
+  const GnomeSettings& g = m_gnome.settings();
+  NoctaliaState s;
+  s.source = "gnome";
+  s.defaultWallpaper = g.wallpaper;
+  s.fillMode = g.fillMode;
+  s.themeMode = g.dark ? "dark" : "light";
+  m_paletteKey.clear();
+  refreshPalette(s);
+  for (auto& [role, c] : g.palette) s.palette[role] = c;
+  US_INFO("gnome: wallpaper {}, fill {}, {}", g.wallpaper.empty() ? std::string("none") : fs::path(g.wallpaper).filename().string(),
+          s.fillMode, g.dark ? "dark" : "light");
+  out = std::move(s);
+  return true;
+}
+
 std::string Noctalia::pickSource(ShellState* shell) {
   // inside Plasma, Plasma draws the wallpaper whatever else is installed
   if (Plasma::session()) return "plasma";
+  if (Gnome::session()) return "gnome";
   const std::vector<Argv> procs = userProcesses();
   if (std::ranges::any_of(procs, [](const Argv& a) { return !a.empty() && fs::path(a[0]).filename() == "noctalia"; })) return "noctalia";
   // another shell or wallpaper tool that is running
@@ -176,6 +195,9 @@ bool Noctalia::refresh() {
     m_ready = !m_lastExport.empty();
   } else if (source == "plasma") {
     changed = refreshPlasma(m_base);
+    m_ready = true;
+  } else if (source == "gnome") {
+    changed = refreshGnome(m_base);
     m_ready = true;
   } else {
     changed = m_lastSource != "none";

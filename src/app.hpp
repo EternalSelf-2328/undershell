@@ -50,6 +50,9 @@ struct wp_viewport;
 struct wp_fractional_scale_manager_v1;
 struct wp_fractional_scale_v1;
 struct zwlr_layer_surface_v1;
+struct xdg_wm_base;
+struct xdg_surface;
+struct xdg_toplevel;
 
 namespace undershell {
 
@@ -74,6 +77,9 @@ struct Widget {
   Output* output = nullptr;
   wl_surface* surface = nullptr;
   zwlr_layer_surface_v1* layer = nullptr;
+  // without layer-shell (GNOME): a window the GNOME Shell extension puts on the desktop
+  xdg_surface* xsurf = nullptr;
+  xdg_toplevel* top = nullptr;
   wl_egl_window* eglWindow = nullptr;
   EGLSurface eglSurface = EGL_NO_SURFACE;
   wl_callback* frameCb = nullptr;
@@ -110,6 +116,8 @@ struct EditSurface {
   Output* output = nullptr;
   wl_surface* surface = nullptr;
   zwlr_layer_surface_v1* layer = nullptr;
+  xdg_surface* xsurf = nullptr;  // without layer-shell: a window over the whole output
+  xdg_toplevel* top = nullptr;
   wl_egl_window* eglWindow = nullptr;
   EGLSurface eglSurface = EGL_NO_SURFACE;
   wl_callback* frameCb = nullptr;
@@ -141,6 +149,11 @@ public:
   void onOutputDone(Output* o);
   void onMoveApplied(Widget* w, int x, int y);
   void onEditConfigure(EditSurface* e, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t width, uint32_t height);
+  // without layer-shell (xdg_toplevel windows, placed by the GNOME Shell extension)
+  void onToplevelConfigure(Widget* w, xdg_surface* s, uint32_t serial);
+  void onEditToplevelConfigure(EditSurface* e, xdg_surface* s, uint32_t serial);
+  [[nodiscard]] bool toplevels() const { return !m_layerShell && m_wmBase; }
+  [[nodiscard]] std::string toplevelTitle(const Widget& w) const;
   void onEditFrameDone(EditSurface* e);
   void onKey(uint32_t key, uint32_t state);
   void onScroll(double value);
@@ -320,6 +333,8 @@ private:
   wl_registry* m_registry = nullptr;
   wl_compositor* m_compositor = nullptr;
   zwlr_layer_shell_v1* m_layerShell = nullptr;
+  xdg_wm_base* m_wmBase = nullptr;
+  bool m_noHost = false;  // no layer-shell and not started by the GNOME extension: nothing to do
   zxdg_output_manager_v1* m_xdgOutputs = nullptr;
   wp_viewporter* m_viewporter = nullptr;
   wp_fractional_scale_manager_v1* m_fractional = nullptr;
@@ -354,6 +369,7 @@ private:
   bool m_audioOk = false;
   Noctalia m_noctalia;
   DepthMasks m_depth;
+  DconfWatch m_dconf;  // GNOME's settings changing (wallpaper, accent)
   DepthGen m_depthGen;  // depth from undershell's own model (no plugin)
   [[nodiscard]] bool nativeDepth() const;
   [[nodiscard]] std::string depthModelStatus() const;

@@ -8,6 +8,7 @@
 #pragma once
 
 #include "common.hpp"
+#include "gnome.hpp"
 #include "plasma.hpp"
 #include "shells.hpp"
 
@@ -60,6 +61,7 @@ public:
 private:
   bool refreshNoctalia(NoctaliaState& s);
   bool refreshPlasma(NoctaliaState& s);
+  bool refreshGnome(NoctaliaState& s);
   bool refreshShell(NoctaliaState& s, ShellState shell);
   void refreshPalette(NoctaliaState& s);
   void compose();
@@ -73,6 +75,7 @@ private:
   std::string m_manual, m_manualFill;
   std::map<std::string, std::pair<int, int>> m_screens;
   Plasma m_plasma;
+  Gnome m_gnome;
   bool m_ready = false;
   bool m_warned = false;
 };

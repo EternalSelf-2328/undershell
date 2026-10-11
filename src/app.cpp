@@ -10,6 +10,7 @@
 #include "xdg-output-unstable-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -111,6 +112,26 @@ struct EditCtx {
   App* app;
   EditSurface* e;
 };
+
+// ── without layer-shell: xdg_toplevel windows ───────────────────────────────
+static void wmPing(void*, xdg_wm_base* b, uint32_t serial) { xdg_wm_base_pong(b, serial); }
+static const xdg_wm_base_listener kWmBase = {wmPing};
+static void widgetXdgConfigure(void* d, xdg_surface* s, uint32_t serial) {
+  auto* c = static_cast<WidgetCtx*>(d);
+  c->app->onToplevelConfigure(c->w, s, serial);
+}
+static const xdg_surface_listener kWidgetXdg = {widgetXdgConfigure};
+static void editXdgConfigure(void* d, xdg_surface* s, uint32_t serial) {
+  auto* c = static_cast<EditCtx*>(d);
+  c->app->onEditToplevelConfigure(c->e, s, serial);
+}
+static const xdg_surface_listener kEditXdg = {editXdgConfigure};
+// widgets and the editor keep the size they chose (min = max)
+static void topConfigure(void*, xdg_toplevel*, int32_t, int32_t, wl_array*) {}
+static void topClose(void*, xdg_toplevel*) {}
+static void topBounds(void*, xdg_toplevel*, int32_t, int32_t) {}
+static void topCaps(void*, xdg_toplevel*, wl_array*) {}
+static const xdg_toplevel_listener kTop = {topConfigure, topClose, topBounds, topCaps};
 
 // fractional-scale: the scale the compositor wants this surface drawn at
 static void widgetScale(void* d, wp_fractional_scale_v1*, uint32_t s120) {
@@ -214,9 +235,22 @@ bool App::initWayland() {
   wl_registry_add_listener(m_registry, &kRegistry, this);
   wl_display_roundtrip(m_display);
   wl_display_roundtrip(m_display);  // output names/modes
-  if (!m_compositor || !m_layerShell) {
+  if (!m_compositor || (!m_layerShell && !m_wmBase)) {
     US_ERROR("compositor lacks wl_compositor or zwlr_layer_shell_v1");
     return false;
+  }
+  if (!m_layerShell) {
+    // GNOME: no layer-shell; its extension starts undershell and puts the
+    // widget windows on the desktop. Started any other way they would be
+    // loose windows, so there is nothing to do.
+    const char* host = std::getenv("UNDERSHELL_HOST");
+    if (!host || std::string_view(host) != "gnome-shell") {
+      US_ERROR("this compositor has no wlr-layer-shell (GNOME?): enable the undershell GNOME Shell extension, which starts undershell "
+               "and puts its widgets on the desktop");
+      m_noHost = true;
+      return false;
+    }
+    US_INFO("no layer-shell: the widgets are windows the GNOME Shell extension puts on the desktop");
   }
   if (m_shm) {
     const char* size = std::getenv("XCURSOR_SIZE");
@@ -232,6 +266,9 @@ void App::onGlobal(wl_registry* reg, uint32_t name, const char* iface, uint32_t 
     m_compositor = static_cast<wl_compositor*>(wl_registry_bind(reg, name, &wl_compositor_interface, std::min(version, 4u)));
   } else if (i == zwlr_layer_shell_v1_interface.name) {
     m_layerShell = static_cast<zwlr_layer_shell_v1*>(wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, std::min(version, 4u)));
+  } else if (i == xdg_wm_base_interface.name) {
+    m_wmBase = static_cast<xdg_wm_base*>(wl_registry_bind(reg, name, &xdg_wm_base_interface, std::min(version, 3u)));
+    xdg_wm_base_add_listener(m_wmBase, &kWmBase, this);
   } else if (i == wl_shm_interface.name) {
     m_shm = static_cast<wl_shm*>(wl_registry_bind(reg, name, &wl_shm_interface, 1));
   } else if (i == wl_seat_interface.name && !m_seat) {
@@ -554,7 +591,7 @@ void App::syncWidgets() {
       destroySurface(*w);
       w->output = out;
       if (out) createSurface(*w);
-    } else if (geomChanged && w->layer) {
+    } else if (geomChanged && (w->layer || w->top)) {
       if (w->impl->fullscreen()) {
         destroySurface(*w);
         createSurface(*w);
@@ -595,6 +632,19 @@ void App::createSurface(Widget& w) {
     w.scale = static_cast<float>(w.output->scale);
     wl_surface_set_buffer_scale(w.surface, w.output->scale);
   }
+  if (toplevels()) {
+    // a window: the GNOME Shell extension reads its place from the title
+    // and makes it part of the desktop
+    w.surfaceFullscreen = w.impl->fullscreen();
+    w.xsurf = xdg_wm_base_get_xdg_surface(m_wmBase, w.surface);
+    xdg_surface_add_listener(w.xsurf, &kWidgetXdg, new WidgetCtx{this, &w});
+    w.top = xdg_surface_get_toplevel(w.xsurf);
+    xdg_toplevel_add_listener(w.top, &kTop, nullptr);
+    xdg_toplevel_set_app_id(w.top, "dev.undershell.widget");
+    placeLayer(w);
+    w.configured = false;
+    return;
+  }
   // Bottom layer, like Noctalia's own desktop widgets: above the wallpaper,
   // below every window.
   w.layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, w.surface, w.output->wl,
@@ -623,7 +673,29 @@ void App::createSurface(Widget& w) {
   w.configured = false;
 }
 
+std::string App::toplevelTitle(const Widget& w) const {
+  const bool full = w.impl && w.impl->fullscreen();
+  const Box b = full || !w.output ? Box{0, 0, w.output ? static_cast<int>(w.output->logicalW()) : 0, w.output ? static_cast<int>(w.output->logicalH()) : 0}
+                                  : surfaceBox(w.cfg);
+  return std::format("undershell|widget|{}|{}|{}|{}|{}|{}", w.output ? w.output->name : "", b.x, b.y, b.w, b.h, w.cfg.id);
+}
+
 void App::placeLayer(Widget& w) {
+  if (w.top) {
+    const bool full = w.impl && w.impl->fullscreen();
+    const Box b = full ? Box{0, 0, static_cast<int>(w.output->logicalW()), static_cast<int>(w.output->logicalH())} : surfaceBox(w.cfg);
+    xdg_toplevel_set_title(w.top, toplevelTitle(w).c_str());
+    xdg_toplevel_set_min_size(w.top, b.w, b.h);
+    xdg_toplevel_set_max_size(w.top, b.w, b.h);
+    applyInputRegion(w);
+    if (w.configured) sizeBuffer(w, b.w, b.h);
+    wl_surface_commit(w.surface);
+    w.appliedX = b.x;
+    w.appliedY = b.y;
+    w.needsRender = true;
+    w.drewEmpty = false;
+    return;
+  }
   if (!w.layer || (w.impl && w.impl->fullscreen())) return;
   const Box b = surfaceBox(w.cfg);
   zwlr_layer_surface_v1_set_size(w.layer, static_cast<uint32_t>(b.w), static_cast<uint32_t>(b.h));
@@ -665,6 +737,13 @@ void App::destroySurface(Widget& w) {
   w.viewport = nullptr;
   if (w.layer) zwlr_layer_surface_v1_destroy(w.layer);
   w.layer = nullptr;
+  if (w.top) xdg_toplevel_destroy(w.top);
+  w.top = nullptr;
+  if (w.xsurf) {
+    delete static_cast<WidgetCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(w.xsurf)));
+    xdg_surface_destroy(w.xsurf);
+  }
+  w.xsurf = nullptr;
   if (w.surface) wl_surface_destroy(w.surface);
   w.surface = nullptr;
   w.configured = false;
@@ -743,6 +822,16 @@ bool App::widgetPointer(PointerEvent::Type type, wl_surface* s, double x, double
     setCursor(std::string_view(want) == "pointer" ? "pointer" : "default");
   }
   return true;
+}
+
+void App::onToplevelConfigure(Widget* w, xdg_surface* s, uint32_t serial) {
+  xdg_surface_ack_configure(s, serial);
+  const bool full = w->impl && w->impl->fullscreen();
+  const Box b = full ? Box{0, 0, static_cast<int>(w->output->logicalW()), static_cast<int>(w->output->logicalH())} : surfaceBox(w->cfg);
+  sizeBuffer(*w, b.w, b.h);
+  w->configured = true;
+  w->needsRender = true;
+  w->drewEmpty = false;
 }
 
 void App::onLayerConfigure(Widget* w, zwlr_layer_surface_v1* ls, uint32_t serial, uint32_t width, uint32_t height) {
@@ -1065,6 +1154,22 @@ void App::createEditSurface(Output* o) {
     e->scale = static_cast<float>(o->scale);
     wl_surface_set_buffer_scale(e->surface, o->scale);
   }
+  if (toplevels()) {
+    // a window the size of its output, which the extension lays over the
+    // whole monitor, above the rest (not fullscreen: mutter would paint black
+    // under a fullscreen window and hide the desktop the editor is about)
+    e->xsurf = xdg_wm_base_get_xdg_surface(m_wmBase, e->surface);
+    xdg_surface_add_listener(e->xsurf, &kEditXdg, new EditCtx{this, e.get()});
+    e->top = xdg_surface_get_toplevel(e->xsurf);
+    xdg_toplevel_add_listener(e->top, &kTop, nullptr);
+    xdg_toplevel_set_app_id(e->top, "dev.undershell.editor");
+    xdg_toplevel_set_title(e->top, ("undershell|editor|" + o->name).c_str());
+    xdg_toplevel_set_min_size(e->top, static_cast<int>(o->logicalW()), static_cast<int>(o->logicalH()));
+    xdg_toplevel_set_max_size(e->top, static_cast<int>(o->logicalW()), static_cast<int>(o->logicalH()));
+    wl_surface_commit(e->surface);
+    m_editSurfaces.push_back(std::move(e));
+    return;
+  }
   e->layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, e->surface, o->wl, ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
                                                    "undershell-editor");
   zwlr_layer_surface_v1_add_listener(e->layer, &kEditLayer, new EditCtx{this, e.get()});
@@ -1113,6 +1218,13 @@ void App::destroyEditSurface(EditSurface& e) {
   e.viewport = nullptr;
   if (e.layer) zwlr_layer_surface_v1_destroy(e.layer);
   e.layer = nullptr;
+  if (e.top) xdg_toplevel_destroy(e.top);
+  e.top = nullptr;
+  if (e.xsurf) {
+    delete static_cast<EditCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(e.xsurf)));
+    xdg_surface_destroy(e.xsurf);
+  }
+  e.xsurf = nullptr;
   if (e.surface) wl_surface_destroy(e.surface);
   e.surface = nullptr;
 }
@@ -1122,6 +1234,14 @@ void App::onEditConfigure(EditSurface* e, zwlr_layer_surface_v1* ls, uint32_t se
   const int nw = width ? static_cast<int>(width) : static_cast<int>(e->output->logicalW());
   const int nh = height ? static_cast<int>(height) : static_cast<int>(e->output->logicalH());
   sizeBuffer(*e, nw, nh);
+  e->configured = true;
+  e->needsRender = true;
+}
+
+void App::onEditToplevelConfigure(EditSurface* e, xdg_surface* s, uint32_t serial) {
+  xdg_surface_ack_configure(s, serial);
+  // the output's size, whatever the configure suggests
+  sizeBuffer(*e, static_cast<int>(e->output->logicalW()), static_cast<int>(e->output->logicalH()));
   e->configured = true;
   e->needsRender = true;
 }
@@ -1596,8 +1716,11 @@ int App::computeTimeout() {
 int App::run() {
   std::signal(SIGINT, [](int) { g_quit = 1; });
   std::signal(SIGTERM, [](int) { g_quit = 1; });
+  // Wayland first: without layer-shell and without the GNOME extension
+  // there is nothing to do, and a clean exit keeps systemd from retrying
+  if (!initWayland()) return m_noHost ? 0 : 1;
   if (!m_ipc.listen([this](const std::string& c) { return handleCommand(c); })) return 1;
-  if (!initWayland() || !initEgl()) return 1;
+  if (!initEgl()) return 1;
 
   m_configPath = Config::defaultPath();
   m_depth.setEditsDir((fs::path(m_configPath).parent_path() / "depth-edits").string());
@@ -1634,6 +1757,7 @@ int App::run() {
   syncSourceWatches();
   // KDE Plasma's desktop, colour and activity files (written by rename)
   if (Plasma::present() || Plasma::session()) m_wdPlasma = inotify_add_watch(m_inotify, Plasma::configDir().c_str(), mask);
+  if (Gnome::session()) m_dconf.start();
   m_wdMasks = inotify_add_watch(m_inotify, DepthMasks::maskDir().c_str(), mask);
   // the depth maps (.npy) the per-widget planes are cut from; only finished
   // writes, never a half-written file
@@ -1644,14 +1768,15 @@ int App::run() {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
     wl_display_flush(m_display);
 
-    pollfd fds[7] = {{wl_display_get_fd(m_display), POLLIN, 0},
+    pollfd fds[8] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
                      {m_inotify, POLLIN, 0},
                      {m_ipc.fd(), POLLIN, 0},
                      {m_media.fd(), POLLIN, 0},
                      {m_jobs.fd(), POLLIN, 0},
-                     {m_picker.fd(), POLLIN, 0}};
-    int r = poll(fds, 7, computeTimeout());
+                     {m_picker.fd(), POLLIN, 0},
+                     {m_dconf.fd(), POLLIN, 0}};
+    int r = poll(fds, 8, computeTimeout());
     if (r < 0 && errno != EINTR) {
       wl_display_cancel_read(m_display);
       break;
@@ -1670,6 +1795,10 @@ int App::run() {
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();
     if (r > 0 && (fds[5].revents & POLLIN)) m_jobs.dispatch();
     if (r > 0 && (fds[6].revents & (POLLIN | POLLHUP))) m_picker.dispatch();
+    if (r > 0 && (fds[7].revents & POLLIN)) {
+      m_dconf.dispatch();
+      if (m_dconf.changed()) m_refreshNoctAt = nowSeconds() + 0.3;
+    }
 
     const double now = nowSeconds();
     if (m_reloadConfigAt > 0 && now >= m_reloadConfigAt) {

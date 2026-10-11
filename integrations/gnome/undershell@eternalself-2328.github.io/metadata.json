@@ -1,0 +1,7 @@
+{
+  "uuid": "undershell@eternalself-2328.github.io",
+  "name": "undershell",
+  "description": "Puts undershell's desktop widgets (visualizers, clocks, a music card) on the GNOME desktop: above the wallpaper, below the windows, on every workspace. GNOME has no layer-shell, so this extension starts undershell and places its windows.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51"],
+  "url": "https://github.com/EternalSelf-2328/undershell"
+}

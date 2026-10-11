@@ -108,6 +108,7 @@ core = static_library('undershell-core',
   'src/noctalia.cpp',
   'src/plasma.cpp',
   'src/shells.cpp',
+  'src/gnome.cpp',
   'src/depthgen.cpp',
   'src/offscreen.cpp',
   'src/overlay.cpp',
@@ -135,6 +136,11 @@ if onnx_dep.found()
              install : true, install_dir : libexecdir)
 endif
 install_subdir('data/fonts', install_dir : datadir)
+# GNOME has no layer-shell: its extension starts undershell and places the widgets
+if get_option('gnome_extension')
+  install_subdir('integrations/gnome/undershell@eternalself-2328.github.io',
+                 install_dir : get_option('prefix') / get_option('datadir') / 'gnome-shell/extensions')
+endif
 
 # systemd user unit: /usr/lib/systemd/user for packages, ~/.local/share/systemd/user
 # (a directory systemd also searches) for user installs

@@ -3,8 +3,10 @@
 Desktop widgets that live **under** your shell and **apart** from it: a
 standalone Wayland client in C++ (GLES 3) that doesn't depend on any shell or
 dotfiles. It integrates with Noctalia (palette, `wallpaper_depth` depth) and
-KDE Plasma (wallpaper, colour scheme), and runs on Umbriel/niri/Hyprland/KDE
-Plasma. Its first widgets are ports of
+KDE Plasma (wallpaper, colour scheme), reads the wallpaper of other shells
+(caelestia, DankMaterialShell, …) and wallpaper tools, and runs on
+Umbriel/niri/Hyprland/Sway/KDE Plasma/COSMIC and, through an extension, GNOME.
+Its first widgets are ports of
 [Ryoku](https://github.com/ryoku-dev/ryoku)'s.
 
 - **Same layer as Noctalia's widgets** (layer-shell *bottom*): above the
@@ -25,7 +27,8 @@ Plasma. Its first widgets are ports of
 ## Requirements
 
 - **A Wayland compositor with `wlr-layer-shell`**: Umbriel, niri, Hyprland,
-  Sway, KDE Plasma (KWin), …
+  Sway, KDE Plasma (KWin), COSMIC, … **GNOME** has no layer-shell: there the
+  bundled GNOME Shell extension runs undershell (see [GNOME](#gnome)).
 - **Optional:** [Noctalia](https://github.com/noctalia-dev/noctalia) for the
   palette and the depth effect (with its `wallpaper_depth` plugin). On KDE
   Plasma, undershell reads the wallpaper and the colour scheme itself; anywhere
@@ -726,8 +729,10 @@ of these that is there:
    accent colour in `kdeglobals` (`primary` is the accent). A change in
    Plasma's settings is picked up at once. A slideshow keeps its current image
    to itself, so it has no depth.
-3. **Noctalia**, when it is running (or installed and nothing below is).
-4. **Another shell or wallpaper tool that is running**, read from its own
+3. **GNOME**, inside a GNOME session: its wallpaper and accent colour (see
+   [GNOME](#gnome)).
+4. **Noctalia**, when it is running (or installed and nothing below is).
+5. **Another shell or wallpaper tool that is running**, read from its own
    files (each format taken from the project's source):
 
    | | Wallpaper | Colours |
@@ -752,6 +757,34 @@ of these that is there:
 The music card reads the MPRIS players directly when Noctalia's aggregator is
 not on the bus. `undershell msg status` shows which source is in use
 (`source=plasma`, `source=noctalia`, `+manual`).
+
+### GNOME
+
+GNOME (Mutter) does not implement layer-shell, so a client cannot put itself
+on the desktop. undershell ships a small GNOME Shell extension (GNOME 45–51)
+that does it the way Desktop Icons NG does: the extension starts undershell
+as its own Wayland client, and each widget, a plain window there, becomes a
+*desktop* window (below every window, on every workspace, out of Alt+Tab and
+the overview, clicks passing through to the desktop) at the place its title
+names. The editor is laid over the whole monitor, above the rest, while it is
+open. undershell reads GNOME's wallpaper (`picture-uri`, the dark one under a
+dark style, `picture-options`) and makes its palette from the accent colour
+(GNOME 47+) and the style; a change is picked up at once (dconf's signal).
+
+1. Install undershell (any of the ways above; the extension is installed to
+   `…/share/gnome-shell/extensions/undershell@eternalself-2328.github.io`).
+2. **Log out and back in** (GNOME Shell on Wayland only sees new extensions
+   at login), then enable it:
+   ```sh
+   gnome-extensions enable undershell@eternalself-2328.github.io
+   ```
+   or in the Extensions app. It starts undershell; there is no need for the
+   systemd service on GNOME (started there, it sees no layer-shell and exits).
+3. `undershell msg edit` (e.g. on a keyboard shortcut in GNOME's settings)
+   opens the editor as anywhere else.
+
+The widgets are hidden in the overview, like other desktop windows. A
+wallpaper slideshow (an `.xml`) has no single picture, so it has no depth.
 
 ### Depth without Noctalia
 
@@ -851,6 +884,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/audio.*` | PipeWire capture + FFT |
 | `src/noctalia.*`, `src/depth.*`, `src/depthfield.*`, `src/depthpaint.cpp` | Noctalia palette, depth masks, per-widget depth planes, the depth brush |
 | `src/plasma.*` | KDE Plasma: wallpapers per screen, fill mode, palette from the colour scheme |
+| `src/gnome.*`, `integrations/gnome/` | GNOME: wallpaper and accent from gsettings; the GNOME Shell extension that puts the widget windows on the desktop |
 | `src/shells.*` | Other shells and wallpaper tools: caelestia, DMS, illogical-impulse, Ambxst, HyprPanel, COSMIC, awww, hyprpaper, wpaperd, swaybg, … |
 | `src/depthgen.*`, `src/depthhelper.cpp` | Depth without Noctalia: the model download and `undershell-depth`, which runs it |
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |

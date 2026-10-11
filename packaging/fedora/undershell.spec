@@ -78,6 +78,7 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_docdir}/%{name}/
 %{_bindir}/%{name}
 %{_libexecdir}/%{name}-depth
+%{_datadir}/gnome-shell/extensions/%{name}@eternalself-2328.github.io/
 %{_datadir}/%{name}/
 %{_userunitdir}/%{name}.service
 
