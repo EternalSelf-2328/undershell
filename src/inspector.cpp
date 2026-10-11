@@ -297,8 +297,8 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
     std::vector<PropSpec> f = {
         {K::Enum, "tv_mode", "Shows", "Muestra", {"static", "colorbars", "nosignal", "media", "channels"}, 0, 0, 0, 0, "static"},
         {K::Action, "tv_files", "+ Files", "+ Archivos", {"files", "folder"}},
-        {K::Number, "tv_glitch", "Beat interference", "Interferencia al golpe", {}, 0, 1, 0.05, 0.6},
-        {K::Number, "tv_speed", "Speed with music", "Velocidad con la música", {}, 0, 1, 0.05, 0.5},
+        {K::Number, "tv_glitch", "Beat interference", "Ruido al golpe", {}, 0, 1, 0.05, 0.6},
+        {K::Number, "tv_speed", "Speed with music", "Velocidad al ritmo", {}, 0, 1, 0.05, 0.5},
         {K::Number, "tv_zap", "Channel changes", "Cambio de canal", {}, 0, 1, 0.05, 0.5},
         {K::Number, "tv_static", "Snow over it", "Nieve encima", {}, 0, 1, 0.02, 0.06},
         {K::Bool, "tv_vhs", "VHS tape", "Cinta VHS", {}, 0, 1, 1, 0},
