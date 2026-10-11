@@ -19,6 +19,12 @@ or later** (see `LICENSE`).
   static instances of Inter's variable font at opsz 32).
 - Lyrics come from **LRCLIB** (<https://lrclib.net>); weather from Noctalia's
   own cache.
+- **Depth Anything V2 Small** — <https://github.com/DepthAnything/Depth-Anything-V2>,
+  Apache-2.0. Not bundled: without Noctalia, undershell downloads the ONNX
+  export published by onnx-community on Hugging Face (the revision Noctalia's
+  `wallpaper_depth` plugin pins, MIT) when asked, and `src/depthhelper.cpp`
+  follows that plugin's `depth_helper.py` (input size, normalisation, output
+  scaling) so both give the same maps.
 
 ## Sung
 

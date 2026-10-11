@@ -85,6 +85,7 @@ struct Config {
   std::string language = "system";  // the editor's language: system | en | es (i18n.hpp)
   // the wallpaper when no Noctalia or Plasma says which (or over theirs)
   std::string wallpaper, wallpaperFill;
+  bool depthModel = true;  // without the plugin: compute depth maps with undershell's model, once fetched
   // audio analysis
   double noiseReduction = 0.45;  // Ryoku's cava noise_reduction = 45
   bool monstercat = false;

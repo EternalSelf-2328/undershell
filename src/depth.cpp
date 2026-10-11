@@ -96,12 +96,12 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
   bool changed = false;
   m_missing = false;
   for (const auto& out : outputs) {
-    std::string wall = st.depthPluginEnabled ? st.wallpaperFor(out) : std::string{};
+    std::string wall = st.depthPluginEnabled || m_native ? st.wallpaperFor(out) : std::string{};
     std::string mask, npy;
     if (!wall.empty()) {
       std::string sha = sha256Of(wall);
       if (!sha.empty()) {
-        mask = findMask(sha, st.depthThreshold, st.depthFeather);
+        if (st.depthPluginEnabled) mask = findMask(sha, st.depthThreshold, st.depthFeather);
         npy = findDepthNpy(sha);
       }
     }
@@ -205,6 +205,8 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
         US_WARN("could not read depth mask {}", mask);
         m.maskPath.clear();
       }
+    } else if (m_native) {
+      if (wall.empty()) US_INFO("no depth for {} (no wallpaper known)", out);
     } else if (!st.depthPluginEnabled) {
       US_INFO("no depth mask for {} (wallpaper_depth disabled)", out);
     } else {

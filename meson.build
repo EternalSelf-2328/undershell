@@ -39,12 +39,18 @@ if have_video
   add_project_arguments('-DUS_HAVE_FFMPEG=1', language : 'cpp')
 endif
 summary({'videos (FFmpeg)' : have_video}, section : 'Features')
+# depth without Noctalia's plugin: a helper that runs the depth model (only
+# the helper links ONNX Runtime; the service starts it when there is work)
+onnx_dep = dependency('libonnxruntime', required : get_option('depth_model'))
+summary({'depth model (ONNX Runtime)' : onnx_dep.found()}, section : 'Features')
+libexecdir = get_option('prefix') / get_option('libexecdir')
 wayland_protos = dependency('wayland-protocols')
 
 datadir = get_option('prefix') / get_option('datadir') / 'undershell'
 add_project_arguments(
   '-DUS_INSTALL_DATA_DIR="' + datadir + '"',
   '-DUS_VERSION="' + meson.project_version() + '"',
+  '-DUS_LIBEXEC_DIR="' + libexecdir + '"',
   language : 'cpp')
 # running straight from the build tree finds the bundled fonts in the source
 # tree; packages turn this off so no build path ends up in the binary
@@ -101,6 +107,7 @@ core = static_library('undershell-core',
   'src/nowplaying.cpp',
   'src/noctalia.cpp',
   'src/plasma.cpp',
+  'src/depthgen.cpp',
   'src/offscreen.cpp',
   'src/overlay.cpp',
   'src/profiles.cpp',
@@ -122,6 +129,10 @@ core = static_library('undershell-core',
 core_dep = declare_dependency(link_with : core, include_directories : include_directories('src'), dependencies : deps)
 
 executable('undershell', 'src/main.cpp', dependencies : core_dep, install : true)
+if onnx_dep.found()
+  executable('undershell-depth', 'src/depthhelper.cpp', dependencies : [onnx_dep, dependency('gdk-pixbuf-2.0')],
+             install : true, install_dir : libexecdir)
+endif
 install_subdir('data/fonts', install_dir : datadir)
 
 # systemd user unit: /usr/lib/systemd/user for packages, ~/.local/share/systemd/user

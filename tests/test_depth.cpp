@@ -3,6 +3,7 @@
 #include "common.hpp"
 #include "depth.hpp"
 #include "depthfield.hpp"
+#include "depthgen.hpp"
 #include "jobs.hpp"
 #include "noctalia.hpp"
 #include "wallkind.hpp"
@@ -14,6 +15,7 @@
 #include <thread>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 
 using namespace undershell;
 
@@ -254,6 +256,87 @@ int main() {
     masks.update(st, {"T-1", "T-2"});  // T-1 kept its own: nothing to redo
     settle(4, 300);
     CHECK(ready == 3);
+  }
+
+  {
+    // depth from undershell's own model (no plugin): maps in
+    // ~/.cache/undershell/depth, made by the helper one wallpaper at a time,
+    // used only when the service says so (setNative), the field alone
+    namespace fs = std::filesystem;
+    const std::string cacheHome = dir + "/cache", dataHome = dir + "/data";
+    setenv("XDG_CACHE_HOME", cacheHome.c_str(), 1);
+    setenv("XDG_DATA_HOME", dataHome.c_str(), 1);
+    setenv("XDG_STATE_HOME", (dir + "/state-own").c_str(), 1);  // no plugin model either
+    CHECK(DepthGen::cacheDir() == cacheHome + "/undershell/depth");
+    setenv("UNDERSHELL_DEPTH_HELPER", (dir + "/no-helper").c_str(), 1);
+    DepthGen gen;
+    Jobs jobs(1);
+    int changed = 0;
+    gen.setJobs(&jobs, [&] { ++changed; });
+    CHECK(!gen.canRun() && !gen.needsModel());  // nothing to run it with: nothing offered
+    CHECK(!gen.download());
+
+    // a stand-in helper: answers --check, fails on "bad" wallpapers, else
+    // writes the map it was given
+    const std::string helper = dir + "/fake-helper.sh", src = dir + "/fake.npy";
+    writeFileAtomic(helper, "#!/bin/sh\n[ \"$1\" = --check ] && exit 0\ncase \"$2\" in *bad*) echo 'cannot read' >&2; exit 3;; esac\n"
+                            "cp \"$FAKE_NPY\" \"$3\" && echo 'fake ok'\n");
+    fs::permissions(helper, fs::perms::owner_all);
+    std::string hd = "{'descr': '<f4', 'fortran_order': False, 'shape': (9, 16), }";
+    while ((10 + hd.size() + 1) % 64) hd += ' ';
+    hd += '\n';
+    std::string data = std::string("\x93NUMPY\x01\x00", 8) + static_cast<char>(hd.size() & 0xff) + static_cast<char>(hd.size() >> 8) + hd;
+    std::vector<float> v(16 * 9, 0.4F);
+    data.append(reinterpret_cast<const char*>(v.data()), v.size() * sizeof(float));
+    writeFileAtomic(src, data);
+    setenv("FAKE_NPY", src.c_str(), 1);
+    setenv("UNDERSHELL_DEPTH_HELPER", helper.c_str(), 1);
+    CHECK(DepthGen::helperPath() == helper);
+    CHECK(gen.needsModel() && !gen.canRun());  // the button shows until the model is there
+    fs::create_directories(fs::path(DepthGen::ownModel()).parent_path());
+    { std::ofstream(DepthGen::ownModel()).put('x'); }
+    fs::resize_file(DepthGen::ownModel(), static_cast<std::uintmax_t>(DepthGen::kModelSize));  // sparse: only the size is checked here
+    CHECK(gen.canRun() && gen.model() == DepthGen::ownModel());
+
+    auto pump = [&](int want) {
+      for (int t = 0; t < 5000 && changed < want; t += 5) {
+        jobs.dispatch();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+    };
+    DepthMasks masks;
+    const std::string good = dir + "/own.png", bad = dir + "/bad.png";
+    writeFileAtomic(good, "good");
+    writeFileAtomic(bad, "bad");
+    const std::string sg = masks.sha256Of(good), sb = masks.sha256Of(bad);
+    gen.want({{good, sg}, {bad, sb}});
+    CHECK(gen.computing() && gen.computingWallpaper() == good);
+    pump(2);
+    CHECK(changed == 2 && !gen.computing());
+    const std::string made = DepthGen::findNpy(sg);
+    CHECK(!made.empty() && fs::path(made).filename().string().starts_with(sg + "-afb6a5c28f3b6bf1-d2-i518"));
+    CHECK(DepthGen::findNpy(sb).empty());
+    CHECK(findDepthNpy(sg) == made);  // the field finds undershell's map like the plugin's
+    gen.want({{good, sg}, {bad, sb}});  // one done, one that failed: neither again
+    CHECK(!gen.computing());
+
+    // the masks take the wallpaper only once told the model is in use
+    int ready = 0;
+    masks.setJobs(&jobs, [&] { ++ready; });
+    NoctaliaState st;
+    st.wallpaperByOutput["T-1"] = dir + "/wall.png";  // a real image (refined against it)
+    const std::string wsha = masks.sha256Of(dir + "/wall.png");
+    fs::copy_file(src, DepthGen::cacheDir() + "/" + wsha + "-afb6a5c28f3b6bf1-d2-i518.npy", fs::copy_options::overwrite_existing);
+    masks.update(st, {"T-1"});
+    for (int t = 0; t < 300; t += 5) jobs.dispatch(), std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(ready == 0);
+    masks.setNative(true);
+    masks.update(st, {"T-1"});
+    for (int t = 0; t < 5000 && ready < 1; t += 5) jobs.dispatch(), std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    CHECK(ready == 1);
+    CHECK(!masks.missing());  // that is the plugin's "mask not made yet", not ours
+    unsetenv("UNDERSHELL_DEPTH_HELPER");
+    unsetenv("FAKE_NPY");
   }
 
   std::filesystem::remove_all(dir);

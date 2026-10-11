@@ -160,6 +160,8 @@ bool Noctalia::refresh() {
 void Noctalia::compose() {
   NoctaliaState s = m_base;
   if (!m_manual.empty()) {
+    // the plugin makes masks for Noctalia's wallpaper, not this one
+    if (m_manual != s.defaultWallpaper) s.depthPluginEnabled = false;
     s.manualWallpaper = true;
     s.defaultWallpaper = m_manual;
     s.wallpaperByOutput.clear();

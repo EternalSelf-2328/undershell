@@ -5,6 +5,7 @@
 #include "audio.hpp"
 #include "config.hpp"
 #include "depth.hpp"
+#include "depthgen.hpp"
 #include "filepicker.hpp"
 #include "geom.hpp"
 #include "i18n.hpp"
@@ -353,6 +354,9 @@ private:
   bool m_audioOk = false;
   Noctalia m_noctalia;
   DepthMasks m_depth;
+  DepthGen m_depthGen;  // depth from undershell's own model (no plugin)
+  [[nodiscard]] bool nativeDepth() const;
+  [[nodiscard]] std::string depthModelStatus() const;
   MaskPass m_maskPass;
   RotatedBlit m_blit;
   PerspectiveBlit m_warpBlit;
@@ -363,6 +367,7 @@ private:
   int m_inotify = -1;
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1, m_wdDepthMaps = -1, m_wdPlasma = -1;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
+  double m_depthTick = 0;  // redraws the editor's download progress
 
   std::vector<const Widget*> m_mapped;    // widget surfaces, bottom to top, in the order they were made
   bool m_motion = false;          // a video or scene is on screen: no depth

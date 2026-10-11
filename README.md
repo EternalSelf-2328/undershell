@@ -12,7 +12,8 @@ Plasma. Its first widgets are ports of
 - **Depth (`wallpaper_depth`)**: it reads the same mask the plugin generates
   (`sha256(wallpaper)-…-t<threshold>-f<feather>.png`) and applies it with
   Noctalia's own sampling math, so the widgets pass behind the wallpaper
-  subject exactly like the native ones.
+  subject exactly like the native ones. Without Noctalia it runs the same
+  model itself (see [Depth without Noctalia](#depth-without-noctalia)).
 - **Noctalia colors**: the palette comes from `noctalia theme <wallpaper>
   --scheme <your scheme>` (the same generator the shell uses) and is
   recomputed when you change wallpaper or theme.
@@ -29,8 +30,9 @@ Plasma. Its first widgets are ports of
   palette and the depth effect (with its `wallpaper_depth` plugin). On KDE
   Plasma, undershell reads the wallpaper and the colour scheme itself; anywhere
   else, name the wallpaper in `[general]` (see
-  [Without Noctalia](#without-noctalia-kde-plasma-and-others)). **PipeWire**
-  for live audio in the visualizers.
+  [Without Noctalia](#without-noctalia-kde-plasma-and-others)). **ONNX
+  Runtime** (`libonnxruntime`) for depth without Noctalia. **PipeWire** for
+  live audio in the visualizers.
 - **Libraries:** wayland, EGL / GLES 3, libpipewire-0.3, toml++, glib, cairo,
   pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl,
   and FFmpeg's libavformat, libavcodec, libswscale and libavutil for the TV
@@ -231,6 +233,7 @@ undershell msg add clock flip  # add a widget to the config: visualizer, clock, 
 undershell msg remove clock    # remove it
 undershell msg select clock    # select it in the editor (scripts)
 undershell msg pick-files tv   # the TV's file chooser: adds to its tv_files ("folder" for folders)
+undershell msg depth-model     # download the depth model (~95 MB), for depth without Noctalia
 undershell msg gallery         # open the editor with the gallery
 undershell msg reload
 undershell msg quit
@@ -729,6 +732,34 @@ The music card reads the MPRIS players directly when Noctalia's aggregator is
 not on the bus. `undershell msg status` shows which source is in use
 (`source=plasma`, `source=noctalia`, `+manual`).
 
+### Depth without Noctalia
+
+Noctalia's `wallpaper_depth` plugin runs a depth model
+([Depth Anything V2 Small](https://github.com/DepthAnything/Depth-Anything-V2),
+Apache-2.0) over the wallpaper. Without it, undershell runs the same model
+itself:
+
+- **Fetch the model once** (~95 MB, from Hugging Face, checked by size and
+  SHA-256): the **Download the depth model** button under *Depth* in the
+  inspector, or `undershell msg depth-model`. Nothing is downloaded until you
+  ask. If the plugin's copy is on disk it is used instead.
+- From then on each new wallpaper gets its map in a few seconds (about 5 s on
+  an HD 520 laptop, for any size), kept in `~/.cache/undershell/depth` (the
+  last 8). It is computed by `undershell-depth`, a separate, niced process
+  (ONNX Runtime on the CPU), so the model's memory (~460 MB while it runs)
+  never stays in the service. Its maps match the plugin's (correlation
+  0.99997 on the same wallpaper).
+- The map is refined and cut like the plugin's, so [depth planes](#depth-planes)
+  and the depth brush work the same; the default plane is 30.
+- `undershell msg status` shows the state (`depth: ready`, `computing …`,
+  `downloading the model, 42 %`). `[general] depth_model = false` turns it
+  off. It needs undershell built with ONNX Runtime (`-Ddepth_model`, on by
+  default when `libonnxruntime` is found: Arch's `onnxruntime-cpu`, Fedora's
+  `onnxruntime-devel`, Debian 13's `libonnxruntime-dev`; Ubuntu 24.04 has no
+  package, so it is built without).
+- With Noctalia's plugin enabled, the plugin keeps doing it. A wallpaper set
+  in `[general]` that is not Noctalia's gets undershell's own map.
+
 ## Noctalia bar widget
 
 `integrations/noctalia/undershell` is a Noctalia plugin
@@ -799,6 +830,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/audio.*` | PipeWire capture + FFT |
 | `src/noctalia.*`, `src/depth.*`, `src/depthfield.*`, `src/depthpaint.cpp` | Noctalia palette, depth masks, per-widget depth planes, the depth brush |
 | `src/plasma.*` | KDE Plasma: wallpapers per screen, fill mode, palette from the colour scheme |
+| `src/depthgen.*`, `src/depthhelper.cpp` | Depth without Noctalia: the model download and `undershell-depth`, which runs it |
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex, Bangers (OFL) |
@@ -815,4 +847,4 @@ assistant (Claude); issues and pull requests are welcome.
 ## License
 
 GPL-3.0-or-later. Credits and third-party licenses (Ryoku GPL-3.0, Noctalia
-MIT, OFL fonts, LRCLIB) are in [`NOTICE.md`](NOTICE.md).
+MIT, OFL fonts, LRCLIB, Depth Anything V2) are in [`NOTICE.md`](NOTICE.md).

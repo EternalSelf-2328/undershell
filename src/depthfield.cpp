@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "depthfield.hpp"
 
+#include "depthgen.hpp"
+
 #include "depth.hpp"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -66,7 +68,8 @@ std::string findDepthNpy(const std::string& sha) {
       bestTime = t;
     }
   }
-  return best;
+  // undershell's own model's maps (depthgen.hpp), when the plugin has none
+  return best.empty() ? DepthGen::findNpy(sha) : best;
 }
 
 std::vector<float> boxMean(const std::vector<float>& a, int w, int h, int r) {

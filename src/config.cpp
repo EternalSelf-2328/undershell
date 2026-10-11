@@ -100,6 +100,7 @@ Config Config::load(const std::string& path) {
     if (cfg.language != "en" && cfg.language != "es") cfg.language = "system";
     cfg.wallpaper = get<std::string>(*g, "wallpaper", "");
     cfg.wallpaperFill = get<std::string>(*g, "wallpaper_fill", "");
+    cfg.depthModel = get<bool>(*g, "depth_model", true);
   }
   if (auto* arr = root["widget"].as_array()) {
     int n = 0;

@@ -12,7 +12,7 @@ arch=('x86_64')
 url="https://github.com/EternalSelf-2328/undershell"
 license=('GPL-3.0-or-later' 'MIT' 'OFL-1.1')
 depends=('wayland' 'libglvnd' 'libpipewire' 'tomlplusplus' 'glib2' 'cairo' 'pango' 'fontconfig'
-         'libxkbcommon' 'systemd-libs' 'gdk-pixbuf2' 'curl' 'ffmpeg')
+         'libxkbcommon' 'systemd-libs' 'gdk-pixbuf2' 'curl' 'ffmpeg' 'onnxruntime')
 makedepends=('git' 'meson' 'ninja' 'wayland-protocols' 'nlohmann-json')
 optdepends=('noctalia: theme palette, wallpaper and wallpaper_depth integration'
             'pipewire: live audio for the visualizer'
@@ -32,7 +32,7 @@ pkgver() {
 }
 
 build() {
-  arch-meson undershell build -Ddev_paths=false -Dvideo=enabled
+  arch-meson undershell build -Ddev_paths=false -Dvideo=enabled -Ddepth_model=enabled
   meson compile -C build
 }
 

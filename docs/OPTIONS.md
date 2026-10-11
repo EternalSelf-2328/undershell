@@ -15,6 +15,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | `language` | `system`, `en`, `es` | `"system"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |
 | `wallpaper` | path | `""` | the wallpaper, when neither Noctalia nor KDE Plasma says which it is (or to override them): depth and per-wallpaper layouts follow it |
 | `wallpaper_fill` | `center`, `crop`, `fit`, `stretch`, `repeat` | the source's, else `crop` | how that wallpaper is fitted to the screen |
+| `depth_model` | `true` / `false` | `true` | without Noctalia's `wallpaper_depth`: compute each wallpaper's depth with undershell's copy of the same model, once it has been downloaded (the inspector's button or `undershell msg depth-model`) |
 
 ## Every `[[widget]]`
 

@@ -40,6 +40,8 @@ BuildRequires:  pkgconfig(libavformat)
 BuildRequires:  pkgconfig(libavcodec)
 BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(libavutil)
+# depth without Noctalia: undershell-depth runs the depth model with ONNX Runtime
+BuildRequires:  onnxruntime-devel
 Recommends:     pipewire
 Recommends:     (xdg-desktop-portal or zenity)
 
@@ -55,7 +57,7 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %autosetup
 
 %build
-%meson -Ddev_paths=false -Dvideo=enabled
+%meson -Ddev_paths=false -Dvideo=enabled -Ddepth_model=enabled
 %meson_build
 
 %install
@@ -75,6 +77,7 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %license %{_datadir}/licenses/%{name}/LICENSE
 %{_docdir}/%{name}/
 %{_bindir}/%{name}
+%{_libexecdir}/%{name}-depth
 %{_datadir}/%{name}/
 %{_userunitdir}/%{name}.service
 

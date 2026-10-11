@@ -66,6 +66,9 @@ public:
   // the wallpaper as a texture, for the zoomed brush view (needs GL)
   GLuint wallpaperTexture(DepthMask& m);
 
+  // depth from undershell's own model (no plugin): the maps alone, cut at
+  // each widget's plane
+  void setNative(bool on) { m_native = on; }
   // Re-resolves which mask belongs to each output. Returns true on change.
   bool update(const NoctaliaState& st, const std::vector<std::string>& outputs);
   // Uploads pending pixels (needs a current GL context) and returns the mask
@@ -92,6 +95,7 @@ private:
   };
   std::map<std::string, HashEntry> m_hashes;
   bool m_missing = false;
+  bool m_native = false;
   Jobs* m_jobs = nullptr;
   std::string m_editsDir;
   std::function<void()> m_fieldReady;

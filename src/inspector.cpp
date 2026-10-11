@@ -1088,6 +1088,17 @@ void App::layoutUi(const EditSurface& e) {
         m_inspSchema.insert(m_inspSchema.begin() + static_cast<long>(at), note);
       }
     }
+    // no plugin here: under "depth", fetch undershell's own model, or how it goes
+    if (w->cfg.depth && !m_motion && !m_noctalia.state().depthPluginEnabled && m_config.depthModel &&
+        (m_depthGen.needsModel() || m_depthGen.downloading() || m_depthGen.computing()))
+      for (size_t i = 0; i < m_inspSchema.size(); ++i)
+        if (m_inspSchema[i].key == "depth") {
+          PropSpec fetch;
+          fetch.kind = PropSpec::Action;
+          fetch.key = "_depth_model";
+          m_inspSchema.insert(m_inspSchema.begin() + static_cast<long>(i) + 1, fetch);
+          break;
+        }
     const auto& schema = m_inspSchema;
     float contentH = kHeadH + kFootH;
     for (const auto& p : schema) contentH += p.kind == PropSpec::Color ? kColorRowH : kRowH;
@@ -1546,6 +1557,9 @@ bool App::uiPress(int index, double x) {
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "tv_files" &&
           !m_picker.busy())
         pickFiles(*w, c.value == "folder");
+      if (c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "_depth_model" &&
+          m_depthGen.needsModel())
+        m_depthGen.download();
       markEditDirty();
       return true;
     case UiControl::FileRemove:
@@ -2134,7 +2148,9 @@ void App::drawUi(EditSurface& e) {
           } else if (p.kind == PropSpec::Action) {
             // a button across the row, or two side by side
             const int idx = static_cast<int>(&p - &schema[0]);
-            const bool waiting = p.key == "tv_files" && m_picker.busy();  // the chooser is open
+            const bool fetch = p.key == "_depth_model";
+            const bool waiting = (p.key == "tv_files" && m_picker.busy()) ||  // the chooser is open
+                                 (fetch && (m_depthGen.downloading() || m_depthGen.computing()));
             const size_t n = p.options.size() == 2 ? 2 : 1;
             const float bw = n == 2 ? (kPanelW - 40) / 2 : kPanelW - 32;
             for (size_t k = 0; k < n; ++k) {
@@ -2147,6 +2163,12 @@ void App::drawUi(EditSurface& e) {
               std::string t = es ? p.labelEs : p.labelEn;
               if (value == "folder") t = es ? "+ Carpeta" : "+ Folder";
               if (waiting) t = k == 0 ? (es ? "Eligiendo…" : "Choosing…") : std::string();
+              if (fetch)
+                t = m_depthGen.downloading() ? std::format("{} {:.0f} %", es ? "Descargando el modelo…" : "Downloading the model…",
+                                                           m_depthGen.progress() * 100)
+                    : m_depthGen.computing() ? (es ? "Calculando la profundidad…" : "Computing the depth…")
+                    : !m_depthGen.error().empty() ? (es ? "Reintentar la descarga (95 MB)" : "Retry the download (95 MB)")
+                                                  : (es ? "Descargar modelo de profundidad (95 MB)" : "Download the depth model (95 MB)");
               auto [tw, th] = measure(t, label);
               cv.text(t, label, bx + (bw - tw) / 2, y + 15 - th / 2, waiting ? dim : ink);
             }
@@ -2254,8 +2276,13 @@ void App::drawUi(EditSurface& e) {
     } else {
       fitText(es ? "Este fondo aún no tiene mapa de profundidad." : "No depth map for this wallpaper yet.", label, P.x + 14,
               P.y + 426, kPaintW - 28, Color{1, 0.62F, 0.57F, 1});
-      fitText(es ? "Genéralo en Wallpaper Depth." : "Generate it in Wallpaper Depth.", label, P.x + 14, P.y + 446,
-              kPaintW - 28, dim);
+      // where it comes from: Noctalia's plugin, or undershell's own model
+      const bool own = !m_noctalia.state().depthPluginEnabled && !DepthGen::helperPath().empty();
+      const char* how = !own                      ? (es ? "Genéralo en Wallpaper Depth." : "Generate it in Wallpaper Depth.")
+                        : m_depthGen.needsModel() ? (es ? "Descarga el modelo en el inspector." : "Download the model in the inspector.")
+                        : m_depthGen.computing()  ? (es ? "Calculándolo…" : "Computing it…")
+                                                  : (es ? "No se pudo calcular." : "It could not be computed.");
+      fitText(how, label, P.x + 14, P.y + 446, kPaintW - 28, dim);
     }
   }
   for (const UiControl& c : m_ui) {

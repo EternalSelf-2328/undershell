@@ -350,6 +350,7 @@ bool App::initEgl() {
 // ── config / noctalia / depth ──────────────────────────────────────────────
 
 void App::loadConfig() {
+  const bool depthModelWas = m_config.depthModel;
   // two widgets sharing an id would be edited as one (older duplicates did that)
   if (const int n = Config::uniquifyIds(m_configPath); n > 0) US_INFO("renamed {} repeated widget id(s)", n);
   try {
@@ -372,6 +373,7 @@ void App::loadConfig() {
   const bool manual = m_noctalia.setManual(m_config.wallpaper, m_config.wallpaperFill);
   syncWidgets();
   if (manual && m_eglContext != EGL_NO_CONTEXT) noctaliaChanged();
+  if (m_config.depthModel != depthModelWas) m_refreshDepthAt = nowSeconds();
 }
 
 void App::syncScreens() {
@@ -420,10 +422,38 @@ void App::restack() {
   US_DEBUG("restacked widgets");
 }
 
+// Without the plugin, undershell's own model gives the depth (once fetched),
+// unless [general] depth_model = false or the wallpaper moves.
+bool App::nativeDepth() const {
+  return !m_noctalia.state().depthPluginEnabled && m_config.depthModel && !m_motion && m_depthGen.canRun();
+}
+
 void App::updateDepth() {
+  const bool native = nativeDepth();
+  m_depth.setNative(native);
   if (m_depth.update(m_noctalia.state(), outputNames())) {
     for (auto& w : m_widgets) w->needsRender = true;
   }
+  if (native) {
+    // the wallpapers on screen without a map yet: compute them
+    std::vector<std::pair<std::string, std::string>> walls;
+    for (auto& o : m_outputs) {
+      const std::string wall = m_noctalia.state().wallpaperFor(o->name);
+      if (!wall.empty()) walls.emplace_back(wall, m_depth.sha256Of(wall));
+    }
+    m_depthGen.want(walls);
+  }
+}
+
+std::string App::depthModelStatus() const {
+  if (m_noctalia.state().depthPluginEnabled) return "Noctalia's wallpaper_depth";
+  if (DepthGen::helperPath().empty()) return "not in this build (built without ONNX Runtime)";
+  if (m_depthGen.downloading()) return std::format("downloading the model, {:.0f} %", m_depthGen.progress() * 100);
+  if (m_depthGen.model().empty())
+    return m_depthGen.error().empty() ? "model not downloaded (undershell msg depth-model)" : "download failed: " + m_depthGen.error();
+  if (!m_config.depthModel) return "off ([general] depth_model = false)";
+  if (m_depthGen.computing()) return "computing " + fs::path(m_depthGen.computingWallpaper()).filename().string();
+  return "ready (" + m_depthGen.model() + ")";
 }
 
 // Keeps m_widgets in step with the config: reconfigures existing widgets in
@@ -938,9 +968,10 @@ void App::render(Widget& w) {
         mp.imageW = static_cast<float>(m->texture ? m->width : m->imageW);
         mp.imageH = static_cast<float>(m->texture ? m->height : m->imageH);
         mp.fillMode = m_noctalia.state().fillMode;
-        if ((w.cfg.depthLevel > 0 || m->hasEdits) && m->field) {
-          // its own plane (or the plugin's, over hand-corrected depth): the
-          // refined field cut at this widget's level
+        if ((w.cfg.depthLevel > 0 || m->hasEdits || !m->texture) && m->field) {
+          // its own plane (or the plugin's, over hand-corrected depth, or
+          // undershell's own map, which comes without a mask): the refined
+          // field cut at this widget's level
           mp.field = m->field;
           mp.level = static_cast<float>(w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : m_noctalia.state().depthThreshold);
           mp.feather = static_cast<float>(m_noctalia.state().depthFeather);
@@ -1284,6 +1315,13 @@ std::string App::handleCommand(const std::string& cmd) {
     // disabled widgets have no instance: remove the block directly
     return Config::removeBlock(m_configPath, id) ? "removed " + id : "error: no widget '" + id + "'";
   }
+  if (cmd == "depth-model") {  // fetch the depth model (Depth Anything V2 Small, ~95 MB)
+    if (DepthGen::helperPath().empty()) return "error: this build has no depth model support (built without ONNX Runtime)";
+    if (!m_depthGen.model().empty()) return "the depth model is already there: " + m_depthGen.model();
+    if (!m_depthGen.download()) return "already downloading";
+    markEditDirty();
+    return "downloading the depth model (~95 MB); `undershell msg status` shows how far";
+  }
   if (cmd.rfind("pick-files ", 0) == 0) {  // the TV's "+ Files" / "+ Folder": pick-files <id> [folder]
     std::istringstream in(cmd.substr(11));
     std::string id, what;
@@ -1456,6 +1494,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                 m_noctalia.state().palette.size(), m_noctalia.state().fillMode, m_noctalia.state().source,
                                 m_noctalia.state().manualWallpaper ? "+manual" : "");
     s += profileStatus() + "\n";
+    s += "depth: " + depthModelStatus() + "\n";
     if (m_motion) s += "wallpaper: moving (video or scene) — depth off and locked\n";
     for (auto& w : m_widgets) {
       const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
@@ -1465,12 +1504,15 @@ std::string App::handleCommand(const std::string& cmd) {
                                                               : w->cfg.type;
       s += std::format("  {} {} on {} at {},{} {}x{} buffer={}x{}@{:.3f} depth={} frames={} fps={:.0f}\n", w->cfg.id, look,
                        w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height, w->bufW,
-                       w->bufH, w->scale, m ? fs::path(m->maskPath).filename().string().substr(0, 12) : "none",
+                       w->bufH, w->scale,
+                       !m                    ? std::string("none")
+                       : m->maskPath.empty() ? "field:" + fs::path(m->fieldNpy).filename().string().substr(0, 12)
+                                             : fs::path(m->maskPath).filename().string().substr(0, 12),
                        w->frames, stale ? 0.0 : w->fpsMeasured);
     }
     return s;
   }
-  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, pick-files, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, pick-files, depth-model, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
 }
 
 // ── file watching ───────────────────────────────────────────────────────────
@@ -1521,6 +1563,7 @@ int App::computeTimeout() {
   for (auto& e : m_editSurfaces)
     if (e->needsRender && !e->frameCb) next = now;
   if (m_edit && m_repeatKey) next = std::min(next, m_repeatNext);
+  if (m_edit && m_depthGen.downloading()) next = std::min(next, m_depthTick);
   int timeout = next >= 1e8 ? -1 : std::max(0, static_cast<int>(std::ceil((next - now) * 1000)));
   bool idleDemo = false;
   if (m_nothingPlaying)
@@ -1547,6 +1590,11 @@ int App::run() {
   m_depth.setJobs(&m_jobs, [this] {
     for (auto& w : m_widgets) w->needsRender = true;
   });
+  // a map computed or the model fetched: look again
+  m_depthGen.setJobs(&m_jobs, [this] {
+    m_refreshDepthAt = nowSeconds();
+    markEditDirty();
+  });
   // the wallpaper named in [general] (if any) before the first look at the source
   try {
     const Config c = Config::load(m_configPath);
@@ -1560,6 +1608,7 @@ int App::run() {
   loadConfig();
   checkProfile();  // the wallpaper may have changed while undershell was not running
   checkWallpaperKind();
+  updateDepth();  // with the config read: undershell's own model, if it is the one to use
   m_audioOk = m_audio.start();
   m_media.start();
 
@@ -1624,6 +1673,10 @@ int App::run() {
     if (!m_noctalia.ready() && now >= m_noctRetryAt) {
       m_noctRetryAt = now + 3;
       refreshNoctalia();
+    }
+    if (m_edit && m_depthGen.downloading() && now >= m_depthTick) {
+      m_depthTick = now + 0.25;
+      markEditDirty();
     }
     // safety net: a mask generated while an event was missed is found anyway
     if (m_depth.missing() && m_refreshDepthAt == 0) m_refreshDepthAt = now + 15;

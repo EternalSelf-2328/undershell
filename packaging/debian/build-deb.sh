@@ -37,6 +37,11 @@ sed -i "1s/^undershell (\([^)]*\))/undershell ($version)/" "$src/debian/changelo
 echo ":: installing build dependencies"
 $sudo_ apt-get install -y --no-install-recommends build-essential
 $sudo_ apt-get build-dep -y "$src"
+# depth without Noctalia needs ONNX Runtime: Debian 13 packages it, Ubuntu 24.04
+# does not (then undershell is built without undershell-depth)
+if apt-cache show libonnxruntime-dev >/dev/null 2>&1; then
+  $sudo_ apt-get install -y --no-install-recommends libonnxruntime-dev
+fi
 
 echo ":: building undershell $version"
 (cd "$src" && dpkg-buildpackage -us -uc -b)
