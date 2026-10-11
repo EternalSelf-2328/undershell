@@ -193,14 +193,45 @@ static bool findBlock(const std::vector<std::string>& lines, const std::string& 
 
 static void setLine(std::vector<std::string>& lines, size_t start, size_t& end, const std::string& key,
                     const std::string& value) {
-  // a value: a string, an array (corner pins), or a bare token
-  const std::regex re("^(\\s*" + key + R"(\s*=\s*)("(?:[^"\\]|\\.)*"|\[[^\]]*\]|[^#\s]*)(\s*#.*)?\s*$)");
+  // a value: a string, an array (corner pins, paths that may hold "]"), or a bare token
+  const std::regex re("^(\\s*" + key +
+                      R"(\s*=\s*)("(?:[^"\\]|\\.)*"|\[(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\]"'])*\]|(?:[^#\s\[][^#\s]*)?)(\s*#.*)?\s*$)");
   for (size_t k = start + 1; k < end; ++k) {
     std::smatch m;
     if (std::regex_match(lines[k], m, re)) {
       lines[k] = m[1].str() + value + (m[3].matched ? m[3].str() : std::string());
       return;
     }
+  }
+  // an array written by hand over several lines: replace all of them
+  const std::regex open("^(\\s*" + key + R"(\s*=\s*)\[)");
+  for (size_t k = start + 1; k < end; ++k) {
+    std::smatch m;
+    if (!std::regex_search(lines[k], m, open)) continue;
+    int depth = 0;
+    char quote = 0;
+    for (size_t j = k; j < end; ++j) {
+      const std::string& l = lines[j];
+      for (size_t i = j == k ? static_cast<size_t>(m.length(1)) : 0; i < l.size(); ++i) {  // from its "["
+        const char c = l[i];
+        if (quote) {
+          if (c == '\\' && quote == '"') ++i;
+          else if (c == quote) quote = 0;
+        } else if (c == '"' || c == '\'') {
+          quote = c;
+        } else if (c == '#') {
+          break;  // a comment to the end of the line
+        } else if (c == '[') {
+          ++depth;
+        } else if (c == ']' && --depth == 0) {
+          lines[k] = m[1].str() + value + l.substr(i + 1);
+          lines.erase(lines.begin() + static_cast<long>(k) + 1, lines.begin() + static_cast<long>(j) + 1);
+          end -= j - k;
+          return;
+        }
+      }
+    }
+    break;  // never closed (the file does not parse anyway): append below
   }
   // append after the last non-empty line of the block
   size_t at = end;

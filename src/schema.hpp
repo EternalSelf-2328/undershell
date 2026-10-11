@@ -12,7 +12,9 @@ namespace undershell {
 struct PropSpec {
   // Header, Element and Font rows only appear in the inspector's generated
   // list (clock structures); the config documents the four value kinds
-  enum Kind { Enum, Bool, Number, Color, Header, Element, Font, Action } kind = Enum;  // Action: a button row
+  // Action: a button row (two half buttons when it has options); File: one
+  // entry of a list of paths (def = its index), with a button to drop it
+  enum Kind { Enum, Bool, Number, Color, Header, Element, Font, Action, File } kind = Enum;
   std::string key;
   std::string labelEn;
   std::string labelEs;

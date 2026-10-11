@@ -225,6 +225,7 @@ undershell msg add clock flip  # add a widget to the config: visualizer, clock, 
                                # widget comes out at that layout's own shape
 undershell msg remove clock    # remove it
 undershell msg select clock    # select it in the editor (scripts)
+undershell msg pick-files tv   # the TV's file chooser: adds to its tv_files ("folder" for folders)
 undershell msg gallery         # open the editor with the gallery
 undershell msg reload
 undershell msg quit
@@ -532,12 +533,19 @@ them, your files first, flipping between them). With the music:
 counter; **Snow over it** lays a little static on any picture. The tube is
 the terminal's: Glow, Scanlines, Flicker, Tube curve and Screen glass.
 
-Your files go in the config, as paths or folders (the media files in a
-folder, in order; up to eight):
+To show your own files, set **Shows** to *Your videos* (or *Channels*) and
+use **+ Files** or **+ Folder** under it: they open your desktop's file
+chooser (through the XDG desktop portal, or zenity/kdialog where there is
+none) and add what you pick to the list, where × takes one out. A folder
+plays the media files in it, in order; up to eight files are used. The list
+is the `tv_files` key, which you can also write by hand:
 
 ```toml
 tv_files = ["~/Videos/loops/", "~/Pictures/cat.gif"]
 ```
+
+From a script, `undershell msg pick-files <id> [folder]` opens the same
+chooser for a widget.
 
 Picture `fill` crops them to the screen, `fit` letterboxes them. Each is
 decoded on its own thread, scaled down to the widget's size; a short clip

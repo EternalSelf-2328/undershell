@@ -182,6 +182,21 @@ int main() {
     CHECK(pc.widgets.size() == 1 && pc.widgets[0].pinned && pc.widgets[0].pin[0] == 9.0);
   }
 
+  // a list of paths: a "]" inside one, and a list written by hand over lines
+  {
+    writeFileAtomic(path, "[[widget]]\nid = \"t\"\ntv_files = [\"~/a]b.gif\", '~/c.mp4']  # mine\nstyle = \"tv\"\n");
+    CHECK(Config::setKey(path, "t", "tv_files", "[\"~/d.webm\"]"));
+    std::string t3 = readFile(path);
+    CHECK(t3.find("tv_files = [\"~/d.webm\"]  # mine\n") != std::string::npos && t3.find("a]b") == std::string::npos);
+    writeFileAtomic(path, "[[widget]]\nid = \"t\"\ntv_files = [\n  \"~/x [1].gif\",  # first\n  \"~/y.mp4\",\n] # end\nstyle = \"tv\"\n");
+    CHECK(Config::setKey(path, "t", "tv_files", "[\"~/z.gif\"]"));
+    t3 = readFile(path);
+    CHECK(t3 == "[[widget]]\nid = \"t\"\ntv_files = [\"~/z.gif\"] # end\nstyle = \"tv\"\n");
+    const Config tc = Config::load(path);
+    CHECK(tc.widgets.size() == 1 && tc.widgets[0].options["tv_files"].as_array() &&
+          tc.widgets[0].options["tv_files"].as_array()->size() == 1);
+  }
+
   {
     // layouts follow the wallpaper: a 2560x1440 image cropped on 1920x1080
     // and on 1393x783 (1366x768 at scale 0.98) shows the same picture smaller

@@ -32,7 +32,7 @@ Rules-Requires-Root: no
 Package: undershell
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Recommends: pipewire
+Recommends: pipewire, xdg-desktop-portal | zenity
 Description: desktop widgets that live under your Wayland shell
  Audio visualizers, clocks and a now-playing card for Wayland compositors
  that support the layer-shell protocol. They sit above the wallpaper and

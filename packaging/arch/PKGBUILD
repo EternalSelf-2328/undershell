@@ -15,7 +15,8 @@ depends=('wayland' 'libglvnd' 'libpipewire' 'tomlplusplus' 'glib2' 'cairo' 'pang
          'libxkbcommon' 'systemd-libs' 'gdk-pixbuf2' 'curl' 'ffmpeg')
 makedepends=('git' 'meson' 'ninja' 'wayland-protocols' 'nlohmann-json')
 optdepends=('noctalia: theme palette, wallpaper and wallpaper_depth integration'
-            'pipewire: live audio for the visualizer')
+            'pipewire: live audio for the visualizer'
+            'xdg-desktop-portal: file chooser for the TV look (or zenity)')
 _repo="${UNDERSHELL_REPO:-https://github.com/EternalSelf-2328/undershell.git}"
 case "$_repo" in
   /*) source=("undershell::git+file://$_repo") ;;

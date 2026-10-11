@@ -40,6 +40,8 @@ BuildRequires:  pkgconfig(libavformat)
 BuildRequires:  pkgconfig(libavcodec)
 BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(libavutil)
+Recommends:     pipewire
+Recommends:     (xdg-desktop-portal or zenity)
 
 %{?systemd_requires}
 

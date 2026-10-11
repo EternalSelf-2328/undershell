@@ -1020,6 +1020,20 @@ void App::createEditSurface(Output* o) {
   m_editSurfaces.push_back(std::move(e));
 }
 
+// A file chooser is an ordinary window, which the editor (an overlay holding
+// the keyboard) would cover and starve of keys: while it is open the editor
+// goes down under the windows and lets go of the keyboard.
+void App::setEditorAside(bool aside) {
+  for (auto& e : m_editSurfaces) {
+    if (!e->layer) continue;
+    if (zwlr_layer_surface_v1_get_version(e->layer) >= ZWLR_LAYER_SURFACE_V1_SET_LAYER_SINCE_VERSION)
+      zwlr_layer_surface_v1_set_layer(e->layer, aside ? ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM : ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY);
+    zwlr_layer_surface_v1_set_keyboard_interactivity(
+        e->layer, aside ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE);
+    wl_surface_commit(e->surface);
+  }
+}
+
 void App::destroyEditSurface(EditSurface& e) {
   if (e.eglSurface != EGL_NO_SURFACE) {
     eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
@@ -1256,6 +1270,18 @@ std::string App::handleCommand(const std::string& cmd) {
     // disabled widgets have no instance: remove the block directly
     return Config::removeBlock(m_configPath, id) ? "removed " + id : "error: no widget '" + id + "'";
   }
+  if (cmd.rfind("pick-files ", 0) == 0) {  // the TV's "+ Files" / "+ Folder": pick-files <id> [folder]
+    std::istringstream in(cmd.substr(11));
+    std::string id, what;
+    in >> id >> what;
+    for (auto& w : m_widgets)
+      if (w->cfg.id == id) {
+        if (m_picker.busy()) return "error: a file chooser is already open";
+        pickFiles(*w, what == "folder");
+        return "choosing";
+      }
+    return "error: no widget " + id;
+  }
   if (cmd.rfind("select ", 0) == 0) {
     const std::string id = cmd.substr(7);
     for (auto& w : m_widgets)
@@ -1429,7 +1455,7 @@ std::string App::handleCommand(const std::string& cmd) {
     }
     return s;
   }
-  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, pick-files, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
 }
 
 // ── file watching ───────────────────────────────────────────────────────────
@@ -1528,13 +1554,14 @@ int App::run() {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
     wl_display_flush(m_display);
 
-    pollfd fds[6] = {{wl_display_get_fd(m_display), POLLIN, 0},
+    pollfd fds[7] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
                      {m_inotify, POLLIN, 0},
                      {m_ipc.fd(), POLLIN, 0},
                      {m_media.fd(), POLLIN, 0},
-                     {m_jobs.fd(), POLLIN, 0}};
-    int r = poll(fds, 6, computeTimeout());
+                     {m_jobs.fd(), POLLIN, 0},
+                     {m_picker.fd(), POLLIN, 0}};
+    int r = poll(fds, 7, computeTimeout());
     if (r < 0 && errno != EINTR) {
       wl_display_cancel_read(m_display);
       break;
@@ -1552,6 +1579,7 @@ int App::run() {
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();
     if (r > 0 && (fds[5].revents & POLLIN)) m_jobs.dispatch();
+    if (r > 0 && (fds[6].revents & (POLLIN | POLLHUP))) m_picker.dispatch();
 
     const double now = nowSeconds();
     if (m_reloadConfigAt > 0 && now >= m_reloadConfigAt) {

@@ -5,6 +5,7 @@
 #include "audio.hpp"
 #include "config.hpp"
 #include "depth.hpp"
+#include "filepicker.hpp"
 #include "geom.hpp"
 #include "i18n.hpp"
 #include "ipc.hpp"
@@ -250,7 +251,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse, Action } type = Panel;
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse, Action, FileRemove } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -270,6 +271,9 @@ private:
   void uiDrag(double x);
   bool uiScroll(double x, double y, int step);
   void setProp(Widget& w, const std::string& key, const std::string& tomlValue);
+  // the TV's files: the desktop's chooser adds to tv_files (inspector.cpp)
+  void pickFiles(Widget& w, bool folders);
+  void setEditorAside(bool aside);  // under the windows while a dialog is open
   void applyProp(Widget& w, const std::string& key, const std::string& tomlValue);
   // stores an option in the widget and the file without an undo step (a
   // value that follows from another change, like a mesh turning custom)
@@ -408,6 +412,8 @@ private:
   std::vector<PropSpec> m_inspSchema;     // the inspector's rows (generated for clock structures)
   std::string m_elExpanded;               // clock element whose options are open
   std::string m_fontPickFor, m_fontFilter;  // the font picker: key being set, search text
+  FilePicker m_picker;
+  std::string m_pickNote;                 // why the last pick added nothing
   int m_fontScroll = 0;
   std::vector<std::string> m_fontList;    // installed families (loaded once)
   bool m_paintMode = false, m_painting = false, m_smartBrush = true, m_confirmClear = false;

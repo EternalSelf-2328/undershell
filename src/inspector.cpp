@@ -24,6 +24,7 @@
 namespace undershell {
 
 namespace {
+namespace fs = std::filesystem;
 constexpr float kPanelW = 320, kRowH = 30, kColorRowH = 54, kHeadH = 46, kFootH = 46, kLabelW = 134;
 constexpr double kCoalesceProp = 1.0;
 
@@ -96,7 +97,7 @@ bool optionApplies(const Widget& w, const std::string& key) {
   if (key == "perspective") return mode == "tilt" && (std::abs(w.cfg.tiltX) > 0.01 || std::abs(w.cfg.tiltY) > 0.01);  // only a tilt is seen in depth
   if (key == "muzzle_colors") return o["muzzle_style"].value_or(std::string("flash")) != "manga";  // ink is black and white
   if (key == "electric_colors" || key == "electric_glow") return o["electric_style"].value_or(std::string("flash")) != "manga";
-  if (key == "tv_fit" || key == "tv_speed" || key == "tv_zap") {  // only where your videos are
+  if (key == "tv_fit" || key == "tv_speed" || key == "tv_zap" || key == "tv_files") {  // only where your videos are
     const std::string m = o["tv_mode"].value_or(std::string("static"));
     return m == "media" || m == "channels";
   }
@@ -179,6 +180,67 @@ bool optionApplies(const Widget& w, const std::string& key) {
   return true;
 }
 
+// A list of paths as the inspector shows it: one row per entry, named by its
+// file (a folder ends in "/"), or a hint when the list is empty.
+std::vector<std::string> pathList(const toml::table& opts, const std::string& key) {
+  std::vector<std::string> out;
+  if (const toml::array* a = opts[key].as_array()) {
+    for (auto&& n : *a)
+      if (auto v = n.value<std::string>(); v && !v->empty()) out.push_back(*v);
+  } else if (auto v = opts[key].value<std::string>(); v && !v->empty()) {
+    out.push_back(*v);
+  }
+  return out;
+}
+
+// paths back to a TOML array, on one line: ["~/Videos/a.mp4", "~/GIFs/"]
+std::string pathsText(const std::vector<std::string>& paths) {
+  std::string out = "[";
+  for (const std::string& p : paths) {
+    out += out.size() > 1 ? ", \"" : "\"";
+    for (unsigned char c : p) {
+      if (c == '"' || c == '\\') out += '\\', out += static_cast<char>(c);
+      else if (c < 0x20 || c == 0x7f) out += std::format("\\u{:04X}", c);
+      else out += static_cast<char>(c);
+    }
+    out += '"';
+  }
+  return out + "]";
+}
+
+std::vector<PropSpec> fileRows(const toml::table& opts, const std::string& key, const char* emptyEn, const char* emptyEs) {
+  std::vector<PropSpec> rows;
+  const std::vector<std::string> paths = pathList(opts, key);
+  for (size_t i = 0; i < paths.size(); ++i) {
+    const fs::path p = expandHome(paths[i]);
+    std::error_code ec;
+    const bool folder = fs::is_directory(p, ec);
+    std::string name = (p.has_filename() ? p.filename() : p.parent_path().filename()).string();
+    if (folder) name += "/";
+    PropSpec r;
+    r.kind = PropSpec::File;
+    r.key = key;
+    r.defText = paths[i];
+    r.def = static_cast<double>(i);
+    r.labelEn = r.labelEs = name;
+    if (!fs::exists(p, ec)) {
+      r.labelEn += "  (missing)";
+      r.labelEs += "  (no existe)";
+    }
+    rows.push_back(std::move(r));
+  }
+  if (rows.empty()) {
+    PropSpec r;
+    r.kind = PropSpec::File;
+    r.key = key;
+    r.def = -1;
+    r.labelEn = emptyEn;
+    r.labelEs = emptyEs;
+    rows.push_back(std::move(r));
+  }
+  return rows;
+}
+
 std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded) {
   using K = PropSpec::Kind;
   std::vector<PropSpec> s;
@@ -234,7 +296,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   if (look == "tv") {
     std::vector<PropSpec> f = {
         {K::Enum, "tv_mode", "Shows", "Muestra", {"static", "colorbars", "nosignal", "media", "channels"}, 0, 0, 0, 0, "static"},
-        {K::Enum, "tv_fit", "Picture", "Imagen", {"fill", "fit"}, 0, 0, 0, 0, "fill"},
+        {K::Action, "tv_files", "+ Files", "+ Archivos", {"files", "folder"}},
         {K::Number, "tv_glitch", "Beat interference", "Interferencia al golpe", {}, 0, 1, 0.05, 0.6},
         {K::Number, "tv_speed", "Speed with music", "Velocidad con la música", {}, 0, 1, 0.05, 0.5},
         {K::Number, "tv_zap", "Channel changes", "Cambio de canal", {}, 0, 1, 0.05, 0.5},
@@ -247,6 +309,11 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "tv_curve", "Tube curve", "Curvatura", {}, 0, 1, 0.05, 0.3},
         {K::Number, "tv_background", "Screen glass", "Fondo de pantalla", {}, 0, 1, 0.05, 0.9},
     };
+    // your files, one row each under the buttons, then how they are shown
+    std::vector<PropSpec> files = fileRows(w.cfg.options, "tv_files", "No files yet: add videos or GIFs",
+                                           "Sin archivos: añade videos o GIFs");
+    files.push_back({K::Enum, "tv_fit", "Picture", "Imagen", {"fill", "fit"}, 0, 0, 0, 0, "fill"});
+    f.insert(f.begin() + 2, files.begin(), files.end());
     s.insert(s.begin() + 1, f.begin(), f.end());
   }
   if (look == "terminal") {
@@ -648,6 +715,61 @@ void App::reshapeMesh(Widget& w, const std::string& preset, double amount, int g
   w.needsRender = true;
 }
 
+// The desktop's file chooser for the TV's files: what is picked goes after
+// what the list has (each once), written home-relative ("~/…") like a person
+// would. The editor steps aside so the dialog gets the keyboard.
+void App::pickFiles(Widget& w, bool folders) {
+  const bool es = spanishUi();
+  FilePicker::Request req;
+  req.folders = folders;
+  req.title = folders ? (es ? "Carpetas de videos o GIFs" : "Folders of videos or GIFs") : (es ? "Videos o GIFs" : "Videos or GIFs");
+  req.filterName = es ? "Videos y GIFs" : "Videos and GIFs";
+  req.mimes = {"video/*", "image/gif", "image/webp", "image/apng"};
+  for (const char* x : {"gif", "mp4", "webm", "mkv", "mov", "avi", "m4v", "apng", "webp"}) {
+    std::string up = x;
+    for (char& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    req.patterns.push_back(std::string("*.") + x);
+    req.patterns.push_back("*." + up);
+  }
+  req.allName = es ? "Todos los archivos" : "All files";
+  // open where the latest file still there is, else the videos folder
+  const std::vector<std::string> have = pathList(w.cfg.options, "tv_files");
+  std::error_code ec;
+  for (auto it = have.rbegin(); it != have.rend() && req.startDir.empty(); ++it) {
+    fs::path at = expandHome(*it);
+    if (!fs::is_directory(at, ec)) at = at.parent_path();
+    if (fs::is_directory(at, ec)) req.startDir = at.string();
+  }
+  if (req.startDir.empty())
+    if (const char* v = g_get_user_special_dir(G_USER_DIRECTORY_VIDEOS); v && fs::is_directory(v, ec)) req.startDir = v;
+  m_pickNote.clear();
+  setEditorAside(true);
+  const std::string id = w.cfg.id;
+  const bool opened = m_picker.open(std::move(req), [this, id, es](std::vector<std::string> paths, std::string error) {
+    setEditorAside(false);
+    markEditDirty();
+    if (!error.empty()) {
+      US_WARN("file chooser: {}", error);
+      m_pickNote = es ? "Instala xdg-desktop-portal-gtk o zenity" : "Install xdg-desktop-portal-gtk or zenity";
+      return;
+    }
+    Widget* target = nullptr;
+    for (auto& ww : m_widgets)
+      if (ww->cfg.id == id) target = ww.get();
+    if (!target || paths.empty()) return;  // gone, or cancelled
+    std::vector<std::string> list = pathList(target->cfg.options, "tv_files");
+    const std::string home = expandHome("~");
+    for (std::string p : paths) {
+      if (!home.empty() && home != "/" && p.starts_with(home + "/")) p = "~" + p.substr(home.size());
+      if (std::find(list.begin(), list.end(), p) == list.end()) list.push_back(p);
+    }
+    m_lastOpKind.clear();
+    setProp(*target, "tv_files", pathsText(list));
+  });
+  if (!opened) setEditorAside(false);
+  markEditDirty();
+}
+
 void App::setQuietly(Widget& w, const std::string& key, const std::string& tomlValue) {
   storeOption(w.cfg.options, key, tomlValue);
   Config::setKey(m_configPath, w.cfg.id, key, tomlValue);
@@ -657,6 +779,7 @@ void App::setQuietly(Widget& w, const std::string& key, const std::string& tomlV
 void App::applyProp(Widget& w, const std::string& key, const std::string& tomlValue) {
   if (m_motion && (key == "depth" || key == "depth_level")) return;  // locked under a moving wallpaper
   std::string v = tomlValue;
+  if (v.empty() && key == "tv_files") v = "[]";  // a list: empty, not a default
   if (v.empty())  // "absent before": restore the schema default
     for (const auto& p : inspectorSchema(w, "*"))
       if (key == p.key)
@@ -910,6 +1033,19 @@ void App::layoutUi(const EditSurface& e) {
   Widget* w = m_selected;
   if (w && w->output == e.output && w->impl) {
     m_inspSchema = inspectorSchema(*w, m_elExpanded);
+    if (!m_pickNote.empty()) {  // why the chooser did not open, under the files
+      size_t at = 0;
+      for (size_t i = 0; i < m_inspSchema.size(); ++i)
+        if (m_inspSchema[i].kind == PropSpec::File) at = i + 1;
+      if (at > 0) {
+        PropSpec note;
+        note.kind = PropSpec::File;
+        note.key = "_note";
+        note.def = -1;
+        note.labelEn = note.labelEs = m_pickNote;
+        m_inspSchema.insert(m_inspSchema.begin() + static_cast<long>(at), note);
+      }
+    }
     const auto& schema = m_inspSchema;
     float contentH = kHeadH + kFootH;
     for (const auto& p : schema) contentH += p.kind == PropSpec::Color ? kColorRowH : kRowH;
@@ -993,7 +1129,19 @@ void App::layoutUi(const EditSurface& e) {
           y += kRowH;
         } else if (p.kind == PropSpec::Action) {
           Rect r{px + 16, y + 3, kPanelW - 32, 24};
-          if (visible(r)) m_ui.push_back({UiControl::Action, r, idx});
+          if (visible(r)) {
+            if (p.options.size() == 2) {  // two buttons side by side
+              const float half = (r.w - 8) / 2;
+              m_ui.push_back({UiControl::Action, {r.x, r.y, half, r.h}, idx, p.options[0]});
+              m_ui.push_back({UiControl::Action, {r.x + half + 8, r.y, half, r.h}, idx, p.options[1]});
+            } else {
+              m_ui.push_back({UiControl::Action, r, idx});
+            }
+          }
+          y += kRowH;
+        } else if (p.kind == PropSpec::File) {
+          Rect x{px + kPanelW - 16 - 24, y + 3, 24, 24};
+          if (p.def >= 0 && visible(x)) m_ui.push_back({UiControl::FileRemove, x, idx});
           y += kRowH;
         } else {
           const auto& sw = p.options.empty() ? colorSwatches() : p.options;
@@ -1353,6 +1501,23 @@ bool App::uiPress(int index, double x) {
         m_lastOpKind.clear();
         setProp(*w, "mesh_preset", "\"flat\"");  // laid flat again on its corners (one undo step)
       }
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "tv_files" &&
+          !m_picker.busy())
+        pickFiles(*w, c.value == "folder");
+      markEditDirty();
+      return true;
+    case UiControl::FileRemove:
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
+        const PropSpec p = m_inspSchema[static_cast<size_t>(c.prop)];
+        std::vector<std::string> paths = pathList(w->cfg.options, p.key);
+        const auto i = static_cast<size_t>(p.def);
+        if (i < paths.size()) {
+          paths.erase(paths.begin() + static_cast<long>(i));
+          m_lastOpKind.clear();
+          setProp(*w, p.key, pathsText(paths));
+        }
+      }
+      m_pickNote.clear();
       markEditDirty();
       return true;
     case UiControl::Collapse:
@@ -1859,7 +2024,8 @@ void App::drawUi(EditSurface& e) {
         const float rowH = p.kind == PropSpec::Color ? kColorRowH : kRowH;
         if (y + rowH >= top && y <= bottom) {
           const bool locked = m_motion && (std::string_view(p.key) == "depth" || std::string_view(p.key) == "depth_level");
-          const bool plainLabel = p.kind != PropSpec::Header && p.kind != PropSpec::Element && p.kind != PropSpec::Action;
+          const bool plainLabel =
+              p.kind != PropSpec::Header && p.kind != PropSpec::Element && p.kind != PropSpec::Action && p.kind != PropSpec::File;
           if (plainLabel) {
             const float lx = P.x + 16 + (p.indent ? 16 : 0);
             fitText(es ? p.labelEs : p.labelEn, label, lx, y + 6, cx - lx - 8,
@@ -1924,15 +2090,39 @@ void App::drawUi(EditSurface& e) {
           const bool autoPlane = std::string_view(p.key) == "depth_level" && numberOf(w->cfg.options, p) == 0;
           cv.text(autoPlane ? std::string("auto") : v, mono, cx + sw + 10, y + 7, autoPlane ? dim : ink);
           } else if (p.kind == PropSpec::Action) {
-            // a button across the row
-            const float bx = P.x + 16, bw = kPanelW - 32;
-            bool hot = false;
-            for (const UiControl& c : m_ui)
-              if (c.type == UiControl::Action && c.prop == static_cast<int>(&p - &schema[0])) hot = hovered(c);
-            cv.roundRect(bx, y + 3, bw, 24, 8, hot ? withAlphaC(ink, 0.14F) : raised, 1, line);
-            const std::string t = es ? p.labelEs : p.labelEn;
-            auto [tw, th] = measure(t, label);
-            cv.text(t, label, bx + (bw - tw) / 2, y + 15 - th / 2, ink);
+            // a button across the row, or two side by side
+            const int idx = static_cast<int>(&p - &schema[0]);
+            const bool waiting = p.key == "tv_files" && m_picker.busy();  // the chooser is open
+            const size_t n = p.options.size() == 2 ? 2 : 1;
+            const float bw = n == 2 ? (kPanelW - 40) / 2 : kPanelW - 32;
+            for (size_t k = 0; k < n; ++k) {
+              const float bx = P.x + 16 + k * (bw + 8);
+              const std::string value = n == 2 ? p.options[k] : std::string();
+              bool hot = false;
+              for (const UiControl& c : m_ui)
+                if (c.type == UiControl::Action && c.prop == idx && c.value == value) hot = hovered(c);
+              cv.roundRect(bx, y + 3, bw, 24, 8, hot && !waiting ? withAlphaC(ink, 0.14F) : raised, 1, line);
+              std::string t = es ? p.labelEs : p.labelEn;
+              if (value == "folder") t = es ? "+ Carpeta" : "+ Folder";
+              if (waiting) t = k == 0 ? (es ? "Eligiendo…" : "Choosing…") : std::string();
+              auto [tw, th] = measure(t, label);
+              cv.text(t, label, bx + (bw - tw) / 2, y + 15 - th / 2, waiting ? dim : ink);
+            }
+          } else if (p.kind == PropSpec::File) {
+            // a file (or folder) of the list, with × to drop it; a hint when there are none
+            const bool entry = p.def >= 0;
+            const float lx = P.x + 22;
+            if (entry) cv.circle(P.x + 18, y + 15, 2, withAlphaC(accent, 0.8F));
+            fitText(es ? p.labelEs : p.labelEn, label, entry ? lx + 4 : P.x + 16, y + 6, kPanelW - (entry ? 70 : 32),
+                    entry ? withAlphaC(ink, 0.85F) : withAlphaC(dim, 0.8F));
+            if (entry)
+              for (const UiControl& c : m_ui)
+                if (c.type == UiControl::FileRemove && c.prop == static_cast<int>(&p - &schema[0])) {
+                  const float mx = c.r.x + 12, my = c.r.y + 12;
+                  if (hovered(c)) cv.circle(mx, my, 11, withAlphaC(ink, 0.12F));
+                  cv.segment(mx - 4, my - 4, mx + 4, my + 4, 1.6F, dim);
+                  cv.segment(mx + 4, my - 4, mx - 4, my + 4, 1.6F, dim);
+                }
           } else {
             const auto& sws = p.options.empty() ? colorSwatches() : p.options;
             const float size = 20, gap = (kPanelW - 28 - sws.size() * size) / (sws.size() - 1);
