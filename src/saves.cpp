@@ -101,8 +101,10 @@ bool App::loadSave(const std::string& id, const std::string& output) {
         for (const auto& t : targets) blocks += Config::moveToOutput(s.blocks, t) + "\n";
         while (blocks.ends_with("\n\n")) blocks.pop_back();
       }
+      // replaceLayout re-reads the saves: `s` points into the old list after it
+      const std::string name = s.name;
       replaceLayout(blocks, true);  // repeated ids are renamed on load
-      US_INFO("loaded saved layout \"{}\"{}", s.name, output.empty() ? std::string() : " on " + output);
+      US_INFO("loaded saved layout \"{}\"{}", name, output.empty() ? std::string() : " on " + output);
       return true;
     }
   return false;
