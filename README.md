@@ -1,5 +1,9 @@
 # undershell
 
+<p align="center">
+  <img src="docs/media/hero.webp" alt="undershell on six desktops: a red spectrum passing behind a katana blade, a gun firing on the kicks, a CRT terminal, a halo around a skull, flames behind a skeleton and an old TV playing GIFs" width="100%">
+</p>
+
 Desktop widgets that live **under** your shell and **apart** from it: a
 standalone Wayland client in C++ (GLES 3) that doesn't depend on any shell or
 dotfiles. It integrates with Noctalia (palette, `wallpaper_depth` depth) and
@@ -23,6 +27,29 @@ Its first widgets are ports of
   FFT + cava-style processing (adapted from Noctalia, MIT) and the whole
   spectrum drawn in **a single GPU pass** (Ryoku's shader). With music it
   uses ~3% CPU on an HD 520; with no audio it sleeps.
+
+## Gallery
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/media/desk-katana.jpg"><img src="docs/media/desk-katana.jpg" alt="A red wave visualizer behind a katana blade, a goodnight clock card and the song in the corner"></a><br><sub>a <code>wave</code> behind the blade, cut by the depth map</sub></td>
+    <td width="50%"><a href="docs/media/desk-muzzle.jpg"><img src="docs/media/desk-muzzle.jpg" alt="A manga-style muzzle flash firing from a revolver, with the time written on the barrel"></a><br><sub><code>muzzle</code> in ink: every kick is a shot</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/media/desk-terminal.jpg"><img src="docs/media/desk-terminal.jpg" alt="A spectrum in block characters on an old CRT monitor in a dark room"></a><br><sub><code>terminal</code> pinned to the CRT's corners</sub></td>
+    <td width="50%"><a href="docs/media/desk-skull.jpg"><img src="docs/media/desk-skull.jpg" alt="A red halo of rays around a pixel skull, a brush-font clock and date, the song title underneath"></a><br><sub><code>halo</code>, <code>column</code> and <code>goodnight</code> clocks, a text-only music card</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/media/desk-robot.jpg"><img src="docs/media/desk-robot.jpg" alt="A spectrum glowing inside a robot's visor"></a><br><sub>a spectrum shaped to the visor</sub></td>
+    <td width="50%"><a href="docs/media/desk-hands.jpg"><img src="docs/media/desk-hands.jpg" alt="A red line spectrum between two ASCII-art hands, with a large serif clock"></a><br><sub>a <code>line</code> spectrum between the fingers, <code>grand</code> clock</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/media/desk-eye.jpg"><img src="docs/media/desk-eye.jpg" alt="A brush-font clock over an anime eye illustration"></a><br><sub>a <code>column</code> clock in a brush font</sub></td>
+    <td width="50%"><a href="docs/media/desk-goodnight.jpg"><img src="docs/media/desk-goodnight.jpg" alt="A goodnight clock card beside an illustration of a woman at a window"></a><br><sub>the <code>goodnight</code> card</sub></td>
+  </tr>
+</table>
+
+The wallpapers in these captures are other artists' work, shown only as backgrounds.
 
 ## Requirements
 
@@ -191,6 +218,11 @@ and delete the link).
 and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
 ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `terminal` and `tv` (see below).
 
+<p align="center">
+  <img src="docs/media/looks.webp" alt="The same visualizer box in the editor switching through looks: vortex, fire, smoke, a comic KRAKOOM, rain, a neon LIVE sign, a terminal, bars, TV static, split bars, dots and a filled wave" width="800"><br>
+  <sub>One widget, cycled through its looks in the editor.</sub>
+</p>
+
 ## Clock: 12 faces
 
 `digital`, `minimal`, `analog`, `flip` (cards that flip, colon that
@@ -219,6 +251,10 @@ piece of it can be left out. Options: `layout`, `plate` (cover, glass, none),
 `rail_style`, `show_lyrics`, `viz` (bars, wave), `accent_source` (album,
 theme), `music_app`, `fps`, the `show_*` switches and the type options below.
 
+<p align="center">
+  <img src="docs/media/now-playing.jpg" alt="The music card: album cover, synced lyrics with the sung line lit, title, artist and time" width="546">
+</p>
+
 Widgets are click-through except on their buttons, so the desktop
 keeps working normally around them.
 
@@ -245,6 +281,10 @@ undershell --snapshot DIR   # render the looks and clock faces to PNG (no window
 
 **Editor** (`msg edit`, e.g. bound to `"Mod+Ctrl+D" = "spawn:/home/USER/.local/bin/undershell msg edit"`
 in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.local/bin`):
+
+<p align="center">
+  <img src="docs/media/editor.webp" alt="The editor over a wallpaper: selecting a clock and a visualizer, changing the visualizer's look and the clock's face from the inspector" width="800">
+</p>
 
 | Action | How |
 |---|---|
@@ -411,6 +451,10 @@ white, yellow and orange, or the theme's colours with Colours `theme`;
 `manga`, flat white with a black ink outline, for black-and-white artwork),
 Reach, Side spikes, Sparks, Smoke, Ember.
 
+<p align="center">
+  <img src="docs/media/muzzle.webp" alt="A manga-style muzzle flash bursting from a revolver on the kicks, leaving grey smoke" width="720">
+</p>
+
 ## Electricity
 
 The `electric` look is electricity in three forms (Form, `electric_form`):
@@ -524,6 +568,11 @@ text) each from 0 (off) to 1, and Text size. A kick lights the screen up
 katakana from the system's CJK font) and the whole screen is two passes:
 about 0.7 ms of GPU a frame at 1074 × 621.
 
+<p align="center">
+  <img src="docs/media/terminal-modes.jpg" alt="The terminal look on a CRT in its four modes: spectrum, matrix, a shell session typing a build, and a system monitor" width="640"><br>
+  <sub><code>spectrum</code> · <code>matrix</code> · <code>code</code> · <code>monitor</code></sub>
+</p>
+
 ## TV
 
 The `tv` look is an old television, for the screens in a wallpaper. It
@@ -564,6 +613,10 @@ decoded on its own thread, scaled down to the widget's size; a short clip
 again. Videos need undershell built with FFmpeg (`-Dvideo=enabled`, on by
 default when its libraries are found); without it, GIFs still play.
 
+<p align="center">
+  <img src="docs/media/tv.webp" alt="An old TV in a wallpaper playing the user's GIFs, changing channel with CH 06 and CH 07 in the corner" width="466">
+</p>
+
 ## Clock structures
 
 Five clock faces are **editable structures**: `goodnight` (the card),
@@ -582,6 +635,10 @@ in the widget (`goodnight_time_font = "Space Grotesk"`,
 they travel with wallpaper profiles and saved layouts. The other faces
 stay as classics.
 
+<p align="center">
+  <img src="docs/media/fonts.jpg" alt="The clock inspector with the Greeting part open and the font list, every family drawn in itself" width="480">
+</p>
+
 ## Fonts
 
 The five editable clock structures (`goodnight`, `column`, `flip`, `metal`,
@@ -590,6 +647,10 @@ card's title, artist and clock. The classic clock faces keep the fonts of
 their design. Space Grotesk, Fraunces, Inter
 Display, JetBrains Mono, Google Sans Flex and Bangers come bundled, so they are
 always there.
+
+<p align="center">
+  <img src="docs/media/fonts.webp" alt="Searching the font list for road and setting the clock's minutes in Road Rage" width="800">
+</p>
 
 **Adding your own:**
 
@@ -640,6 +701,11 @@ plugin's mask. Where widgets overlap, the nearer one is drawn on top
 on the same plane. The model never runs twice; refining takes under a second
 per wallpaper, off the main thread.
 
+<p align="center">
+  <img src="docs/media/depth.webp" alt="A red spectrum passing behind a katana blade and in front of the dark background" width="800"><br>
+  <sub>The spectrum goes behind the blade: its plane cuts it where the wallpaper is nearer.</sub>
+</p>
+
 ### Moving wallpapers
 
 A depth mask belongs to one still picture. When a video or a Wallpaper
@@ -680,6 +746,10 @@ panel's buttons); zoomed, the editor shows the wallpaper magnified and the
 brush gets finer by the same factor. **Undo** / Ctrl+Z steps back one
 stroke or selection; **Clear all** asks twice; right click or Esc leaves.
 
+<p align="center">
+  <img src="docs/media/depth-brush.jpg" alt="The depth brush: the wallpaper tinted where it covers the selected widget, with the brush, wand, lasso and hand tools" width="800">
+</p>
+
 Corrections are kept per wallpaper in `~/.config/undershell/depth-edits/`
 and apply to every widget, including those on the plugin's plane.
 
@@ -698,6 +768,10 @@ time keeps the current layout, so you start from it.
 - Only the `[[widget]]` blocks move; `[general]` is shared.
 - `undershell msg status` shows the current profile; `profiles = false` in
   `[general]` turns this off.
+
+<p align="center">
+  <img src="docs/media/profiles.webp" alt="Picking a new wallpaper: the clock and visualizer of the old one give way to the new wallpaper's own layout" width="800">
+</p>
 
 ### Saved profiles
 
