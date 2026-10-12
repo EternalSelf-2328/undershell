@@ -4,17 +4,13 @@
   <img src="docs/media/hero.webp" alt="undershell on six desktops: a red spectrum passing behind a katana blade, a gun firing on the kicks, a CRT terminal, a halo around a skull, flames behind a skeleton and an old TV playing GIFs" width="100%">
 </p>
 
-
-
 https://github.com/user-attachments/assets/523ec5c1-bcba-4fc5-892a-d8c912360f7a
-
-
-
 
 Desktop widgets that live **under** your shell and **apart** from it: a
 standalone Wayland client in C++ (GLES 3) that doesn't depend on any shell or
-dotfiles. It integrates with Noctalia (palette) and KDE Plasma (wallpaper, colour scheme), reads the wallpaper of other shells
-(caelestia, DankMaterialShell, …) and wallpaper tools, and runs on
+dotfiles. It integrates with Noctalia (palette) and KDE Plasma (wallpaper,
+colour scheme), reads the wallpaper of other shells (caelestia,
+DankMaterialShell, …) and wallpaper tools, and runs on
 Umbriel/niri/Hyprland/Sway/KDE Plasma/COSMIC and, through an extension, GNOME.
 Its first widgets are ports of
 [Ryoku](https://github.com/ryoku-dev/ryoku)'s.
