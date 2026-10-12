@@ -4,6 +4,10 @@
   <img src="docs/media/hero.webp" alt="undershell on six desktops: a red spectrum passing behind a katana blade, a gun firing on the kicks, a CRT terminal, a halo around a skull, flames behind a skeleton and an old TV playing GIFs" width="100%">
 </p>
 
+
+Uploading undershell-demo.mp4…
+
+
 Desktop widgets that live **under** your shell and **apart** from it: a
 standalone Wayland client in C++ (GLES 3) that doesn't depend on any shell or
 dotfiles. It integrates with Noctalia (palette, `wallpaper_depth` depth) and
