@@ -1,5 +1,6 @@
 // The depth field: .npy reading, the plugin's refinement maths, half floats.
 #include "check.hpp"
+#include "colorpick.hpp"
 #include "common.hpp"
 #include "depth.hpp"
 #include "depthfield.hpp"
@@ -363,6 +364,67 @@ int main() {
     CHECK(others == 1);
     unsetenv("UNDERSHELL_DEPTH_HELPER");
     unsetenv("FAKE_NPY");
+  }
+
+  {
+    // the colour picker: HSV and back, hex in and out
+    for (const char* hex : {"#e2342a", "#000000", "#ffffff", "#7fc8ff", "#3a944a", "#808080", "#ff00ff"}) {
+      const Color c = Color::fromHex(hex);
+      CHECK(toHex(fromHsv(toHsv(c))) == hex);
+    }
+    CHECK(std::abs(toHsv(Color::fromHex("#ff0000")).h) < 1e-6 && std::abs(toHsv(Color::fromHex("#00ff00")).h - 120) < 1e-6);
+    CHECK(toHsv(Color::fromHex("#808080")).s == 0);
+    Color c;
+    CHECK(parseHex("#ABC", c) && toHex(c) == "#aabbcc");
+    CHECK(parseHex("e2342a", c) && toHex(c) == "#e2342a");
+    CHECK(parseHex(" #E2342A ", c) && toHex(c) == "#e2342a");
+    CHECK(!parseHex("#12", c) && !parseHex("#12345g", c) && !parseHex("", c) && !parseHex("#1234567", c));
+    // a black widget still gives the editor an accent that reads; a bright one is kept
+    const Color dark = readableAccent(Color::fromHex("#03231c"));
+    CHECK(0.2126F * dark.r + 0.7152F * dark.g + 0.0722F * dark.b >= 0.45F);
+    CHECK(toHex(readableAccent(Color::fromHex("#f5c96b"))) == "#f5c96b");
+
+    // the wallpaper's colours: the most common first, no two alike
+    const int w = 100, h = 50;
+    std::vector<std::uint8_t> img(w * h * 4, 255);
+    for (int y = 0; y < h; ++y)
+      for (int x = 0; x < w; ++x) {
+        std::uint8_t* p = &img[(static_cast<size_t>(y) * w + x) * 4];
+        const bool red = x < 60, blue = x >= 60 && x < 90;  // 60 % red, 30 % blue, 10 % white
+        p[0] = red ? 220 : blue ? 30 : 250;
+        p[1] = red ? 40 : blue ? 60 : 250;
+        p[2] = red ? 30 : blue ? 200 : 250;
+      }
+    const auto dom = dominantColors(img.data(), w, h, 8);
+    CHECK(dom.size() == 3);  // three colours, however many were asked for
+    CHECK(dom.size() == 3 && toHex(dom[0]) == "#dc281e" && toHex(dom[1]) == "#1e3cc8" && toHex(dom[2]) == "#fafafa");
+    CHECK(dominantColors(img.data(), w, h, 1).size() == 1);
+    CHECK(dominantColors(nullptr, 0, 0, 4).empty());
+
+    // a wallpaper on disk: decoded small, its colours found
+    const std::string png = dir + "/pick.png";
+    cairo_surface_t* surf = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 400, 200);
+    cairo_t* cr = cairo_create(surf);
+    cairo_set_source_rgb(cr, 26 / 255.0, 179 / 255.0, 77 / 255.0);
+    cairo_paint(cr);
+    cairo_destroy(cr);
+    cairo_surface_write_to_png(surf, png.c_str());
+    cairo_surface_destroy(surf);
+    WallpaperSample sample;
+    CHECK(sampleWallpaper(png, 100, sample) && sample.w == 100 && sample.h == 50 && sample.rgba.size() == 100 * 50 * 4);
+    CHECK(!sample.dominant.empty() && toHex(sample.dominant[0]) == "#1ab34d");
+    CHECK(!sampleWallpaper(dir + "/missing.png", 100, sample));
+
+    // recent colours: newest first, once each, eight kept, on disk
+    setenv("XDG_STATE_HOME", (dir + "/state-colors").c_str(), 1);
+    std::vector<std::string> recent;
+    for (int i = 0; i < 10; ++i) pushRecentColor(recent, std::format("#00000{}", i));
+    CHECK(recent.size() == 8 && recent.front() == "#000009" && recent.back() == "#000002");
+    pushRecentColor(recent, "#000005");
+    CHECK(recent.size() == 8 && recent.front() == "#000005" && std::count(recent.begin(), recent.end(), "#000005") == 1);
+    pushRecentColor(recent, "not a colour");
+    CHECK(recent.front() == "#000005");
+    CHECK(saveRecentColors(recent) && loadRecentColors() == recent);
   }
 
   std::filesystem::remove_all(dir);

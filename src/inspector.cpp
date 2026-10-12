@@ -1198,11 +1198,14 @@ void App::layoutUi(const EditSurface& e) {
           y += kRowH;
         } else {
           const auto& sw = p.options.empty() ? colorSwatches() : p.options;
-          const float size = 20, gap = (kPanelW - 28 - sw.size() * size) / (sw.size() - 1);
+          const size_t slots = sw.size() + 1;  // the swatches, then the picker
+          const float size = 20, gap = (kPanelW - 28 - slots * size) / (slots - 1);
           for (size_t k = 0; k < sw.size(); ++k) {
             Rect r{px + 14 + k * (size + gap), y + 26, size, size};
             if (visible(r)) m_ui.push_back({UiControl::Swatch, r, idx, sw[k]});
           }
+          Rect more{px + 14 + sw.size() * (size + gap), y + 26, size, size};
+          if (visible(more)) m_ui.push_back({UiControl::ColorMore, more, idx});
           y += kColorRowH;
         }
       }
@@ -1307,6 +1310,26 @@ void App::layoutUi(const EditSurface& e) {
       y += 34;
     }
   }
+  if (!m_colorPickFor.empty() && m_selected) {
+    Rect insp;
+    for (const UiControl& c : m_ui)
+      if (c.type == UiControl::Panel && c.value == "inspector") insp = c.r;
+    const float fw = 300, fh = 338, top = kBarY + kBarH + 14;
+    float fx = insp.x - 12 - fw;
+    if (fx < 12) fx = std::min(W - fw - 12, insp.x + insp.w + 12);
+    m_ui.push_back({UiControl::Panel, {fx, top, fw, fh}, -1, "colors"});
+    m_ui.push_back({UiControl::ColorClose, {fx + fw - 40, top + 12, 28, 28}});
+    m_ui.push_back({UiControl::ColorSV, {fx + 14, top + 50, 222, 150}});
+    m_ui.push_back({UiControl::ColorHue, {fx + 246, top + 50, 40, 150}});
+    m_ui.push_back({UiControl::ColorHex, {fx + 52, top + 214, 96, 30}});
+    m_ui.push_back({UiControl::ColorDrop, {fx + 156, top + 214, 130, 30}});
+    // the wallpaper's own colours, then the ones used lately
+    if (m_wallSample)
+      for (size_t k = 0; k < std::min<size_t>(8, m_wallSample->dominant.size()); ++k)
+        m_ui.push_back({UiControl::ColorPreset, {fx + 100 + k * 24.0F, top + 266, 20, 20}, -1, toHex(m_wallSample->dominant[k])});
+    for (size_t k = 0; k < std::min<size_t>(8, m_recentColors.size()); ++k)
+      m_ui.push_back({UiControl::ColorPreset, {fx + 100 + k * 24.0F, top + 300, 20, 20}, -1, m_recentColors[k]});
+  }
   if (m_helpOpen) {
     const float hw = 580, hh = 384;
     const Rect card{std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh};
@@ -1320,6 +1343,168 @@ void App::layoutUi(const EditSurface& e) {
 }
 
 void App::layoutGallery(float, float) {}
+
+// ── the colour picker ──
+
+void App::openColorPick(Widget& w, const PropSpec& p) {
+  if (m_colorPickFor == p.key) {  // its "+" again: closes it
+    closeColorPick();
+    return;
+  }
+  m_fontPickFor.clear();
+  // start from what the row shows now (a palette role, a clock's own ink, a hex)
+  const std::string v = valueText(w.cfg.options, p);
+  const Color c = v == "card"                ? Color{0.02F, 0.02F, 0.025F, 1}
+                  : v == "accent" && w.impl ? w.impl->accent()
+                  : v == "ink" ? m_noctalia.state().color(w.cfg.options["ink"].value_or(std::string("on_surface")))
+                               : m_noctalia.state().color(v, Color::fromHex("#e2342a"));
+  m_colorPickFor = p.key;
+  m_cp = toHsv(c);
+  m_cpHex.clear();
+  m_cpTyping = m_eyedrop = false;
+  if (!m_recentLoaded) {
+    m_recentColors = loadRecentColors();
+    m_recentLoaded = true;
+  }
+  requestWallSample();
+  markEditDirty();
+}
+
+void App::closeColorPick() {
+  if (m_colorPickFor.empty() && !m_eyedrop) return;
+  if (m_eyedrop) setCursor("default");
+  m_colorPickFor.clear();
+  m_cpHex.clear();
+  m_cpTyping = m_eyedrop = false;
+  m_wallSample.reset();  // ~8 MB: only while the picker is open
+  m_wallSampleWanted.clear();
+  markEditDirty();
+}
+
+// the picker's colour into the widget; `remember`: a choice made (a release,
+// a click, Enter), kept among the recent colours
+void App::applyPickedColor(bool remember) {
+  if (!m_selected || m_colorPickFor.empty()) return;
+  const std::string hex = toHex(fromHsv(m_cp));
+  if (m_selected->cfg.options[m_colorPickFor].value_or(std::string()) != hex) setProp(*m_selected, m_colorPickFor, "\"" + hex + "\"");
+  if (remember) {
+    pushRecentColor(m_recentColors, hex);
+    saveRecentColors(m_recentColors);
+  }
+  markEditDirty();
+}
+
+// The wallpaper of the monitor being edited, decoded off the main thread for
+// the eyedropper and its dominant colours.
+void App::requestWallSample() {
+  const Output* o = m_uiOutput ? m_uiOutput : (m_outputs.empty() ? nullptr : m_outputs.front().get());
+  if (!o) return;
+  const std::string wall = m_noctalia.state().wallpaperFor(o->name);
+  if (wall.empty() || wall == m_wallSampleWanted) return;
+  m_wallSampleWanted = wall;
+  if (m_wallSampleBusy) return;  // the one being read asks again when it lands
+  m_wallSampleBusy = true;
+  m_jobs.run([this, wall]() -> Jobs::Done {
+    auto sample = std::make_shared<WallpaperSample>();
+    const bool ok = sampleWallpaper(wall, 1920, *sample);
+    return [this, wall, ok, sample]() {
+      m_wallSampleBusy = false;
+      if (m_colorPickFor.empty() && !m_eyedrop) return;  // closed meanwhile
+      if (wall != m_wallSampleWanted) {  // another wallpaper since: read that one
+        m_wallSampleWanted.clear();
+        requestWallSample();
+        return;
+      }
+      if (ok) m_wallSample = sample;
+      markEditDirty();
+    };
+  });
+}
+
+bool App::eyedropAt(const Output* o, double x, double y, Color& out, double* pu, double* pv) const {
+  if (!o || !m_wallSample || m_wallSample->rgba.empty()) return false;
+  if (m_noctalia.state().wallpaperFor(o->name) != m_wallSample->path) return false;
+  const WallpaperSample& s = *m_wallSample;
+  double u = 0, v = 0;
+  if (!wallpaperUv(x, y, o->logicalW(), o->logicalH(), s.w, s.h, m_noctalia.state().fillMode, u, v)) return false;
+  u -= std::floor(u);  // a repeated wallpaper
+  v -= std::floor(v);
+  const int px = std::clamp(static_cast<int>(u * s.w), 0, s.w - 1), py = std::clamp(static_cast<int>(v * s.h), 0, s.h - 1);
+  const std::uint8_t* p = &s.rgba[(static_cast<size_t>(py) * s.w + px) * 4];
+  out = {p[0] / 255.F, p[1] / 255.F, p[2] / 255.F, 1};
+  if (pu) *pu = u;
+  if (pv) *pv = v;
+  return true;
+}
+
+// typing while the picker is open: a hex colour (applied at six digits, or
+// three and Enter); Ctrl+V pastes one; Esc steps back
+bool App::colorKey(uint32_t key) {
+  if (key == KEY_ESC) {
+    if (m_eyedrop) {
+      m_eyedrop = false;
+      setCursor("default");
+    } else if (m_cpTyping) {
+      m_cpTyping = false;
+      m_cpHex.clear();
+    } else {
+      closeColorPick();
+    }
+    markEditDirty();
+    return false;
+  }
+  Color c;
+  if (key == KEY_ENTER || key == KEY_KPENTER) {
+    if (m_cpTyping && parseHex(m_cpHex, c)) {
+      m_cp = toHsv(c);
+      applyPickedColor(true);
+    }
+    m_cpTyping = false;
+    m_cpHex.clear();
+    markEditDirty();
+    return false;
+  }
+  if (key == KEY_BACKSPACE) {
+    if (m_cpTyping && !m_cpHex.empty()) m_cpHex.pop_back();
+    markEditDirty();
+    return true;
+  }
+  if (key == KEY_V && modActive(XKB_MOD_NAME_CTRL)) {
+    if (parseHex(runCommand("wl-paste --no-newline 2>/dev/null", 2), c)) {
+      m_cp = toHsv(c);
+      m_cpTyping = false;
+      m_cpHex.clear();
+      applyPickedColor(true);
+    }
+    return false;
+  }
+  if (!m_xkbState || modActive(XKB_MOD_NAME_CTRL)) return false;
+  char buf[16] = {};
+  const int n = xkb_state_key_get_utf8(m_xkbState, key + 8, buf, sizeof buf);
+  if (n != 1 || !(std::isxdigit(static_cast<unsigned char>(buf[0])) || buf[0] == '#')) return false;
+  if (!m_cpTyping) {
+    m_cpTyping = true;
+    m_cpHex.clear();
+  }
+  if (buf[0] != '#' && m_cpHex.size() < 6) m_cpHex += static_cast<char>(std::tolower(static_cast<unsigned char>(buf[0])));
+  if (m_cpHex.size() == 6 && parseHex(m_cpHex, c)) {
+    m_cp = toHsv(c);
+    applyPickedColor(true);
+    m_cpTyping = false;
+    m_cpHex.clear();
+  }
+  markEditDirty();
+  return true;
+}
+
+void App::releaseColorGl() {
+  for (GLuint* t : {&m_svTex, &m_hueTex, &m_loupeTex})
+    if (*t) {
+      glDeleteTextures(1, t);
+      *t = 0;
+    }
+  m_svTexHue = -1;
+}
 
 // the families whose name contains the search text (any case)
 std::vector<std::string> App::filteredFonts() const {
@@ -1423,6 +1608,35 @@ bool App::uiPress(int index, double x) {
       m_fontPickFor.clear();
       markEditDirty();
       return true;
+    case UiControl::ColorClose:
+      closeColorPick();
+      return true;
+    case UiControl::ColorSV:
+    case UiControl::ColorHue:  // dragged like a slider: live, one undo step
+      m_drag = Drag::Slider;
+      m_sliderControl = index;
+      m_cpTyping = false;
+      uiDrag(x);
+      return true;
+    case UiControl::ColorHex:
+      m_cpTyping = true;
+      m_cpHex.clear();
+      markEditDirty();
+      return true;
+    case UiControl::ColorDrop:
+      m_eyedrop = !m_eyedrop;
+      if (m_eyedrop) requestWallSample();
+      markEditDirty();
+      return true;
+    case UiControl::ColorPreset: {
+      Color col;
+      if (parseHex(c.value, col)) {
+        m_cp = toHsv(col);
+        m_cpTyping = false;
+        applyPickedColor(true);
+      }
+      return true;
+    }
     case UiControl::FontItem:
       if (w && !m_fontPickFor.empty()) {
         setProp(*w, m_fontPickFor, "\"" + c.value + "\"");  // "" = the design font
@@ -1637,6 +1851,10 @@ bool App::uiPress(int index, double x) {
     setProp(*w, p.face + "_order", "\"" + order + "\"");
     return true;
   }
+  if (c.type == UiControl::ColorMore) {
+    if (w) openColorPick(*w, p);
+    return true;
+  }
   if (c.type == UiControl::FontPick) {
     // fonts installed since last time show up without a restart
     if (TextRenderer::refreshFonts()) {
@@ -1666,6 +1884,7 @@ bool App::uiPress(int index, double x) {
       m_fontList.erase(std::unique(m_fontList.begin(), m_fontList.end()), m_fontList.end());
     }
     m_fontPickFor = m_fontPickFor == p.key ? std::string() : p.key;
+    closeColorPick();
     m_fontFilter.clear();
     m_fontScroll = 0;
     markEditDirty();
@@ -1699,6 +1918,16 @@ bool App::uiPress(int index, double x) {
 void App::uiDrag(double x) {
   if (m_sliderControl < 0 || m_sliderControl >= static_cast<int>(m_ui.size())) return;
   const UiControl& c = m_ui[static_cast<size_t>(m_sliderControl)];
+  if (c.type == UiControl::ColorSV || c.type == UiControl::ColorHue) {
+    if (c.type == UiControl::ColorSV) {
+      m_cp.s = std::clamp((m_px - c.r.x) / c.r.w, 0.0, 1.0);
+      m_cp.v = 1 - std::clamp((m_py - c.r.y) / c.r.h, 0.0, 1.0);
+    } else {
+      m_cp.h = std::clamp((m_py - c.r.y) / c.r.h, 0.0, 1.0) * 359.99;
+    }
+    applyPickedColor(false);  // remembered among the recent ones on release
+    return;
+  }
   if (c.type == UiControl::PaintSize) {
     const double t = std::clamp((x - c.r.x) / c.r.w, 0.0, 1.0);
     if (m_selectTool == 1) m_wandTolerance = static_cast<float>(std::max(0.02, t));
@@ -1857,7 +2086,7 @@ void App::drawUi(EditSurface& e) {
   const bool es = spanishUi();
   const Color plate{0.075F, 0.075F, 0.085F, 0.94F}, raised{1, 1, 1, 0.06F}, line{1, 1, 1, 0.09F};
   const Color ink{0.96F, 0.95F, 0.93F, 1}, dim{0.96F, 0.95F, 0.93F, 0.55F};
-  const Color accent = m_selected && m_selected->impl ? m_selected->impl->accent() : m_noctalia.state().color("primary");
+  const Color accent = readableAccent(m_selected && m_selected->impl ? m_selected->impl->accent() : m_noctalia.state().color("primary"));
   const Color onAccent{0.06F, 0.06F, 0.07F, 1};
   Canvas& cv = m_editCanvas;
   cv.begin(W, H, e.scale, &m_text);
@@ -1908,7 +2137,7 @@ void App::drawUi(EditSurface& e) {
     Widget& ww = *wp;
     if (ww.output != e.output || !ww.impl || !ww.surface || ww.impl->fullscreen() || !warped(ww.cfg)) continue;
     const bool sel = &ww == m_selected, hot = &ww == m_pointerWidget;
-    const Color wa = ww.impl->accent();
+    const Color wa = readableAccent(ww.impl->accent());
     double qx[4], qy[4];
     widgetCorners(ww.cfg, qx, qy);
     const float lw = sel ? 2.2F : (hot ? 1.8F : 1.2F);
@@ -2044,7 +2273,7 @@ void App::drawUi(EditSurface& e) {
         for (auto& ww : m_widgets)
           if (ww->cfg.id == c.value) cw = ww.get();
         const bool sel = cw && cw == m_selected;
-        const Color ca = cw && cw->impl ? cw->impl->accent() : accent;
+        const Color ca = cw && cw->impl ? readableAccent(cw->impl->accent()) : accent;
         cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, c.r.h / 2, sel ? withAlphaC(ca, 0.25F) : (hot ? raised : Color{0, 0, 0, 0}),
                      1, sel ? withAlphaC(ca, 0.7F) : line);
         icon(cv, cw ? chipIcon(cw->cfg.type) : "bars", c.r.x + 17, cy, sel ? ca : dim);
@@ -2064,8 +2293,8 @@ void App::drawUi(EditSurface& e) {
   if (w && w->impl && panel) {
     const Rect P = panel->r;
     plateAt(P, 16);
-    cv.roundRect(P.x + 14, P.y + 16, 22, 22, 7, withAlphaC(w->impl->accent(), 0.22F));
-    icon(cv, chipIcon(w->cfg.type), P.x + 25, P.y + 27, w->impl->accent());
+    cv.roundRect(P.x + 14, P.y + 16, 22, 22, 7, withAlphaC(accent, 0.22F));
+    icon(cv, chipIcon(w->cfg.type), P.x + 25, P.y + 27, accent);
     cv.text(typeName(w->cfg.type, es), head, P.x + 44, P.y + 13, ink);
     cv.text(w->cfg.id, mono, P.x + 44, P.y + 32, dim);
     if (!m_collapsed.count("inspector")) {
@@ -2189,7 +2418,8 @@ void App::drawUi(EditSurface& e) {
                 }
           } else {
             const auto& sws = p.options.empty() ? colorSwatches() : p.options;
-            const float size = 20, gap = (kPanelW - 28 - sws.size() * size) / (sws.size() - 1);
+            const size_t slots = sws.size() + 1;
+            const float size = 20, gap = (kPanelW - 28 - slots * size) / (slots - 1);
             bool listed = false;
             for (size_t k = 0; k < sws.size(); ++k) {
               const float sx = P.x + 14 + k * (size + gap), sy = y + 26;
@@ -2201,6 +2431,20 @@ void App::drawUi(EditSurface& e) {
                                : sws[k] == "ink"  ? m_noctalia.state().color(w->cfg.options["ink"].value_or(std::string("on_surface")))
                                                   : m_noctalia.state().color(sws[k]);
               cv.circle(sx + size / 2, sy + size / 2, size / 2, sc, 1, line);
+            }
+            // the picker: your own colour when it is one, else a "+"
+            {
+              const float mx = P.x + 14 + sws.size() * (size + gap) + size / 2, my = y + 26 + size / 2;
+              const bool own = !listed && !v.empty() && v[0] == '#';
+              if (m_colorPickFor == p.key) cv.circle(mx, my, size / 2 + 3, Color{0, 0, 0, 0}, 1.8F, accent);
+              else if (own) cv.circle(mx, my, size / 2 + 3, Color{0, 0, 0, 0}, 1.8F, ink);
+              if (own) {
+                cv.circle(mx, my, size / 2, m_noctalia.state().color(v), 1, line);
+              } else {
+                cv.circle(mx, my, size / 2, Color{0, 0, 0, 0}, 1.4F, dim);
+                cv.segment(mx - 5, my, mx + 5, my, 1.6F, ink);
+                cv.segment(mx, my - 5, mx, my + 5, 1.6F, ink);
+              }
             }
             if (!listed) cv.text(v, mono, cx + cw - 70, y + 6, ink);
           }
@@ -2510,6 +2754,123 @@ void App::drawUi(EditSurface& e) {
     }
   }
 
+  // ── colour picker ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "colors") continue;
+    const Rect P = c.r;
+    plateAt(P, 16);
+    cv.text(es ? "Color" : "Colour", head, P.x + 16, P.y + 14, ink);
+    cv.text(es ? "Del fondo" : "Wallpaper", label, P.x + 16, P.y + 268, dim);
+    cv.text(es ? "Recientes" : "Recent", label, P.x + 16, P.y + 302, dim);
+    const Color faint = withAlphaC(dim, 0.8F);
+    if (!m_wallSample)
+      cv.text(m_wallSampleBusy ? (es ? "Leyendo el fondo…" : "Reading the wallpaper…") : (es ? "Sin imagen de fondo" : "No wallpaper picture"),
+              label, P.x + 100, P.y + 268, faint);
+    if (m_recentColors.empty()) cv.text(es ? "Aún ninguno" : "None yet", label, P.x + 100, P.y + 302, faint);
+  }
+  for (const UiControl& c : m_ui) {
+    const bool hot = hovered(c);
+    const Color cur = fromHsv(m_cp);
+    switch (c.type) {
+      case UiControl::ColorClose:
+        if (hot) cv.circle(c.r.x + 14, c.r.y + 14, 14, withAlphaC(ink, 0.12F));
+        cv.segment(c.r.x + 9, c.r.y + 9, c.r.x + 19, c.r.y + 19, 1.8F, ink);
+        cv.segment(c.r.x + 19, c.r.y + 9, c.r.x + 9, c.r.y + 19, 1.8F, ink);
+        break;
+      case UiControl::ColorSV: {
+        // saturation across, brightness down, for the current hue
+        constexpr int tw = 74, th = 50;
+        if (!m_svTex || std::abs(m_svTexHue - m_cp.h) > 0.01) {
+          std::vector<std::uint8_t> px(tw * th * 4);
+          for (int yy = 0; yy < th; ++yy)
+            for (int xx = 0; xx < tw; ++xx) {
+              const Color k = fromHsv({m_cp.h, xx / (tw - 1.0), 1 - yy / (th - 1.0)});
+              std::uint8_t* o = &px[(static_cast<size_t>(yy) * tw + xx) * 4];
+              o[0] = static_cast<std::uint8_t>(std::lround(k.r * 255));
+              o[1] = static_cast<std::uint8_t>(std::lround(k.g * 255));
+              o[2] = static_cast<std::uint8_t>(std::lround(k.b * 255));
+              o[3] = 255;
+            }
+          if (!m_svTex) {
+            glGenTextures(1, &m_svTex);
+            glBindTexture(GL_TEXTURE_2D, m_svTex);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+          }
+          glBindTexture(GL_TEXTURE_2D, m_svTex);
+          glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+          m_svTexHue = m_cp.h;
+        }
+        cv.image(m_svTex, tw, th, c.r.x, c.r.y, c.r.w, c.r.h, 8);
+        const float mx = c.r.x + static_cast<float>(m_cp.s) * c.r.w, my = c.r.y + static_cast<float>(1 - m_cp.v) * c.r.h;
+        cv.circle(mx, my, 7, cur, 2.2F, m_cp.v > 0.6 && m_cp.s < 0.5 ? Color{0, 0, 0, 0.85F} : Color{1, 1, 1, 0.95F});
+        break;
+      }
+      case UiControl::ColorHue: {
+        constexpr int tw = 11, th = 75;  // the bar's own proportions (the image is drawn cover-fitted)
+        if (!m_hueTex) {
+          std::vector<std::uint8_t> px(tw * th * 4);
+          for (int yy = 0; yy < th; ++yy) {
+            const Color k = fromHsv({yy * 360.0 / (th - 1), 1, 1});
+            for (int xx = 0; xx < tw; ++xx) {
+              std::uint8_t* o = &px[(static_cast<size_t>(yy) * tw + xx) * 4];
+              o[0] = static_cast<std::uint8_t>(std::lround(k.r * 255));
+              o[1] = static_cast<std::uint8_t>(std::lround(k.g * 255));
+              o[2] = static_cast<std::uint8_t>(std::lround(k.b * 255));
+              o[3] = 255;
+            }
+          }
+          glGenTextures(1, &m_hueTex);
+          glBindTexture(GL_TEXTURE_2D, m_hueTex);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+          glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+        }
+        const float bx = c.r.x + 9, bw = 22;
+        cv.image(m_hueTex, tw, th, bx, c.r.y, bw, c.r.h, 8);
+        const float my = c.r.y + static_cast<float>(m_cp.h / 360) * c.r.h;
+        cv.roundRect(bx - 3, my - 4, bw + 6, 8, 4, fromHsv({m_cp.h, 1, 1}), 2, ink);
+        break;
+      }
+      case UiControl::ColorHex: {
+        cv.circle(c.r.x - 24, c.r.y + c.r.h / 2, 14, cur, 1.5F, line);
+        cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, Color{0, 0, 0, 0.3F}, 1.4F, m_cpTyping ? accent : (hot ? withAlphaC(ink, 0.3F) : line));
+        const std::string t = m_cpTyping ? "#" + m_cpHex : toHex(cur);
+        auto [tw2, th2] = measure(t, mono);
+        cv.text(t, mono, c.r.x + 12, c.r.y + (c.r.h - th2) / 2, ink);
+        if (m_cpTyping) cv.segment(c.r.x + 14 + tw2, c.r.y + 8, c.r.x + 14 + tw2, c.r.y + c.r.h - 8, 1.5F, accent, false);
+        break;
+      }
+      case UiControl::ColorDrop: {
+        cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, m_eyedrop ? withAlphaC(accent, 0.35F) : (hot ? withAlphaC(ink, 0.12F) : raised), 1,
+                     m_eyedrop ? accent : line);
+        // a crosshair, then the word
+        const float ix = c.r.x + 18, iy = c.r.y + c.r.h / 2;
+        cv.circle(ix, iy, 5.5F, Color{0, 0, 0, 0}, 1.5F, ink);
+        cv.segment(ix - 9, iy, ix - 6, iy, 1.5F, ink);
+        cv.segment(ix + 6, iy, ix + 9, iy, 1.5F, ink);
+        cv.segment(ix, iy - 9, ix, iy - 6, 1.5F, ink);
+        cv.segment(ix, iy + 6, ix, iy + 9, 1.5F, ink);
+        fitText(es ? "Cuentagotas" : "Eyedropper", label, c.r.x + 32, c.r.y + 7, c.r.w - 38, ink);
+        break;
+      }
+      case UiControl::ColorPreset: {
+        const float mx = c.r.x + c.r.w / 2, my = c.r.y + c.r.h / 2;
+        if (c.value == toHex(cur)) cv.circle(mx, my, c.r.w / 2 + 3, Color{0, 0, 0, 0}, 1.8F, ink);
+        else if (hot) cv.circle(mx, my, c.r.w / 2 + 3, withAlphaC(ink, 0.15F));
+        cv.circle(mx, my, c.r.w / 2, Color::fromHex(c.value), 1, line);
+        break;
+      }
+      default: break;
+    }
+  }
+
   // ── shortcuts card ──
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::Panel || c.value != "help") continue;
@@ -2591,6 +2952,48 @@ void App::drawUi(EditSurface& e) {
     if (inPanel || (!m_galleryOpen && !m_helpOpen && !m_savesOpen)) {
       cv.roundRect(tx, ty, tw + 20, th + 12, 8, Color{0.02F, 0.02F, 0.025F, 0.94F});
       cv.text(t, label, tx + 10, ty + 6, ink);
+    }
+  }
+  // ── the eyedropper's loupe: the wallpaper's pixels around the pointer ──
+  if (m_eyedrop && m_pointerEdit == &e && uiHit(m_px, m_py) < 0) {
+    Color under;
+    double u = 0, v = 0;
+    if (eyedropAt(e.output, m_px, m_py, under, &u, &v)) {
+      constexpr int n = 9;
+      const WallpaperSample& s = *m_wallSample;
+      const int cx0 = std::clamp(static_cast<int>(u * s.w), 0, s.w - 1), cy0 = std::clamp(static_cast<int>(v * s.h), 0, s.h - 1);
+      std::vector<std::uint8_t> patch(n * n * 4);
+      for (int dy = 0; dy < n; ++dy)
+        for (int dx = 0; dx < n; ++dx) {
+          const int sx = std::clamp(cx0 + dx - n / 2, 0, s.w - 1), sy = std::clamp(cy0 + dy - n / 2, 0, s.h - 1);
+          std::copy_n(&s.rgba[(static_cast<size_t>(sy) * s.w + sx) * 4], 4, &patch[(static_cast<size_t>(dy) * n + dx) * 4]);
+          patch[(static_cast<size_t>(dy) * n + dx) * 4 + 3] = 255;
+        }
+      if (!m_loupeTex) {
+        glGenTextures(1, &m_loupeTex);
+        glBindTexture(GL_TEXTURE_2D, m_loupeTex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      }
+      glBindTexture(GL_TEXTURE_2D, m_loupeTex);
+      glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, n, n, 0, GL_RGBA, GL_UNSIGNED_BYTE, patch.data());
+      const float L = 108, cell = L / n;
+      float lx = static_cast<float>(m_px) + 24, ly = static_cast<float>(m_py) + 24;
+      if (lx + L > W - 8) lx = static_cast<float>(m_px) - 24 - L;
+      if (ly + L + 34 > H - 8) ly = static_cast<float>(m_py) - 24 - L - 34;
+      cv.image(m_loupeTex, n, n, lx, ly, L, L, 14);
+      cv.roundRect(lx, ly, L, L, 14, Color{0, 0, 0, 0}, 2, ink);
+      const Hsv hu = toHsv(under);
+      cv.roundRect(lx + cell * (n / 2), ly + cell * (n / 2), cell, cell, 2, Color{0, 0, 0, 0}, 1.6F,
+                   hu.v > 0.6 && hu.s < 0.5 ? Color{0, 0, 0, 0.9F} : Color{1, 1, 1, 0.95F});
+      const std::string hex = toHex(under);
+      auto [hw, hh] = measure(hex, mono);
+      cv.roundRect(lx, ly + L + 6, L, 26, 9, plate);
+      cv.circle(lx + 15, ly + L + 19, 7, under, 1, line);
+      cv.text(hex, mono, lx + 28 + (L - 34 - hw) / 2, ly + L + 19 - hh / 2, ink);
     }
   }
   (void)H;

@@ -357,6 +357,7 @@ Widget* App::target() {
 void App::cycleSelection(int step) {
   m_pinCorner = -1;
   m_fontPickFor.clear();
+  closeColorPick();
   m_elExpanded.clear();
   std::vector<Widget*> list;
   for (auto& w : m_widgets)
@@ -408,6 +409,7 @@ bool App::modActive(const char* name) const {
 // Returns true for keys that auto-repeat while held.
 bool App::keyAction(uint32_t key) {
   if (!m_renaming.empty()) return textKey(key);
+  if (!m_colorPickFor.empty()) return colorKey(key);
   if (!m_fontPickFor.empty()) return fontKey(key);
   if (m_paintMode) {
     const bool ctrlHeld = modActive(XKB_MOD_NAME_CTRL);
@@ -687,6 +689,13 @@ void App::onPointerMotion(double x, double y) {
     markEditDirty();  // the brush outline / lasso band follows the pointer
     return;
   }
+  if (m_eyedrop && m_drag == Drag::None) {  // the eyedropper's loupe follows the pointer
+    markEditDirty();
+    if (uiHit(x, y) < 0) {
+      setCursor("crosshair");
+      return;
+    }
+  }
   if (m_drag == Drag::None) {
     if (m_selected && m_selected->output == m_pointerEdit->output && inRotateHandle(*m_selected, x, y)) {
       if (m_pointerWidget != m_selected) {
@@ -805,6 +814,12 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
                   m_py, button);
     return;
   }
+  if (button == BTN_RIGHT && state == WL_POINTER_BUTTON_STATE_PRESSED && m_eyedrop) {
+    m_eyedrop = false;  // the eyedropper first
+    setCursor("default");
+    markEditDirty();
+    return;
+  }
   if (button == BTN_RIGHT && state == WL_POINTER_BUTTON_STATE_PRESSED) {
     if (m_paintMode) setPaintMode(false);  // leaves depth mode first
     else setEditMode(false);
@@ -818,6 +833,11 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   if (button != BTN_LEFT) return;
   if (m_drag == Drag::Slider) {
     if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      // a colour dragged in the picker: one entry in the recent colours
+      if (m_sliderControl >= 0 && m_sliderControl < static_cast<int>(m_ui.size())) {
+        const auto t = m_ui[static_cast<size_t>(m_sliderControl)].type;
+        if (t == UiControl::ColorSV || t == UiControl::ColorHue) applyPickedColor(true);
+      }
       m_drag = Drag::None;
       m_sliderControl = -1;
       markEditDirty();
@@ -830,6 +850,18 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
       setCursor("grab");
       markEditDirty();
     }
+    return;
+  }
+  if (m_eyedrop && state == WL_POINTER_BUTTON_STATE_PRESSED && uiHit(m_px, m_py) < 0) {
+    // the eyedropper: the wallpaper's colour under the click
+    Color c;
+    if (eyedropAt(m_pointerEdit->output, m_px, m_py, c)) {
+      m_cp = toHsv(c);
+      applyPickedColor(true);
+    }
+    m_eyedrop = false;
+    setCursor("default");
+    markEditDirty();
     return;
   }
   if (state == WL_POINTER_BUTTON_STATE_PRESSED && uiPress(uiHit(m_px, m_py), m_px)) {
@@ -864,6 +896,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_helpOpen = false;
     m_savesOpen = false;
     m_fontPickFor.clear();
+    if (w != m_selected) closeColorPick();
     m_confirmDelete.clear();
     commitRename();
     if (w != m_selected) {
@@ -1047,7 +1080,7 @@ void App::drawEditorText(EditSurface& e) {
     float ly = static_cast<float>(vb.y) - 20;
     if (sel && !handPlaced(w->cfg)) ly -= OverlayPass::kHandleGap + OverlayPass::kHandleR;  // clear of the knob
     if (ly < 106) ly = static_cast<float>(vb.y) + 10;  // keep clear of the toolbar
-    put(label, ls, lx, ly, sel ? w->impl->accent() : ink);
+    put(label, ls, lx, ly, sel ? readableAccent(w->impl->accent()) : ink);
   }
   drawUi(e);
   m_text.collect(20);

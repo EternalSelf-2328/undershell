@@ -216,6 +216,7 @@ App::~App() {
   if (m_egl != EGL_NO_DISPLAY) {
     eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
     m_depth.releaseGl();
+    releaseColorGl();
     eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     if (m_eglContext != EGL_NO_CONTEXT) eglDestroyContext(m_egl, m_eglContext);
     eglTerminate(m_egl);
@@ -1164,6 +1165,7 @@ void App::setEditMode(bool on) {
   m_helpOpen = false;
   m_savesOpen = false;
   m_fontPickFor.clear();
+  closeColorPick();
   m_confirmDelete.clear();
   if (!on) {
     commitRename();
@@ -1529,6 +1531,25 @@ std::string App::handleCommand(const std::string& cmd) {
     if (!m_collapsed.erase(panel)) m_collapsed.insert(panel);
     markEditDirty();
     return panel + (m_collapsed.count(panel) ? " folded" : " unfolded");
+  }
+  if (cmd.starts_with("card color ")) {  // the colour picker for an option of the selected widget
+    if (!m_edit) setEditMode(true);
+    if (!m_selected) return "error: nothing selected";
+    for (const auto& p : m_inspSchema)
+      if (p.kind == PropSpec::Color && p.key == cmd.substr(11)) {
+        openColorPick(*m_selected, p);
+        return m_colorPickFor.empty() ? "colour picker closed" : "colour picker open";
+      }
+    return "error: no colour option '" + cmd.substr(11) + "'";
+  }
+  if (cmd.starts_with("card pick ")) {  // the eyedropper at an output point of the selected widget's monitor
+    double x = 0, y = 0;
+    Color c;
+    if (!m_selected || m_colorPickFor.empty() || std::sscanf(cmd.c_str() + 10, "%lf %lf", &x, &y) != 2) return "error: open the picker first";
+    if (!eyedropAt(m_selected->output, x, y, c)) return "error: no wallpaper picture yet";
+    m_cp = toHsv(c);
+    applyPickedColor(true);
+    return "picked " + toHex(c);
   }
   if (cmd == "card help" || cmd == "card saves" || cmd == "card paint") {  // the editor's cards, from a script
     // ("saves" alone is the saved-layout list the bar plugin reads)

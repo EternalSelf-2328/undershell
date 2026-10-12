@@ -3,6 +3,7 @@
 
 #include "anchor.hpp"
 #include "audio.hpp"
+#include "colorpick.hpp"
 #include "config.hpp"
 #include "depth.hpp"
 #include "depthgen.hpp"
@@ -268,7 +269,8 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse, Action, FileRemove } type = Panel;
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse, Action, FileRemove,
+                ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -448,6 +450,27 @@ private:
   std::vector<PropSpec> m_inspSchema;     // the inspector's rows (generated for clock structures)
   std::string m_elExpanded;               // clock element whose options are open
   std::string m_fontPickFor, m_fontFilter;  // the font picker: key being set, search text
+  // the colour picker (colorui.cpp): the key being set, its colour as HSV
+  // (the hue survives greys), the hex being typed, the eyedropper
+  std::string m_colorPickFor;
+  Hsv m_cp;
+  std::string m_cpHex;
+  bool m_cpTyping = false, m_eyedrop = false;
+  std::shared_ptr<WallpaperSample> m_wallSample;  // the wallpaper, for the eyedropper and its colours
+  std::string m_wallSampleWanted;
+  bool m_wallSampleBusy = false;
+  std::vector<std::string> m_recentColors;
+  bool m_recentLoaded = false;
+  GLuint m_svTex = 0, m_hueTex = 0, m_loupeTex = 0;
+  double m_svTexHue = -1;
+  void openColorPick(Widget& w, const PropSpec& p);
+  void closeColorPick();
+  void applyPickedColor(bool remember);
+  bool colorKey(uint32_t key);
+  void requestWallSample();
+  // the wallpaper's colour under an output point (the eyedropper)
+  bool eyedropAt(const Output* o, double x, double y, Color& out, double* u = nullptr, double* v = nullptr) const;
+  void releaseColorGl();
   FilePicker m_picker;
   std::string m_pickNote;                 // why the last pick added nothing
   int m_fontScroll = 0;
