@@ -13,6 +13,7 @@
 #include "shells.hpp"
 
 #include <map>
+#include <optional>
 #include <string>
 
 namespace undershell {
@@ -23,9 +24,10 @@ struct NoctaliaState {
   std::map<std::string, std::string> wallpaperByOutput;
   std::string defaultWallpaper;
   int fillMode = 1;  // center crop fit stretch repeat span (Noctalia's enum order)
-  bool depthPluginEnabled = false;
-  double depthThreshold = 0.30;
-  double depthFeather = 0.08;
+  // the wallpaper_depth plugin's threshold and feather (0-100), if it has
+  // settings: undershell's [general] depth_threshold / depth_feather start
+  // from them
+  std::optional<double> pluginThreshold, pluginFeather;
   std::string themeSource, themeScheme, themeMode, builtin, communityPalette;
   std::map<std::string, Color> palette;
 

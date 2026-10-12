@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Depth without Noctalia's wallpaper_depth plugin: undershell's own copy of
-// the same model (Depth Anything V2 Small, fetched only when asked, checked by
-// size and sha256; the plugin's copy is used when it is there) and the helper
-// that runs it (undershell-depth, a process of its own) to write the depth map
-// (.npy) of each wallpaper into ~/.cache/undershell/depth. The maps are then
-// refined and cut exactly like the plugin's (depthfield.hpp).
+// undershell's depth: the model (Depth Anything V2 Small, fetched only when
+// asked, checked by size and sha256; a copy Noctalia's wallpaper_depth plugin
+// already downloaded is used when it is there) and the helper that runs it
+// (undershell-depth, a process of its own) to write the depth map (.npy) of
+// each wallpaper into ~/.cache/undershell/depth. The maps are then refined and
+// cut at each widget's plane (depthfield.hpp). Wallpapers with a layout of
+// their own get their map ahead of time, in the background, and keep it.
 #pragma once
 
 #include <atomic>
@@ -46,12 +47,20 @@ public:
   [[nodiscard]] const std::string& error() const { return m_error; }
 
   // The map of each of these wallpapers (path, sha256), computed one at a
-  // time; ones already cached or that failed before are skipped.
-  void want(const std::vector<std::pair<std::string, std::string>>& walls);
+  // time; ones already cached or that failed before are skipped. Wallpapers
+  // on screen go first; `background` ones (with a layout of their own, shown
+  // some other time) after them, with the helper at the lowest priority.
+  void want(const std::vector<std::pair<std::string, std::string>>& walls, bool background = false);
   [[nodiscard]] bool computing() const { return !m_running.empty(); }
   [[nodiscard]] const std::string& computingWallpaper() const { return m_running; }
-  // undershell's own map for a wallpaper, or ""
+  [[nodiscard]] size_t queued() const { return m_queue.size(); }
+  // undershell's map for a wallpaper, or ""
   static std::string findNpy(const std::string& sha);
+  // maps whose sha is in `keep` (wallpapers with a layout) stay; of the rest,
+  // the newest `others`
+  static void prune(const std::set<std::string>& keep, size_t others = 16);
+  // what prune() keeps: the shas of the wallpapers with a layout
+  void setKeep(std::set<std::string> keep) { m_keep = std::move(keep); }
 
 private:
   void next();
@@ -60,8 +69,13 @@ private:
   bool m_downloading = false;
   std::atomic<double> m_progress{0};
   std::string m_error;
-  std::vector<std::pair<std::string, std::string>> m_queue;
+  struct Want {
+    std::string wall, sha;
+    bool background = false;
+  };
+  std::vector<Want> m_queue;
   std::string m_running;            // the wallpaper being computed
+  std::set<std::string> m_keep;
   std::set<std::string> m_failed;   // shas the helper could not do (not retried until restart or a new model)
 };
 

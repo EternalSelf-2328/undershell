@@ -15,6 +15,7 @@
 #include <thread>
 #include <cstring>
 #include <filesystem>
+#include <set>
 #include <fstream>
 
 using namespace undershell;
@@ -178,14 +179,12 @@ int main() {
   }
 
   {
-    // wallpaper_depth may write a wallpaper's depth map while undershell
-    // switches to it: the field must load once the map is there, and again
-    // when the same file is rewritten (it used to be keyed by name only)
-    const std::string state = dir + "/state";
-    setenv("XDG_STATE_HOME", state.c_str(), 1);
-    const std::filesystem::path cache = std::filesystem::path(DepthMasks::maskDir()).parent_path();
-    std::filesystem::create_directories(cache / "masks");
-    std::filesystem::create_directories(cache / "depth");
+    // a wallpaper's depth map may land after undershell switched to it: the
+    // field must load once the map is there, and again when the same file is
+    // rewritten (it used to be keyed by name only)
+    setenv("XDG_CACHE_HOME", (dir + "/cache-maps").c_str(), 1);
+    const std::filesystem::path cache = DepthGen::cacheDir();
+    std::filesystem::create_directories(cache);
     auto paintWall = [](const std::string& path, double r) {
       cairo_surface_t* img = cairo_image_surface_create(CAIRO_FORMAT_RGB24, 64, 36);
       cairo_t* cr = cairo_create(img);
@@ -202,8 +201,8 @@ int main() {
     DepthMasks masks;
     int ready = 0;
     masks.setJobs(&jobs, [&] { ++ready; });
+    masks.setEnabled(true);
     NoctaliaState st;
-    st.depthPluginEnabled = true;
     st.wallpaperByOutput["T-1"] = wall;
     auto settle = [&](int want, int ms) {  // run the refinement until `want` fields landed (or time is up)
       for (int t = 0; t < ms && ready < want; t += 5) {
@@ -222,12 +221,12 @@ int main() {
       data += hd;
       std::vector<float> v(static_cast<size_t>(w) * h, 0.5F);
       data.append(reinterpret_cast<const char*>(v.data()), v.size() * sizeof(float));
-      writeFileAtomic((cache / "depth" / (masks.sha256Of(forWall) + "-m-d2-i518.npy")).string(), data);
+      writeFileAtomic((cache / (masks.sha256Of(forWall) + "-m-d2-i518.npy")).string(), data);
     };
     masks.update(st, {"T-1"});  // no map yet
     settle(1, 300);
     CHECK(ready == 0);
-    writeMap(16, 9, wall);  // the plugin finishes it
+    writeMap(16, 9, wall);  // the helper finishes it
     masks.update(st, {"T-1"});
     settle(1, 5000);
     CHECK(ready == 1);
@@ -316,11 +315,11 @@ int main() {
     const std::string made = DepthGen::findNpy(sg);
     CHECK(!made.empty() && fs::path(made).filename().string().starts_with(sg + "-afb6a5c28f3b6bf1-d2-i518"));
     CHECK(DepthGen::findNpy(sb).empty());
-    CHECK(findDepthNpy(sg) == made);  // the field finds undershell's map like the plugin's
+    CHECK(findDepthNpy(sg) == made);  // the field finds undershell's map
     gen.want({{good, sg}, {bad, sb}});  // one done, one that failed: neither again
     CHECK(!gen.computing());
 
-    // the masks take the wallpaper only once told the model is in use
+    // the masks take the wallpaper only once told depth is on
     int ready = 0;
     masks.setJobs(&jobs, [&] { ++ready; });
     NoctaliaState st;
@@ -330,11 +329,38 @@ int main() {
     masks.update(st, {"T-1"});
     for (int t = 0; t < 300; t += 5) jobs.dispatch(), std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(ready == 0);
-    masks.setNative(true);
+    masks.setEnabled(true);
     masks.update(st, {"T-1"});
     for (int t = 0; t < 5000 && ready < 1; t += 5) jobs.dispatch(), std::this_thread::sleep_for(std::chrono::milliseconds(5));
     CHECK(ready == 1);
-    CHECK(!masks.missing());  // that is the plugin's "mask not made yet", not ours
+
+    // wallpapers with a layout are computed ahead of time, behind the ones on
+    // screen; one queued in the background jumps ahead when it is shown
+    const std::string l1 = dir + "/l1.png", l2 = dir + "/l2.png", l3 = dir + "/l3.png", now = dir + "/now.png";
+    for (const auto& f : {l1, l2, l3, now}) writeFileAtomic(f, f);
+    const std::string s1 = masks.sha256Of(l1), s2 = masks.sha256Of(l2), s3 = masks.sha256Of(l3), sn = masks.sha256Of(now);
+    const int before = changed;
+    gen.want({{l1, s1}, {l2, s2}, {l3, s3}}, true);
+    CHECK(gen.computingWallpaper() == l1 && gen.queued() == 2);
+    gen.want({{now, sn}});      // on screen: next, ahead of l2 and l3
+    gen.want({{l3, s3}});       // shown now too: behind `now`, ahead of l2
+    gen.want({{l2, s2}}, true);  // already waiting: not twice
+    CHECK(gen.queued() == 3);
+    std::vector<std::string> order;
+    for (int t = 0; t < 10000 && changed < before + 4; t += 5) {
+      if (gen.computing() && (order.empty() || order.back() != gen.computingWallpaper())) order.push_back(gen.computingWallpaper());
+      jobs.dispatch();
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    CHECK((order == std::vector<std::string>{l1, now, l3, l2}));
+
+    // the cache keeps every map with a layout, and only the newest others
+    const std::set<std::string> keep = {s1, s2};
+    DepthGen::prune(keep, 1);
+    CHECK(!DepthGen::findNpy(s1).empty() && !DepthGen::findNpy(s2).empty());
+    int others = 0;
+    for (const auto& sha : {s3, sn, sg, wsha}) others += !DepthGen::findNpy(sha).empty();
+    CHECK(others == 1);
     unsetenv("UNDERSHELL_DEPTH_HELPER");
     unsetenv("FAKE_NPY");
   }

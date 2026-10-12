@@ -53,24 +53,7 @@ bool loadNpyF32(const std::string& path, DepthField& out) {
   return static_cast<bool>(f.read(reinterpret_cast<char*>(out.v.data()), static_cast<std::streamsize>(out.v.size() * 4)));
 }
 
-std::string findDepthNpy(const std::string& sha) {
-  if (sha.empty()) return {};
-  const fs::path dir = fs::path(DepthMasks::maskDir()).parent_path() / "depth";
-  std::error_code ec;
-  std::string best;
-  fs::file_time_type bestTime{};
-  for (auto& e : fs::directory_iterator(dir, ec)) {
-    const std::string name = e.path().filename().string();
-    if (!name.starts_with(sha + "-") || !name.ends_with(".npy")) continue;
-    auto t = e.last_write_time(ec);
-    if (best.empty() || t > bestTime) {
-      best = e.path().string();
-      bestTime = t;
-    }
-  }
-  // undershell's own model's maps (depthgen.hpp), when the plugin has none
-  return best.empty() ? DepthGen::findNpy(sha) : best;
-}
+std::string findDepthNpy(const std::string& sha) { return DepthGen::findNpy(sha); }
 
 std::vector<float> boxMean(const std::vector<float>& a, int w, int h, int r) {
   // separable running sums with clamped (edge) indices

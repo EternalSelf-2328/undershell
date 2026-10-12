@@ -1088,8 +1088,8 @@ void App::layoutUi(const EditSurface& e) {
         m_inspSchema.insert(m_inspSchema.begin() + static_cast<long>(at), note);
       }
     }
-    // no plugin here: under "depth", fetch undershell's own model, or how it goes
-    if (w->cfg.depth && !m_motion && !m_noctalia.state().depthPluginEnabled && m_config.depthModel &&
+    // under "depth": fetch the model, or how it goes
+    if (w->cfg.depth && !m_motion && m_config.depthModel &&
         (m_depthGen.needsModel() || m_depthGen.downloading() || m_depthGen.computing()))
       for (size_t i = 0; i < m_inspSchema.size(); ++i)
         if (m_inspSchema[i].key == "depth") {
@@ -2142,7 +2142,7 @@ void App::drawUi(EditSurface& e) {
             cv.roundRect(cx, y + 13, sw, 4, 2, withAlphaC(ink, 0.14F));
             cv.roundRect(cx, y + 13, static_cast<float>(sw * t), 4, 2, accent);
             cv.circle(cx + static_cast<float>(sw * t), y + 15, 7, ink, 2, accent);
-            // a depth plane of 0 means "the plugin's mask"
+            // a depth plane of 0 means "[general] depth_threshold"
           const bool autoPlane = std::string_view(p.key) == "depth_level" && numberOf(w->cfg.options, p) == 0;
           cv.text(autoPlane ? std::string("auto") : v, mono, cx + sw + 10, y + 7, autoPlane ? dim : ink);
           } else if (p.kind == PropSpec::Action) {
@@ -2276,9 +2276,8 @@ void App::drawUi(EditSurface& e) {
     } else {
       fitText(es ? "Este fondo aún no tiene mapa de profundidad." : "No depth map for this wallpaper yet.", label, P.x + 14,
               P.y + 426, kPaintW - 28, Color{1, 0.62F, 0.57F, 1});
-      // where it comes from: Noctalia's plugin, or undershell's own model
-      const bool own = !m_noctalia.state().depthPluginEnabled && !DepthGen::helperPath().empty();
-      const char* how = !own                      ? (es ? "Genéralo en Wallpaper Depth." : "Generate it in Wallpaper Depth.")
+      const bool own = !DepthGen::helperPath().empty();
+      const char* how = !own                      ? (es ? "Esta versión no trae ONNX Runtime." : "This build has no ONNX Runtime.")
                         : m_depthGen.needsModel() ? (es ? "Descarga el modelo en el inspector." : "Download the model in the inspector.")
                         : m_depthGen.computing()  ? (es ? "Calculándolo…" : "Computing it…")
                                                   : (es ? "No se pudo calcular." : "It could not be computed.");

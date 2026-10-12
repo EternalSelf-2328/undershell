@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Noctalia's wallpaper_depth plugin writes a grayscale foreground mask per
-// wallpaper and hands it to Noctalia, which erases desktop-widget pixels under
-// the foreground (DestinationOut). undershell finds the same cached mask
-// (sha256 of the wallpaper + the plugin's threshold/feather) and applies it
-// with the same sampling maths, so its widgets pass behind the scenery too.
+// Each wallpaper's depth: undershell's map (depthgen.hpp) refined against the
+// image (depthfield.hpp) and uploaded as a texture; a widget is erased where
+// the wallpaper is nearer than its plane (DestinationOut), so it passes behind
+// the scenery.
 #pragma once
 
 #include "depthfield.hpp"
@@ -22,11 +21,7 @@ namespace undershell {
 
 struct DepthMask {
   std::string wallpaper;
-  std::string maskPath;
-  int width = 0, height = 0;
-  GLuint texture = 0;
-  std::vector<std::uint8_t> pixels;  // pending upload (R8)
-  // the refined depth field (depthfield.hpp), for widgets with their own plane
+  // the refined depth field (depthfield.hpp), cut at each widget's plane
   std::string fieldNpy;
   std::string fieldKey;  // npy + its mtime and size: a map rewritten in place is a new map
   int fieldW = 0, fieldH = 0;    // texture size
@@ -49,7 +44,6 @@ class Jobs;
 
 class DepthMasks {
 public:
-  static std::string maskDir();
   // depth fields are refined off-thread; `ready` runs (main thread) when one lands
   void setJobs(Jobs* jobs, std::function<void()> ready) {
     m_jobs = jobs;
@@ -66,24 +60,19 @@ public:
   // the wallpaper as a texture, for the zoomed brush view (needs GL)
   GLuint wallpaperTexture(DepthMask& m);
 
-  // depth from undershell's own model (no plugin): the maps alone, cut at
-  // each widget's plane
-  void setNative(bool on) { m_native = on; }
-  // Re-resolves which mask belongs to each output. Returns true on change.
+  // off: no wallpaper is followed (no model, a moving wallpaper, or
+  // [general] depth_model = false)
+  void setEnabled(bool on) { m_enabled = on; }
+  // Re-resolves which depth belongs to each output. Returns true on change.
   bool update(const NoctaliaState& st, const std::vector<std::string>& outputs);
-  // Uploads pending pixels (needs a current GL context) and returns the mask
-  // for an output, or nullptr when there is none.
+  // Uploads pending pixels (needs a current GL context) and returns the depth
+  // for an output, or nullptr while there is none.
   const DepthMask* get(const std::string& output);
   void releaseGl();
-  // true when the plugin is active but some output still has no mask
-  [[nodiscard]] bool missing() const { return m_missing; }
   // sha256 of a file, cached by mtime and size (also keys wallpaper profiles)
   std::string sha256Of(const std::string& path);
 
 private:
-  static std::string findMask(const std::string& sha, double threshold, double feather);
-  static bool loadPng(const std::string& path, DepthMask& out);
-
   // per output; outputs showing the same wallpaper share one (one refine,
   // one set of CPU copies and textures)
   std::map<std::string, std::shared_ptr<DepthMask>> m_masks;
@@ -94,8 +83,7 @@ private:
     std::string sha;
   };
   std::map<std::string, HashEntry> m_hashes;
-  bool m_missing = false;
-  bool m_native = false;
+  bool m_enabled = false;
   Jobs* m_jobs = nullptr;
   std::string m_editsDir;
   std::function<void()> m_fieldReady;

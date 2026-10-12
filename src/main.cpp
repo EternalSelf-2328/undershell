@@ -1,7 +1,6 @@
 // undershell: desktop widgets as a standalone Wayland client, independent of
-// any shell or dotfiles. It lives beside Noctalia
-// lives beside Noctalia (layer-shell bottom layer, Noctalia's palette and
-// wallpaper_depth masks).
+// any shell or dotfiles. It lives beside Noctalia (layer-shell bottom layer,
+// Noctalia's palette) and computes each wallpaper's depth itself.
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app.hpp"
 #include "docgen.hpp"

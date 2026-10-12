@@ -118,9 +118,9 @@ local function profileCard()
   if state.motion == true then
     depthLine = tr("panel.depth_motion")
   elseif depth.field == true then
-    depthLine = tr("panel.depth_field", { level = tostring(depth.plugin_threshold or 0) })
-  elseif depth.mask == true then
-    depthLine = tr("panel.depth_mask")
+    depthLine = tr("panel.depth_field", { level = tostring(depth.threshold or depth.plugin_threshold or 0) })
+  elseif depth.computing == true then
+    depthLine = tr("panel.depth_computing")
   else
     depthLine = tr("panel.depth_none")
   end

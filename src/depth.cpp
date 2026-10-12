@@ -4,7 +4,6 @@
 #include "depthfield.hpp"
 #include "jobs.hpp"
 
-#include <cairo.h>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -14,12 +13,6 @@
 namespace undershell {
 
 namespace fs = std::filesystem;
-
-std::string DepthMasks::maskDir() {
-  const char* xdg = std::getenv("XDG_STATE_HOME");
-  std::string base = xdg && *xdg ? xdg : expandHome("~/.local/state");
-  return base + "/noctalia/plugins/data/noctalia/wallpaper_depth/cache/masks";
-}
 
 std::string DepthMasks::sha256Of(const std::string& path) {
   struct stat sb{};
@@ -41,73 +34,13 @@ std::string DepthMasks::sha256Of(const std::string& path) {
   return e.sha;
 }
 
-// depth_helper.py: "{sha256}-{model}-d{v}-i{size}-v{maskv}-t{thr:.4f}-f{feather:.4f}.png"
-std::string DepthMasks::findMask(const std::string& sha, double threshold, double feather) {
-  std::error_code ec;
-  const std::string suffix = std::format("-t{:.4f}-f{:.4f}.png", threshold, feather);
-  std::string best;
-  fs::file_time_type bestTime{};
-  for (auto& ent : fs::directory_iterator(maskDir(), ec)) {
-    const std::string name = ent.path().filename().string();
-    if (name.size() <= sha.size() + suffix.size() || !name.starts_with(sha + "-") || !name.ends_with(suffix)) continue;
-    auto t = ent.last_write_time(ec);
-    if (best.empty() || t > bestTime) {
-      best = ent.path().string();
-      bestTime = t;
-    }
-  }
-  return best;
-}
-
-bool DepthMasks::loadPng(const std::string& path, DepthMask& out) {
-  cairo_surface_t* img = cairo_image_surface_create_from_png(path.c_str());
-  if (cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
-    cairo_surface_destroy(img);
-    return false;
-  }
-  cairo_surface_flush(img);
-  const int w = cairo_image_surface_get_width(img);
-  const int h = cairo_image_surface_get_height(img);
-  const int stride = cairo_image_surface_get_stride(img);
-  const auto fmt = cairo_image_surface_get_format(img);
-  const unsigned char* data = cairo_image_surface_get_data(img);
-  out.pixels.resize(static_cast<size_t>(w) * h);
-  for (int y = 0; y < h; ++y) {
-    const unsigned char* row = data + static_cast<size_t>(y) * stride;
-    for (int x = 0; x < w; ++x) {
-      std::uint8_t v;
-      if (fmt == CAIRO_FORMAT_A8) {
-        v = row[x];
-      } else {
-        // ARGB32 / RGB24, native endian: grayscale luminance lives in each channel
-        const std::uint32_t px = reinterpret_cast<const std::uint32_t*>(row)[x];
-        v = static_cast<std::uint8_t>((px >> 8) & 0xff);
-      }
-      out.pixels[static_cast<size_t>(y) * w + x] = v;
-    }
-  }
-  out.width = w;
-  out.height = h;
-  cairo_surface_destroy(img);
-  return true;
-}
-
 bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>& outputs) {
   bool changed = false;
-  m_missing = false;
   for (const auto& out : outputs) {
-    std::string wall = st.depthPluginEnabled || m_native ? st.wallpaperFor(out) : std::string{};
-    std::string mask, npy;
-    if (!wall.empty()) {
-      std::string sha = sha256Of(wall);
-      if (!sha.empty()) {
-        if (st.depthPluginEnabled) mask = findMask(sha, st.depthThreshold, st.depthFeather);
-        npy = findDepthNpy(sha);
-      }
-    }
-    if (st.depthPluginEnabled && !wall.empty() && mask.empty()) m_missing = true;
-    // wallpaper_depth may (re)write the map while the wallpaper changes: key it
-    // by time and size too, so the finished file is read again
+    const std::string wall = m_enabled ? st.wallpaperFor(out) : std::string{};
+    const std::string npy = wall.empty() ? std::string() : findDepthNpy(sha256Of(wall));
+    // a map rewritten in place (a new model) is a new map: key it by time and
+    // size too, so the finished file is read again
     std::string key;
     if (!npy.empty()) {
       std::error_code ec;
@@ -115,7 +48,7 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
       key = std::format("{}@{}:{}", npy, t, fs::file_size(npy, ec));
     }
     auto& slot = m_masks[out];
-    const auto same = [&](const DepthMask& d) { return d.wallpaper == wall && d.maskPath == mask && d.fieldKey == key; };
+    const auto same = [&](const DepthMask& d) { return d.wallpaper == wall && d.fieldKey == key; };
     if (!slot || !same(*slot)) {
       // another output with this very depth (the same wallpaper on both
       // monitors): share it rather than decode and refine it twice
@@ -169,7 +102,7 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
             auto found = m_masks.find(out);
             if (found == m_masks.end() || !found->second || found->second->fieldKey != key) return;  // superseded
             DepthMask* it = found->second.get();
-            if (!ok) {  // e.g. still being written: its close brings it back (inotify)
+            if (!ok) {  // a broken map or an unreadable wallpaper
               US_WARN("could not refine the depth map {}", fs::path(npy).filename().string());
               return;
             }
@@ -192,27 +125,10 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
         });
       }
     }
-    if (m.maskPath == mask && m.wallpaper == wall) continue;
+    if (m.wallpaper == wall) continue;
     changed = true;
     m.wallpaper = wall;
-    m.maskPath = mask;
-    m.pixels.clear();
-    m.width = m.height = 0;
-    if (!mask.empty()) {
-      if (loadPng(mask, m)) {
-        US_INFO("depth mask for {}: {} ({}x{})", out, fs::path(mask).filename().string().substr(0, 16), m.width, m.height);
-      } else {
-        US_WARN("could not read depth mask {}", mask);
-        m.maskPath.clear();
-      }
-    } else if (m_native) {
-      if (wall.empty()) US_INFO("no depth for {} (no wallpaper known)", out);
-    } else if (!st.depthPluginEnabled) {
-      US_INFO("no depth mask for {} (wallpaper_depth disabled)", out);
-    } else {
-      US_INFO("no depth mask yet for {} (wallpaper {}, sha {}, t{:.4f} f{:.4f})", out, fs::path(wall).filename().string(),
-              sha256Of(wall).substr(0, 12), st.depthThreshold, st.depthFeather);
-    }
+    if (!wall.empty() && npy.empty()) US_INFO("depth for {}: waiting for the map of {}", out, fs::path(wall).filename().string());
   }
   return changed;
 }
@@ -220,7 +136,6 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
 void DepthMasks::freeRetired() {
   for (auto& r : m_retired) {
     if (r.use_count() > 1) continue;  // taken back by an output
-    if (r->texture) glDeleteTextures(1, &r->texture);
     if (r->field) glDeleteTextures(1, &r->field);
     if (r->wallTexture) glDeleteTextures(1, &r->wallTexture);
   }
@@ -250,20 +165,7 @@ const DepthMask* DepthMasks::get(const std::string& output) {
     m.fieldPixels.clear();
     m.fieldPixels.shrink_to_fit();
   }
-  if (m.maskPath.empty() && !m.field) return nullptr;
-  if (!m.pixels.empty()) {
-    if (!m.texture) glGenTextures(1, &m.texture);
-    glBindTexture(GL_TEXTURE_2D, m.texture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, m.width, m.height, 0, GL_RED, GL_UNSIGNED_BYTE, m.pixels.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    m.pixels.clear();
-    m.pixels.shrink_to_fit();
-  }
-  return (m.texture || m.field) ? &m : nullptr;
+  return m.field ? &m : nullptr;
 }
 
 DepthMask* DepthMasks::paintable(const std::string& output) {
@@ -346,10 +248,9 @@ void DepthMasks::releaseGl() {
   freeRetired();
   for (auto& [k, m] : m_masks) {
     if (!m) continue;
-    if (m->texture) glDeleteTextures(1, &m->texture);  // a shared one is zeroed on its first visit
-    if (m->field) glDeleteTextures(1, &m->field);
+    if (m->field) glDeleteTextures(1, &m->field);  // a shared one is zeroed on its first visit
     if (m->wallTexture) glDeleteTextures(1, &m->wallTexture);
-    m->texture = m->field = m->wallTexture = 0;
+    m->field = m->wallTexture = 0;
   }
 }
 

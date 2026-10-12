@@ -54,7 +54,9 @@ std::string optionsMarkdown() {
   md += "| `language` | `system`, `en`, `es` | `\"system\"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |\n";
   md += "| `wallpaper` | path | `\"\"` | the wallpaper, when neither Noctalia nor KDE Plasma says which it is (or to override them): depth and per-wallpaper layouts follow it |\n";
   md += "| `wallpaper_fill` | `center`, `crop`, `fit`, `stretch`, `repeat` | the source's, else `crop` | how that wallpaper is fitted to the screen |\n";
-  md += "| `depth_model` | `true` / `false` | `true` | without Noctalia's `wallpaper_depth`: compute each wallpaper's depth with undershell's copy of the same model, once it has been downloaded (the inspector's button or `undershell msg depth-model`) |\n\n";
+  md += "| `depth_model` | `true` / `false` | `true` | compute each wallpaper's depth with undershell's model (Depth Anything V2), once it has been downloaded (the inspector's button or `undershell msg depth-model`; a copy Noctalia's `wallpaper_depth` already has is used); `false` turns depth off |\n";
+  md += "| `depth_threshold` | 0 – 100 | Noctalia's `wallpaper_depth` threshold, else `30` | the depth plane of widgets with `depth_level = 0`: higher is nearer, so less of the wallpaper covers them |\n";
+  md += "| `depth_feather` | 0 – 100 | Noctalia's `wallpaper_depth` feather, else `8` | how soft the edge of every depth cut is |\n\n";
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
@@ -66,7 +68,7 @@ std::string optionsMarkdown() {
         "the screen. Written by the editor; a block without it is given the size of the screen it first appears on |\n";
   md += "| `width`, `height` | logical px | `800` × `240` | box; the design is fitted into it |\n";
   md += "| `enabled` | `true` / `false` | `true` | |\n";
-  md += "| `depth` | `true` / `false` | `true` | pass behind the `wallpaper_depth` foreground |\n\n";
+  md += "| `depth` | `true` / `false` | `true` | pass behind what stands in front in the wallpaper (its depth plane: `depth_level`) |\n\n";
   md += "## `type = \"visualizer\"`\n\nRyoku's desktop spectrum.\n\n";
   table(md, "visualizer");
   md += "\n## `type = \"clock\"`\n\nRyoku's clock faces and date strips.\n\n";

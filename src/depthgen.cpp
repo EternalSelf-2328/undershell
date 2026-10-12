@@ -57,17 +57,20 @@ int onProgress(void* ud, curl_off_t total, curl_off_t now, curl_off_t, curl_off_
   return 0;
 }
 
-// the newest maps stay (8, like the plugin's cache)
-void prune(const std::string& dir) {
+}  // namespace
+
+void DepthGen::prune(const std::set<std::string>& keep, size_t others) {
   std::vector<std::pair<fs::file_time_type, fs::path>> maps;
   std::error_code ec;
-  for (auto& e : fs::directory_iterator(dir, ec))
-    if (e.path().extension() == ".npy") maps.emplace_back(e.last_write_time(ec), e.path());
+  for (auto& e : fs::directory_iterator(cacheDir(), ec)) {
+    if (e.path().extension() != ".npy") continue;
+    const std::string name = e.path().filename().string();
+    if (keep.contains(name.substr(0, name.find('-')))) continue;
+    maps.emplace_back(e.last_write_time(ec), e.path());
+  }
   std::sort(maps.begin(), maps.end(), [](auto& a, auto& b) { return a.first > b.first; });
-  for (size_t i = 8; i < maps.size(); ++i) fs::remove(maps[i].second, ec);
+  for (size_t i = others; i < maps.size(); ++i) fs::remove(maps[i].second, ec);
 }
-
-}  // namespace
 
 std::string DepthGen::helperPath() {
   std::string found;
@@ -181,18 +184,30 @@ bool DepthGen::download() {
   return true;
 }
 
-void DepthGen::want(const std::vector<std::pair<std::string, std::string>>& walls) {
+void DepthGen::want(const std::vector<std::pair<std::string, std::string>>& walls, bool background) {
   for (const auto& [wall, sha] : walls) {
     if (wall.empty() || sha.empty() || m_failed.contains(sha) || wall == m_running || !findNpy(sha).empty()) continue;
-    if (std::ranges::any_of(m_queue, [&](auto& q) { return q.second == sha; })) continue;
-    m_queue.emplace_back(wall, sha);
+    auto it = std::ranges::find_if(m_queue, [&](auto& q) { return q.sha == sha; });
+    if (it != m_queue.end()) {
+      if (background || !it->background) continue;
+      m_queue.erase(it);  // waiting in the background, and now on screen: to the front
+    }
+    if (background) {
+      m_queue.push_back({wall, sha, true});
+    } else {
+      // after the other on-screen ones, before the background
+      auto at = std::ranges::find_if(m_queue, [](auto& q) { return q.background; });
+      m_queue.insert(at, {wall, sha, false});
+    }
   }
   next();
 }
 
 void DepthGen::next() {
   if (!m_running.empty() || m_queue.empty() || !m_jobs || !canRun()) return;
-  const auto [wall, sha] = m_queue.front();
+  const Want job = m_queue.front();
+  const std::string wall = job.wall, sha = job.sha;
+  const bool background = job.background;
   m_queue.erase(m_queue.begin());
   if (!findNpy(sha).empty()) {
     next();
@@ -202,11 +217,12 @@ void DepthGen::next() {
   const std::string helper = helperPath(), mdl = model();
   // the plugin's naming: <sha256>-<model sha, 16>-d<pipeline>-i<input>.npy
   const std::string out = std::format("{}/{}-{}-d2-i518.npy", cacheDir(), sha, std::string(kModelSha256).substr(0, 16));
-  US_INFO("depth: computing the map of {}", fs::path(wall).filename().string());
-  m_jobs->run([this, helper, mdl, wall, sha, out]() -> Jobs::Done {
+  US_INFO("depth: computing the map of {}{}", fs::path(wall).filename().string(),
+          background ? std::format(" (ahead of time, {} more)", m_queue.size()) : std::string());
+  m_jobs->run([this, helper, mdl, wall, sha, out, background, keep = m_keep]() -> Jobs::Done {
     std::error_code ec;
     fs::create_directories(cacheDir(), ec);
-    const gchar* argv[] = {helper.c_str(), mdl.c_str(), wall.c_str(), out.c_str(), nullptr};
+    const gchar* argv[] = {helper.c_str(), mdl.c_str(), wall.c_str(), out.c_str(), background ? "--background" : nullptr, nullptr};
     gchar *sout = nullptr, *serr = nullptr;
     gint status = 0;
     GError* gerr = nullptr;
@@ -218,11 +234,12 @@ void DepthGen::next() {
     g_free(sout);
     g_free(serr);
     if (gerr) g_error_free(gerr);
-    if (ok) prune(cacheDir());
-    return [this, ok, wall, sha, said]() {
+    if (ok) prune(keep);
+    return [this, ok, wall, sha, said, background]() {
       m_running.clear();
       if (ok) {
-        US_INFO("depth: map of {} ready ({})", fs::path(wall).filename().string(), said);
+        if (background) US_DEBUG("depth: map of {} ready ({})", fs::path(wall).filename().string(), said);
+        else US_INFO("depth: map of {} ready ({})", fs::path(wall).filename().string(), said);
       } else {
         m_failed.insert(sha);
         US_WARN("depth: no map for {}: {}", fs::path(wall).filename().string(), said.empty() ? "the helper failed" : said);

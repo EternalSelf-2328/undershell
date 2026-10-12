@@ -3,7 +3,7 @@
 // Small (ONNX Runtime, CPU) the way Noctalia's wallpaper_depth plugin does it
 // (depth_helper.py: input of 518 px on the short side in steps of 14, ImageNet
 // normalisation, the output scaled to 0..1), written as the same float32 .npy
-// so the rest of undershell treats both alike. It runs as its own process,
+// (the plugin's maps and undershell's are interchangeable). It runs as its own process,
 // niced, so the model's memory never stays in the widgets' service.
 //
 //   undershell-depth <model.onnx> <wallpaper> <out.npy>
@@ -58,11 +58,13 @@ bool writeNpy(const std::string& path, const std::vector<float>& v, int w, int h
 int main(int argc, char** argv) {
   // started at all means ONNX Runtime loaded: the service asks before offering depth
   if (argc == 2 && std::strcmp(argv[1], "--check") == 0) return 0;
-  if (argc != 4) {
-    std::fprintf(stderr, "usage: undershell-depth <model.onnx> <wallpaper> <out.npy>\n");
+  // --background: a wallpaper not on screen, computed ahead of time
+  const bool background = argc == 5 && std::strcmp(argv[4], "--background") == 0;
+  if (argc != 4 && !background) {
+    std::fprintf(stderr, "usage: undershell-depth <model.onnx> <wallpaper> <out.npy> [--background]\n");
     return 2;
   }
-  setpriority(PRIO_PROCESS, 0, 10);  // the widgets keep their frames
+  setpriority(PRIO_PROCESS, 0, background ? 19 : 10);  // the widgets keep their frames
   const auto start = std::chrono::steady_clock::now();
   const std::string model = argv[1], wallpaper = argv[2], out = argv[3];
 
@@ -106,8 +108,10 @@ int main(int argc, char** argv) {
     // one run: no arena or memory pattern kept for the next
     so.DisableCpuMemArena();
     so.DisableMemPattern();
-    // leave a core for the compositor and the widgets
-    so.SetIntraOpNumThreads(static_cast<int>(std::max(1U, std::thread::hardware_concurrency() - 1)));
+    // leave a core for the compositor and the widgets (half of them when
+    // nobody is waiting for this map)
+    const unsigned cores = std::thread::hardware_concurrency();
+    so.SetIntraOpNumThreads(static_cast<int>(std::max(1U, background ? cores / 2 : cores - 1)));
     Ort::Session session(env, model.c_str(), so);
     Ort::AllocatorWithDefaultOptions alloc;
     const auto inName = session.GetInputNameAllocated(0, alloc);

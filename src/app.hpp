@@ -22,6 +22,7 @@
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <map>
+#include <filesystem>
 #include <set>
 #include <memory>
 #include <string>
@@ -371,8 +372,16 @@ private:
   DepthMasks m_depth;
   DconfWatch m_dconf;  // GNOME's settings changing (wallpaper, accent)
   DepthGen m_depthGen;  // depth from undershell's own model (no plugin)
-  [[nodiscard]] bool nativeDepth() const;
+  [[nodiscard]] bool depthOn() const;
   [[nodiscard]] std::string depthModelStatus() const;
+  // [general] depth_threshold / depth_feather, as 0-1
+  [[nodiscard]] double depthThreshold() const;
+  [[nodiscard]] double depthFeather() const;
+  // the wallpapers with a layout of their own get their depth map ahead of time
+  void queueLayoutDepths();
+  // once: [general] takes the wallpaper_depth plugin's threshold and feather
+  void adoptPluginDepthSettings();
+  std::filesystem::file_time_type m_profilesSeen{};
   MaskPass m_maskPass;
   RotatedBlit m_blit;
   PerspectiveBlit m_warpBlit;
@@ -381,7 +390,7 @@ private:
   OverlayPass m_overlay;
   IpcServer m_ipc;
   int m_inotify = -1;
-  int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdMasks = -1, m_wdDepthMaps = -1, m_wdPlasma = -1;
+  int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdPlasma = -1;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
   double m_depthTick = 0;  // redraws the editor's download progress
   double m_sourcePollAt = 0;  // asks a shell or wallpaper tool again (polls())

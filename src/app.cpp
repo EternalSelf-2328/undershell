@@ -20,6 +20,7 @@
 #include <csignal>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <format>
 #include <linux/input-event-codes.h>
 #include <poll.h>
@@ -445,7 +446,7 @@ void App::noctaliaChanged() {
   checkProfile();
   checkWallpaperKind();
   if (anchorKey() != m_anchorKey) syncWidgets();  // another wallpaper or fill: re-anchor the layout
-  restack();  // the plugin's plane may have moved
+  restack();  // the default plane may have moved
 }
 
 // Layer-shell surfaces on one layer stack in the order they were mapped, so
@@ -455,7 +456,7 @@ void App::noctaliaChanged() {
 void App::restack() {
   auto depthOf = [&](const Widget& w) {
     if (!w.cfg.depth || m_motion) return 2.0;  // not behind the scenery at all: in front of every plane
-    return w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : m_noctalia.state().depthThreshold;
+    return w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : depthThreshold();
   };
   std::stable_sort(m_widgets.begin(), m_widgets.end(), [&](const auto& a, const auto& b) {
     if (a->cfg.layer != b->cfg.layer) return a->cfg.layer < b->cfg.layer;
@@ -471,37 +472,89 @@ void App::restack() {
   US_DEBUG("restacked widgets");
 }
 
-// Without the plugin, undershell's own model gives the depth (once fetched),
-// unless [general] depth_model = false or the wallpaper moves.
-bool App::nativeDepth() const {
-  return !m_noctalia.state().depthPluginEnabled && m_config.depthModel && !m_motion && m_depthGen.canRun();
+// undershell's own model gives the depth (once fetched), unless
+// [general] depth_model = false or the wallpaper moves.
+bool App::depthOn() const { return m_config.depthModel && !m_motion && m_depthGen.canRun(); }
+
+double App::depthThreshold() const {
+  if (m_config.depthThreshold >= 0) return std::clamp(m_config.depthThreshold, 0.0, 100.0) / 100.0;
+  return m_noctalia.state().pluginThreshold.value_or(30.0) / 100.0;
+}
+
+double App::depthFeather() const {
+  if (m_config.depthFeather >= 0) return std::clamp(m_config.depthFeather, 0.0, 100.0) / 100.0;
+  return m_noctalia.state().pluginFeather.value_or(8.0) / 100.0;
+}
+
+// The plugin used to give the plane of the widgets on depth_level 0: the
+// first run without it writes its values into [general], so layouts look the
+// same and keep doing so whatever happens to the plugin.
+void App::adoptPluginDepthSettings() {
+  const NoctaliaState& st = m_noctalia.state();
+  auto fmt = [](double v) { return std::format("{:g}", std::round(v * 100) / 100); };
+  bool wrote = false;
+  if (m_config.depthThreshold < 0 && st.pluginThreshold)
+    wrote |= Config::setGeneral(m_configPath, "depth_threshold", fmt(*st.pluginThreshold));
+  if (m_config.depthFeather < 0 && st.pluginFeather) wrote |= Config::setGeneral(m_configPath, "depth_feather", fmt(*st.pluginFeather));
+  if (wrote) {
+    US_INFO("depth: [general] depth_threshold = {}, depth_feather = {} (taken from wallpaper_depth)",
+            st.pluginThreshold ? fmt(*st.pluginThreshold) : "-", st.pluginFeather ? fmt(*st.pluginFeather) : "-");
+    loadConfig();
+  }
 }
 
 void App::updateDepth() {
-  const bool native = nativeDepth();
-  m_depth.setNative(native);
+  const bool on = depthOn();
+  m_depth.setEnabled(on);
   if (m_depth.update(m_noctalia.state(), outputNames())) {
     for (auto& w : m_widgets) w->needsRender = true;
   }
-  if (native) {
-    // the wallpapers on screen without a map yet: compute them
-    std::vector<std::pair<std::string, std::string>> walls;
-    for (auto& o : m_outputs) {
-      const std::string wall = m_noctalia.state().wallpaperFor(o->name);
-      if (!wall.empty()) walls.emplace_back(wall, m_depth.sha256Of(wall));
-    }
-    m_depthGen.want(walls);
+  if (!on) return;
+  // the wallpapers on screen without a map yet: compute them first
+  std::vector<std::pair<std::string, std::string>> walls;
+  for (auto& o : m_outputs) {
+    const std::string wall = m_noctalia.state().wallpaperFor(o->name);
+    if (!wall.empty()) walls.emplace_back(wall, m_depth.sha256Of(wall));
   }
+  m_depthGen.want(walls);
+  queueLayoutDepths();
+}
+
+// A profile's first line names its wallpaper and its file is named by the
+// image's sha256: enough to compute the map without reading the image here.
+void App::queueLayoutDepths() {
+  if (!m_config.profiles) return;  // no layout per wallpaper: nothing to get ahead of
+  std::error_code ec;
+  const auto seen = fs::last_write_time(profileDir(), ec);
+  if (ec || seen == m_profilesSeen) return;  // no profile added or removed since
+  m_profilesSeen = seen;
+  std::set<std::string> keep;
+  std::vector<std::pair<std::string, std::string>> walls;
+  for (const auto& e : fs::directory_iterator(profileDir(), ec)) {
+    if (e.path().extension() != ".toml") continue;
+    const std::string sha = e.path().stem().string();
+    std::ifstream f(e.path());
+    std::string line;
+    std::getline(f, line);
+    const std::string_view lead = "# undershell layout for ";
+    if (sha.size() != 64 || !line.starts_with(lead)) continue;
+    keep.insert(sha);
+    const std::string wall = line.substr(lead.size());
+    if (fs::is_regular_file(wall, ec)) walls.emplace_back(wall, sha);
+  }
+  m_depthGen.setKeep(keep);
+  m_depthGen.want(walls, true);
 }
 
 std::string App::depthModelStatus() const {
-  if (m_noctalia.state().depthPluginEnabled) return "Noctalia's wallpaper_depth";
   if (DepthGen::helperPath().empty()) return "not in this build (built without ONNX Runtime)";
   if (m_depthGen.downloading()) return std::format("downloading the model, {:.0f} %", m_depthGen.progress() * 100);
   if (m_depthGen.model().empty())
     return m_depthGen.error().empty() ? "model not downloaded (undershell msg depth-model)" : "download failed: " + m_depthGen.error();
   if (!m_config.depthModel) return "off ([general] depth_model = false)";
-  if (m_depthGen.computing()) return "computing " + fs::path(m_depthGen.computingWallpaper()).filename().string();
+  if (m_depthGen.computing())
+    return "computing " + fs::path(m_depthGen.computingWallpaper()).filename().string() +
+           (m_depthGen.queued() ? std::format(" ({} more queued)", m_depthGen.queued()) : std::string());
   return "ready (" + m_depthGen.model() + ")";
 }
 
@@ -1058,7 +1111,6 @@ void App::render(Widget& w) {
     if (w.cfg.depth && w.output && !m_motion) {  // a moving wallpaper has no mask that fits
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         MaskParams mp;
-        mp.texture = m->texture;
         mp.surfaceW = static_cast<float>(w.w);
         mp.surfaceH = static_cast<float>(w.h);
         const Box b = surfaceBox(w.cfg);
@@ -1066,19 +1118,13 @@ void App::render(Widget& w) {
         mp.offsetY = w.impl->fullscreen() ? 0.0F : static_cast<float>(b.y);
         mp.outputW = ow;
         mp.outputH = oh;
-        mp.imageW = static_cast<float>(m->texture ? m->width : m->imageW);
-        mp.imageH = static_cast<float>(m->texture ? m->height : m->imageH);
+        mp.imageW = static_cast<float>(m->imageW);
+        mp.imageH = static_cast<float>(m->imageH);
         mp.fillMode = m_noctalia.state().fillMode;
-        if ((w.cfg.depthLevel > 0 || m->hasEdits || !m->texture) && m->field) {
-          // its own plane (or the plugin's, over hand-corrected depth, or
-          // undershell's own map, which comes without a mask): the refined
-          // field cut at this widget's level
-          mp.field = m->field;
-          mp.level = static_cast<float>(w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : m_noctalia.state().depthThreshold);
-          mp.feather = static_cast<float>(m_noctalia.state().depthFeather);
-          mp.imageW = static_cast<float>(m->imageW);
-          mp.imageH = static_cast<float>(m->imageH);
-        }
+        // the refined field cut at this widget's plane (its own, or the default one)
+        mp.field = m->field;
+        mp.level = static_cast<float>(w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : depthThreshold());
+        mp.feather = static_cast<float>(depthFeather());
         try {
           m_maskPass.draw(mp);
         } catch (const std::exception& ex) {
@@ -1296,7 +1342,7 @@ void App::renderEdit(EditSurface& e) {
         mp.fillMode = m_noctalia.state().fillMode;
         mp.field = m->field;
         mp.level = previewPlane();
-        mp.feather = static_cast<float>(m_noctalia.state().depthFeather);
+        mp.feather = static_cast<float>(depthFeather());
         if (m_zoom > 1.0001) {
           // zoomed: draw the wallpaper ourselves, magnified, under the tint
           mp.viewX = static_cast<float>(m_viewX);
@@ -1579,17 +1625,17 @@ std::string App::handleCommand(const std::string& cmd) {
     size_t saved = 0;
     for (const auto& e : fs::directory_iterator(profileDir(), ec))
       if (e.path().extension() == ".toml" && e.path().stem() != m_profileKey) ++saved;
-    bool field = false, mask = false;
+    bool field = false;
     for (auto& o : m_outputs)
-      if (const DepthMask* m = m_depth.get(o->name)) {
-        field = field || m->field != 0;
-        mask = mask || m->texture != 0;
-      }
+      if (const DepthMask* m = m_depth.get(o->name)) field = field || m->field != 0;
+    // "mask" and "plugin_threshold" stay for panels from before undershell
+    // computed its own depth (no masks any more; the threshold is its own)
     std::string s = std::format(
         "{{\"motion\":{},\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
-        "\"depth\":{{\"mask\":{},\"field\":{},\"plugin_threshold\":{:.0f}}},\"source\":{},\"outputs\":[",
-        m_motion, m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, mask, field,
-        m_noctalia.state().depthThreshold * 100, q(m_noctalia.state().source));
+        "\"depth\":{{\"mask\":false,\"field\":{},\"computing\":{},\"threshold\":{:.0f},\"plugin_threshold\":{:.0f}}},"
+        "\"source\":{},\"outputs\":[",
+        m_motion, m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, field,
+        m_depthGen.computing(), depthThreshold() * 100, depthThreshold() * 100, q(m_noctalia.state().source));
     // the monitors (logical size), and how many widgets each shows
     for (size_t i = 0; i < m_outputs.size(); ++i) {
       const Output& o = *m_outputs[i];
@@ -1637,9 +1683,7 @@ std::string App::handleCommand(const std::string& cmd) {
       s += std::format("  {} {} on {} at {},{} {}x{} buffer={}x{}@{:.3f} depth={} frames={} fps={:.0f}\n", w->cfg.id, look,
                        w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height, w->bufW,
                        w->bufH, w->scale,
-                       !m                    ? std::string("none")
-                       : m->maskPath.empty() ? "field:" + fs::path(m->fieldNpy).filename().string().substr(0, 12)
-                                             : fs::path(m->maskPath).filename().string().substr(0, 12),
+                       m ? fs::path(m->fieldNpy).filename().string().substr(0, 12) : std::string("none"),
                        w->frames, stale ? 0.0 : w->fpsMeasured);
     }
     return s;
@@ -1663,8 +1707,6 @@ void App::handleInotify() {
       if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
       if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
-      if (ev->wd == m_wdMasks && name.ends_with(".png")) m_refreshDepthAt = now + 0.3;
-      if (ev->wd == m_wdDepthMaps && name.ends_with(".npy")) m_refreshDepthAt = now + 0.3;
       p += sizeof(inotify_event) + ev->len;
     }
   }
@@ -1745,7 +1787,8 @@ int App::run() {
   loadConfig();
   checkProfile();  // the wallpaper may have changed while undershell was not running
   checkWallpaperKind();
-  updateDepth();  // with the config read: undershell's own model, if it is the one to use
+  adoptPluginDepthSettings();
+  updateDepth();  // with the config read: depth on or off, and which maps to compute
   m_audioOk = m_audio.start();
   m_media.start();
 
@@ -1758,11 +1801,6 @@ int App::run() {
   // KDE Plasma's desktop, colour and activity files (written by rename)
   if (Plasma::present() || Plasma::session()) m_wdPlasma = inotify_add_watch(m_inotify, Plasma::configDir().c_str(), mask);
   if (Gnome::session()) m_dconf.start();
-  m_wdMasks = inotify_add_watch(m_inotify, DepthMasks::maskDir().c_str(), mask);
-  // the depth maps (.npy) the per-widget planes are cut from; only finished
-  // writes, never a half-written file
-  m_wdDepthMaps = inotify_add_watch(m_inotify, (fs::path(DepthMasks::maskDir()).parent_path() / "depth").c_str(),
-                                    IN_CLOSE_WRITE | IN_MOVED_TO | IN_DELETE);
 
   while (m_running && !g_quit) {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
@@ -1828,8 +1866,6 @@ int App::run() {
       m_depthTick = now + 0.25;
       markEditDirty();
     }
-    // safety net: a mask generated while an event was missed is found anyway
-    if (m_depth.missing() && m_refreshDepthAt == 0) m_refreshDepthAt = now + 15;
 
     if (m_audioOk && m_audio.tick()) {
       for (auto& w : m_widgets)

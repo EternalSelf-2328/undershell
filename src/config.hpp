@@ -45,7 +45,7 @@ struct WidgetConfig {
   // (App's widgets) they are mapped to the actual output
   double spaceW = 0, spaceH = 0;
   bool enabled = true;
-  bool depth = true;   // pass behind the wallpaper_depth foreground
+  bool depth = true;   // pass behind what stands in front in the wallpaper
   double rotation = 0;  // degrees, clockwise, about the box centre
   // perspective (geom.hpp): the box leans back in 3D and is seen in perspective
   double tiltX = 0, tiltY = 0;  // degrees: + top leans back / + right side leans back
@@ -85,7 +85,10 @@ struct Config {
   std::string language = "system";  // the editor's language: system | en | es (i18n.hpp)
   // the wallpaper when no Noctalia or Plasma says which (or over theirs)
   std::string wallpaper, wallpaperFill;
-  bool depthModel = true;  // without the plugin: compute depth maps with undershell's model, once fetched
+  bool depthModel = true;  // compute depth maps with undershell's model, once fetched (false: no depth)
+  // the plane of widgets with depth_level 0 and the softness of every cut,
+  // 0-100; negative: not set (Noctalia's wallpaper_depth values, else 30 / 8)
+  double depthThreshold = -1, depthFeather = -1;
   // audio analysis
   double noiseReduction = 0.45;  // Ryoku's cava noise_reduction = 45
   bool monstercat = false;

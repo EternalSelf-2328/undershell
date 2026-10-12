@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The wallpaper's depth, not just one mask: wallpaper_depth caches the model's
-// normalized depth map (.npy) apart from its masks. undershell refines it
-// against the image exactly as the plugin does before thresholding (guided
+// The wallpaper's depth: the model's normalized depth map (.npy, depthgen.hpp),
+// refined against the image the way Noctalia's wallpaper_depth plugin does
+// before thresholding (guided
 // filter, depth_helper.py refine_depth, MIT (c) noctalia-dev), so each widget
 // can cut its own mask at its own depth plane, live, on the GPU.
 #pragma once

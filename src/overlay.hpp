@@ -15,8 +15,7 @@ struct MaskParams {
   float outputW = 0, outputH = 0;
   float imageW = 0, imageH = 0;
   int fillMode = 1;
-  // a widget with its own depth plane: cut the refined depth field there
-  // instead of using the plugin's mask (level 0..1, feather 0..1)
+  // the refined depth field, cut at the widget's plane (level 0..1, feather 0..1)
   GLuint field = 0;
   float level = 0, feather = 0;
   // the brush's zoom: output point shown at the surface centre, and scale
@@ -24,7 +23,7 @@ struct MaskParams {
   float viewAtX = -1, viewAtY = -1;  // where the view's centre shows (default: the surface's centre)
 };
 
-// Erases widget pixels under the wallpaper_depth foreground (DestinationOut),
+// Erases widget pixels where the wallpaper is nearer than their plane (DestinationOut),
 // with Noctalia's wallpaper sampling maths (MIT, (c) 2026 noctalia-dev).
 class MaskPass {
 public:

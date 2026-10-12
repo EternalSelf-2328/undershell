@@ -30,6 +30,8 @@ language = "system"       # editor language: system (follows the locale) | en | 
 profiles = true           # remember a widget layout for each wallpaper
 # wallpaper = "~/Pictures/wall.jpg"   # only without Noctalia or KDE Plasma: the wallpaper
 # wallpaper_fill = "crop"             # (for depth and per-wallpaper layouts) and how it is fitted
+# depth_threshold = 30      # depth plane of widgets with depth_level 0 (higher is nearer)
+# depth_feather = 8         # softness of the depth cut
 
 [[widget]]
 id = "visualizer"
@@ -59,7 +61,7 @@ spin = 0.0                # polar looks: degrees per second
 glow = 0.6
 fps = 60
 opacity = 1.0
-depth = true              # pass behind the wallpaper_depth foreground
+depth = true              # pass behind what stands in front in the wallpaper
 )";
 
 std::string Config::defaultPath() {
@@ -101,6 +103,8 @@ Config Config::load(const std::string& path) {
     cfg.wallpaper = get<std::string>(*g, "wallpaper", "");
     cfg.wallpaperFill = get<std::string>(*g, "wallpaper_fill", "");
     cfg.depthModel = get<bool>(*g, "depth_model", true);
+    cfg.depthThreshold = get<double>(*g, "depth_threshold", -1.0);
+    cfg.depthFeather = get<double>(*g, "depth_feather", -1.0);
   }
   if (auto* arr = root["widget"].as_array()) {
     int n = 0;

@@ -13,8 +13,7 @@ https://github.com/user-attachments/assets/523ec5c1-bcba-4fc5-892a-d8c912360f7a
 
 Desktop widgets that live **under** your shell and **apart** from it: a
 standalone Wayland client in C++ (GLES 3) that doesn't depend on any shell or
-dotfiles. It integrates with Noctalia (palette, `wallpaper_depth` depth) and
-KDE Plasma (wallpaper, colour scheme), reads the wallpaper of other shells
+dotfiles. It integrates with Noctalia (palette) and KDE Plasma (wallpaper, colour scheme), reads the wallpaper of other shells
 (caelestia, DankMaterialShell, …) and wallpaper tools, and runs on
 Umbriel/niri/Hyprland/Sway/KDE Plasma/COSMIC and, through an extension, GNOME.
 Its first widgets are ports of
@@ -22,11 +21,10 @@ Its first widgets are ports of
 
 - **Same layer as Noctalia's widgets** (layer-shell *bottom*): above the
   wallpaper, below the windows, and click-through.
-- **Depth (`wallpaper_depth`)**: it reads the same mask the plugin generates
-  (`sha256(wallpaper)-…-t<threshold>-f<feather>.png`) and applies it with
-  Noctalia's own sampling math, so the widgets pass behind the wallpaper
-  subject exactly like the native ones. Without Noctalia it runs the same
-  model itself (see [Depth without Noctalia](#depth-without-noctalia)).
+- **Depth**: widgets pass behind what stands in front in the wallpaper.
+  undershell computes each wallpaper's depth map itself, with the model
+  Noctalia's `wallpaper_depth` plugin uses (Depth Anything V2), and cuts every
+  widget at its own plane on the GPU (see [Depth planes](#depth-planes)).
 - **Noctalia colors**: the palette comes from `noctalia theme <wallpaper>
   --scheme <your scheme>` (the same generator the shell uses) and is
   recomputed when you change wallpaper or theme.
@@ -64,12 +62,11 @@ The wallpapers in these captures are other artists' work, shown only as backgrou
   Sway, KDE Plasma (KWin), COSMIC, … **GNOME** has no layer-shell: there the
   bundled GNOME Shell extension runs undershell (see [GNOME](#gnome)).
 - **Optional:** [Noctalia](https://github.com/noctalia-dev/noctalia) for the
-  palette and the depth effect (with its `wallpaper_depth` plugin). On KDE
-  Plasma, undershell reads the wallpaper and the colour scheme itself; anywhere
-  else, name the wallpaper in `[general]` (see
+  palette. On KDE Plasma, undershell reads the wallpaper and the colour scheme
+  itself; anywhere else, name the wallpaper in `[general]` (see
   [Without Noctalia](#without-noctalia-kde-plasma-and-others)). **ONNX
-  Runtime** (`libonnxruntime`) for depth without Noctalia. **PipeWire** for
-  live audio in the visualizers.
+  Runtime** (`libonnxruntime`) for depth. **PipeWire** for live audio in the
+  visualizers.
 - **Libraries:** wayland, EGL / GLES 3, libpipewire-0.3, toml++, glib, cairo,
   pango, fontconfig, xkbcommon, libsystemd (sd-bus), gdk-pixbuf, libcurl,
   and FFmpeg's libavformat, libavcodec, libswscale and libavutil for the TV
@@ -279,7 +276,7 @@ undershell msg add clock flip  # add a widget to the config: visualizer, clock, 
 undershell msg remove clock    # remove it
 undershell msg select clock    # select it in the editor (scripts)
 undershell msg pick-files tv   # the TV's file chooser: adds to its tv_files ("folder" for folders)
-undershell msg depth-model     # download the depth model (~95 MB), for depth without Noctalia
+undershell msg depth-model     # download the depth model (~95 MB)
 undershell msg gallery         # open the editor with the gallery
 undershell msg reload
 undershell msg quit
@@ -695,18 +692,50 @@ similar one; check the exact name with `fc-list : family | grep -i <name>`.
 
 ## Depth planes
 
-With Noctalia's `wallpaper_depth` plugin, widgets pass behind the scenery.
-By default every widget uses the plugin's mask (its threshold). Give a
-widget its own plane with **Plano prof.** in the inspector (or
-`depth_level = 1..100`): undershell reads the depth map the plugin cached,
-refines it against the wallpaper exactly as the plugin does, and cuts each
-widget at its own level on the GPU, live. Higher is nearer: at 95 almost
-nothing covers the widget, at 5 almost everything does. `0` goes back to the
-plugin's mask. Where widgets overlap, the nearer one is drawn on top
-(a widget with depth off counts as nearest); **Layer** in the inspector
-(`layer = -10..10`, higher in front) overrides that, e.g. for two widgets
-on the same plane. The model never runs twice; refining takes under a second
-per wallpaper, off the main thread.
+Widgets pass behind the scenery: undershell knows how near each point of the
+wallpaper is and erases a widget wherever the wallpaper is nearer than the
+widget's plane, on the GPU, live. By default every widget sits on the default
+plane, `[general] depth_threshold` (30 unless you set it). Give a widget its
+own plane with **Depth plane** in the inspector (or `depth_level = 1..100`).
+Higher is nearer: at 95 almost nothing covers the widget, at 5 almost
+everything does. `0` goes back to the default plane. Where widgets overlap,
+the nearer one is drawn on top (a widget with depth off counts as nearest);
+**Layer** in the inspector (`layer = -10..10`, higher in front) overrides that,
+e.g. for two widgets on the same plane. `depth_feather` softens the edge of
+every cut.
+
+### Where the depth comes from
+
+undershell runs a depth model,
+[Depth Anything V2 Small](https://github.com/DepthAnything/Depth-Anything-V2)
+(Apache-2.0), the same one Noctalia's `wallpaper_depth` plugin uses. It does
+not need the plugin.
+
+- **Fetch the model once** (~95 MB, from Hugging Face, checked by size and
+  SHA-256): the **Download the depth model** button under *Depth* in the
+  inspector, or `undershell msg depth-model`. Nothing is downloaded until you
+  ask. If the plugin already downloaded it, that copy is used.
+- A new wallpaper gets its map in a few seconds (about 5 s on an HD 520
+  laptop, for any size), computed by `undershell-depth`, a separate, niced
+  process (ONNX Runtime on the CPU), so the model's memory (~460 MB while it
+  runs) never stays in the service. The map is then refined against the
+  wallpaper (under a second, off the main thread).
+- **Every wallpaper with a layout of its own** (see
+  [A layout per wallpaper](#a-layout-per-wallpaper)) gets its map ahead of
+  time, in the background, at the lowest priority and on half the cores, so
+  coming back to it is instant. Those maps are kept for good in
+  `~/.cache/undershell/depth` (about 2 MB each); of the others, the 16 most
+  recent.
+- `undershell msg status` shows the state (`depth: ready`, `computing … (N
+  more queued)`, `downloading the model, 42 %`). `[general] depth_model =
+  false` turns depth off. It needs undershell built with ONNX Runtime
+  (`-Ddepth_model`, on by default when `libonnxruntime` is found: Arch's
+  `onnxruntime-cpu`, Fedora's `onnxruntime-devel`, Debian 13's
+  `libonnxruntime-dev`; Ubuntu 24.04 has no package, so it is built without).
+- Coming from the plugin: the first run writes its threshold and feather into
+  `[general]` (`depth_threshold`, `depth_feather`), so layouts look the same.
+  undershell no longer reads its masks or maps, so the plugin can be turned
+  off unless Noctalia's own desktop widgets use it.
 
 <p align="center">
   <img src="docs/media/depth.webp" alt="A red spectrum passing behind a katana blade and in front of the dark background" width="800"><br>
@@ -730,7 +759,7 @@ The depth model guesses: an object may come out as a ramp (so a plane cuts
 it in two), and the background next to an object often gets a halo of
 false nearness. The **brush** button in the editor's toolbar opens the
 depth brush: the wallpaper is tinted where it would cover the selected
-widget (or, with none selected, the plugin's plane), and you correct it.
+widget (or, with none selected, the default plane), and you correct it.
 
 **Tools** (how you pick an area) — none needs a steady hand except the brush:
 
@@ -758,7 +787,7 @@ stroke or selection; **Clear all** asks twice; right click or Esc leaves.
 </p>
 
 Corrections are kept per wallpaper in `~/.config/undershell/depth-edits/`
-and apply to every widget, including those on the plugin's plane.
+and apply to every widget, including those on the default plane.
 
 ## A layout per wallpaper
 
@@ -867,34 +896,6 @@ dark style, `picture-options`) and makes its palette from the accent colour
 The widgets are hidden in the overview, like other desktop windows. A
 wallpaper slideshow (an `.xml`) has no single picture, so it has no depth.
 
-### Depth without Noctalia
-
-Noctalia's `wallpaper_depth` plugin runs a depth model
-([Depth Anything V2 Small](https://github.com/DepthAnything/Depth-Anything-V2),
-Apache-2.0) over the wallpaper. Without it, undershell runs the same model
-itself:
-
-- **Fetch the model once** (~95 MB, from Hugging Face, checked by size and
-  SHA-256): the **Download the depth model** button under *Depth* in the
-  inspector, or `undershell msg depth-model`. Nothing is downloaded until you
-  ask. If the plugin's copy is on disk it is used instead.
-- From then on each new wallpaper gets its map in a few seconds (about 5 s on
-  an HD 520 laptop, for any size), kept in `~/.cache/undershell/depth` (the
-  last 8). It is computed by `undershell-depth`, a separate, niced process
-  (ONNX Runtime on the CPU), so the model's memory (~460 MB while it runs)
-  never stays in the service. Its maps match the plugin's (correlation
-  0.99997 on the same wallpaper).
-- The map is refined and cut like the plugin's, so [depth planes](#depth-planes)
-  and the depth brush work the same; the default plane is 30.
-- `undershell msg status` shows the state (`depth: ready`, `computing …`,
-  `downloading the model, 42 %`). `[general] depth_model = false` turns it
-  off. It needs undershell built with ONNX Runtime (`-Ddepth_model`, on by
-  default when `libonnxruntime` is found: Arch's `onnxruntime-cpu`, Fedora's
-  `onnxruntime-devel`, Debian 13's `libonnxruntime-dev`; Ubuntu 24.04 has no
-  package, so it is built without).
-- With Noctalia's plugin enabled, the plugin keeps doing it. A wallpaper set
-  in `[general]` that is not Noctalia's gets undershell's own map.
-
 ## Noctalia bar widget
 
 `integrations/noctalia/undershell` is a Noctalia plugin
@@ -967,7 +968,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/plasma.*` | KDE Plasma: wallpapers per screen, fill mode, palette from the colour scheme |
 | `src/gnome.*`, `integrations/gnome/` | GNOME: wallpaper and accent from gsettings; the GNOME Shell extension that puts the widget windows on the desktop |
 | `src/shells.*` | Other shells and wallpaper tools: caelestia, DMS, illogical-impulse, Ambxst, HyprPanel, COSMIC, awww, hyprpaper, wpaperd, swaybg, … |
-| `src/depthgen.*`, `src/depthhelper.cpp` | Depth without Noctalia: the model download and `undershell-depth`, which runs it |
+| `src/depthgen.*`, `src/depthhelper.cpp` | Depth: the model download, `undershell-depth` (which runs it) and the queue and cache of maps |
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex, Bangers (OFL) |

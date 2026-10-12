@@ -2,7 +2,7 @@
 // The depth brush: in the editor's depth mode, strokes correct the
 // wallpaper's depth field by hand (Front, Back, Match, Erase), with a smart
 // brush that stays on one side of the image's edges. Corrections are kept per
-// wallpaper and apply to every widget, the plugin-plane ones included; the
+// wallpaper and apply to every widget, those on the default plane included; the
 // wallpaper is tinted where it would cover the selected widget.
 #include "app.hpp"
 
@@ -12,7 +12,7 @@ namespace undershell {
 
 float App::previewPlane() const {
   if (m_selected && m_selected->cfg.depthLevel > 0) return static_cast<float>(m_selected->cfg.depthLevel / 100.0);
-  return static_cast<float>(m_noctalia.state().depthThreshold);
+  return static_cast<float>(depthThreshold());
 }
 
 // output point -> field pixel, and the brush radius in field pixels

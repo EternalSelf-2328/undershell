@@ -76,15 +76,9 @@ bool Noctalia::refreshNoctalia(NoctaliaState& out) {
       }
     }
   }
-  if (auto* en = root["plugins"]["enabled"].as_array()) {
-    for (auto& n : *en)
-      if (n.value_or(std::string{}) == "noctalia/wallpaper_depth") s.depthPluginEnabled = true;
-  }
   if (auto* d = root["plugin_settings"]["noctalia/wallpaper_depth"].as_table()) {
-    s.depthThreshold = (*d)["threshold"].value_or(30.0) / 100.0;
-    s.depthFeather = (*d)["feather"].value_or(8.0) / 100.0;
-    if (auto i = (*d)["threshold"].value<int64_t>()) s.depthThreshold = static_cast<double>(*i) / 100.0;
-    if (auto i = (*d)["feather"].value<int64_t>()) s.depthFeather = static_cast<double>(*i) / 100.0;
+    s.pluginThreshold = (*d)["threshold"].value<double>();
+    s.pluginFeather = (*d)["feather"].value<double>();
   }
   if (auto* th = root["theme"].as_table()) {
     s.themeSource = (*th)["source"].value_or(std::string("builtin"));
@@ -220,8 +214,6 @@ bool Noctalia::refresh() {
 void Noctalia::compose() {
   NoctaliaState s = m_base;
   if (!m_manual.empty()) {
-    // the plugin makes masks for Noctalia's wallpaper, not this one
-    if (m_manual != s.defaultWallpaper) s.depthPluginEnabled = false;
     s.manualWallpaper = true;
     s.defaultWallpaper = m_manual;
     s.wallpaperByOutput.clear();
