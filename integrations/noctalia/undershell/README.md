@@ -23,8 +23,8 @@ tilt, and save or load layouts per wallpaper and per monitor.
   button runs `systemctl --user start undershell.service`.
 
 You need a Wayland compositor with `wlr-layer-shell`. Depth (widgets passing behind
-the wallpaper's subject) comes from Noctalia's official `wallpaper_depth`
-plugin.
+the wallpaper's subject) is computed by undershell itself, with the same model as
+Noctalia's `wallpaper_depth` plugin; that plugin is not needed.
 
 ## Usage
 
