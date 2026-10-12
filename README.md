@@ -5,7 +5,10 @@
 </p>
 
 
-Uploading undershell-demo.mp4…
+
+https://github.com/user-attachments/assets/523ec5c1-bcba-4fc5-892a-d8c912360f7a
+
+
 
 
 Desktop widgets that live **under** your shell and **apart** from it: a
