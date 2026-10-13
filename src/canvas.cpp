@@ -84,9 +84,9 @@ void main() {
     } else {                      // a: cx cy r halfwidth   b: a0 a1 roundcap
         vec2 q = p - u_a.xy;
         float ang = atan(q.x, -q.y);            // 0 at 12 o'clock, clockwise
-        if (ang < 0.0) ang += TAU;
         float a0 = u_b.x, a1 = u_b.y;
-        bool inside = a1 - a0 >= TAU - 1e-4 || (ang >= a0 && ang <= a1);
+        // measured from a0, so spans that start below 0 or run past 12 o'clock work too
+        bool inside = a1 - a0 >= TAU - 1e-4 || mod(ang - a0, TAU) <= a1 - a0;
         if (inside) {
             d = abs(length(q) - u_a.z) - u_a.w;
         } else if (u_b.z > 0.5) {

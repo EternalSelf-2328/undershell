@@ -147,7 +147,7 @@ void NowPlayingWidget::tick(const TickContext& ctx) {
   const float kg = static_cast<float>(1 - std::exp(-dt / 0.12));
   m_glide += (0 - m_glide) * kg;
   // the record turns while the song plays
-  if (m_media && m_media->state().playing) m_spin += dt * 1.1;
+  if (m_media && m_media->state().playing) m_spin = std::fmod(m_spin + dt * 1.1, 6.283185307179586);
   // "cycle": each song gets its own shape (the same song, the same shape)
   if (m_cfg.coverShape == "cycle" && m_media && m_media->state().present && m_media->state().trackKey != m_shapeTrack) {
     m_shapeTrack = m_media->state().trackKey;

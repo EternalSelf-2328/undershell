@@ -2221,8 +2221,7 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     }
   } else if (name == "help") {
     // a question mark: the hook, the stem and the dot
-    c.arc(cx, cy - 2.5F, 4.2F, 2.1F, -1.3F + 6.2832F, 6.2832F + 1.9F, col, true);
-    c.arc(cx, cy - 2.5F, 4.2F, 2.1F, 0.0F, 1.9F, col, true);
+    c.arc(cx, cy - 2.5F, 4.2F, 2.1F, -1.3F, 1.9F, col, true);
     c.segment(cx + 2.0F, cy + 1.2F, cx, cy + 2.6F, 2.1F, col);
     c.circle(cx, cy + 6.6F, 1.4F, col);
   } else if (name == "check") {
@@ -2295,28 +2294,29 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.triangle(cx - 7, cy - 3.5F, cx, cy - 7, cx + 7, cy - 3.5F, col);
     c.triangle(cx - 7, cy - 3.5F, cx, cy, cx + 7, cy - 3.5F, col);
   } else if (name == "eye" || name == "eyeoff") {
-    c.arc(cx, cy + 5.5F, 8.5F, 1.5F, -0.95F, 0.95F, col, true);  // the upper lid
-    c.arc(cx, cy - 5.5F, 8.5F, 1.5F, 3.1416F - 0.95F, 3.1416F + 0.95F, col, true);
-    if (name == "eye") c.circle(cx, cy, 2.4F, col);
-    else c.segment(cx - 6.5F, cy + 6, cx + 6.5F, cy - 6, 1.6F, col);
+    // an almond from two arcs and a solid iris; struck through when hidden
+    c.arc(cx, cy + 4.6F, 9, 1.6F, -1.03F, 1.03F, col, true);
+    c.arc(cx, cy - 4.6F, 9, 1.6F, 3.1416F - 1.03F, 3.1416F + 1.03F, col, true);
+    if (name == "eye") c.circle(cx, cy, 2.7F, col);
+    else c.segment(cx - 6, cy - 6, cx + 6, cy + 6, 1.7F, col);
   } else if (name == "lock" || name == "unlock") {
-    // the body, and the shackle: closed into it, or lifted with one leg out
-    c.roundRect(cx - 5.5F, cy - 1, 11, 8, 2, col);
-    const float sy = name == "lock" ? cy - 2.5F : cy - 5.5F;
-    c.arc(cx, sy, 3.6F, 1.6F, -1.5708F, 1.5708F, col, false);
-    c.segment(cx - 3.6F, sy, cx - 3.6F, cy - 1, 1.6F, col, false);
-    if (name == "lock") c.segment(cx + 3.6F, sy, cx + 3.6F, cy - 1, 1.6F, col, false);
+    // the body, and the shackle: closed into it, or lifted with only its left leg in
+    c.roundRect(cx - 6, cy - 1, 12, 8.5F, 2, col);
+    const float sy = name == "lock" ? cy - 4 : cy - 6.5F;
+    c.arc(cx, sy, 3.8F, 1.8F, -1.5708F, 1.5708F, col, false);
+    c.segment(cx - 3.8F, sy, cx - 3.8F, cy - 0.5F, 1.8F, col, false);
+    c.segment(cx + 3.8F, sy, cx + 3.8F, name == "lock" ? cy - 0.5F : sy + 1.5F, 1.8F, col, false);
   } else if (name == "group" || name == "ungroup") {
-    // two boxes, in a dashed frame (group) or apart (ungroup)
-    const float d = name == "group" ? 0.0F : 2.0F;
-    c.roundRect(cx - 5.5F - d, cy - 4.5F - d, 6, 6, 1.5F, Color{0, 0, 0, 0}, 1.4F, col);
-    c.roundRect(cx - 0.5F + d, cy - 1.5F + d, 6, 6, 1.5F, Color{0, 0, 0, 0}, 1.4F, col);
-    if (name == "group")
-      for (int k = 0; k < 4; ++k) {
-        const float sx = (k & 1) ? 1.0F : -1.0F, sy = (k & 2) ? 1.0F : -1.0F;
-        c.segment(cx + sx * 8, cy + sy * 8, cx + sx * 5, cy + sy * 8, 1.3F, col, false);
-        c.segment(cx + sx * 8, cy + sy * 8, cx + sx * 8, cy + sy * 5, 1.3F, col, false);
-      }
+    // a square and a dot held in one frame (group), or pulled apart with a dotted gap between them (ungroup)
+    if (name == "group") {
+      c.roundRect(cx - 7.5F, cy - 7.5F, 15, 15, 3, Color{0, 0, 0, 0}, 1.5F, col);
+      c.roundRect(cx - 4.5F, cy - 4.5F, 5, 5, 1.2F, col);
+      c.circle(cx + 2.2F, cy + 2.2F, 2.6F, col);
+    } else {
+      c.roundRect(cx - 8, cy - 8, 6.5F, 6.5F, 1.4F, col);
+      c.circle(cx + 4.8F, cy + 4.8F, 3.3F, col);
+      for (int k = 0; k < 3; ++k) c.circle(cx - 2.2F + k * 2.2F, cy + 2.2F - k * 2.2F, 0.8F, withAlphaC(col, 0.7F));
+    }
   } else if (name == "up" || name == "down") {
     const float s = name == "up" ? -1.0F : 1.0F;
     c.segment(cx, cy - s * 6, cx, cy + s * 6, 1.8F, col);
@@ -3099,8 +3099,8 @@ void App::drawUi(EditSurface& e) {
                             : std::all_of(members.begin(), members.end(), [](Widget* m) { return m->cfg.locked; });
         if (hot) cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 7, withAlphaC(ink, 0.12F));
         // shown and free stay faint until hovered, so what is hidden or locked stands out
-        const Color fg = on ? (eye ? withAlphaC(ink, 0.55F) : accent) : withAlphaC(ink, hot ? 0.9F : 0.32F);
-        icon(cv, eye ? (on ? "eyeoff" : "eye") : (on ? "lock" : "unlock"), c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, fg);
+        const Color fg = on ? (eye ? withAlphaC(ink, 0.6F) : accent) : withAlphaC(ink, hot ? 0.95F : 0.5F);
+        icon(cv, eye ? (on ? "eyeoff" : "eye") : (on ? "lock" : "unlock"), std::round(c.r.x + c.r.w / 2), std::round(c.r.y + c.r.h / 2), fg);
       } else if (c.type == UiControl::LayerGroup || c.type == UiControl::LayerUngroup || c.type == UiControl::LayerUp ||
                  c.type == UiControl::LayerDown) {
         auto sel = selection();
@@ -3113,7 +3113,7 @@ void App::drawUi(EditSurface& e) {
              : c.type == UiControl::LayerUngroup ? "ungroup"
              : c.type == UiControl::LayerUp      ? "up"
                                                  : "down",
-             c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, can ? ink : withAlphaC(ink, 0.3F));
+             std::round(c.r.x + c.r.w / 2), std::round(c.r.y + c.r.h / 2), can ? ink : withAlphaC(ink, 0.4F));
       }
       if (hot && (c.type == UiControl::LayerEye || c.type == UiControl::LayerLock || c.type == UiControl::LayerGroup ||
                   c.type == UiControl::LayerUngroup || c.type == UiControl::LayerUp || c.type == UiControl::LayerDown))
