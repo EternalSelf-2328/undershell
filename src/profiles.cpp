@@ -29,12 +29,18 @@ std::string App::profileKeyFor(const std::string& wallpaper) {
   return m_depth.sha256Of(wallpaper);
 }
 
-// the wallpaper that decides: the one under the widgets (their output), else
-// the first output's, else Noctalia's default
+// the wallpaper that decides: the one under the widgets (the output they are
+// shown on), else the first output's, else Noctalia's default. A widget
+// whose output is not connected (a laptop's panel with the lid shut) is
+// shown on the first output, so that one decides: the panel's wallpaper is
+// not seen, and is often stale (a picker that sets only the monitor in use).
 std::string App::profileWallpaper() const {
   const NoctaliaState& st = m_noctalia.state();
-  for (const auto& w : m_config.widgets)
-    if (!w.output.empty()) return st.wallpaperFor(w.output);
+  for (const auto& w : m_config.widgets) {
+    if (!w.enabled || w.output.empty()) continue;
+    for (const auto& o : m_outputs)
+      if (o->name == w.output) return st.wallpaperFor(o->name);
+  }
   if (!m_outputs.empty()) return st.wallpaperFor(m_outputs.front()->name);
   return st.defaultWallpaper;
 }
