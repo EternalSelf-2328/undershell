@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "media.hpp"
 
+#include "net.hpp"
+
 #include <algorithm>
 #include <cmath>
-#include <curl/curl.h>
 #include <filesystem>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
@@ -20,53 +21,6 @@ namespace {
 constexpr const char* kDest = "dev.noctalia.Mpris";
 constexpr const char* kPath = "/dev/noctalia/Mpris";
 constexpr const char* kIface = "dev.noctalia.Mpris";
-constexpr const char* kUserAgent = "undershell/0.3 (https://github.com/ryoku-dev/ryoku port)";
-
-std::string cacheDir(const char* sub) {
-  const char* xdg = std::getenv("XDG_CACHE_HOME");
-  std::string d = std::string(xdg && *xdg ? xdg : expandHome("~/.cache")) + "/undershell/" + sub;
-  std::error_code ec;
-  fs::create_directories(d, ec);
-  return d;
-}
-
-std::string hashOf(const std::string& s) {
-  gchar* h = g_compute_checksum_for_string(G_CHECKSUM_SHA1, s.c_str(), -1);
-  std::string out(h);
-  g_free(h);
-  return out.substr(0, 20);
-}
-
-size_t curlWrite(char* p, size_t size, size_t n, void* ud) {
-  static_cast<std::string*>(ud)->append(p, size * n);
-  return size * n;
-}
-
-// blocking GET (worker threads only)
-bool httpGet(const std::string& url, std::string& body, long timeoutSec = 10) {
-  CURL* c = curl_easy_init();
-  if (!c) return false;
-  curl_easy_setopt(c, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, curlWrite);
-  curl_easy_setopt(c, CURLOPT_WRITEDATA, &body);
-  curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(c, CURLOPT_TIMEOUT, timeoutSec);
-  curl_easy_setopt(c, CURLOPT_USERAGENT, kUserAgent);
-  curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
-  const CURLcode rc = curl_easy_perform(c);
-  long status = 0;
-  curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &status);
-  curl_easy_cleanup(c);
-  return rc == CURLE_OK && status >= 200 && status < 300;
-}
-
-std::string urlEncode(const std::string& s) {
-  gchar* e = g_uri_escape_string(s.c_str(), nullptr, FALSE);
-  std::string out(e);
-  g_free(e);
-  return out;
-}
-
 // Ryoku's ArtColor.accentOf: the most vibrant swatch, lifted to a vivid,
 // readable version of itself.
 bool accentOf(GdkPixbuf* pb, Color& out) {
@@ -386,7 +340,7 @@ double MediaState::positionSec(double now) const {
   return std::max(0.0, us / 1e6);
 }
 
-MediaService::MediaService(Jobs& jobs) : m_jobs(jobs) { curl_global_init(CURL_GLOBAL_DEFAULT); }
+MediaService::MediaService(Jobs& jobs) : m_jobs(jobs) {}
 
 MediaService::~MediaService() {
   for (sd_bus_slot* sl : {m_ownerSlot, m_aggSlot, m_propsSlot, m_seekSlot})
@@ -394,7 +348,6 @@ MediaService::~MediaService() {
   if (m_matchSlot) sd_bus_slot_unref(m_matchSlot);
   if (m_bus) sd_bus_flush_close_unref(m_bus);
   if (m_state.cover) glDeleteTextures(1, &m_state.cover);
-  curl_global_cleanup();
 }
 
 bool MediaService::start() {
