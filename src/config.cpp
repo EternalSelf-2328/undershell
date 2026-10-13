@@ -672,6 +672,10 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "text") {
+    b += std::format("style = \"{}\"            # plain neon retro comic outline sticker chrome glitch rainbow typewriter\n",
+                     look.empty() ? "plain" : look);
+    b += "text = \"undershell\"       # {title} {artist} {album} {time} {date} {day} are filled in\n";
   } else if (type == "image") {
     b += "file = \"\"                # a picture, a GIF or a video (the inspector's Choose button)\n"
          "fit = \"fit\"               # fit fill stretch\n";

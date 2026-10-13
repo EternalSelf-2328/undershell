@@ -6,6 +6,8 @@
 #include "nowplaying.hpp"
 #include "offscreen.hpp"
 #include "shape.hpp"
+#include "textwidget.hpp"
+#include "media.hpp"
 #include <array>
 #include <chrono>
 #include <thread>
@@ -1064,6 +1066,57 @@ int main(int argc, char** argv) {
     size_t lit = 0;
     for (size_t i = 3; i < hint.rgba.size(); i += 4) lit += hint.rgba[i] > 100;
     CHECK(lit > 100);
+  }
+
+  // text: every style draws, centred; a hollow O is clear inside; the
+  // placeholders fill in; one style matches its golden
+  {
+    auto alphaAt = [](const Image& img, int x, int y) { return img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3]; };
+    for (const auto& style : TextWidget::styles()) {
+      toml::table o;
+      o.insert_or_assign("style", style);
+      o.insert_or_assign("text", "Ab");
+      o.insert_or_assign("animation", "none");
+      const Image img = renderWidget("text", o, 240, 120, pal);
+      size_t lit = 0, left = 0, right = 0;
+      for (int y = 0; y < 120; ++y)
+        for (int x = 0; x < 240; ++x) {
+          const int a = alphaAt(img, x, y);
+          lit += a > 128;
+          (x < 120 ? left : right) += static_cast<size_t>(a);
+        }
+      if (lit < 2000) std::fprintf(stderr, "text style %s draws almost nothing (%zu)\n", style.c_str(), lit);
+      CHECK(lit >= 2000);
+      // the ink in the middle (a 3D or shadowed style leans one way)
+      CHECK(std::abs(static_cast<double>(left) - static_cast<double>(right)) < 0.3 * static_cast<double>(left + right));
+    }
+    toml::table hollow;
+    hollow.insert_or_assign("style", "outline");
+    hollow.insert_or_assign("text", "O");
+    const Image o = renderWidget("text", hollow, 160, 160, pal);
+    size_t ring = 0;
+    for (int x = 0; x < 160; ++x) ring += alphaAt(o, x, 80) > 200;
+    CHECK(ring >= 4 && alphaAt(o, 80, 80) < 20);
+    MediaState ms;
+    ms.present = true;
+    ms.title = "Song";
+    ms.artist = "Band";
+    CHECK(TextWidget::expand("{title} · {artist}{nope}", &ms) == "Song · Band{nope}");
+    CHECK(TextWidget::expand("{title}", nullptr).empty());
+    toml::table retro;
+    retro.insert_or_assign("style", "retro");
+    retro.insert_or_assign("text", "Synth");
+    const Image img = renderWidget("text", retro, 360, 120, pal);
+    const std::string path = golden + "/text-retro.png";
+    if (update) {
+      writePng(img, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(img, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "text-retro differs from golden: %.3f\n", d);
+      GOLDEN(d);
+    }
   }
 
   return TEST_RESULT();

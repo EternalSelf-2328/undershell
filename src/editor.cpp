@@ -7,6 +7,7 @@
 #include "i18n.hpp"
 #include "clock.hpp"
 #include "shape.hpp"
+#include "textwidget.hpp"
 #include "snap.hpp"
 
 // the generated header names a parameter `namespace`
@@ -78,6 +79,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "shape") return w.cfg.options["shape"].value_or(std::string("rect"));
   if (w.cfg.type == "now_playing") return w.cfg.options["layout"].value_or(std::string("sheet"));
   if (w.cfg.type == "image") return w.cfg.options["fit"].value_or(std::string("fit"));
+  if (w.cfg.type == "text") return w.cfg.options["style"].value_or(std::string("plain"));
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
@@ -448,6 +450,7 @@ bool App::modActive(const char* name) const {
 bool App::keyAction(uint32_t key) {
   if (!m_renaming.empty()) return textKey(key);
   if (!m_layerRenaming.empty()) return layerKey(key);
+  if (!m_fieldKey.empty()) return fieldKey(key);
   if (!m_colorPickFor.empty()) return colorKey(key);
   if (!m_fontPickFor.empty()) return fontKey(key);
   if (m_paintMode) {
@@ -604,6 +607,83 @@ bool App::textKey(uint32_t key) {
     return true;
   }
   return false;
+}
+
+// Typing in an inspector Text row: the widget shows it as it is typed;
+// Enter keeps it (one undo step), Shift+Enter starts a new line, Esc drops it.
+bool App::fieldKey(uint32_t key) {
+  if (key == KEY_ESC) {
+    commitField(false);
+    return false;
+  }
+  if (key == KEY_ENTER || key == KEY_KPENTER) {
+    if (modActive(XKB_MOD_NAME_SHIFT) && m_fieldText.size() < 400) {
+      m_fieldText += '\n';
+      previewField();
+      return true;
+    }
+    commitField();
+    return false;
+  }
+  if (key == KEY_BACKSPACE) {
+    while (!m_fieldText.empty()) {
+      const unsigned char c = static_cast<unsigned char>(m_fieldText.back());
+      m_fieldText.pop_back();
+      if ((c & 0xC0) != 0x80) break;
+    }
+    previewField();
+    return true;
+  }
+  if (!m_xkbState || modActive(XKB_MOD_NAME_CTRL)) return false;
+  char buf[16] = {};
+  const int n = xkb_state_key_get_utf8(m_xkbState, key + 8, buf, sizeof buf);
+  if (n > 0 && static_cast<unsigned char>(buf[0]) >= 0x20 && buf[0] != 0x7f && m_fieldText.size() < 400) {
+    m_fieldText += std::string(buf, static_cast<size_t>(n));
+    previewField();
+    return true;
+  }
+  return false;
+}
+
+namespace {
+// a TOML basic string, line breaks kept as \n
+std::string tomlText(const std::string& s) {
+  std::string o = "\"";
+  for (char c : s) {
+    if (c == '"' || c == '\\') o += '\\';
+    if (c == '\n') o += "\\n";
+    else if (static_cast<unsigned char>(c) >= 0x20) o += c;
+  }
+  return o + "\"";
+}
+}  // namespace
+
+void App::previewField() {
+  for (auto& w : m_widgets)
+    if (w->cfg.id == m_fieldFor) {
+      w->cfg.options.insert_or_assign(m_fieldKey, m_fieldText);
+      if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
+      w->needsRender = true;
+    }
+  markEditDirty();
+}
+
+void App::commitField(bool keep) {
+  if (m_fieldKey.empty()) return;
+  const std::string id = m_fieldFor, key = m_fieldKey, text = m_fieldText, orig = m_fieldOrig;
+  m_fieldFor.clear();
+  m_fieldKey.clear();
+  for (auto& w : m_widgets) {
+    if (w->cfg.id != id) continue;
+    w->cfg.options.insert_or_assign(key, orig);  // undo starts from what was there
+    if (keep && text != orig) {
+      setProp(*w, key, tomlText(text));
+    } else {
+      if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
+      w->needsRender = true;
+    }
+  }
+  markEditDirty();
 }
 
 void App::commitRename() {
@@ -997,6 +1077,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_confirmDelete.clear();
     commitRename();
     commitLayerRename();
+    commitField();
     markEditDirty();
     if (modActive(XKB_MOD_NAME_SHIFT)) {  // Shift+click: in or out of the selection (empty space keeps it)
       if (w) toggleSelected(w);
@@ -1164,6 +1245,8 @@ void App::onScroll(double value) {
     looks = ClockWidget::faces();
   } else if (w.cfg.type == "shape") {
     looks = ShapeWidget::shapes();
+  } else if (w.cfg.type == "text") {
+    looks = TextWidget::styles();
   } else if (w.cfg.type == "visualizer") {
     for (const char* l : kLooks)
       if (std::string(l) != "frame") looks.push_back(l);  // frame owns the whole screen
@@ -1175,9 +1258,13 @@ void App::onScroll(double value) {
     if (looks[i] == cur) idx = static_cast<int>(i);
   const int n = static_cast<int>(looks.size());
   idx = ((idx + step) % n + n) % n;
-  pushUndo(w, "style");
   m_selected = &w;
-  setStyle(w, looks[static_cast<size_t>(idx)]);
+  if (w.cfg.type == "text") {
+    setTextStyle(w, looks[static_cast<size_t>(idx)]);
+  } else {
+    pushUndo(w, "style");
+    setStyle(w, looks[static_cast<size_t>(idx)]);
+  }
   US_INFO("{}: {} {}", w.cfg.id, lookKey(w), looks[static_cast<size_t>(idx)]);
 }
 
@@ -1205,6 +1292,16 @@ void App::drawEditorText(EditSurface& e) {
     if (w->cfg.type == "image") {
       const std::string file = w->cfg.options["file"].value_or(std::string());
       what = file.empty() ? (spanish() ? "sin imagen" : "no picture") : std::filesystem::path(file).filename().string();
+    }
+    if (w->cfg.type == "text") {  // the style and the first words
+      std::string words = w->cfg.options["text"].value_or(std::string("undershell"));
+      std::replace(words.begin(), words.end(), '\n', ' ');
+      if (words.size() > 24) {
+        size_t cut = 21;
+        while (cut > 0 && (static_cast<unsigned char>(words[cut]) & 0xC0) == 0x80) --cut;
+        words = words.substr(0, cut) + "…";
+      }
+      what += "  ·  \u201c" + words + "\u201d";
     }
     std::string label = std::format("{}  ·  {}  ·  {}×{}", layerName(*w), what, w->cfg.width, w->cfg.height);
     if (turnedOnly(w->cfg) && !handPlaced(w->cfg)) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));

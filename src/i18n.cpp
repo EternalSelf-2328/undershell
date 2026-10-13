@@ -65,6 +65,8 @@ std::string optionLabel(const std::string& value, bool es) {
       {"bolt", "Rayo"}, {"note", "Nota"}, {"arrow", "Flecha"}, {"snow", "Nieve"}, {"petals", "Pétalos"}, {"black", "Negro"}, {"white", "Blanco"}, {"top", "Arriba"}, {"bottom", "Abajo"}, {"straight", "Recto"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
       {"rect", "Rectángulo"}, {"ellipse", "Elipse"}, {"triangle", "Triángulo"}, {"polygon", "Polígono"}, {"ring", "Anillo"},
       {"solid", "Sólido"}, {"pulse", "Pulso"}, {"glow", "Brillo"}, {"stretch", "Estirar"}, {"bounce", "Rebote"},
+      {"retro", "Retro"}, {"sticker", "Sticker"}, {"chrome", "Cromo"}, {"glitch", "Glitch"}, {"rainbow", "Arcoíris"},
+      {"typewriter", "Máquina de escribir"}, {"flicker", "Parpadeo"}, {"shake", "Temblor"}, {"letters", "Letras que saltan"},
   };
   static const std::map<std::string_view, const char*> kEn = {
       {"bighour", "Big hour"}, {"goodnight", "Good night"}, {"en", "English"}, {"es", "Spanish"},
@@ -72,6 +74,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"cookie6Sided", "Cookie 6"}, {"cookie7Sided", "Cookie 7"}, {"cookie9Sided", "Cookie 9"}, {"slash", "Slash /"},
       {"on_surface", "Text"}, {"pin", "Corners"}, {"muzzle", "Muzzle flash"}, {"electric", "Electricity"}, {"sfx", "Onomatopoeia"}, {"speedlines", "Speed lines"}, {"petals", "Sakura petals"}, {"ripples", "Ripples"}, {"neon", "Neon sign"}, {"fireworks", "Fireworks"}, {"monitor", "System monitor"}, {"tv", "TV"}, {"static", "Static"}, {"colorbars", "Colour bars"},
       {"nosignal", "No signal"}, {"media", "Your videos"}, {"comic", "Comic"}, {"blue", "Electric blue"}, {"flash", "Realistic"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
+      {"letters", "Jumping letters"},
   };
   const auto& table = es ? kEs : kEn;
   if (auto it = table.find(value); it != table.end()) return it->second;

@@ -270,7 +270,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse, Action, FileRemove,
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, PanelGrab, Language, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,
                 LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown } type = Panel;
     Rect r;       // output coordinates
@@ -454,6 +454,8 @@ private:
   std::vector<PropSpec> m_inspSchema;     // the inspector's rows (generated for clock structures)
   std::string m_elExpanded;               // clock element whose options are open
   std::string m_fontPickFor, m_fontFilter;  // the font picker: key being set, search text
+  // a Text row being typed in: the widget, the key, what is typed, what it was
+  std::string m_fieldFor, m_fieldKey, m_fieldText, m_fieldOrig;
   // the colour picker (colorui.cpp): the key being set, its colour as HSV
   // (the hue survives greys), the hex being typed, the eyedropper
   std::string m_colorPickFor;
@@ -511,6 +513,10 @@ private:
   void deleteSelection();
   void duplicateSelection();
   void commitLayerRename();
+  void setTextStyle(Widget& w, const std::string& style);
+  bool fieldKey(uint32_t key);
+  void previewField();
+  void commitField(bool keep = true);
   bool layerKey(uint32_t key);  // typing a layer's or group's name
   // the selected widgets as one: their box, and moving, scaling or turning them together
   [[nodiscard]] Box selectionBox();

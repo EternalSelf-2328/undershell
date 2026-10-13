@@ -22,6 +22,7 @@ std::string valuesOf(const PropSpec& p) {
     case PropSpec::Number:
       return p.integer ? std::format("{} – {}", static_cast<long>(p.min), static_cast<long>(p.max))
                        : std::format("{} – {}", p.min, p.max);
+    case PropSpec::Text: return "text";
     case PropSpec::Color: return "palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb`";
     case PropSpec::Enum: {
       std::string s;
@@ -60,7 +61,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -91,6 +92,10 @@ std::string optionsMarkdown() {
     table(rest, "image");
     md += rest.substr(rest.find("|---|---|---|---|\n") + 18);
   }
+  md += "\n## `type = \"text\"`\n\nWords with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, "
+        "`{time}`, `{date}` and `{day}` the clock; `\\n` starts a new line. A `style` sets the keys after `font`; a key "
+        "the block sets wins over its style. The defaults below are the `plain` style's.\n\n";
+  table(md, "text");
   return md;
 }
 

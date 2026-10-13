@@ -5,6 +5,7 @@
 // same time so a change shows on the very next frame.
 #include "app.hpp"
 #include "schema.hpp"
+#include "textwidget.hpp"
 
 #include <climits>
 #include <cmath>
@@ -39,6 +40,7 @@ std::string valueText(const toml::table& opts, const PropSpec& p) {
   switch (p.kind) {
     case PropSpec::Enum:
     case PropSpec::Color:
+    case PropSpec::Text:
     case PropSpec::Font: {
       const std::string v = n && n->is_string() ? n->value_or(p.defText) : p.defText;
       return v.empty() ? p.defText : v;  // "" = the design default
@@ -182,6 +184,18 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "text") {
+    const TextConfig t = TextConfig::fromTable(o);  // what its style leaves out counts too
+    if (key == "color") return t.fill == "solid" || t.fill == "gradient";
+    if (key == "color2" || key == "angle") return t.fill == "gradient";
+    if (key == "outline_color") return t.outline > 0;
+    if (key == "shadow_color") return t.shadow > 0;
+    if (key == "glow_color") return t.glow > 0 || t.react == "glow";
+    if (key == "extrude_color" || key == "extrude_angle") return t.extrude > 0;
+    if (key == "speed") return t.animation != "none" || t.fill == "rainbow";
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (c.type == "image") {
     if (key == "corner") return o["cut"].value_or(std::string("none")) == "none";
     if (key == "outline_color") return o["outline"].value_or(0.0) > 0 || o["outline"].value_or(int64_t{0}) > 0;
@@ -309,6 +323,17 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   using K = PropSpec::Kind;
   std::vector<PropSpec> s;
   std::vector<PropSpec> all = schemaFor(w.cfg.type);
+  if (w.cfg.type == "text") {
+    // a key the block leaves out shows its style's value
+    const auto& preset = TextWidget::preset(w.cfg.options["style"].value_or(std::string("plain")));
+    for (auto& p : all)
+      if (auto it = preset.find(p.key); it != preset.end()) {
+        const std::string& v = it->second;
+        if (p.kind == K::Number) p.def = std::atof(v.c_str());
+        else if (p.kind == K::Bool) p.def = v == "true" ? 1 : 0;
+        else if (v.size() >= 2) p.defText = v.substr(1, v.size() - 2);
+      }
+  }
   // shape, for every widget: a mode, then that mode's own controls
   all.push_back({K::Enum, "warp", "Mode", "Modo", {"none", "tilt", "pin", "mesh"}, 0, 0, 0, 0, "none"});
   all.push_back({K::Number, "tilt_x", "Lean back °", "Inclinar atrás °", {}, -70, 70, 0.5, 0});
@@ -630,7 +655,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     return false;
   };
   auto section = [&](const std::string& k) {
-    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle", "outline_color"})) return 1;
+    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle", "outline_color", "shadow_color", "glow_color", "extrude_color"})) return 1;
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
@@ -666,6 +691,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "now_playing") return es ? "Música" : "Now playing";
   if (type == "shape") return es ? "Forma" : "Shape";
   if (type == "image") return es ? "Imagen" : "Image";
+  if (type == "text") return es ? "Texto" : "Text";
   return "Widget";
 }
 }  // namespace
@@ -687,6 +713,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   const double k = std::clamp(oh / 1080.0, 0.5, 3.0);
   float dw = type == "visualizer" ? 1000 : 560, dh = type == "clock" ? 240 : 280;
   if (type == "shape" || type == "image") dw = dh = 300;
+  if (type == "text") dw = 640, dh = 180;
   if (type == "now_playing") nowPlayingDesignSize(look, dw, dh);  // its layout sets its shape
   const int w = static_cast<int>(std::lround(dw * k));
   const int h = static_cast<int>(std::lround(dh * k));
@@ -757,7 +784,38 @@ void App::duplicateWidget(Widget& w) {
   m_reloadConfigAt = nowSeconds() + 0.05;
 }
 
+// A text's style: its keys come back to the style's own (one undo step)
+void App::setTextStyle(Widget& w, const std::string& style) {
+  const std::string text = readFile(m_configPath);
+  EditOp op;
+  op.kind = "layout";
+  op.block = Config::widgetBlocks(text);
+  m_undo.push_back(op);
+  m_redo.clear();
+  m_lastOpKind.clear();
+  std::string blocks;
+  for (std::string b : Config::splitBlocks(Config::widgetBlocks(text))) {
+    if (Config::blockId(b) == w.cfg.id) {
+      for (const auto& [k, v] : TextWidget::preset(style)) b = Config::setBlockKey(b, k, "");
+      b = Config::setBlockKey(b, "style", "\"" + style + "\"");
+    }
+    if (!blocks.empty()) blocks += "\n";
+    blocks += b;
+    if (!blocks.ends_with("\n")) blocks += "\n";
+  }
+  writeFileAtomic(m_configPath, Config::replaceWidgetBlocks(text, blocks));
+  for (const auto& [k, v] : TextWidget::preset(style)) w.cfg.options.erase(k);
+  w.cfg.options.insert_or_assign("style", style);
+  if (w.impl) w.impl->configure(w.cfg, m_noctalia.state());
+  w.needsRender = true;
+  markEditDirty();
+}
+
 void App::setProp(Widget& w, const std::string& key, const std::string& tomlValue) {
+  if (w.cfg.type == "text" && key == "style" && tomlValue.size() >= 2) {
+    setTextStyle(w, tomlValue.substr(1, tomlValue.size() - 2));
+    return;
+  }
   const toml::node* before = w.cfg.options.get(key);
   EditOp op;
   op.kind = "prop";
@@ -1089,6 +1147,7 @@ bool isSaveControl(App::UiControl::Type t) {
 const char* chipIcon(const std::string& type) {
   if (type == "shape") return "shape";
   if (type == "image") return "image";
+  if (type == "text") return "text";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1284,6 +1343,10 @@ void App::layoutUi(const EditSurface& e) {
           Rect f{cx, y + 3, cw, 24};
           if (visible(f)) m_ui.push_back({UiControl::FontPick, f, idx});
           y += kRowH;
+        } else if (p.kind == PropSpec::Text) {
+          Rect f{cx, y + 3, cw, 24};
+          if (visible(f)) m_ui.push_back({UiControl::TextField, f, idx});
+          y += kRowH;
         } else if (p.kind == PropSpec::Action) {
           Rect r{px + 16, y + 3, kPanelW - 32, 24};
           if (visible(r)) {
@@ -1397,7 +1460,7 @@ void App::layoutUi(const EditSurface& e) {
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
     const float gx = std::clamp(addRect.x - 10, 12.0F, W - 282), gy = kBarY + kBarH + 10;
-    const char* types[] = {"visualizer", "clock", "now_playing", "shape", "image"};
+    const char* types[] = {"visualizer", "clock", "now_playing", "text", "shape", "image"};
     m_ui.push_back({UiControl::Panel, {gx, gy, 270, std::size(types) * 70.0F + 10}, -1, "gallery"});
     float y = gy + 8;
     for (const char* t : types) {
@@ -1727,6 +1790,7 @@ bool App::uiPress(int index, double x) {
   // armed only for the very next click
   if (!(c.type == UiControl::SaveRow && c.value == m_renaming)) commitRename();
   if (!(c.type == UiControl::LayerRow && c.value == m_layerRenaming)) commitLayerRename();
+  if (c.type != UiControl::TextField) commitField();
   if (c.type != UiControl::SaveDelete) m_confirmDelete.clear();
   if (c.type != UiControl::PaintClear) m_confirmClear = false;
   switch (c.type) {
@@ -2062,6 +2126,17 @@ bool App::uiPress(int index, double x) {
     if (w) openColorPick(*w, p);
     return true;
   }
+  if (c.type == UiControl::TextField) {
+    if (m_fieldKey == p.key && m_fieldFor == w->cfg.id) return true;  // already typing here
+    commitField();
+    m_fieldFor = w->cfg.id;
+    m_fieldKey = p.key;
+    m_fieldOrig = valueText(w->cfg.options, p);
+    m_fieldText = m_fieldOrig;
+    m_fontPickFor.clear();
+    markEditDirty();
+    return true;
+  }
   if (c.type == UiControl::FontPick) {
     // fonts installed since last time show up without a restart
     if (TextRenderer::refreshFonts()) {
@@ -2329,6 +2404,10 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "text") {  // a capital T
+    c.segment(cx - 6.5F, cy - 6, cx + 6.5F, cy - 6, 2.2F, col, false);
+    c.segment(cx, cy - 6, cx, cy + 7, 2.2F, col, false);
+    c.segment(cx - 2.5F, cy + 7, cx + 2.5F, cy + 7, 1.6F, col, false);
   } else if (name == "folder") {
     c.roundRect(cx - 7, cy - 4, 14, 10, 2, Color{0, 0, 0, 0}, 1.4F, col);
     c.roundRect(cx - 7, cy - 6.5F, 6, 4, 1.5F, col);
@@ -2651,6 +2730,18 @@ void App::drawUi(EditSurface& e) {
             const float tx = cx + cw - 38;
             cv.roundRect(tx, y + 5, 38, 20, 10, shown ? accent : withAlphaC(ink, 0.14F));
             cv.circle(shown ? tx + 28 : tx + 10, y + 15, 7.5F, shown ? onAccent : ink);
+          } else if (p.kind == PropSpec::Text) {
+            // what is typed, its end in view; line breaks shown as ↵
+            const bool typing = m_fieldKey == p.key && m_fieldFor == w->cfg.id;
+            cv.roundRect(cx, y + 3, cw, 24, 8, typing ? Color{0, 0, 0, 0.35F} : raised, typing ? 1.4F : 1, typing ? accent : line);
+            std::string shown;
+            for (char ch : typing ? m_fieldText : v) shown += ch == '\n' ? std::string(" \u21b5 ") : std::string(1, ch);
+            cv.clip(cx + 6, y + 3, cw - 12, 24);
+            auto [fw, fh] = measure(shown, label);
+            const float off = typing ? std::max(0.0F, fw - (cw - 20)) : 0.0F;
+            cv.text(shown, label, cx + 8 - off, y + 15 - fh / 2, ink);
+            if (typing) cv.segment(cx + 9 + fw - off, y + 8, cx + 9 + fw - off, y + 22, 1.5F, accent, false);
+            cv.clip(P.x, top + 2, P.w, bottom - top - 4);  // back to the inspector's own clip
           } else if (p.kind == PropSpec::Font) {
             const bool picking = m_fontPickFor == p.key;
             cv.roundRect(cx, y + 3, cw, 24, 8, picking ? withAlphaC(accent, 0.2F) : raised, 1, picking ? accent : line);
@@ -2794,6 +2885,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
                        : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")
+                       : c.value == "text"    ? (es ? "10 estilos · efectos · animaciones" : "10 styles · effects · animation")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);

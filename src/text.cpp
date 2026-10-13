@@ -2,6 +2,7 @@
 #include "text.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <cairo.h>
 #include <cmath>
 #include <unordered_map>
@@ -250,9 +251,9 @@ void TextRenderer::releaseGl() {
 
 const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st, float scale) {
   registerBundledFonts();
-  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}\x1f{:.1f}\x1f{}\x1f{}\x1f{}", text,
+  const std::string key = std::format("{}\x1f{}\x1f{:.2f}\x1f{}\x1f{:.2f}\x1f{}\x1f{}\x1f{:.2f}\x1f{:.1f}\x1f{}\x1f{}\x1f{}\x1f{:.1f}", text,
                                       st.family, st.size, st.weight, st.letterSpacing, st.italic ? 1 : 0, std::round(scale * 1000) / 1000, st.stroke,
-                                      st.maxWidth, st.maxLines, st.align, st.variations);
+                                      st.maxWidth, st.maxLines, st.align, st.variations, st.pad);
   auto it = m_cache.find(key);
   if (it != m_cache.end()) {
     it->second.lastUse = nowSeconds();
@@ -278,7 +279,8 @@ const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st,
   const double right = std::max(toPx(ink.x + ink.width), toPx(logical.x + logical.width));
   const double bottom = std::max(toPx(ink.y + ink.height), toPx(logical.y + logical.height));
   // room for an outline and for a blurred halo sampled around the glyphs
-  const int pad = 2 + static_cast<int>(std::ceil(st.stroke * scale)) + static_cast<int>(std::ceil(st.size * 0.12 * scale));
+  const int pad = 2 + static_cast<int>(std::ceil(st.stroke * scale)) + static_cast<int>(std::ceil(st.size * 0.12 * scale)) +
+                  static_cast<int>(std::ceil(st.pad * scale));
   const int pxW = std::max(1, static_cast<int>(std::ceil((right - left) * scale)) + 2 * pad);
   const int pxH = std::max(1, static_cast<int>(std::ceil((bottom - top) * scale)) + 2 * pad);
 
@@ -334,7 +336,8 @@ const TextImage& TextRenderer::get(const std::string& text, const TextStyle& st,
   std::vector<unsigned char> tight(static_cast<size_t>(pxW) * pxH);
   for (int y = 0; y < pxH; ++y) std::copy_n(data + static_cast<size_t>(y) * stride, pxW, tight.data() + static_cast<size_t>(y) * pxW);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, pxW, pxH, 0, GL_RED, GL_UNSIGNED_BYTE, tight.data());
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  if (m_mipmaps) glGenerateMipmap(GL_TEXTURE_2D);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, m_mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -388,6 +391,51 @@ void main() {
     gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
 }
 )";
+
+std::vector<TextRenderer::Cluster> TextRenderer::clusters(const std::string& text, const TextStyle& style) {
+  std::vector<Cluster> out;
+  if (text.empty()) return out;
+  registerBundledFonts();
+  cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1);
+  cairo_t* cr = cairo_create(surface);
+  PangoLayout* layout = makeLayout(cr, text, style);
+  PangoRectangle ink, logical;
+  pango_layout_get_extents(layout, &ink, &logical);
+  // Pango may have replaced the text (an ellipsis): walk what it laid out
+  const char* laid = pango_layout_get_text(layout);
+  const int bytes = static_cast<int>(std::strlen(laid));
+  int nAttrs = 0;
+  const PangoLogAttr* attrs = pango_layout_get_log_attrs_readonly(layout, &nAttrs);
+  const auto px = [](int v) { return static_cast<float>(v) / PANGO_SCALE; };
+  int ci = 0;  // character index
+  for (int b = 0; b < bytes && ci < nAttrs;) {
+    // the cluster runs to the next cursor position
+    int e = b, cj = ci;
+    do {
+      e = static_cast<int>(g_utf8_next_char(laid + e) - laid);
+      ++cj;
+    } while (e < bytes && cj < nAttrs && !attrs[cj].is_cursor_position);
+    Cluster c;
+    c.text.assign(laid + b, static_cast<size_t>(e - b));
+    PangoRectangle r;
+    pango_layout_index_to_pos(layout, b, &r);
+    c.x = px(std::min(r.x, r.x + r.width) - logical.x);
+    c.y = px(r.y - logical.y);
+    c.w = px(std::abs(r.width));
+    c.h = px(r.height);
+    int line = 0, xpos = 0;
+    pango_layout_index_to_line_x(layout, b, 0, &line, &xpos);
+    c.line = line;
+    c.blank = attrs[ci].is_white || c.text == "\n" || c.text == "\r\n";
+    out.push_back(std::move(c));
+    b = e;
+    ci = cj;
+  }
+  g_object_unref(layout);
+  cairo_destroy(cr);
+  cairo_surface_destroy(surface);
+  return out;
+}
 
 std::vector<TextRenderer::Contour> TextRenderer::outline(const std::string& text, const TextStyle& style, float tolerance) {
   std::vector<Contour> out;

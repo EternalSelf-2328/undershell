@@ -15,8 +15,9 @@ struct PropSpec {
   // Header, Element and Font rows only appear in the inspector's generated
   // list (clock structures); the config documents the four value kinds
   // Action: a button row (two half buttons when it has options); File: one
-  // entry of a list of paths (def = its index), with a button to drop it
-  enum Kind { Enum, Bool, Number, Color, Header, Element, Font, Action, File } kind = Enum;
+  // entry of a list of paths (def = its index), with a button to drop it;
+  // Text: words typed in the row (Shift+Enter for a new line)
+  enum Kind { Enum, Bool, Number, Color, Header, Element, Font, Action, File, Text } kind = Enum;
   std::string key;
   std::string labelEn;
   std::string labelEs;
@@ -146,6 +147,39 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  // the defaults are the "plain" style's; another style brings its own (TextWidget::preset)
+  static const std::vector<PropSpec> text = {
+      {K::Text, "text", "Text", "Texto", {}, 0, 0, 0, 0, "undershell"},
+      {K::Enum, "style", "Style", "Estilo",
+       {"plain", "neon", "retro", "comic", "outline", "sticker", "chrome", "glitch", "rainbow", "typewriter"}, 0, 0, 0, 0, "plain"},
+      {K::Font, "font", "Font", "Fuente", {}, 0, 0, 0, 0, "Inter Display"},
+      {K::Number, "weight", "Weight", "Grosor", {}, 100, 900, 100, 800, "", true},
+      {K::Bool, "italic", "Italic", "Cursiva", {}, 0, 1, 1, 0},
+      {K::Number, "spacing", "Letter spacing", "Espaciado", {}, -0.1, 0.6, 0.01, 0},
+      {K::Enum, "align", "Align", "Alineación", {"left", "center", "right"}, 0, 0, 0, 0, "center"},
+      {K::Enum, "fill", "Fill", "Relleno", {"solid", "gradient", "rainbow", "none"}, 0, 0, 0, 0, "solid"},
+      {K::Color, "color", "Colour 1", "Color 1", {}, 0, 0, 0, 0, "on_surface"},
+      {K::Color, "color2", "Colour 2", "Color 2", {}, 0, 0, 0, 0, "primary"},
+      {K::Number, "angle", "Gradient angle", "Ángulo", {}, 0, 360, 15, 90, "", true},
+      {K::Number, "outline", "Outline", "Borde", {}, 0, 1, 0.05, 0},
+      {K::Color, "outline_color", "Outline colour", "Color del borde", {}, 0, 0, 0, 0, "#111111"},
+      {K::Number, "shadow", "Shadow", "Sombra", {}, 0, 1, 0.05, 0.3},
+      {K::Color, "shadow_color", "Shadow colour", "Color de sombra", {}, 0, 0, 0, 0, "#000000"},
+      {K::Number, "glow", "Glow", "Brillo", {}, 0, 1, 0.05, 0},
+      {K::Color, "glow_color", "Glow colour", "Color del brillo", {}, 0, 0, 0, 0, "primary"},
+      {K::Number, "extrude", "3D depth", "Relieve 3D", {}, 0, 1, 0.05, 0},
+      {K::Color, "extrude_color", "3D colour", "Color del 3D", {}, 0, 0, 0, 0, "#1a1020"},
+      {K::Number, "extrude_angle", "3D direction °", "Dirección 3D °", {}, 0, 360, 15, 135, "", true},
+      {K::Enum, "animation", "Animation", "Animación", {"none", "wave", "bounce", "typewriter", "glitch", "flicker", "shake"}, 0, 0, 0, 0,
+       "none"},
+      {K::Number, "speed", "Speed", "Velocidad", {}, 0.1, 4, 0.1, 1},
+      {K::Enum, "react", "With the music", "Con la música", {"none", "pulse", "letters", "glow"}, 0, 0, 0, 0, "none"},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> image = {
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
       {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
@@ -167,6 +201,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   static const std::vector<PropSpec> none;
   if (type == "shape") return shape;
   if (type == "image") return image;
+  if (type == "text") return text;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;
   if (type == "now_playing") return nowPlaying;

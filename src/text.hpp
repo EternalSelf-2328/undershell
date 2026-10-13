@@ -27,6 +27,7 @@ struct TextStyle {
   int maxLines = 1;
   int align = 0;             // 0 left, 1 centre, 2 right (within maxWidth)
   std::string variations;    // variable-font axes, e.g. "wght=700,wdth=120,ROND=100"
+  float pad = 0;             // extra room round the glyphs in the texture (logical px), for effects that spill
 };
 
 struct TextImage {
@@ -70,6 +71,16 @@ public:
   // top-left (curves flattened to within `tolerance` px). No GL needed.
   using Contour = std::vector<std::pair<float, float>>;
   static std::vector<Contour> outline(const std::string& text, const TextStyle& style, float tolerance = 0.4F);
+  // Each grapheme of the laid-out text (wrapped and aligned as `style` says):
+  // its bytes and its logical box relative to the layout's top-left. Spaces
+  // and line breaks are kept (blank = true) so a reveal can count them.
+  struct Cluster {
+    std::string text;
+    float x = 0, y = 0, w = 0, h = 0;
+    int line = 0;
+    bool blank = false;
+  };
+  static std::vector<Cluster> clusters(const std::string& text, const TextStyle& style);
   // A sheet of cells, `perRow` across, each `cellW` x `cellH` device px, with
   // one glyph (a UTF-8 string) in each: centred across, all on one baseline
   // (`style.size` in device px). Alpha, one byte a pixel, rows packed.
@@ -84,6 +95,9 @@ public:
   void drawEx(const TextImage& img, float x, float y, Color color, float surfaceW, float surfaceH, float sx, float sy,
               float blur, float opacity = 1, float angle = 0);
 
+  // Textures made from now on get mipmaps (soft halos read from smaller levels).
+  void setMipmaps(bool on) { m_mipmaps = on; }
+
   // Evicts textures unused for `maxAgeSec`. Call once in a while.
   void collect(double maxAgeSec = 30);
   void releaseGl();
@@ -96,6 +110,7 @@ private:
   };
   std::unordered_map<std::string, Entry> m_cache;
   Program m_prog;
+  bool m_mipmaps = false;
 };
 
 }  // namespace undershell
