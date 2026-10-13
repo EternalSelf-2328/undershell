@@ -93,6 +93,26 @@ sudo dnf builddep packaging/fedora/undershell.spec
 
 ## Install
 
+**Prebuilt packages:** every [release](https://github.com/EternalSelf-2328/undershell/releases/latest)
+has packages for Arch Linux (and derivatives), Fedora 43 and 44, Debian 13 and
+Ubuntu 24.04, built by GitHub Actions from the tagged source. Download the
+one for your system, then:
+
+```sh
+sudo pacman -U undershell-*.pkg.tar.zst                       # Arch, CachyOS, EndeavourOS…
+sudo dnf install ./undershell-*.fc44.x86_64.rpm               # Fedora (fc43 or fc44)
+sudo apt install ./undershell_*_debian-13_amd64.deb           # Debian 13
+sudo apt install ./undershell_*_ubuntu-24.04_amd64.deb        # Ubuntu 24.04 and newer
+systemctl --user enable --now undershell
+```
+
+To update, install the next release's package the same way. The Ubuntu
+package comes without `undershell-depth` (Ubuntu has no ONNX Runtime
+package), so there depth behind the wallpaper's subject needs Noctalia's
+`wallpaper_depth`.
+
+**From source** (any distribution; `./update.sh` then keeps it up to date):
+
 ```sh
 git clone https://github.com/EternalSelf-2328/undershell.git
 cd undershell
@@ -172,7 +192,7 @@ Debian/Ubuntu package, or by hand in `~/.local`), runs `git pull`, builds and
 installs it again the same way, and restarts the service if it was running.
 `./update.sh --dry-run` only says what it would do; `--rebuild` installs again
 even when there are no new commits. Packages built from the checkout carry
-the commit count in their version (`1.1.0-1.git92`, `1.1.0+git92`), so `dnf`
+the commit count in their version (`1.2.0-1.git146`, `1.2.0+git146`), so `dnf`
 and `apt` treat each update as newer.
 
 The Noctalia bar plugin updates from Noctalia's plugin store.
@@ -1088,6 +1108,7 @@ makes it fail (for development); if you change a look on purpose:
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex, Bangers (OFL) |
 | `integrations/noctalia/undershell/` | the Noctalia bar plugin |
 | `packaging/arch/` | PKGBUILD |
+| `packaging/build-release.sh`, `.github/workflows/release.yml` | the packages of every release (one container per distribution) |
 
 ## Status
 

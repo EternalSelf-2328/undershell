@@ -1,0 +1,62 @@
+# Packages for every release: pushing a tag v* builds undershell for Debian 13,
+# Ubuntu 24.04, Fedora 43 and 44 and Arch Linux, each in a container of its own
+# (packaging/build-release.sh), and publishes them on the tag's GitHub Release
+# with their SHA-256 sums. "Run workflow" builds them without publishing (they
+# stay as the run's artifacts).
+name: Release packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: debian-13, image: 'debian:13', tools: 'apt-get update -q && apt-get install -y -q git ca-certificates' }
+          - { target: ubuntu-24.04, image: 'ubuntu:24.04', tools: 'apt-get update -q && apt-get install -y -q git ca-certificates' }
+          - { target: fedora-43, image: 'fedora:43', tools: 'dnf -y -q install git' }
+          - { target: fedora-44, image: 'fedora:44', tools: 'dnf -y -q install git' }
+          - { target: arch, image: 'archlinux:latest', tools: 'pacman -Syu --noconfirm --needed git' }
+    steps:
+      # git first, so the checkout is a repository (the build counts its commits)
+      - name: Install git
+        run: ${{ matrix.tools }}
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build the package
+        run: packaging/build-release.sh ${{ matrix.target }} "$GITHUB_WORKSPACE/out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: undershell-${{ matrix.target }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Checksums
+        run: cd packages && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: undershell ${{ github.ref_name }}
+          body_path: packaging/release-notes.md
+          generate_release_notes: true
+          files: packages/*
