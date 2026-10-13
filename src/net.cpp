@@ -113,9 +113,12 @@ std::string urlEncode(const std::string& s) {
 
 std::string cacheDir(const char* sub) {
   const char* xdg = std::getenv("XDG_CACHE_HOME");
-  std::string d = std::string(xdg && *xdg ? xdg : expandHome("~/.cache")) + "/undershell/" + sub;
+  const std::string root = std::string(xdg && *xdg ? xdg : expandHome("~/.cache")) + "/undershell";
+  const std::string d = root + "/" + sub;
   std::error_code ec;
   std::filesystem::create_directories(d, ec);
+  // what was listened to, where the weather is asked for: the user's alone
+  std::filesystem::permissions(root, std::filesystem::perms::owner_all, std::filesystem::perm_options::replace, ec);
   return d;
 }
 

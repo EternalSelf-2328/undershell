@@ -6,12 +6,14 @@
 #include <array>
 #include <cerrno>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
 #include <poll.h>
 #include <sstream>
 #include <stdexcept>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
@@ -98,15 +100,39 @@ std::string readFile(const std::string& path) {
   return ss.str();
 }
 
+// the process's umask, read without changing it (umask() would, for a moment, for every thread)
+static mode_t currentUmask() {
+  static const mode_t mask = [] {
+    std::ifstream f("/proc/self/status");
+    for (std::string line; std::getline(f, line);)
+      if (line.rfind("Umask:", 0) == 0) return static_cast<mode_t>(std::stoul(line.substr(6), nullptr, 8));
+    return static_cast<mode_t>(022);
+  }();
+  return mask;
+}
+
+// A new file written beside the old one and renamed over it: readers see the
+// old content or the new, never half. The temporary gets a fresh, unguessable
+// name (it cannot be a link someone left there), keeps the old file's
+// permissions (a new one gets the umask's), and reaches the disk before the
+// rename.
 bool writeFileAtomic(const std::string& path, const std::string& content) {
-  std::string tmp = path + ".tmp";
-  {
-    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-    if (!f) return false;
-    f << content;
-    if (!f) return false;
+  std::string tmp = path + ".XXXXXX";
+  const int fd = mkostemp(tmp.data(), O_CLOEXEC);
+  if (fd < 0) return false;
+  struct stat st{};
+  const mode_t mode = stat(path.c_str(), &st) == 0 ? (st.st_mode & 07777) : (0666 & ~currentUmask());
+  bool ok = fchmod(fd, mode) == 0;
+  for (size_t done = 0; ok && done < content.size();) {
+    const ssize_t n = write(fd, content.data() + done, content.size() - done);
+    if (n <= 0) ok = false;
+    else done += static_cast<size_t>(n);
   }
-  return std::rename(tmp.c_str(), path.c_str()) == 0;
+  ok = ok && fsync(fd) == 0;
+  ok = close(fd) == 0 && ok;
+  if (ok && std::rename(tmp.c_str(), path.c_str()) == 0) return true;
+  unlink(tmp.c_str());
+  return false;
 }
 
 // Runs `sh -c cmd`, returns stdout. Kills the child after timeoutSec.

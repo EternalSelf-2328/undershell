@@ -243,13 +243,7 @@ bool saveDepthEdits(const std::string& path, const DepthEdits& e) {
   }
   std::error_code ec;
   fs::create_directories(fs::path(path).parent_path(), ec);
-  const std::string tmp = path + ".tmp";
-  {
-    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-    if (!f.write(out.data(), static_cast<std::streamsize>(out.size()))) return false;
-  }
-  fs::rename(tmp, path, ec);
-  return !ec;
+  return writeFileAtomic(path, out);
 }
 
 bool loadDepthEdits(const std::string& path, DepthEdits& out) {

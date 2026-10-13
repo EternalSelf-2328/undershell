@@ -139,6 +139,8 @@ void NotesWidget::setEditing(const std::string* text, size_t caret) {
 void NotesWidget::saveEditedText(const std::string& text) {
   std::error_code ec;
   fs::create_directories(fs::path(m_path).parent_path(), ec);
+  // the notes' own folder is private (a file the user chose keeps its folder as it is)
+  if (m_cfg.file.empty()) fs::permissions(fs::path(m_path).parent_path(), fs::perms::owner_all, fs::perm_options::replace, ec);
   if (writeFileAtomic(m_path, text)) m_text = text;
 }
 
