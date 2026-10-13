@@ -86,18 +86,41 @@ bool accentOf(GdkPixbuf* pb, Color& out) {
   return true;
 }
 
+// "[mm:ss.xx]" stamps (one or more) before a line's words. Read by hand, with
+// every number and every line kept short: the text comes from anyone who
+// published to LRCLIB.
 std::vector<LyricLine> parseLrcImpl(const std::string& text) {
   std::vector<LyricLine> lines;
-  static const std::regex kStamp(R"(^\[(\d+):(\d+(?:\.\d+)?)\])");
   std::istringstream in(text);
-  for (std::string raw; std::getline(in, raw);) {
+  auto digits = [](const std::string& s, size_t& i, size_t most, long& out) {
+    const size_t from = i;
+    out = 0;
+    while (i < s.size() && i - from < most && std::isdigit(static_cast<unsigned char>(s[i]))) out = out * 10 + (s[i++] - '0');
+    return i > from;
+  };
+  for (std::string raw; std::getline(in, raw) && lines.size() < 20000;) {
+    if (raw.size() > 4000) raw.resize(4000);
     std::vector<int> stamps;
-    std::smatch m;
-    std::string rest = raw;
-    while (std::regex_search(rest, m, kStamp)) {
-      stamps.push_back(static_cast<int>((std::stoi(m[1]) * 60 + std::stod(m[2])) * 1000));
-      rest = m.suffix();
+    size_t i = 0;
+    while (i < raw.size() && raw[i] == '[') {
+      size_t j = i + 1;
+      long min = 0, sec = 0, frac = 0;
+      if (!digits(raw, j, 4, min) || j >= raw.size() || raw[j] != ':') break;
+      ++j;
+      if (!digits(raw, j, 2, sec)) break;
+      double f = 0;
+      if (j < raw.size() && raw[j] == '.') {
+        ++j;
+        const size_t from = j;
+        if (!digits(raw, j, 3, frac)) break;
+        f = static_cast<double>(frac) / std::pow(10.0, static_cast<double>(j - from));
+      }
+      if (j >= raw.size() || raw[j] != ']') break;
+      stamps.push_back(static_cast<int>((min * 60 + sec + f) * 1000));
+      i = j + 1;
     }
+    if (stamps.empty()) continue;
+    const std::string rest = raw.substr(i);
     const auto b = rest.find_first_not_of(" \t\r"), e = rest.find_last_not_of(" \t\r");
     const std::string txt = b == std::string::npos ? "" : rest.substr(b, e - b + 1);
     for (int t : stamps) lines.push_back({t, txt});
@@ -662,6 +685,42 @@ void MediaService::syncCover() {
   fetchCover(m_state.artUrl, key);
 }
 
+namespace {
+// A cover's bytes decoded, from the formats a cover comes in and up to a
+// sane size: the bytes are fed in pieces and the decoding stops as soon as
+// the header says the picture is something else or absurdly large (a few
+// bytes of PNG can promise gigabytes of pixels). Returns the loader that
+// owns `out` (or nullptr).
+GdkPixbufLoader* decodeCover(const std::string& bytes, GdkPixbuf*& out) {
+  out = nullptr;
+  GdkPixbufLoader* loader = gdk_pixbuf_loader_new();
+  bool tooBig = false;
+  g_signal_connect(loader, "size-prepared", G_CALLBACK(+[](GdkPixbufLoader*, int w, int h, gpointer big) {
+                     if (w <= 0 || h <= 0 || w > 8192 || h > 8192 || static_cast<int64_t>(w) * h > 40'000'000) *static_cast<bool*>(big) = true;
+                   }),
+                   &tooBig);
+  bool ok = true, checked = false;
+  for (size_t at = 0; ok && at < bytes.size() && !tooBig; at += 16384) {
+    const size_t n = std::min<size_t>(16384, bytes.size() - at);
+    ok = gdk_pixbuf_loader_write(loader, reinterpret_cast<const guchar*>(bytes.data() + at), n, nullptr);
+    if (ok && !checked) {
+      if (GdkPixbufFormat* f = gdk_pixbuf_loader_get_format(loader)) {
+        checked = true;
+        const std::string name = gdk_pixbuf_format_get_name(f);
+        ok = name == "png" || name == "jpeg" || name == "webp" || name == "gif" || name == "bmp";
+      }
+    }
+  }
+  gdk_pixbuf_loader_close(loader, nullptr);
+  if (ok && !tooBig && checked) out = gdk_pixbuf_loader_get_pixbuf(loader);
+  if (!out) {
+    g_object_unref(loader);
+    return nullptr;
+  }
+  return loader;
+}
+}  // namespace
+
 void MediaService::fetchCover(const std::string& url, const std::string& key) {
   m_coverFor = key;
   if (url.empty()) {
@@ -680,7 +739,7 @@ void MediaService::fetchCover(const std::string& url, const std::string& key) {
         ++m_generation;
       };
     };
-    std::string bytes;
+    std::string bytes, cachedFile;
     if (url.rfind("data:", 0) == 0) {
       // some players hand the art over inline (`data:image/jpeg;base64,…`)
       const size_t comma = url.find(',');
@@ -698,21 +757,22 @@ void MediaService::fetchCover(const std::string& url, const std::string& key) {
         }
       }
     } else if (url.rfind("http", 0) == 0) {
-      const std::string cached = cacheDir("covers") + "/" + hashOf(url);
-      bytes = readFile(cached);
-      if (bytes.empty() && httpGet(url, bytes)) writeFileAtomic(cached, bytes);
+      cachedFile = cacheDir("covers") + "/" + hashOf(url);
+      bytes = readRegularFile(cachedFile);
+      if (!bytes.empty()) cachedFile.clear();  // already kept
+      // the address came from another program: the internet only, not this machine or its network
+      else if (!httpGet(url, bytes, 10, 16u << 20, true)) bytes.clear();
     } else if (const std::string path = artPath(url); !path.empty()) {
-      bytes = readFile(path);
+      bytes = readRegularFile(path);  // a file, not a device or a pipe; 16 MB at most
     }
     if (bytes.empty()) return giveUp();
-    GdkPixbufLoader* loader = gdk_pixbuf_loader_new();
-    gdk_pixbuf_loader_write(loader, reinterpret_cast<const guchar*>(bytes.data()), bytes.size(), nullptr);
-    gdk_pixbuf_loader_close(loader, nullptr);
-    GdkPixbuf* pb = gdk_pixbuf_loader_get_pixbuf(loader);
+    GdkPixbuf* pb = nullptr;
+    GdkPixbufLoader* loader = decodeCover(bytes, pb);
     if (!pb) {
-      g_object_unref(loader);
+      if (loader) g_object_unref(loader);
       return giveUp();
     }
+    if (!cachedFile.empty()) writeFileAtomic(cachedFile, bytes);  // kept only once it proved to be a picture
     // at most 512 px for the texture; square-ish covers stay sharp at card size
     const int w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb);
     const double k = std::min(1.0, 512.0 / std::max(w, h));

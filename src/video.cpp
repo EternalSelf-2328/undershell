@@ -103,7 +103,13 @@ bool VideoSource::runFfmpeg() {
     return true;
   };
   AVFormatContext* fmt = nullptr;
-  if (avformat_open_input(&fmt, m_path.c_str(), nullptr, nullptr) < 0) return false;
+  // a file on this disk and nothing it points at: a playlist (HLS, concat)
+  // in a folder of videos cannot make undershell open URLs or other files
+  AVDictionary* opts = nullptr;
+  av_dict_set(&opts, "protocol_whitelist", "file", 0);
+  const int opened = avformat_open_input(&fmt, m_path.c_str(), nullptr, &opts);
+  av_dict_free(&opts);
+  if (opened < 0) return false;
   if (avformat_find_stream_info(fmt, nullptr) < 0) {
     avformat_close_input(&fmt);
     return false;

@@ -14,6 +14,14 @@ int main() {
   CHECK(lines[2].ms == 40000 && lines[2].text.empty());      // instrumental gap keeps its slot
   CHECK(lines[3].ms == 62500 && lines[3].text == "chorus");  // trimmed, repeated stamps
   CHECK(lines[4].ms == 100250);
+  // hostile input (anyone can publish to LRCLIB): endless digits, a stamp
+  // that overflows, very long lines -- read without crashing, kept short
+  const std::string many(300000, '9');
+  auto bad = parseLrc("[" + many + ":00.00]x\n[99999999999:99.999]y\n[00:01.5]" + std::string(100000, 'a') + "\n[0:2]z\n[00:03]ok");
+  CHECK(bad.size() == 3);
+  CHECK(bad[0].ms == 1500 && bad[0].text.size() < 5000);
+  CHECK(bad[1].ms == 2000 && bad[1].text == "z");  // short stamps are stamps too
+  CHECK(bad[2].ms == 3000 && bad[2].text == "ok");
 
   // a muddy image with a vivid red patch: the accent is the red, lifted
   std::vector<uint8_t> img(64 * 64 * 4);
