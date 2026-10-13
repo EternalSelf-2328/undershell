@@ -502,6 +502,28 @@ int main() {
     CHECK(g.fillMode == 4 && std::abs(g.palette["primary"].b - 0xe4 / 255.0F) < 0.003F);
   }
 
+  // the Layers panel's keys: a name, a group, hidden, locked; a block edited as text
+  {
+    const std::string block = "[[widget]]\nid = \"clock\"\ntype = \"clock\"\nlayer = 2    # stacking\nhidden = true\n";
+    CHECK(Config::blockId(block) == "clock");
+    CHECK(Config::blockId("[[widget]]\ntype = \"clock\"\n").empty());
+    std::string b = Config::setBlockKey(block, "group", "\"Grupo 1\"");
+    CHECK(b.find("group = \"Grupo 1\"\n") != std::string::npos);
+    b = Config::setBlockKey(b, "layer", "5");
+    CHECK(b.find("layer = 5    # stacking") != std::string::npos && b.find("layer = 2") == std::string::npos);
+    b = Config::setBlockKey(b, "hidden", "");  // taken out
+    CHECK(b.find("hidden") == std::string::npos && b.find("group = ") != std::string::npos);
+    CHECK(Config::setBlockKey(b, "absent", "") == b);  // nothing to take out
+    b = Config::setBlockKey(b, "name", "\"Reloj \\\"grande\\\"\"");
+    const std::string lpath = dir + "/layers.toml";
+    writeFileAtomic(lpath, b + "locked = true\n");
+    Config lc = Config::load(lpath);
+    CHECK(lc.widgets.size() == 1 && lc.widgets[0].group == "Grupo 1" && lc.widgets[0].name == "Reloj \"grande\"");
+    CHECK(lc.widgets[0].layer == 5 && !lc.widgets[0].hidden && lc.widgets[0].locked);
+    writeFileAtomic(lpath, "[[widget]]\nid = \"v\"\nlayer = 4000\n");
+    CHECK(Config::load(lpath).widgets[0].layer == 999);  // a long stack, within bounds
+  }
+
   std::filesystem::remove_all(dir);
 
   return TEST_RESULT();

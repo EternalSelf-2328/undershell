@@ -30,6 +30,10 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
 | `width`, `height` | logical px | `800` × `240` | box; the design is fitted into it |
 | `enabled` | `true` / `false` | `true` | |
+| `name` | text | the id | what the editor's Layers panel calls it |
+| `group` | text | none | widgets with the same group are selected, moved, scaled, turned, hidden and locked together (the Layers panel's Group, Ctrl+G) |
+| `hidden` | `true` / `false` | `false` | not shown at all: no surface, nothing drawn (the eye in the Layers panel) |
+| `locked` | `true` / `false` | `false` | cannot be picked or moved on the desktop; still selectable in the Layers panel |
 | `depth` | `true` / `false` | `true` | pass behind what stands in front in the wallpaper (its depth plane: `depth_level`) |
 
 ## `type = "visualizer"`
@@ -60,7 +64,7 @@ Ryoku's desktop spectrum.
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
-| `layer` | -10 – 10 | `0` | Layer |
+| `layer` | -999 – 999 | `0` | Layer |
 
 ## `type = "clock"`
 
@@ -82,7 +86,7 @@ Ryoku's clock faces and date strips.
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
-| `layer` | -10 – 10 | `0` | Layer |
+| `layer` | -999 – 999 | `0` | Layer |
 
 ## `type = "now_playing"`
 
@@ -121,5 +125,5 @@ Ryoku's now-playing card.
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
-| `layer` | -10 – 10 | `0` | Layer |
+| `layer` | -999 – 999 | `0` | Layer |
 | `music_app` | shell command | `"spotify"` | opened by the corner button (not in the inspector) |

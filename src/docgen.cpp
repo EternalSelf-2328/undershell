@@ -68,6 +68,11 @@ std::string optionsMarkdown() {
         "the screen. Written by the editor; a block without it is given the size of the screen it first appears on |\n";
   md += "| `width`, `height` | logical px | `800` × `240` | box; the design is fitted into it |\n";
   md += "| `enabled` | `true` / `false` | `true` | |\n";
+  md += "| `name` | text | the id | what the editor's Layers panel calls it |\n";
+  md += "| `group` | text | none | widgets with the same group are selected, moved, scaled, turned, hidden and locked together "
+        "(the Layers panel's Group, Ctrl+G) |\n";
+  md += "| `hidden` | `true` / `false` | `false` | not shown at all: no surface, nothing drawn (the eye in the Layers panel) |\n";
+  md += "| `locked` | `true` / `false` | `false` | cannot be picked or moved on the desktop; still selectable in the Layers panel |\n";
   md += "| `depth` | `true` / `false` | `true` | pass behind what stands in front in the wallpaper (its depth plane: `depth_level`) |\n\n";
   md += "## `type = \"visualizer\"`\n\nRyoku's desktop spectrum.\n\n";
   table(md, "visualizer");

@@ -69,6 +69,7 @@ void App::replaceLayout(const std::string& blocks, bool record) {
   m_selected = nullptr;
   m_pointerWidget = nullptr;
   m_drag = Drag::None;
+  m_groupMove = false;
   loadConfig();
   refreshSaves();
   markEditDirty();

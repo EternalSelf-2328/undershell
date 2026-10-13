@@ -65,6 +65,11 @@ struct WidgetConfig {
   double mesh[2 * kMeshMax * kMeshMax] = {};
   double depthLevel = 0;  // own depth plane 1..100 (0: the plugin's mask)
   int layer = 0;          // stacking among widgets: higher is in front (then depth decides)
+  // the editor's Layers panel: a name to show instead of the id, the group it
+  // moves with, and whether it is shown at all (hidden: no surface, nothing
+  // drawn or ticked) or can be picked on the desktop (locked)
+  std::string name, group;
+  bool hidden = false, locked = false;
   toml::table options;  // the whole [[widget]] table
 };
 
@@ -129,6 +134,11 @@ struct Config {
   // sets a key of [general] (made if missing), keeping comments
   static bool setGeneral(const std::string& path, const std::string& key, const std::string& tomlValue);
   static std::string retargetBlock(const std::string& block, const std::string& id, int x, int y);
+  // one [[widget]] block's text with `key = value` set (added if missing), or
+  // the key's line(s) taken out (value "")
+  static std::string setBlockKey(const std::string& block, const std::string& key, const std::string& tomlValue);
+  // the id a block's text declares ("" if none)
+  static std::string blockId(const std::string& block);
   // Sets `key = value` (value already TOML-formatted) inside widget `id`'s
   // block, adding the line if missing. Comments and layout are preserved.
   static bool setKey(const std::string& path, const std::string& id, const std::string& key, const std::string& tomlValue);

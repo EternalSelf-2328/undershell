@@ -171,7 +171,11 @@ Config Config::load(const std::string& path) {
         }
         w.meshed = true;
       }
-      w.layer = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "layer", 0), -10, 10));
+      w.layer = static_cast<int>(std::clamp<int64_t>(get<int64_t>(*t, "layer", 0), -999, 999));
+      w.name = get<std::string>(*t, "name", "");
+      w.group = get<std::string>(*t, "group", "");
+      w.hidden = get<bool>(*t, "hidden", false);
+      w.locked = get<bool>(*t, "locked", false);
       if (auto i = (*t)["depth_level"].value<int64_t>()) w.depthLevel = std::clamp(static_cast<double>(*i), 0.0, 100.0);
       w.options = *t;
       cfg.widgets.push_back(std::move(w));
@@ -599,6 +603,34 @@ std::string Config::retargetBlock(const std::string& block, const std::string& i
   std::string out;
   for (auto& l : lines) out += l + "\n";
   return out;
+}
+
+std::string Config::setBlockKey(const std::string& block, const std::string& key, const std::string& tomlValue) {
+  std::istringstream in(block);
+  std::vector<std::string> lines;
+  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  size_t end = lines.size();
+  if (!tomlValue.empty()) {
+    setLine(lines, 0, end, key, tomlValue);
+  } else {
+    // taken out: set it to a marker first, so a value over several lines is one line
+    setLine(lines, 0, end, key, "0");
+    const std::regex re("^\\s*" + key + R"(\s*=)");
+    for (size_t k = 1; k < end; ++k)
+      if (std::regex_search(lines[k], re)) {
+        lines.erase(lines.begin() + static_cast<long>(k));
+        break;
+      }
+  }
+  std::string out;
+  for (auto& l : lines) out += l + "\n";
+  return out;
+}
+
+std::string Config::blockId(const std::string& block) {
+  static const std::regex kId(R"re((^|\n)\s*id\s*=\s*"((?:[^"\\]|\\.)*)")re");
+  std::smatch m;
+  return std::regex_search(block, m, kId) ? m[2].str() : std::string();
 }
 
 bool Config::appendBlock(const std::string& path, const std::string& block) {

@@ -94,6 +94,7 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
   const bool frameLook = c.type == "visualizer" && o["style"].value_or(std::string()) == "frame";
   const std::string mode = c.meshed ? "mesh" : c.pinned ? "pin" : o["warp"].value_or(std::string(warped(c) ? "tilt" : "none"));
   if (key == "warp") return !frameLook;  // a frame owns the whole screen
+  if (key == "layer") return false;      // the Layers panel orders the widgets
   if (key == "rotation" && handPlaced(c)) return false;  // the points decide the shape
   if (key == "tilt_x" || key == "tilt_y" || key == "skew") return !frameLook && mode == "tilt";
   if (key == "perspective") return mode == "tilt" && (std::abs(c.tiltX) > 0.01 || std::abs(c.tiltY) > 0.01);  // only a tilt is seen in depth
@@ -846,9 +847,22 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (key == "depth") w.cfg.depth = v == "true";
   if (key == "layer") {
     try {
-      w.cfg.layer = std::clamp(std::stoi(v), -10, 10);
+      w.cfg.layer = std::clamp(std::stoi(v), -999, 999);
     } catch (const std::exception&) {
     }
+    restack();
+  }
+  if (key == "hidden" || key == "locked") {
+    (key == "hidden" ? w.cfg.hidden : w.cfg.locked) = v == "true";
+    if (key == "hidden") {
+      if (w.cfg.hidden) destroySurface(w);  // nothing drawn, nothing kept on the GPU
+      else if (!w.surface) createSurface(w);
+      restack();
+    }
+  }
+  if (key == "name" || key == "group") {
+    const toml::node* n = w.cfg.options.get(key);
+    (key == "name" ? w.cfg.name : w.cfg.group) = n && n->is_string() ? n->as_string()->get() : std::string();
   }
   if (key == "depth_level") {
     try {
@@ -987,12 +1001,20 @@ constexpr float kSavesW = 540, kSavesHead = 92, kSaveRowH = 70, kSavePitch = 76;
 constexpr int kSaveRowsMax = 5;
 // the depth brush panel
 constexpr float kPaintW = 300, kPaintH = 478;
+// the Layers panel
+constexpr float kLayersW = 288, kLayersHead = 50, kLayerRowH = 32, kLayerPitch = 34, kLayersFoot = 50;
 const char* kToolKeys[5][3] = {{"front", "Al frente", "To front"},
                                {"back", "Al fondo", "To back"},
                                {"match", "Igualar", "Match"},
                                {"erase", "Borrar", "Erase"},
                                {"smooth", "Suavizar", "Smooth"}};
 const char* kSelectKeys[4][3] = {{"brush", "Pincel", "Brush"}, {"wand", "Varita", "Wand"}, {"lasso", "Lazo", "Lasso"}, {"hand", "Mano", "Hand"}};
+
+bool isLayerControl(App::UiControl::Type t) {
+  using T = App::UiControl::Type;
+  return t == T::LayerRow || t == T::LayerEye || t == T::LayerLock || t == T::LayerFold || t == T::LayerGroup ||
+         t == T::LayerUngroup || t == T::LayerUp || t == T::LayerDown;
+}
 
 bool isSaveControl(App::UiControl::Type t) {
   using T = App::UiControl::Type;
@@ -1015,6 +1037,13 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Help: return es ? "Atajos de teclado" : "Keyboard shortcuts";
     case T::Collapse: return es ? "Minimizar / expandir" : "Fold / unfold";
     case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
+    case T::Layers: return es ? "Capas: orden, grupos, ocultar y bloquear" : "Layers: order, groups, hide and lock";
+    case T::LayerEye: return es ? "Mostrar / ocultar (oculto no gasta nada)" : "Show / hide (hidden costs nothing)";
+    case T::LayerLock: return es ? "Bloquear: no se toma ni se mueve en el escritorio" : "Lock: not picked or moved on the desktop";
+    case T::LayerGroup: return es ? "Agrupar la selección  (Ctrl+G)" : "Group the selection  (Ctrl+G)";
+    case T::LayerUngroup: return es ? "Desagrupar  (Ctrl+Shift+G)" : "Ungroup  (Ctrl+Shift+G)";
+    case T::LayerUp: return es ? "Subir  (RePág; Shift: al frente)" : "Forward  (PgUp; Shift: to the front)";
+    case T::LayerDown: return es ? "Bajar  (AvPág; Shift: al fondo)" : "Backward  (PgDn; Shift: to the back)";
     case T::Paint: return es ? "Pincel de profundidad (no disponible con fondos animados)" : "Depth brush (not with moving wallpapers)";
     case T::PaintZoomIn: return es ? "Acercar (rueda o +)" : "Zoom in (wheel or +)";
     case T::PaintZoomOut: return es ? "Alejar (rueda o −)" : "Zoom out (wheel or −)";
@@ -1044,15 +1073,24 @@ void App::layoutUi(const EditSurface& e) {
                              {UiControl::Undo, kBtn, ""},   {UiControl::Redo, kBtn, ""},
                              {UiControl::Panel, kSep, "sep"}, {UiControl::Magnet, kBtn, ""},
                              {UiControl::Grid, kBtn, ""},   {UiControl::Panel, kSep, "sep"},
-                             {UiControl::Saves, kBtn, ""},  {UiControl::Paint, kBtn, ""},
-                             {UiControl::Panel, kSep, "sep"}};
+                             {UiControl::Saves, kBtn, ""},  {UiControl::Layers, kBtn, ""},
+                             {UiControl::Paint, kBtn, ""},  {UiControl::Panel, kSep, "sep"}};
+  // a chip per widget while they fit on the bar (the Layers panel lists them all)
+  std::vector<Item> chips;
+  float chipsW = 0;
   for (auto& w : m_widgets) {
-    if (!w->impl || w->output != e.output) continue;
+    if (!w->impl || w->output != e.output || w->cfg.hidden) continue;
     float tw = 0, th = 0, b = 0;
-    TextRenderer::measure(w->cfg.id, chipText, tw, th, b);
-    items.push_back({UiControl::Chip, tw + 44, w->cfg.id});
+    TextRenderer::measure(layerName(*w), chipText, tw, th, b);
+    chips.push_back({UiControl::Chip, tw + 44, w->cfg.id});
+    chipsW += tw + 44 + kGap;
   }
-  items.push_back({UiControl::Panel, kSep, "sep"});
+  float fixedW = 24 + kSep + kBtn + 44 + 2 * kGap;
+  for (auto& it : items) fixedW += it.w + kGap;
+  if (fixedW + chipsW + kSep + kGap <= W - 24) {
+    items.insert(items.end(), chips.begin(), chips.end());
+    items.push_back({UiControl::Panel, kSep, "sep"});
+  }
   items.push_back({UiControl::Help, kBtn, ""});
   items.push_back({UiControl::Done, kBtn + 44, ""});
   float total = 12;
@@ -1073,7 +1111,7 @@ void App::layoutUi(const EditSurface& e) {
 
   // ── inspector of the selected widget ──
   Widget* w = m_selected;
-  if (w && w->output == e.output && w->impl) {
+  if (w && w->output == e.output && w->impl && !multiSelected()) {  // several picked: the Layers panel
     m_inspSchema = inspectorSchema(*w, m_elExpanded);
     if (!m_pickNote.empty()) {  // why the chooser did not open, under the files
       size_t at = 0;
@@ -1215,6 +1253,47 @@ void App::layoutUi(const EditSurface& e) {
     }
   }
 
+  // ── layers panel (docked left, or right of the inspector's side) ──
+  if (m_layersOpen && !m_paintMode) {
+    const auto rows = layerItems(e.output);
+    const float top = kBarY + kBarH + 14;
+    const int n = static_cast<int>(rows.size());
+    m_layerRows = std::max(3, static_cast<int>((H - top - 16 - kLayersHead - kLayersFoot - 8) / kLayerPitch));
+    m_layersScroll = std::clamp(m_layersScroll, 0, std::max(0, n - m_layerRows));
+    const int shown = std::min(m_layerRows, n - m_layersScroll);
+    const bool folded = m_collapsed.count("layers") > 0;
+    const float ph = folded ? kLayersHead + 6
+                            : kLayersHead + std::max(1, shown) * kLayerPitch + 8 + kLayersFoot + (m_layersScroll + shown < n ? 18.0F : 0.0F);
+    float px = 24, py = top;
+    for (const UiControl& c : m_ui)
+      if (c.type == UiControl::Panel && c.value == "inspector" && c.r.x < px + kLayersW && px < c.r.x + c.r.w)
+        px = W - kLayersW - 24;
+    if (auto it = m_panelPos.find("layers"); it != m_panelPos.end()) {
+      px = std::clamp(it->second.first, 0.0F, W - kLayersW);
+      py = std::clamp(it->second.second, 0.0F, std::max(0.0F, H - ph));
+    }
+    m_ui.push_back({UiControl::Panel, {px, py, kLayersW, ph}, -1, "layers"});
+    m_ui.push_back({UiControl::PanelGrab, {px, py, kLayersW, kLayersHead}, -1, "layers"});
+    m_ui.push_back({UiControl::Collapse, {px + kLayersW - 58, py + 13, 24, 24}, -1, "layers"});
+    if (!folded) {
+      float y = py + kLayersHead;
+      for (int k = 0; k < shown; ++k) {
+        const int i = m_layersScroll + k;
+        const LayerItem& it = rows[static_cast<size_t>(i)];
+        const std::string key = it.w ? "w:" + it.w->cfg.id : "g:" + it.group;
+        const Rect row{px + 8, y, kLayersW - 16, kLayerRowH};
+        m_ui.push_back({UiControl::LayerRow, row, i, key});
+        if (!it.w) m_ui.push_back({UiControl::LayerFold, {row.x + 2, row.y + 4, 24, 24}, i, key});
+        m_ui.push_back({UiControl::LayerEye, {row.x + row.w - 56, row.y + 4, 24, 24}, i, key});
+        m_ui.push_back({UiControl::LayerLock, {row.x + row.w - 28, row.y + 4, 24, 24}, i, key});
+        y += kLayerPitch;
+      }
+      const float fy = py + ph - kLayersFoot + 8, bw = (kLayersW - 28 - 18) / 4;
+      const UiControl::Type foot[] = {UiControl::LayerGroup, UiControl::LayerUngroup, UiControl::LayerUp, UiControl::LayerDown};
+      for (int k = 0; k < 4; ++k) m_ui.push_back({foot[k], {px + 14 + k * (bw + 6), fy, bw, 32}});
+    }
+  }
+
   // ── depth brush panel (docked left) ──
   if (m_paintMode) {
     float px = 24, py = kBarY + kBarH + 14;
@@ -1331,7 +1410,7 @@ void App::layoutUi(const EditSurface& e) {
       m_ui.push_back({UiControl::ColorPreset, {fx + 100 + k * 24.0F, top + 300, 20, 20}, -1, m_recentColors[k]});
   }
   if (m_helpOpen) {
-    const float hw = 580, hh = 384;
+    const float hw = 600, hh = 490;
     const Rect card{std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh};
     m_ui.push_back({UiControl::Panel, card, -1, "help"});
     // the interface language, at the foot of the card
@@ -1581,6 +1660,7 @@ bool App::uiPress(int index, double x) {
   // a click anywhere but the name being typed keeps that name; a delete stays
   // armed only for the very next click
   if (!(c.type == UiControl::SaveRow && c.value == m_renaming)) commitRename();
+  if (!(c.type == UiControl::LayerRow && c.value == m_layerRenaming)) commitLayerRename();
   if (c.type != UiControl::SaveDelete) m_confirmDelete.clear();
   if (c.type != UiControl::PaintClear) m_confirmClear = false;
   switch (c.type) {
@@ -1682,6 +1762,64 @@ bool App::uiPress(int index, double x) {
       }
       markEditDirty();
       return true;
+    case UiControl::Layers:
+      m_layersOpen = !m_layersOpen;
+      markEditDirty();
+      return true;
+    case UiControl::LayerRow:
+    case UiControl::LayerFold:
+    case UiControl::LayerEye:
+    case UiControl::LayerLock: {
+      const bool header = c.value.starts_with("g:");
+      const std::string key = c.value.substr(2);
+      std::vector<Widget*> members;
+      if (header) members = groupMembers(m_uiOutput, key);
+      else
+        for (auto& ww : m_widgets)
+          if (ww->cfg.id == key) members.push_back(ww.get());
+      if (members.empty()) return true;
+      if (c.type == UiControl::LayerFold) {
+        if (!m_foldedGroups.erase(key)) m_foldedGroups.insert(key);
+      } else if (c.type == UiControl::LayerEye) {
+        const bool anyShown = std::any_of(members.begin(), members.end(), [](Widget* m) { return !m->cfg.hidden; });
+        setHidden(members, anyShown);
+      } else if (c.type == UiControl::LayerLock) {
+        const bool anyFree = std::any_of(members.begin(), members.end(), [](Widget* m) { return !m->cfg.locked; });
+        setLocked(members, anyFree);
+      } else {
+        // a second click names it; a click picks it (Shift: adds it); a drag moves it in the stack
+        const double now = nowSeconds();
+        if (m_layerPress == c.value && now - m_layerClickAt < 0.35) {
+          m_layerRenaming = c.value;
+          m_layerRenameText = header ? key : layerName(*members.front());
+          m_layerClickAt = 0;
+          markEditDirty();
+          return true;
+        }
+        m_layerClickAt = now;
+        Widget* lead = header ? members.back() : members.front();  // a group: its front member
+        if (modActive(XKB_MOD_NAME_SHIFT)) toggleSelected(lead);
+        else if (header) selectGroup(lead);
+        else if (!(isSelected(lead) && multiSelected())) selectOnly(lead);  // a row of the selection keeps it, to drag it all
+        m_drag = Drag::Layer;
+        m_layerPress = c.value;
+        m_layerPressY = m_py;
+        m_layerMoved = false;
+        m_layerDrop = -1;
+      }
+      markEditDirty();
+      return true;
+    }
+    case UiControl::LayerGroup:
+      groupSelection();
+      return true;
+    case UiControl::LayerUngroup:
+      ungroupSelection();
+      return true;
+    case UiControl::LayerUp:
+    case UiControl::LayerDown:
+      raiseSelection((c.type == UiControl::LayerUp ? 1 : -1) * (modActive(XKB_MOD_NAME_SHIFT) ? 2 : 1));
+      return true;
     case UiControl::Saves:
       m_savesOpen = !m_savesOpen;
       m_galleryOpen = m_helpOpen = false;
@@ -1753,14 +1891,7 @@ bool App::uiPress(int index, double x) {
     case UiControl::Done: setEditMode(false); return true;
     case UiControl::Chip:
       for (auto& ww : m_widgets)
-        if (ww->cfg.id == c.value) {
-          if (m_selected != ww.get()) {
-            m_inspScroll = 0;
-            m_fontPickFor.clear();
-            m_elExpanded.clear();
-          }
-          m_selected = ww.get();
-        }
+        if (ww->cfg.id == c.value) selectOnly(ww.get());
       markEditDirty();
       return true;
     case UiControl::Action:
@@ -1949,6 +2080,12 @@ bool App::uiScroll(double x, double y, int step) {
   const int hit = uiHit(x, y);
   if (hit < 0) return false;
   const UiControl c = m_ui[static_cast<size_t>(hit)];
+  if (c.value == "layers" || isLayerControl(c.type)) {
+    const int before = m_layersScroll;
+    m_layersScroll = std::max(0, m_layersScroll + step);  // clamped when laid out
+    if (m_layersScroll != before) markEditDirty();
+    return true;
+  }
   if (c.value == "saves" || isSaveControl(c.type)) {
     const int before = m_saveScroll;
     m_saveScroll = std::clamp(m_saveScroll + step, 0, std::max(0, static_cast<int>(m_saves.size()) - m_saveRows));
@@ -2072,6 +2209,46 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
   } else if (name == "pencil") {
     c.segment(cx - 4.5F, cy + 4.5F, cx + 4.2F, cy - 4.2F, 2.6F, col);
     c.triangle(cx - 6.5F, cy + 6.5F, cx - 6.1F, cy + 3.0F, cx - 3.0F, cy + 6.1F, col);
+  } else if (name == "layers") {
+    // three sheets: the top one whole, the edges of the two below it
+    for (int k = 2; k >= 1; --k) {
+      const float y = cy - 3.5F + k * 3.5F;
+      c.segment(cx - 7, y, cx, y + 3.5F, 1.5F, col);
+      c.segment(cx, y + 3.5F, cx + 7, y, 1.5F, col);
+    }
+    c.triangle(cx - 7, cy - 3.5F, cx, cy - 7, cx + 7, cy - 3.5F, col);
+    c.triangle(cx - 7, cy - 3.5F, cx, cy, cx + 7, cy - 3.5F, col);
+  } else if (name == "eye" || name == "eyeoff") {
+    c.arc(cx, cy + 5.5F, 8.5F, 1.5F, -0.95F, 0.95F, col, true);  // the upper lid
+    c.arc(cx, cy - 5.5F, 8.5F, 1.5F, 3.1416F - 0.95F, 3.1416F + 0.95F, col, true);
+    if (name == "eye") c.circle(cx, cy, 2.4F, col);
+    else c.segment(cx - 6.5F, cy + 6, cx + 6.5F, cy - 6, 1.6F, col);
+  } else if (name == "lock" || name == "unlock") {
+    // the body, and the shackle: closed into it, or lifted with one leg out
+    c.roundRect(cx - 5.5F, cy - 1, 11, 8, 2, col);
+    const float sy = name == "lock" ? cy - 2.5F : cy - 5.5F;
+    c.arc(cx, sy, 3.6F, 1.6F, -1.5708F, 1.5708F, col, false);
+    c.segment(cx - 3.6F, sy, cx - 3.6F, cy - 1, 1.6F, col, false);
+    if (name == "lock") c.segment(cx + 3.6F, sy, cx + 3.6F, cy - 1, 1.6F, col, false);
+  } else if (name == "group" || name == "ungroup") {
+    // two boxes, in a dashed frame (group) or apart (ungroup)
+    const float d = name == "group" ? 0.0F : 2.0F;
+    c.roundRect(cx - 5.5F - d, cy - 4.5F - d, 6, 6, 1.5F, Color{0, 0, 0, 0}, 1.4F, col);
+    c.roundRect(cx - 0.5F + d, cy - 1.5F + d, 6, 6, 1.5F, Color{0, 0, 0, 0}, 1.4F, col);
+    if (name == "group")
+      for (int k = 0; k < 4; ++k) {
+        const float sx = (k & 1) ? 1.0F : -1.0F, sy = (k & 2) ? 1.0F : -1.0F;
+        c.segment(cx + sx * 8, cy + sy * 8, cx + sx * 5, cy + sy * 8, 1.3F, col, false);
+        c.segment(cx + sx * 8, cy + sy * 8, cx + sx * 8, cy + sy * 5, 1.3F, col, false);
+      }
+  } else if (name == "up" || name == "down") {
+    const float s = name == "up" ? -1.0F : 1.0F;
+    c.segment(cx, cy - s * 6, cx, cy + s * 6, 1.8F, col);
+    c.segment(cx, cy + s * 6, cx - 4.5F, cy + s * 1.5F, 1.8F, col);
+    c.segment(cx, cy + s * 6, cx + 4.5F, cy + s * 1.5F, 1.8F, col);
+  } else if (name == "folder") {
+    c.roundRect(cx - 7, cy - 4, 14, 10, 2, Color{0, 0, 0, 0}, 1.4F, col);
+    c.roundRect(cx - 7, cy - 6.5F, 6, 4, 1.5F, col);
   } else if (name == "trash") {
     c.segment(cx - 6, cy - 4.5F, cx + 6, cy - 4.5F, 1.5F, col);
     c.segment(cx - 2, cy - 6.5F, cx + 2, cy - 6.5F, 1.5F, col);
@@ -2136,7 +2313,7 @@ void App::drawUi(EditSurface& e) {
   for (auto& wp : m_widgets) {
     Widget& ww = *wp;
     if (ww.output != e.output || !ww.impl || !ww.surface || ww.impl->fullscreen() || !warped(ww.cfg)) continue;
-    const bool sel = &ww == m_selected, hot = &ww == m_pointerWidget;
+    const bool sel = isSelected(&ww), hot = &ww == m_pointerWidget;
     const Color wa = readableAccent(ww.impl->accent());
     double qx[4], qy[4];
     widgetCorners(ww.cfg, qx, qy);
@@ -2164,7 +2341,7 @@ void App::drawUi(EditSurface& e) {
         curve(true, at, gw, gc);
         curve(false, at, gw, gc);
       }
-      if (sel)
+      if (sel && !multiSelected())
         for (int i = 0; i < n * n; ++i) {
           const float x = static_cast<float>(ww.cfg.mesh[2 * i]), y = static_cast<float>(ww.cfg.mesh[2 * i + 1]);
           const bool act = i == m_pinCorner;
@@ -2177,7 +2354,7 @@ void App::drawUi(EditSurface& e) {
       const int j = (i + 1) % 4;
       cv.segment(static_cast<float>(qx[i]), static_cast<float>(qy[i]), static_cast<float>(qx[j]), static_cast<float>(qy[j]), lw, lc);
     }
-    if (ww.cfg.pinned && sel) {
+    if (ww.cfg.pinned && sel && !multiSelected()) {
       // pins: rings you can grab; the one the arrows move is filled
       for (int i = 0; i < 4; ++i) {
         const bool act = i == m_pinCorner;
@@ -2188,7 +2365,7 @@ void App::drawUi(EditSurface& e) {
     } else if (sel || hot) {
       for (int i = 0; i < 4; ++i) cv.circle(static_cast<float>(qx[i]), static_cast<float>(qy[i]), 5, withAlphaC(wa, 0.95F), 1.5F, ink);
     }
-    if (sel && !handPlaced(ww.cfg)) {  // the rotation knob, where inRotateHandle looks for it
+    if (sel && !handPlaced(ww.cfg) && !multiSelected() && !ww.cfg.locked) {  // the rotation knob, where inRotateHandle looks for it
       double kx = 0, ky = 0, tx = 0, ty = 0;
       toOutput(ww.cfg, ww.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
       toOutput(ww.cfg, ww.cfg.width / 2.0, 0, tx, ty);
@@ -2209,6 +2386,54 @@ void App::drawUi(EditSurface& e) {
       cv.segment(ax, ay, bx, by, 1.3F, ink);
     }
     cv.text(es ? "Shift: fino · flechas: 1 px" : "Shift: fine · arrows: 1 px", label, L.x + 8, L.y + L.h - 22, ink);
+  }
+
+  // ── several picked: one box round them, its corners scale them all, its knob turns them ──
+  if (m_selected && m_selected->output == e.output && multiSelected() && !m_paintMode) {
+    const Box b = selectionBox();
+    const float x0 = static_cast<float>(b.x), y0 = static_cast<float>(b.y), x1 = x0 + b.w, y1 = y0 + b.h;
+    auto dashed = [&](float ax, float ay, float bx, float by) {
+      const float len = std::hypot(bx - ax, by - ay);
+      for (float t = 0; t < len; t += 12) {
+        const float t1 = std::min(len, t + 7);
+        cv.segment(ax + (bx - ax) * t / len, ay + (by - ay) * t / len, ax + (bx - ax) * t1 / len, ay + (by - ay) * t1 / len, 1.4F,
+                   withAlphaC(accent, 0.95F), false);
+      }
+    };
+    dashed(x0, y0, x1, y0), dashed(x1, y0, x1, y1), dashed(x1, y1, x0, y1), dashed(x0, y1, x0, y0);
+    for (int i = 0; i < 4; ++i) {
+      const float gx = (i & 1) ? x1 : x0, gy = (i & 2) ? y1 : y0;
+      cv.roundRect(gx - 5, gy - 5, 10, 10, 2.5F, ink, 1.6F, accent);
+    }
+    const float kx = (x0 + x1) / 2, ky = y0 - OverlayPass::kHandleGap;
+    cv.segment(kx, y0, kx, ky + OverlayPass::kHandleR, 1.4F, withAlphaC(accent, 0.8F));
+    cv.circle(kx, ky, OverlayPass::kHandleR, Color{0, 0, 0, 0}, 1.8F, accent);
+    cv.circle(kx, ky, OverlayPass::kHandleR - 3, accent);
+    std::string what = std::format("{} widgets", selection().size());
+    if (!m_selected->cfg.group.empty()) {
+      bool one = true;
+      for (Widget* s2 : selection()) one = one && s2->cfg.group == m_selected->cfg.group;
+      if (one) what = m_selected->cfg.group + "  ·  " + what;
+    }
+    auto [tw, th] = measure(what, strong);
+    const float ty = y1 + 12 + th + 10 < H ? y1 + 12 : y0 - 50 - th;
+    cv.roundRect(x0, ty, tw + 20, th + 10, 8, Color{0.04F, 0.04F, 0.05F, 0.8F});
+    cv.text(what, strong, x0 + 10, ty + 5, ink);
+  }
+  // a hidden widget picked in the Layers panel: where it would be
+  if (m_selected && m_selected->output == e.output && m_selected->cfg.hidden && m_selected->impl && !m_selected->impl->fullscreen()) {
+    double qx[4], qy[4];
+    widgetCorners(m_selected->cfg, qx, qy);
+    for (int i = 0; i < 4; ++i) {
+      const int j = (i + 1) % 4;
+      const float len = static_cast<float>(std::hypot(qx[j] - qx[i], qy[j] - qy[i]));
+      for (float t = 0; t < len; t += 10) {
+        const float t1 = std::min(len, t + 5);
+        cv.segment(static_cast<float>(qx[i] + (qx[j] - qx[i]) * t / len), static_cast<float>(qy[i] + (qy[j] - qy[i]) * t / len),
+                   static_cast<float>(qx[i] + (qx[j] - qx[i]) * t1 / len), static_cast<float>(qy[i] + (qy[j] - qy[i]) * t1 / len),
+                   1.3F, withAlphaC(ink, 0.6F), false);
+      }
+    }
   }
 
   // ── toolbar ──
@@ -2244,11 +2469,13 @@ void App::drawUi(EditSurface& e) {
       case UiControl::Grid:
       case UiControl::Help:
       case UiControl::Saves:
+      case UiControl::Layers:
       case UiControl::Paint: {
         const bool on = c.type == UiControl::Magnet ? m_snapOn
                         : c.type == UiControl::Grid ? m_gridOn
                         : c.type == UiControl::Help ? m_helpOpen
                         : c.type == UiControl::Saves ? m_savesOpen
+                        : c.type == UiControl::Layers ? m_layersOpen
                                                      : m_paintMode;
         if (on) cv.circle(cx, cy, c.r.w / 2, withAlphaC(accent, 0.22F));
         else if (hot) cv.circle(cx, cy, c.r.w / 2, raised);
@@ -2258,6 +2485,7 @@ void App::drawUi(EditSurface& e) {
              : c.type == UiControl::Grid ? "grid"
              : c.type == UiControl::Help ? "help"
              : c.type == UiControl::Saves ? "save"
+             : c.type == UiControl::Layers ? "layers"
                                           : "brush",
              cx, cy, off ? withAlphaC(ink, 0.3F) : on ? accent : ink);
         break;
@@ -2272,12 +2500,12 @@ void App::drawUi(EditSurface& e) {
         Widget* cw = nullptr;
         for (auto& ww : m_widgets)
           if (ww->cfg.id == c.value) cw = ww.get();
-        const bool sel = cw && cw == m_selected;
+        const bool sel = cw && isSelected(cw);
         const Color ca = cw && cw->impl ? readableAccent(cw->impl->accent()) : accent;
         cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, c.r.h / 2, sel ? withAlphaC(ca, 0.25F) : (hot ? raised : Color{0, 0, 0, 0}),
                      1, sel ? withAlphaC(ca, 0.7F) : line);
         icon(cv, cw ? chipIcon(cw->cfg.type) : "bars", c.r.x + 17, cy, sel ? ca : dim);
-        cv.text(c.value, strong, c.r.x + 30, cy - 9, sel ? ink : dim);
+        cv.text(cw ? layerName(*cw) : c.value, strong, c.r.x + 30, cy - 9, sel ? ink : dim);
         break;
       }
       default: break;
@@ -2705,6 +2933,123 @@ void App::drawUi(EditSurface& e) {
     if (hot && !tipFor(c.type, es).empty() && isSaveControl(c.type)) tipCtl = &c;
   }
 
+  // ── layers panel ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "layers") continue;
+    const Rect P = c.r;
+    plateAt(P, 16);
+    cv.roundRect(P.x + 14, P.y + 14, 22, 22, 7, withAlphaC(accent, 0.22F));
+    icon(cv, "layers", P.x + 25, P.y + 25, accent);
+    cv.text(es ? "Capas" : "Layers", head, P.x + 44, P.y + 15, ink);
+    if (m_collapsed.count("layers")) continue;
+    cv.segment(P.x + 14, P.y + kLayersHead - 2, P.x + P.w - 14, P.y + kLayersHead - 2, 1, line, false);
+    const auto rows = layerItems(e.output);
+    if (rows.empty())
+      cv.text(es ? "Sin widgets en esta pantalla" : "No widgets on this screen", label, P.x + 18, P.y + kLayersHead + 8, dim);
+    // more rows above or below: the wheel scrolls them
+    const int shownRows = static_cast<int>(std::count_if(m_ui.begin(), m_ui.end(), [](const UiControl& u) { return u.type == UiControl::LayerRow; }));
+    if (m_layersScroll > 0) cv.text("…", strong, P.x + P.w / 2 - 4, P.y + kLayersHead - 18, dim);
+    if (m_layersScroll + shownRows < static_cast<int>(rows.size())) {
+      const int left = static_cast<int>(rows.size()) - m_layersScroll - shownRows;
+      const std::string more = es ? std::format("{} más ↓", left) : std::format("{} more ↓", left);
+      auto [mw, mh] = measure(more, label);
+      cv.text(more, label, P.x + P.w - 18 - mw, P.y + P.h - kLayersFoot - mh - 2, dim);
+    }
+    cv.segment(P.x + 14, P.y + P.h - kLayersFoot, P.x + P.w - 14, P.y + P.h - kLayersFoot, 1, line, false);
+  }
+  {
+    const auto rows = m_layersOpen ? layerItems(e.output) : std::vector<LayerItem>();
+    for (const UiControl& c : m_ui) {
+      const bool hot = hovered(c);
+      if (c.type == UiControl::LayerRow) {
+        if (c.prop < 0 || c.prop >= static_cast<int>(rows.size())) continue;
+        const LayerItem& it = rows[static_cast<size_t>(c.prop)];
+        std::vector<Widget*> members = it.w ? std::vector<Widget*>{it.w} : groupMembers(e.output, it.group);
+        const bool allHidden = std::all_of(members.begin(), members.end(), [](Widget* m) { return m->cfg.hidden; });
+        const bool sel = std::any_of(members.begin(), members.end(), [&](Widget* m) { return isSelected(m); });
+        const bool dragged = m_drag == Drag::Layer && m_layerMoved && m_layerPress == c.value;
+        const Color ra = it.w && it.w->impl ? readableAccent(it.w->impl->accent()) : accent;
+        cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9,
+                     dragged ? withAlphaC(ra, 0.35F) : sel ? withAlphaC(ra, 0.2F) : (hot ? withAlphaC(ink, 0.07F) : Color{0, 0, 0, 0}), 1,
+                     sel ? withAlphaC(ra, 0.55F) : Color{0, 0, 0, 0});
+        const float indent = it.child ? 22.0F : 0.0F;
+        const float mid = c.r.y + c.r.h / 2;
+        float tx = c.r.x + 34 + indent;
+        if (!it.w) {  // a group: open/closed, a folder, its name and how many
+          const bool open = !m_foldedGroups.count(it.group);
+          const float ax = c.r.x + 14;
+          if (open) cv.triangle(ax - 4.5F, mid - 2.5F, ax + 4.5F, mid - 2.5F, ax, mid + 3, dim);
+          else cv.triangle(ax - 2.5F, mid - 4.5F, ax - 2.5F, mid + 4.5F, ax + 3, mid, dim);
+          icon(cv, "folder", c.r.x + 36, mid, allHidden ? withAlphaC(ink, 0.35F) : ink);
+          tx = c.r.x + 52;
+        } else {
+          icon(cv, chipIcon(it.w->cfg.type), c.r.x + 18 + indent, mid, allHidden ? withAlphaC(ink, 0.35F) : (sel ? ra : dim));
+        }
+        const float textW = c.r.x + c.r.w - 62 - tx;
+        const std::string name = it.w ? layerName(*it.w) : it.group;
+        if (m_layerRenaming == c.value) {
+          cv.roundRect(tx - 4, c.r.y + 4, textW + 4, c.r.h - 8, 6, Color{0, 0, 0, 0.35F}, 1.4F, accent);
+          cv.clip(tx, c.r.y + 4, textW - 4, c.r.h - 8);
+          const bool empty = m_layerRenameText.empty();
+          const std::string shown = empty ? name : m_layerRenameText;
+          auto [nw, nh] = measure(shown, strong);
+          const float off = std::max(0.0F, nw - (textW - 12));
+          cv.text(shown, strong, tx + 2 - off, mid - nh / 2, empty ? dim : ink);
+          cv.segment(tx + 3 + (empty ? 0 : nw - off), mid - 8, tx + 3 + (empty ? 0 : nw - off), mid + 8, 1.6F, accent, false);
+          cv.clip();
+        } else {
+          std::string extra;
+          if (!it.w) extra = std::format("  {}", members.size());
+          else if (!it.w->cfg.name.empty()) extra.clear();
+          auto [nw, nh] = measure(name, strong);
+          fitText(name, strong, tx, mid - nh / 2, textW, allHidden ? withAlphaC(ink, 0.4F) : ink);
+          if (!extra.empty() && nw + 8 < textW) cv.text(extra, mono, tx + nw + 2, mid - 8, dim);
+        }
+      } else if (c.type == UiControl::LayerEye || c.type == UiControl::LayerLock) {
+        if (c.prop < 0 || c.prop >= static_cast<int>(rows.size())) continue;
+        const LayerItem& it = rows[static_cast<size_t>(c.prop)];
+        std::vector<Widget*> members = it.w ? std::vector<Widget*>{it.w} : groupMembers(e.output, it.group);
+        const bool eye = c.type == UiControl::LayerEye;
+        const bool on = eye ? std::all_of(members.begin(), members.end(), [](Widget* m) { return m->cfg.hidden; })
+                            : std::all_of(members.begin(), members.end(), [](Widget* m) { return m->cfg.locked; });
+        if (hot) cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 7, withAlphaC(ink, 0.12F));
+        // shown and free stay faint until hovered, so what is hidden or locked stands out
+        const Color fg = on ? (eye ? withAlphaC(ink, 0.55F) : accent) : withAlphaC(ink, hot ? 0.9F : 0.32F);
+        icon(cv, eye ? (on ? "eyeoff" : "eye") : (on ? "lock" : "unlock"), c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, fg);
+      } else if (c.type == UiControl::LayerGroup || c.type == UiControl::LayerUngroup || c.type == UiControl::LayerUp ||
+                 c.type == UiControl::LayerDown) {
+        auto sel = selection();
+        bool can = !sel.empty();
+        if (c.type == UiControl::LayerGroup) can = sel.size() >= 2;
+        if (c.type == UiControl::LayerUngroup) can = std::any_of(sel.begin(), sel.end(), [](Widget* s2) { return !s2->cfg.group.empty(); });
+        cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, hot && can ? withAlphaC(ink, 0.14F) : raised, 1, line);
+        icon(cv,
+             c.type == UiControl::LayerGroup     ? "group"
+             : c.type == UiControl::LayerUngroup ? "ungroup"
+             : c.type == UiControl::LayerUp      ? "up"
+                                                 : "down",
+             c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, can ? ink : withAlphaC(ink, 0.3F));
+      }
+      if (hot && (c.type == UiControl::LayerEye || c.type == UiControl::LayerLock || c.type == UiControl::LayerGroup ||
+                  c.type == UiControl::LayerUngroup || c.type == UiControl::LayerUp || c.type == UiControl::LayerDown))
+        tipCtl = &c;
+    }
+    // where a dragged row would go
+    if (m_drag == Drag::Layer && m_layerMoved && m_layerDrop >= 0) {
+      float ly = -1, lx = 0, lw = 0;
+      for (const UiControl& c : m_ui)
+        if (c.type == UiControl::LayerRow) {
+          if (c.prop == m_layerDrop) ly = c.r.y - 1;
+          else if (c.prop + 1 == m_layerDrop) ly = c.r.y + c.r.h + 1;
+          lx = c.r.x, lw = c.r.w;
+        }
+      if (ly >= 0) {
+        cv.segment(lx + 4, ly, lx + lw - 4, ly, 2.4F, accent);
+        cv.circle(lx + 4, ly, 3.5F, accent);
+      }
+    }
+  }
+
   // ── font picker ──
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::Panel || c.value != "fonts") continue;
@@ -2871,6 +3216,26 @@ void App::drawUi(EditSurface& e) {
     }
   }
 
+  // ── fold buttons: a chevron up folds the panel to its title, down unfolds it ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Collapse) continue;
+    const bool folded = m_collapsed.count(c.value) > 0, hot = hovered(c);
+    cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 8, hot ? withAlphaC(ink, 0.14F) : (folded ? withAlphaC(accent, 0.18F) : raised));
+    const float mx = c.r.x + c.r.w / 2, my = c.r.y + c.r.h / 2;
+    const Color cc = folded ? accent : (hot ? ink : withAlphaC(ink, 0.7F));
+    if (folded) cv.triangle(mx - 5, my - 2.5F, mx + 5, my - 2.5F, mx, my + 3.5F, cc);
+    else cv.triangle(mx - 5, my + 2.5F, mx + 5, my + 2.5F, mx, my - 3.5F, cc);
+  }
+
+  // ── grip dots on movable panels ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::PanelGrab) continue;
+    const bool hot = hovered(c) || (m_drag == Drag::Panel && m_panelDrag == c.value);
+    const float gx = c.r.x + c.r.w - 26, gy = c.r.y + 18;
+    for (int i = 0; i < 2; ++i)
+      for (int j = 0; j < 3; ++j) cv.circle(gx + i * 6, gy + j * 6, 1.4F, withAlphaC(ink, hot ? 0.8F : 0.3F));
+  }
+
   // ── shortcuts card ──
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::Panel || c.value != "help") continue;
@@ -2894,6 +3259,12 @@ void App::drawUi(EditSurface& e) {
         {"Ctrl+Shift+Z", "Ctrl+Shift+Z", "redo", "rehacer"},
         {"Ctrl+D", "Ctrl+D", "duplicate", "duplicar"},
         {"Del", "Supr", "delete", "eliminar"},
+        {"Shift+click", "Shift+clic", "pick several", "elegir varios"},
+        {"Double click", "Doble clic", "one of a group", "uno del grupo"},
+        {"Ctrl+G", "Ctrl+G", "group", "agrupar"},
+        {"Ctrl+Shift+G", "Ctrl+Shift+G", "ungroup", "desagrupar"},
+        {"PgUp PgDn", "RePág AvPág", "layer up / down", "subir / bajar capa"},
+        {"Shift+PgUp", "Shift+RePág", "to the front", "al frente"},
         {"Esc", "Esc", "done", "terminar"},
         {"Right click", "Clic der.", "done", "terminar"},
     };
@@ -2921,32 +3292,12 @@ void App::drawUi(EditSurface& e) {
     cv.text(t, strong, c.r.x + (c.r.w - tw) / 2, c.r.y + c.r.h / 2 - th / 2, on ? onAccent : ink);
   }
 
-  // ── fold buttons: a chevron up folds the panel to its title, down unfolds it ──
-  for (const UiControl& c : m_ui) {
-    if (c.type != UiControl::Collapse) continue;
-    const bool folded = m_collapsed.count(c.value) > 0, hot = hovered(c);
-    cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 8, hot ? withAlphaC(ink, 0.14F) : (folded ? withAlphaC(accent, 0.18F) : raised));
-    const float mx = c.r.x + c.r.w / 2, my = c.r.y + c.r.h / 2;
-    const Color cc = folded ? accent : (hot ? ink : withAlphaC(ink, 0.7F));
-    if (folded) cv.triangle(mx - 5, my - 2.5F, mx + 5, my - 2.5F, mx, my + 3.5F, cc);
-    else cv.triangle(mx - 5, my + 2.5F, mx + 5, my + 2.5F, mx, my - 3.5F, cc);
-  }
-
-  // ── grip dots on movable panels ──
-  for (const UiControl& c : m_ui) {
-    if (c.type != UiControl::PanelGrab) continue;
-    const bool hot = hovered(c) || (m_drag == Drag::Panel && m_panelDrag == c.value);
-    const float gx = c.r.x + c.r.w - 26, gy = c.r.y + 18;
-    for (int i = 0; i < 2; ++i)
-      for (int j = 0; j < 3; ++j) cv.circle(gx + i * 6, gy + j * 6, 1.4F, withAlphaC(ink, hot ? 0.8F : 0.3F));
-  }
-
   // ── tooltip under the hovered toolbar button ──
   if (tipCtl) {
     const std::string t = tipFor(tipCtl->type, es);
     auto [tw, th] = measure(t, label);
     const float tx = std::clamp(tipCtl->r.x + tipCtl->r.w / 2 - tw / 2 - 10, 8.0F, W - tw - 28);
-    const bool inPanel = isSaveControl(tipCtl->type) || tipCtl->type == UiControl::Collapse || tipCtl->type == UiControl::PaintZoomIn ||
+    const bool inPanel = isSaveControl(tipCtl->type) || isLayerControl(tipCtl->type) || tipCtl->type == UiControl::Collapse || tipCtl->type == UiControl::PaintZoomIn ||
                          tipCtl->type == UiControl::PaintZoomOut || tipCtl->type == UiControl::PaintZoomReset;
     const float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : kBarY + kBarH + 8;
     if (inPanel || (!m_galleryOpen && !m_helpOpen && !m_savesOpen)) {

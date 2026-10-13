@@ -60,7 +60,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
-      {K::Number, "layer", "Layer", "Capa", {}, -10, 10, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
   static const std::vector<PropSpec> clock = {
       {K::Enum, "face", "Face", "Estilo",
@@ -80,7 +80,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
-      {K::Number, "layer", "Layer", "Capa", {}, -10, 10, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
   static const std::vector<PropSpec> nowPlaying = {
       {K::Enum, "layout", "Layout", "Disposición", {"sheet", "vinyl", "tile", "poster", "strip", "portrait", "text"}, 0, 0, 0, 0, "sheet"},
@@ -117,7 +117,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
-      {K::Number, "layer", "Layer", "Capa", {}, -10, 10, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
   static const std::vector<PropSpec> none;
   if (type == "visualizer") return visualizer;

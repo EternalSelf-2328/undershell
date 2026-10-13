@@ -65,7 +65,8 @@ private:
 
 struct EditRect {
   float x, y, w, h;
-  float angle = 0;  // degrees, about the centre
+  float angle = 0;      // degrees, about the centre
+  bool picked = false;  // selected with others (drawn as selected)
 };
 
 // Draws a widget rendered off-screen (premultiplied texture of its own box)
@@ -84,7 +85,7 @@ private:
 // outline and a resize grip in its bottom-right corner.
 class OverlayPass {
 public:
-  static constexpr int kMaxRects = 16;
+  static constexpr int kMaxRects = 16;  // per pass: more are drawn in further passes
   static constexpr int kMaxGuides = 4;
   // `handle`: the rect that shows a rotation knob above its top edge (-1: none)
   void draw(float w, float h, const std::vector<EditRect>& rects, int hover, int active, int selected, Color accent,

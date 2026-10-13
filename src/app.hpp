@@ -21,6 +21,7 @@
 #include "widget.hpp"
 
 #include <EGL/egl.h>
+#include <functional>
 #include <GLES3/gl3.h>
 #include <map>
 #include <filesystem>
@@ -270,7 +271,8 @@ public:
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
                 ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, PanelGrab, Language, Collapse, Action, FileRemove,
-                ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset } type = Panel;
+                ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,
+                LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -409,7 +411,7 @@ private:
   EditSurface* m_pointerEdit = nullptr;  // editor surface under the pointer
   Widget* m_pointerWidget = nullptr;     // widget hovered / being dragged
   double m_px = 0, m_py = 0;             // pointer, output coordinates
-  enum class Drag { None, Move, Resize, Slider, Rotate, Panel, Pin } m_drag = Drag::None;
+  enum class Drag { None, Move, Resize, Slider, Rotate, Panel, Pin, Layer, GroupResize, GroupRotate } m_drag = Drag::None;
   int m_pinCorner = -1;          // corner pin: the corner being moved (or last moved, for the arrows)
   double m_pinStart[2 * WidgetConfig::kMeshMax * WidgetConfig::kMeshMax] = {};  // the points when the drag began
   Rect m_loupe;                  // the magnifier while placing a corner (output px)
@@ -471,6 +473,71 @@ private:
   // the wallpaper's colour under an output point (the eyedropper)
   bool eyedropAt(const Output* o, double x, double y, Color& out, double* u = nullptr, double* v = nullptr) const;
   void releaseColorGl();
+  // ── layers and groups (layers.cpp) ──
+  // A row of the Layers panel: a widget, or a group's header (w == nullptr)
+  struct LayerItem {
+    Widget* w = nullptr;
+    std::string group;   // the group the widget is in, or the header's
+    bool child = false;  // listed under its group's header
+  };
+  [[nodiscard]] std::vector<Widget*> stackOf(const Output* o) const;         // a monitor's widgets, bottom to top
+  [[nodiscard]] std::vector<LayerItem> layerItems(const Output* o) const;    // front to back, as the panel lists them
+  [[nodiscard]] std::vector<Widget*> groupMembers(const Output* o, const std::string& group) const;
+  [[nodiscard]] std::string layerName(const Widget& w) const { return w.cfg.name.empty() ? w.cfg.id : w.cfg.name; }
+  // the selection: m_selected (the inspector's), then the others picked with it
+  std::vector<Widget*> selection();
+  bool isSelected(const Widget* w);
+  bool multiSelected() { return selection().size() > 1; }
+  void selectOnly(Widget* w);
+  void selectGroup(Widget* w);     // with the rest of its group (w stays the inspector's)
+  void toggleSelected(Widget* w);  // Shift+click: it (and its group) in or out
+  void selectIds(const std::vector<std::string>& ids);
+  // rewrites the blocks of the layout through `edit(id, block)` (return the
+  // block changed, "" to drop it, or more blocks after it) as one undo step,
+  // then selects `select` (default: what was selected)
+  void editBlocks(const std::function<std::string(const std::string& id, const std::string& block)>& edit,
+                  std::vector<std::string> select = {});
+  // the stack of a monitor in this order (bottom to top), and the groups given
+  void restackAs(const Output* o, const std::vector<Widget*>& bottomToTop,
+                 const std::map<std::string, std::string>& groupOf = {});
+  void raiseSelection(int step);  // +1 up a step, -1 down, +2 to the front, -2 to the back
+  void dropLayer(int slot);       // the row being dragged put before visible row `slot`
+  std::string groupSelection();   // the new group's name
+  void ungroupSelection();
+  void setHidden(const std::vector<Widget*>& ws, bool hidden);
+  void setLocked(const std::vector<Widget*>& ws, bool locked);
+  void deleteSelection();
+  void duplicateSelection();
+  void commitLayerRename();
+  bool layerKey(uint32_t key);  // typing a layer's or group's name
+  // the selected widgets as one: their box, and moving, scaling or turning them together
+  [[nodiscard]] Box selectionBox();
+  int groupGripAt(double x, double y);    // a corner of the selection's box, -1 none
+  bool inGroupKnob(double x, double y);
+  void groupDragBegin(Drag kind);
+  void groupDragTo(double x, double y);
+  void groupDragEnd();
+  void writeGeometry(const std::vector<Widget*>& ws);  // their boxes, turns and points, in one write
+  bool m_layersOpen = false;
+  int m_layersScroll = 0, m_layerRows = 12;  // first row shown, rows that fit
+  std::vector<std::string> m_multi;   // also selected, with m_selected (ids)
+  std::string m_multiFor;             // the m_selected those belong to
+  std::set<std::string> m_foldedGroups;
+  std::string m_layerRenaming, m_layerRenameText;  // "w:<id>" or "g:<group>" being named
+  std::string m_layerPress;                        // the row pressed ("w:<id>" / "g:<group>")
+  double m_layerPressY = 0, m_layerClickAt = 0;
+  bool m_layerMoved = false;
+  int m_layerDrop = -1;                            // the slot a dragged row would go to
+  double m_lastWidgetClickAt = 0;
+  std::string m_lastWidgetClick;                   // double click: into a group
+  struct GroupStart {
+    std::string id;
+    WidgetConfig cfg;
+  };
+  std::vector<GroupStart> m_groupStart;  // the selection as the drag began
+  Box m_groupBox0;
+  bool m_groupMove = false;  // Drag::Move of several widgets at once
+  double m_groupAngle0 = 0, m_groupAnchorX = 0, m_groupAnchorY = 0;
   FilePicker m_picker;
   std::string m_pickNote;                 // why the last pick added nothing
   int m_fontScroll = 0;

@@ -270,7 +270,9 @@ undershell msg add clock flip  # add a widget to the config: visualizer, clock, 
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
 undershell msg remove clock    # remove it
-undershell msg select clock    # select it in the editor (scripts)
+undershell msg select clock    # select it in the editor (scripts); several ids select them together
+undershell msg group viz clock # group widgets (ungroup <id>: its whole group)
+undershell msg layer clock up  # restack it: up, down, front, back
 undershell msg pick-files tv   # the TV's file chooser: adds to its tv_files ("folder" for folders)
 undershell msg depth-model     # download the depth model (~95 MB)
 undershell msg gallery         # open the editor with the gallery
@@ -288,8 +290,10 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 
 | Action | How |
 |---|---|
-| Toolbar | top center: **＋** add · undo · redo · magnet · grid · one chip per widget (selects it, even fullscreen looks like `frame`) · **?** shortcuts · **Done** |
-| Select | click or its chip (empty space: deselect) · **Tab** / Shift+Tab |
+| Toolbar | top center: **＋** add · undo · redo · magnet · grid · profiles · **layers** · depth brush · one chip per widget while they fit (selects it, even fullscreen looks like `frame`) · **?** shortcuts · **Done** |
+| Select | click or its chip (empty space: deselect) · **Tab** / Shift+Tab · **Shift+click** adds a widget to the selection or takes it out; the selected widgets move together, and their box has corners that scale them all (keeping their proportions) and a knob that turns them all about its centre |
+| Layers | the toolbar's **layers** button opens a panel with the screen's widgets front to back. Drag a row up or down to restack it (or **PgUp** / **PgDn**, Shift: to the front / back); the **eye** hides a widget (hidden, it has no surface at all: it costs nothing), the **lock** keeps it from being picked or moved on the desktop (it can still be selected in the panel); double-click a row to name it. A wheel scrolls a long list. Saved in the widget's block as `layer`, `hidden`, `locked` and `name` |
+| Groups | select several widgets and press **Ctrl+G** (or the panel's group button): clicking any of them then picks the whole group, to move, scale, turn, duplicate or delete it as one. **Double-click** one to pick just that member; **Ctrl+Shift+G** ungroups (with a member alone picked, it just leaves the group). In the panel a group folds under its name: its eye and lock act on every member, a row dropped between two members joins the group and one dragged out of it leaves. Saved as `group = "Group 1"` in each member, so groups go along with profiles and saved layouts |
 | Move / resize | drag · **any corner** (the opposite one stays put, turned widgets too) |
 | Magnet | snaps to the screen center, the edges and other widgets (guide lines); toggle it in the toolbar; **Shift** inverts it while held |
 | Shape | The inspector's **Shape** section has a **Mode**: *None*; *Tilt* (lean back, lean sideways, skew and distance: `tilt_x`, `tilt_y`, `skew`, `perspective`); *Corners*, the widget's four corners as free points you drag onto the wallpaper; or *Mesh* (below). Saved as `warp = "none" \| "tilt" \| "pin" \| "mesh"`; a new shape starts from where the widget is drawn, and depth, clicks and the editor follow it. Placing points: a loupe magnifies the wallpaper under the one you drag, **Shift** moves it at a quarter speed, the arrows nudge the last one by 1 px (Shift 16 px), dragging inside moves them all, and the widget's resolution follows its shape |
@@ -297,15 +301,15 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 | Other screens | A layout remembers the screen size it was made on (`space = [w, h]`; older blocks get the size of the screen they are first shown on). On a monitor of another size or scale every widget, pin and depth plane goes where the same part of the wallpaper is now (through the fill mode), so it stays on the rock or the portal it was placed on. The output's real logical size comes from xdg-output, so fractional scales (e.g. 1366×768 at 0.98) line up too |
 | Layouts on any monitor | A saved profile loads onto the monitor it is loaded from (the editor's Profiles card), or the one chosen with **Load on** in the bar plugin, or onto **All** of them (`msg save-load <id> [output\|all]`); only that monitor's widgets are replaced, the others keep theirs, so the same profile can show on several screens; its `space` fits it to that screen's size through the wallpaper, so it also works across different resolutions. A block naming a monitor this machine does not have shows on the first one, so layouts can be shared between setups |
 | Language | The editor speaks English or Spanish. By default it follows the system locale (`es_*` → Spanish, anything else → English); the **Language** buttons at the foot of the shortcuts card (`?`) pin it, saved as `[general] language = "system" \| "en" \| "es"`. Option values are shown translated (the config keeps the values themselves), and long labels shrink or end in “…” instead of running into the controls |
-| Fold panels | The inspector and the depth brush panel have a chevron button in their title: it folds the panel to just its title (to see and paint the wallpaper behind it) and unfolds it again, in place. Panels still drag by their title while folded (`msg card fold inspector\|paint` does the same from a script) |
+| Fold panels | The inspector, the layers panel and the depth brush panel have a chevron button in their title: it folds the panel to just its title (to see and paint the wallpaper behind it) and unfolds it again, in place. Panels still drag by their title while folded (`msg card fold inspector\|layers\|paint` does the same from a script) |
 | Tilt | drag the **knob** above the selected widget (0.1° steps; **Shift** = ten times finer; the magnet catches multiples of 15° within 2°) · **Ctrl+←/→** 0.1°, Ctrl+Shift 1° · Shift-drag any slider to nudge it · *Rotation* in the inspector · `rotation = 20` in the config (degrees, clockwise) |
 | Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
 | Change look | **wheel** over the widget (visualizer style or clock face) |
 | Options | the **inspector** appears next to the selected widget, in sections (Look, Colour, Music, Time & data, Placement) showing only the settings that do something for its current look; drag it by its title to move it out of the way (double-click the title to put it back); the depth brush panel moves the same way. It offers: lists ‹ ›, switches, sliders (drag or wheel) and theme colour swatches; you see every change live |
 | Any colour | the **＋** at the end of a colour row opens the colour picker: a saturation/brightness square and a hue bar (dragged live, one undo step), a hex field (type `#rrggbb` or `#rgb`, or paste one with Ctrl+V, through `wl-paste` from wl-clipboard), an **eyedropper** that takes a colour from the wallpaper (a loupe shows the pixels under the pointer; Esc or right click cancels), the wallpaper's own dominant colours and the ones you used lately (kept in `~/.local/state/undershell/recent-colors`). The colour is stored as hex, e.g. `color = "#3a944a"`. A dark colour does not hide the editor: its accent is lifted until it reads |
 | Add | the **＋** button in the toolbar opens the gallery: visualizer, clock, music |
-| Duplicate / delete | **Ctrl+D** · **Del** (or the inspector buttons) |
-| Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes, looks, options, additions and deletions) |
+| Duplicate / delete | **Ctrl+D** · **Del** (or the inspector buttons); with several selected, all of them (a duplicated group becomes a group of its own, stacked just above it) |
+| Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes, looks, options, additions, deletions, layers and groups) |
 | Exit | **Esc**, Enter or right-click |
 
 While editing with no music, the visualizers move with the demo spectrum.
@@ -697,9 +701,8 @@ own plane with **Depth plane** in the inspector (or `depth_level = 1..100`).
 Higher is nearer: at 95 almost nothing covers the widget, at 5 almost
 everything does. `0` goes back to the default plane. Where widgets overlap,
 the nearer one is drawn on top (a widget with depth off counts as nearest);
-**Layer** in the inspector (`layer = -10..10`, higher in front) overrides that,
-e.g. for two widgets on the same plane. `depth_feather` softens the edge of
-every cut.
+the order you give them in the editor's **Layers** panel (`layer`, higher in
+front) overrides that. `depth_feather` softens the edge of every cut.
 
 ### Where the depth comes from
 

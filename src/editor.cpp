@@ -80,7 +80,7 @@ Widget* App::widgetAt(const Output* o, double x, double y) {
     return m_selected;
   for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it) {
     Widget& w = **it;
-    if (w.output != o || !w.impl || w.impl->fullscreen() || !w.surface) continue;
+    if (w.output != o || !w.impl || w.impl->fullscreen() || !w.surface || w.cfg.locked) continue;  // locked: the panel picks it
     if (insideWidget(w.cfg, x, y)) return &w;
   }
   return nullptr;
@@ -88,7 +88,7 @@ Widget* App::widgetAt(const Output* o, double x, double y) {
 
 // the knob above the selected widget's (turned) top edge
 int App::pinAt(const Widget& w, double x, double y) const {
-  if (!handPlaced(w.cfg) || &w != m_selected) return -1;
+  if (!handPlaced(w.cfg) || &w != m_selected || (!m_multi.empty() && m_multiFor == w.cfg.id) || w.cfg.locked) return -1;
   const double* p = handlePoints(w.cfg);
   int best = -1;
   double bestD = w.cfg.meshed ? 11 : 14;  // mesh points sit closer together
@@ -125,7 +125,8 @@ void App::commitPin(Widget& w) {
 }
 
 bool App::inRotateHandle(const Widget& w, double x, double y) const {
-  if (&w != m_selected || !w.impl || w.impl->fullscreen() || handPlaced(w.cfg)) return false;
+  if (&w != m_selected || !w.impl || w.impl->fullscreen() || handPlaced(w.cfg) || w.cfg.locked) return false;
+  if (!m_multi.empty() && m_multiFor == w.cfg.id) return false;  // several picked: the group's knob
   double kx = 0, ky = 0;
   toOutput(w.cfg, w.cfg.width / 2.0, -OverlayPass::kHandleGap, kx, ky);
   return std::hypot(x - kx, y - ky) <= OverlayPass::kHandleR + 6;
@@ -192,7 +193,7 @@ void App::snapBox(const Widget& w, int& x, int& y, int& width, int& height, bool
   const double ow = w.output->logicalW(), oh = w.output->logicalH();
   std::vector<double> tx = {0, ow / 2, ow}, ty = {0, oh / 2, oh};
   for (auto& o : m_widgets) {
-    if (o.get() == &w || o->output != w.output || !o->impl || o->impl->fullscreen()) continue;
+    if (o.get() == &w || o->output != w.output || !o->impl || o->impl->fullscreen() || !o->surface) continue;
     const Box b = visualBox(o->cfg);  // what you see, even when turned
     tx.insert(tx.end(), {double(b.x), b.x + b.w / 2.0, double(b.x + b.w)});
     ty.insert(ty.end(), {double(b.y), b.y + b.h / 2.0, double(b.y + b.h)});
@@ -371,8 +372,34 @@ void App::cycleSelection(int step) {
 }
 
 void App::nudge(int dx, int dy, bool resize) {
+  if (multiSelected()) {  // the picked widgets together (a burst of presses is one undo step)
+    if (resize) return;
+    const double now = nowSeconds();
+    if (!(m_lastOpKind == "nudge-group" && now - m_lastOpAt < kCoalesceSec)) {
+      EditOp op;
+      op.kind = "layout";
+      op.block = Config::widgetBlocks(readFile(m_configPath));
+      m_undo.push_back(op);
+      m_redo.clear();
+    }
+    m_lastOpKind = "nudge-group";
+    m_lastOpAt = now;
+    std::vector<Widget*> moved;
+    for (Widget* w : selection()) {
+      if (w->cfg.locked) continue;
+      w->cfg.x += dx, w->cfg.y += dy;
+      double* p = handlePoints(w->cfg);
+      for (int i = 0; i < handleCount(w->cfg); ++i) p[2 * i] += dx, p[2 * i + 1] += dy;
+      placeLayer(*w);
+      w->needsRender = true;
+      moved.push_back(w);
+    }
+    writeGeometry(moved);
+    markEditDirty();
+    return;
+  }
   Widget* w = target();
-  if (!w) return;
+  if (!w || w->cfg.locked) return;
   if (handPlaced(w->cfg)) {
     // the last point moved, or all of them: one pixel at a time for precision
     double* p = handlePoints(w->cfg);
@@ -409,6 +436,7 @@ bool App::modActive(const char* name) const {
 // Returns true for keys that auto-repeat while held.
 bool App::keyAction(uint32_t key) {
   if (!m_renaming.empty()) return textKey(key);
+  if (!m_layerRenaming.empty()) return layerKey(key);
   if (!m_colorPickFor.empty()) return colorKey(key);
   if (!m_fontPickFor.empty()) return fontKey(key);
   if (m_paintMode) {
@@ -477,7 +505,7 @@ bool App::keyAction(uint32_t key) {
     case KEY_RIGHT:
       if (ctrl) {  // tilt: 0.1°, Shift 1° (held keys repeat)
         Widget* w = target();
-        if (w && w->impl && !w->impl->fullscreen()) {
+        if (w && w->impl && !w->impl->fullscreen() && !w->cfg.locked && !multiSelected()) {
           const double d = (shift ? 1.0 : 0.1) * (key == KEY_LEFT ? -1 : 1);
           setProp(*w, "rotation", degreesText(normalizeDegrees(w->cfg.rotation + d)));
         }
@@ -489,7 +517,11 @@ bool App::keyAction(uint32_t key) {
     case KEY_DOWN: nudge(0, step, alt); return true;
     case KEY_TAB: cycleSelection(shift ? -1 : 1); return false;
     case KEY_DELETE:
-      if (m_selected) removeWidget(*m_selected);
+      deleteSelection();
+      return false;
+    case KEY_PAGEUP:  // in the stack: a step, Shift to the front
+    case KEY_PAGEDOWN:
+      raiseSelection((key == KEY_PAGEUP ? 1 : -1) * (shift ? 2 : 1));
       return false;
     default: break;
   }
@@ -508,7 +540,13 @@ bool App::keyAction(uint32_t key) {
     return true;
   }
   const bool isD = sym == XKB_KEY_d || sym == XKB_KEY_D || (sym == XKB_KEY_NoSymbol && key == KEY_D);
-  if (ctrl && isD && m_selected) duplicateWidget(*m_selected);
+  if (ctrl && isD && m_selected) duplicateSelection();
+  const bool isG = sym == XKB_KEY_g || sym == XKB_KEY_G || (sym == XKB_KEY_NoSymbol && key == KEY_G);
+  if (ctrl && isG) {
+    if (shift) ungroupSelection();
+    else if (!groupSelection().empty()) m_layersOpen = true;  // the group shows in the panel
+    markEditDirty();
+  }
   return false;
 }
 
@@ -653,6 +691,25 @@ void App::onPointerMotion(double x, double y) {
     uiDrag(x);
     return;
   }
+  if (m_drag == Drag::Layer) {  // a row of the Layers panel to another place
+    if (std::abs(y - m_layerPressY) > 4) m_layerMoved = true;
+    if (m_layerMoved) {
+      int slot = -1, last = -1;  // before the first row whose middle is below the pointer
+      for (const UiControl& c : m_ui)
+        if (c.type == UiControl::LayerRow) {
+          if (slot < 0 && y < c.r.y + c.r.h / 2) slot = c.prop;
+          last = std::max(last, c.prop + 1);
+        }
+      m_layerDrop = slot < 0 ? last : slot;
+      setCursor("grabbing");
+    }
+    markEditDirty();
+    return;
+  }
+  if (m_groupMove || m_drag == Drag::GroupResize || m_drag == Drag::GroupRotate) {
+    groupDragTo(x, y);
+    return;
+  }
   if (m_drag == Drag::Panel) {  // moving a panel out of the way
     m_panelPos[m_panelDrag] = {static_cast<float>(x) - m_panelGrabX, static_cast<float>(y) - m_panelGrabY};
     markEditDirty();
@@ -696,6 +753,17 @@ void App::onPointerMotion(double x, double y) {
       return;
     }
   }
+  if (m_drag == Drag::None && m_selected && m_selected->output == m_pointerEdit->output && multiSelected()) {
+    // the box round the picked widgets: its corners scale them, its knob turns them
+    if (const int g = groupGripAt(x, y); g >= 0) {
+      setCursor(gripCursor(g));
+      return;
+    }
+    if (inGroupKnob(x, y)) {
+      setCursor("grab");
+      return;
+    }
+  }
   if (m_drag == Drag::None) {
     if (m_selected && m_selected->output == m_pointerEdit->output && inRotateHandle(*m_selected, x, y)) {
       if (m_pointerWidget != m_selected) {
@@ -718,7 +786,7 @@ void App::onPointerMotion(double x, double y) {
       setCursor("crosshair");
       return;
     }
-    setCursor(!hit ? "default" : gripCursor(gripAt(*hit, x, y)));
+    setCursor(!hit ? "default" : hit->cfg.locked ? "not-allowed" : multiSelected() && isSelected(hit) ? "grab" : gripCursor(gripAt(*hit, x, y)));
     return;
   }
   Widget* w = m_pointerWidget;
@@ -852,6 +920,25 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     }
     return;
   }
+  if (m_drag == Drag::Layer) {
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      m_drag = Drag::None;
+      if (m_layerMoved && m_layerDrop >= 0) dropLayer(m_layerDrop);
+      m_layerMoved = false;
+      m_layerDrop = -1;
+      setCursor("default");
+      markEditDirty();
+    }
+    return;
+  }
+  if (m_groupMove || m_drag == Drag::GroupResize || m_drag == Drag::GroupRotate) {
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      m_groupMove = false;
+      groupDragEnd();
+      setCursor("grab");
+    }
+    return;
+  }
   if (m_eyedrop && state == WL_POINTER_BUTTON_STATE_PRESSED && uiHit(m_px, m_py) < 0) {
     // the eyedropper: the wallpaper's colour under the click
     Color c;
@@ -896,16 +983,46 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_helpOpen = false;
     m_savesOpen = false;
     m_fontPickFor.clear();
-    if (w != m_selected) closeColorPick();
     m_confirmDelete.clear();
     commitRename();
-    if (w != m_selected) {
-      m_inspScroll = 0;
-      m_pinCorner = -1;
-    }
-    m_selected = w;  // clicking empty space clears the selection
+    commitLayerRename();
     markEditDirty();
-    if (!w) return;
+    if (modActive(XKB_MOD_NAME_SHIFT)) {  // Shift+click: in or out of the selection (empty space keeps it)
+      if (w) toggleSelected(w);
+      return;
+    }
+    if (m_selected && m_selected->output == m_pointerEdit->output && multiSelected()) {
+      if (const int g = groupGripAt(m_px, m_py); g >= 0) {
+        m_gripCorner = g;
+        groupDragBegin(Drag::GroupResize);
+        setCursor(gripCursor(g));
+        return;
+      }
+      if (inGroupKnob(m_px, m_py)) {
+        groupDragBegin(Drag::GroupRotate);
+        setCursor("grabbing");
+        return;
+      }
+    }
+    // a click picks a widget with its group; a second click on a member of
+    // the picked group picks just that member
+    const double now = nowSeconds();
+    const bool twice = w && m_lastWidgetClick == w->cfg.id && now - m_lastWidgetClickAt < 0.35;
+    m_lastWidgetClick = w ? w->cfg.id : std::string();
+    m_lastWidgetClickAt = now;
+    if (!w) {
+      selectOnly(nullptr);  // clicking empty space clears the selection
+      return;
+    }
+    if (twice && multiSelected() && isSelected(w)) selectOnly(w);
+    else if (!isSelected(w)) selectGroup(w);
+    if (w->cfg.locked) return;  // picked, never moved
+    if (multiSelected()) {
+      m_groupMove = true;
+      groupDragBegin(Drag::Move);
+      setCursor("grabbing");
+      return;
+    }
     if (handPlaced(w->cfg)) {
       // pins or mesh points: a point moves alone, anywhere else moves them all
       const int corner = pinAt(*w, m_px, m_py);
@@ -1069,8 +1186,8 @@ void App::drawEditorText(EditSurface& e) {
   const bool zoomed = m_paintMode && m_zoom > 1.0001;  // the labels would sit over the wrong spot
   for (auto& w : m_widgets) {
     if (zoomed || w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
-    const bool sel = w.get() == m_selected;
-    std::string label = std::format("{}  ·  {}  ·  {}×{}", w->cfg.id, optionLabel(lookOf(*w), spanish()), w->cfg.width, w->cfg.height);
+    const bool sel = isSelected(w.get());
+    std::string label = std::format("{}  ·  {}  ·  {}×{}", layerName(*w), optionLabel(lookOf(*w), spanish()), w->cfg.width, w->cfg.height);
     if (turnedOnly(w->cfg) && !handPlaced(w->cfg)) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));
     if (m_drag != Drag::None && m_drag != Drag::Rotate && w.get() == m_pointerWidget)
       label += std::format("  @ {},{}", w->cfg.x, w->cfg.y);

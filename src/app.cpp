@@ -467,10 +467,15 @@ void App::restack() {
   for (auto& w : m_widgets)
     if (w->surface) want.push_back(w.get());
   if (want == m_mapped) return;
-  for (auto& w : m_widgets) destroySurface(*w);
-  for (auto& w : m_widgets)
-    if (w->output) createSurface(*w);
-  US_DEBUG("restacked widgets");
+  // the surfaces below the first one out of place keep theirs; the rest are
+  // made again in order, each mapped over the one before
+  size_t keep = 0;
+  while (keep < want.size() && keep < m_mapped.size() && want[keep] == m_mapped[keep]) ++keep;
+  std::vector<Widget*> again;
+  for (size_t i = keep; i < want.size(); ++i) again.push_back(const_cast<Widget*>(want[i]));
+  for (Widget* w : again) destroySurface(*w);
+  for (Widget* w : again) createSurface(*w);
+  US_DEBUG("restacked widgets ({} of {} surfaces made again)", again.size(), want.size());
 }
 
 // undershell's own model gives the depth (once fetched), unless
@@ -641,7 +646,10 @@ void App::syncWidgets() {
     // a look that switches between boxed and fullscreen (frame) needs a new
     // surface; compare against how the surface was made, not the previous
     // config (the inspector reconfigures the widget before the reload lands)
-    if (out != w->output || !w->surface || w->surfaceFullscreen != w->impl->fullscreen()) {
+    if (w->cfg.hidden) {  // in the Layers panel only: no surface at all
+      destroySurface(*w);
+      w->output = out;
+    } else if (out != w->output || !w->surface || w->surfaceFullscreen != w->impl->fullscreen()) {
       destroySurface(*w);
       w->output = out;
       if (out) createSurface(*w);
@@ -672,7 +680,7 @@ void App::syncWidgets() {
 // ── surfaces ────────────────────────────────────────────────────────────────
 
 void App::createSurface(Widget& w) {
-  if (!w.output) return;
+  if (!w.output || w.cfg.hidden) return;
   m_mapped.push_back(&w);
   w.surface = wl_compositor_create_surface(m_compositor);
   if (fractional()) {
@@ -1158,6 +1166,8 @@ void App::setEditMode(bool on) {
   if (on == m_edit) return;
   m_edit = on;
   m_drag = Drag::None;
+  m_groupMove = false;
+  commitLayerRename();
   m_pointerWidget = nullptr;
   m_pointerEdit = nullptr;
   m_repeatKey = 0;
@@ -1305,6 +1315,7 @@ void App::renderEdit(EditSurface& e) {
   std::vector<EditRect> rects;
   int hover = -1, active = -1, selected = -1, handle = -1;
   Color accent = Color::fromHex("#e2342a");
+  const bool multi = multiSelected();
   for (auto& w : m_widgets) {
     if (w->output != e.output || !w->impl || !w->surface) continue;
     if (w->impl->fullscreen()) {
@@ -1318,9 +1329,10 @@ void App::renderEdit(EditSurface& e) {
     if (warped(w->cfg)) continue;  // drawn as its quad by drawUi (perspective)
     const int idx = static_cast<int>(rects.size());
     if (w.get() == m_pointerWidget) (m_drag != Drag::None ? active : hover) = idx;
-    if (w.get() == m_selected) selected = handle = idx;
+    if (w.get() == m_selected) selected = idx;
+    if (w.get() == m_selected && !multi && !w->cfg.locked) handle = idx;  // several picked: the group's knob
     rects.push_back({static_cast<float>(w->cfg.x), static_cast<float>(w->cfg.y), static_cast<float>(w->cfg.width),
-                     static_cast<float>(w->cfg.height), static_cast<float>(w->cfg.rotation)});
+                     static_cast<float>(w->cfg.height), static_cast<float>(w->cfg.rotation), multi && isSelected(w.get())});
     accent = w->impl->accent();
   }
   eglMakeCurrent(m_egl, e.eglSurface, e.eglSurface, m_eglContext);
@@ -1514,19 +1526,57 @@ std::string App::handleCommand(const std::string& cmd) {
       }
     return "error: no widget " + id;
   }
-  if (cmd.rfind("select ", 0) == 0) {
-    const std::string id = cmd.substr(7);
-    for (auto& w : m_widgets)
-      if (w->cfg.id == id) {
-        if (!m_edit) setEditMode(true);  // selecting is for editing
-        m_selected = w.get();
-        m_inspScroll = 0;
-        markEditDirty();
-        return "selected " + id;
-      }
-    return "error: no widget '" + id + "'";
+  if (cmd.rfind("select ", 0) == 0) {  // select <id> [<id>…]: several are picked together
+    std::istringstream in(cmd.substr(7));
+    std::vector<std::string> ids;
+    for (std::string id; in >> id;) {
+      bool found = false;
+      for (auto& w : m_widgets) found = found || w->cfg.id == id;
+      if (!found) return "error: no widget '" + id + "'";
+      ids.push_back(id);
+    }
+    if (ids.empty()) return "error: usage: select <id> [<id>…]";
+    if (!m_edit) setEditMode(true);  // selecting is for editing
+    selectIds(ids);
+    return std::format("selected {}", selection().size() == 1 ? ids.front() : std::to_string(selection().size()) + " widgets");
   }
-  if (cmd == "card fold inspector" || cmd == "card fold paint") {  // fold a panel to its title, or unfold it
+  // the Layers panel's actions, from a script: layer <id> up|down|front|back,
+  // group <id> <id>…, ungroup <id> (its whole group)
+  if (cmd.rfind("layer ", 0) == 0 || cmd.rfind("group ", 0) == 0 || cmd.rfind("ungroup ", 0) == 0) {
+    std::istringstream in(cmd);
+    std::string verb, id, arg;
+    in >> verb;
+    std::vector<std::string> ids;
+    for (std::string x; in >> x;) ids.push_back(x);
+    if (verb == "layer") {
+      if (ids.size() != 2) return "error: usage: layer <id> up|down|front|back";
+      arg = ids.back();
+      ids.pop_back();
+    }
+    if (ids.empty()) return "error: usage: " + verb + " <id>…";
+    for (const auto& x : ids) {
+      bool found = false;
+      for (auto& w : m_widgets) found = found || w->cfg.id == x;
+      if (!found) return "error: no widget '" + x + "'";
+    }
+    if (!m_edit) setEditMode(true);
+    if (verb == "group") {
+      selectIds(ids);
+      const std::string name = groupSelection();
+      return name.empty() ? "error: a group needs two widgets on one screen" : "grouped as \"" + name + "\"";
+    }
+    for (auto& w : m_widgets)
+      if (w->cfg.id == ids.front()) (verb == "ungroup" ? selectGroup(w.get()) : selectOnly(w.get()));
+    if (verb == "ungroup") {
+      ungroupSelection();
+      return "ungrouped";
+    }
+    const int step = arg == "up" ? 1 : arg == "down" ? -1 : arg == "front" ? 2 : arg == "back" ? -2 : 0;
+    if (!step) return "error: usage: layer <id> up|down|front|back";
+    raiseSelection(step);
+    return "moved " + ids.front() + " " + arg;
+  }
+  if (cmd == "card fold inspector" || cmd == "card fold paint" || cmd == "card fold layers") {  // fold a panel to its title, or unfold it
     const std::string panel = cmd.substr(10);
     if (!m_collapsed.erase(panel)) m_collapsed.insert(panel);
     markEditDirty();
@@ -1551,12 +1601,13 @@ std::string App::handleCommand(const std::string& cmd) {
     applyPickedColor(true);
     return "picked " + toHex(c);
   }
-  if (cmd == "card help" || cmd == "card saves" || cmd == "card paint") {  // the editor's cards, from a script
+  if (cmd == "card help" || cmd == "card saves" || cmd == "card paint" || cmd == "card layers") {  // the editor's cards, from a script
     // ("saves" alone is the saved-layout list the bar plugin reads)
     if (!m_edit) setEditMode(true);
     const std::string card = cmd.substr(5);
     if (card == "help") m_helpOpen = !m_helpOpen;
     else if (card == "saves") m_savesOpen = !m_savesOpen;
+    else if (card == "layers") m_layersOpen = !m_layersOpen;
     else setPaintMode(!m_paintMode);
     markEditDirty();
     return card + " toggled";
@@ -1671,10 +1722,12 @@ std::string App::handleCommand(const std::string& cmd) {
                                : w->cfg.type == "clock"    ? w->cfg.options["face"].value_or(std::string("digital"))
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
-                       "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f}}}",
+                       "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"
+                       "\"layer\":{},\"hidden\":{},\"locked\":{},\"selected\":{}}}",
                        first ? "" : ",", q(w->cfg.id), q(w->cfg.type), q(look), q(w->output ? w->output->name : ""), w->cfg.x,
                        w->cfg.y, w->cfg.width, w->cfg.height,
-                       w->cfg.rotation, w->cfg.depth, w->cfg.depthLevel, nowSeconds() - w->markAt > 1.5 ? 0.0 : w->fpsMeasured);
+                       w->cfg.rotation, w->cfg.depth, w->cfg.depthLevel, nowSeconds() - w->markAt > 1.5 ? 0.0 : w->fpsMeasured,
+                       q(layerName(*w)), q(w->cfg.group), w->cfg.layer, w->cfg.hidden, w->cfg.locked, m_edit && isSelected(w.get()));
       first = false;
     }
     return s + "]}";
@@ -1701,15 +1754,19 @@ std::string App::handleCommand(const std::string& cmd) {
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
                                      : w->cfg.type == "clock" ? "clock:" + w->cfg.options["face"].value_or(std::string("digital"))
                                                               : w->cfg.type;
-      s += std::format("  {} {} on {} at {},{} {}x{} buffer={}x{}@{:.3f} depth={} frames={} fps={:.0f}\n", w->cfg.id, look,
+      std::string layers = std::format(" layer={}", w->cfg.layer);  // the Layers panel's state
+      if (!w->cfg.group.empty()) layers += " group=\"" + w->cfg.group + "\"";
+      if (w->cfg.hidden) layers += " hidden";
+      if (w->cfg.locked) layers += " locked";
+      s += std::format("  {} {} on {} at {},{} {}x{} buffer={}x{}@{:.3f} depth={} frames={} fps={:.0f}{}\n", w->cfg.id, look,
                        w->output ? w->output->name : "-", w->cfg.x, w->cfg.y, w->cfg.width, w->cfg.height, w->bufW,
                        w->bufH, w->scale,
                        m ? fs::path(m->fieldNpy).filename().string().substr(0, 12) : std::string("none"),
-                       w->frames, stale ? 0.0 : w->fpsMeasured);
+                       w->frames, stale ? 0.0 : w->fpsMeasured, layers);
     }
     return s;
   }
-  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, pick-files, depth-model, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
+  return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, layer, group, ungroup, pick-files, depth-model, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
 }
 
 // ── file watching ───────────────────────────────────────────────────────────
@@ -1895,7 +1952,7 @@ int App::run() {
     // the media feed runs only while a widget shows it
     bool wantMedia = false, wantLyrics = false;
     for (auto& w : m_widgets)
-      if (w->impl) {
+      if (w->impl && !w->cfg.hidden) {
         wantMedia = wantMedia || w->impl->wantsMedia();
         wantLyrics = wantLyrics || w->impl->wantsLyrics();
       }

@@ -150,6 +150,7 @@ uniform vec2 u_size;
 uniform vec4 u_accent;
 uniform vec4 u_rects[16];
 uniform float u_angles[16];
+uniform float u_picked[16];
 uniform int u_count;
 uniform int u_handle;
 uniform float u_handleGap;
@@ -189,7 +190,8 @@ void main() {
         vec2 q = px - c;
         vec2 p = vec2(q.x * cos(an) + q.y * sin(an), -q.x * sin(an) + q.y * cos(an));
         float d = roundBox(p, r.zw * 0.5 - 1.5, 10.0);
-        bool hot = i == u_hover || i == u_active || i == u_selected;
+        bool sel = i == u_selected || u_picked[i] > 0.5;
+        bool hot = i == u_hover || i == u_active || sel;
         float border = 1.0 - smoothstep(0.0, 1.2, abs(d) - (hot ? 1.3 : 0.7));
         float inside = 1.0 - smoothstep(-0.5, 0.5, d);
         vec2 g = r.zw * 0.5 - abs(p);  // a grip in every corner
@@ -199,8 +201,8 @@ void main() {
             for (int k = 0; k < 3; k++)
                 grip = max(grip, 1.0 - smoothstep(0.6, 1.6, abs(diag - (8.0 + float(k) * 7.0))));
         }
-        float wa = inside * (i == u_active ? 0.16 : (i == u_selected ? 0.10 : (hot ? 0.07 : 0.04)))
-                 + border * (i == u_selected ? 1.0 : (hot ? 0.85 : 0.5)) + grip * 0.95;
+        float wa = inside * (i == u_active ? 0.16 : (sel ? 0.10 : (hot ? 0.07 : 0.04)))
+                 + border * (sel ? 1.0 : (hot ? 0.85 : 0.5)) + grip * 0.95;
         if (i == u_handle) {
             // rotation knob on a short stem above the top edge
             vec2 k = vec2(0.0, -r.w * 0.5 - u_handleGap);
@@ -232,34 +234,47 @@ void OverlayPass::draw(float w, float h, const std::vector<EditRect>& rects, int
   glUseProgram(m_prog.id());
   glUniform2f(m_prog.uniform("u_size"), w, h);
   glUniform4f(m_prog.uniform("u_accent"), accent.r, accent.g, accent.b, 1.0F);
-  std::vector<float> packed;
-  const int n = std::min<int>(kMaxRects, static_cast<int>(rects.size()));
-  for (int i = 0; i < n; ++i) {
-    packed.insert(packed.end(), {rects[static_cast<size_t>(i)].x, rects[static_cast<size_t>(i)].y,
-                                 rects[static_cast<size_t>(i)].w, rects[static_cast<size_t>(i)].h});
-  }
-  std::vector<float> angles;
-  for (int i = 0; i < n; ++i) angles.push_back(rects[static_cast<size_t>(i)].angle);
-  if (n > 0) {
-    glUniform4fv(m_prog.uniform("u_rects"), n, packed.data());
-    glUniform1fv(m_prog.uniform("u_angles"), n, angles.data());
-  }
-  glUniform1i(m_prog.uniform("u_handle"), handle < n ? handle : -1);
   glUniform1f(m_prog.uniform("u_handleGap"), kHandleGap);
   glUniform1f(m_prog.uniform("u_handleR"), kHandleR);
-  glUniform1i(m_prog.uniform("u_count"), n);
-  glUniform1i(m_prog.uniform("u_hover"), hover);
-  glUniform1i(m_prog.uniform("u_active"), active);
-  glUniform1f(m_prog.uniform("u_grid"), grid);
-  glUniform1i(m_prog.uniform("u_selected"), selected);
   const int nv = std::min<int>(kMaxGuides, static_cast<int>(vguides.size()));
   const int nh = std::min<int>(kMaxGuides, static_cast<int>(hguides.size()));
   if (nv) glUniform1fv(m_prog.uniform("u_vg"), nv, vguides.data());
   if (nh) glUniform1fv(m_prog.uniform("u_hg"), nh, hguides.data());
-  glUniform1i(m_prog.uniform("u_nvg"), nv);
-  glUniform1i(m_prog.uniform("u_nhg"), nh);
+  // the first pass draws the grid, the guides and up to kMaxRects frames
+  // (replacing what was there); each further pass adds the next frames over it
+  const int total = static_cast<int>(rects.size());
+  for (int first = 0; first == 0 || first < total; first += kMaxRects) {
+    const int n = std::min(kMaxRects, total - first);
+    std::vector<float> packed, angles, picked;
+    for (int i = 0; i < n; ++i) {
+      const EditRect& r = rects[static_cast<size_t>(first + i)];
+      packed.insert(packed.end(), {r.x, r.y, r.w, r.h});
+      angles.push_back(r.angle);
+      picked.push_back(r.picked ? 1.0F : 0.0F);
+    }
+    if (n > 0) {
+      glUniform4fv(m_prog.uniform("u_rects"), n, packed.data());
+      glUniform1fv(m_prog.uniform("u_angles"), n, angles.data());
+      glUniform1fv(m_prog.uniform("u_picked"), n, picked.data());
+    }
+    auto local = [&](int i) { return i >= first && i < first + n ? i - first : -1; };
+    glUniform1i(m_prog.uniform("u_handle"), local(handle));
+    glUniform1i(m_prog.uniform("u_count"), std::max(0, n));
+    glUniform1i(m_prog.uniform("u_hover"), local(hover));
+    glUniform1i(m_prog.uniform("u_active"), local(active));
+    glUniform1i(m_prog.uniform("u_selected"), local(selected));
+    glUniform1f(m_prog.uniform("u_grid"), first == 0 ? grid : 0.0F);
+    glUniform1i(m_prog.uniform("u_nvg"), first == 0 ? nv : 0);
+    glUniform1i(m_prog.uniform("u_nhg"), first == 0 ? nh : 0);
+    if (first == 0) {
+      glDisable(GL_BLEND);
+    } else {
+      glEnable(GL_BLEND);
+      glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    drawUnitQuad();
+  }
   glDisable(GL_BLEND);
-  drawUnitQuad();
 }
 
 static const char* kPillVert = R"(#version 300 es
