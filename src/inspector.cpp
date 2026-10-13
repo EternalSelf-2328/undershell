@@ -3053,15 +3053,15 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
                        : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")
-                       : c.value == "text"    ? (es ? "10 estilos · efectos · animaciones" : "10 styles · effects · animation")
-                       : c.value == "lyrics"  ? (es ? "La canción, línea a línea · karaoke" : "The song, line by line · karaoke")
+                       : c.value == "text"    ? (es ? "10 estilos · efectos" : "10 styles · effects")
+                       : c.value == "lyrics"  ? (es ? "Línea a línea · karaoke" : "Line by line · karaoke")
                        : c.value == "calendar" ? (es ? "Mes · semana · día · agenda" : "Month · week · day · agenda")
-                       : c.value == "notes"   ? (es ? "Markdown · tareas · nota adhesiva" : "Markdown · tasks · sticky note")
-                       : c.value == "weather" ? (es ? "Open-Meteo · ahora · horas · semana" : "Open-Meteo · now · hours · week")
-                       : c.value == "filter"  ? (es ? "Color, viñeta, grano… sobre el fondo" : "Colour, vignette, grain… on the wallpaper")
+                       : c.value == "notes"   ? (es ? "Markdown · tareas" : "Markdown · tasks")
+                       : c.value == "weather" ? (es ? "Ahora · horas · semana" : "Now · hours · week")
+                       : c.value == "filter"  ? (es ? "Color · viñeta · grano" : "Colour · vignette · grain")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
-    cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);
+    fitText(desc, label, c.r.x + 56, c.r.y + 34, c.r.w - 64, dim);  // a long translation ends in "…"
   }
 
   // ── depth brush ──
