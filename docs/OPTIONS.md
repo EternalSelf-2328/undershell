@@ -253,11 +253,15 @@ The synced lyrics of the song playing (LRCLIB), with the text widget's styles an
 
 ## `type = "calendar"`
 
-The month, the week or today's page, today in the accent colour.
+The month, the week, today's page or an agenda, today in the accent colour. Events are read from this computer only (never fetched): `.ics` files or folders of them (`ics`, separated by `;`), khal's calendars (its config's vdirs) and Evolution's / GNOME Calendar's (local ones, and the copies it keeps of online ones; hidden or disabled ones are left out). They are watched, and Evolution's cache looked at every 10 minutes.
 
 | Key | Values | Default | |
 |---|---|---|---|
-| `layout` | `month`, `week`, `day` | `"month"` | Layout |
+| `layout` | `month`, `week`, `day`, `agenda` | `"month"` | Layout |
+| `ics` | text | `""` | .ics files |
+| `khal` | `true` / `false` | `false` | khal calendars |
+| `evolution` | `true` / `false` | `false` | Evolution / GNOME |
+| `agenda_days` | 1 – 60 | `7` | Days ahead |
 | `plate` | `glass`, `solid`, `none` | `"glass"` | Plate |
 | `font` |  | `"Space Grotesk"` | Font |
 | `accent` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Accent |

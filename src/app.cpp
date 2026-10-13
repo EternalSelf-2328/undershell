@@ -447,7 +447,7 @@ void App::syncFileWatches() {
   for (auto& w : m_widgets)
     if (w->impl && !w->cfg.hidden)
       for (const auto& f : w->impl->watchedFiles())
-        if (!f.empty()) dirs.insert(fs::path(f).parent_path().string());
+        if (!f.empty()) dirs.insert(f.back() == '/' ? f.substr(0, f.size() - 1) : fs::path(f).parent_path().string());
   for (const auto& [wd, d] : m_wdFiles) have.insert(d);
   if (dirs == have) return;
   for (const auto& [wd, d] : m_wdFiles) inotify_rm_watch(m_inotify, wd);
@@ -1845,11 +1845,11 @@ void App::handleInotify() {
       if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
       if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
       if (auto f = m_wdFiles.find(ev->wd); f != m_wdFiles.end() && !name.empty()) {
-        const std::string path = f->second + "/" + name;
+        const std::string path = f->second + "/" + name, folder = f->second + "/";
         for (auto& w : m_widgets) {
           if (!w->impl) continue;
           const auto files = w->impl->watchedFiles();
-          if (std::ranges::find(files, path) == files.end()) continue;
+          if (std::ranges::find(files, path) == files.end() && std::ranges::find(files, folder) == files.end()) continue;
           w->impl->filesChanged();
           w->needsRender = true;
           w->drewEmpty = false;

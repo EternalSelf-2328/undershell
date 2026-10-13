@@ -197,7 +197,11 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
   }
   if (c.type == "calendar") {
     if (key == "week_numbers") return o["layout"].value_or(std::string("month")) == "month";
-    if (key == "first_day" || key == "weekends") return o["layout"].value_or(std::string("month")) != "day";
+    if (key == "agenda_days") return o["layout"].value_or(std::string("month")) == "agenda";
+    if (key == "first_day" || key == "weekends") {
+      const std::string l = o["layout"].value_or(std::string("month"));
+      return l != "day" && l != "agenda";
+    }
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
@@ -753,6 +757,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   if (type == "calendar") {  // its layout sets its shape
     if (look == "week") dw = 620, dh = 170;
     else if (look == "day") dw = 260, dh = 300;
+    else if (look == "agenda") dw = 380, dh = 460;
     else dw = 380, dh = 360;
   }
   if (type == "now_playing") nowPlayingDesignSize(look, dw, dh);  // its layout sets its shape
@@ -3031,7 +3036,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")
                        : c.value == "text"    ? (es ? "10 estilos · efectos · animaciones" : "10 styles · effects · animation")
                        : c.value == "lyrics"  ? (es ? "La canción, línea a línea · karaoke" : "The song, line by line · karaoke")
-                       : c.value == "calendar" ? (es ? "Mes · semana · hoja del día" : "Month · week · today's page")
+                       : c.value == "calendar" ? (es ? "Mes · semana · día · agenda" : "Month · week · day · agenda")
                        : c.value == "notes"   ? (es ? "Markdown · tareas · nota adhesiva" : "Markdown · tasks · sticky note")
                        : c.value == "weather" ? (es ? "Open-Meteo · ahora · horas · semana" : "Open-Meteo · now · hours · week")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");

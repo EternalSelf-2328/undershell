@@ -1384,7 +1384,7 @@ void App::onScroll(double value) {
   } else if (w.cfg.type == "text" || w.cfg.type == "lyrics") {
     looks = TextWidget::styles();
   } else if (w.cfg.type == "calendar") {
-    looks = {"month", "week", "day"};
+    looks = {"month", "week", "day", "agenda"};
   } else if (w.cfg.type == "notes") {
     looks = {"paper", "glass", "none"};
   } else if (w.cfg.type == "weather") {

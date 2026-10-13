@@ -34,6 +34,14 @@ have_video = true
 foreach d : video_deps
   have_video = have_video and d.found()
 endforeach
+# Evolution's (and GNOME Calendar's) online calendars, read from its SQLite cache
+sqlite_dep = dependency('sqlite3', required : get_option('evolution'))
+if sqlite_dep.found()
+  deps += sqlite_dep
+  add_project_arguments('-DUS_HAVE_SQLITE=1', language : 'cpp')
+endif
+summary({'Evolution calendars (SQLite)' : sqlite_dep.found()}, section : 'Features')
+
 if have_video
   deps += video_deps
   add_project_arguments('-DUS_HAVE_FFMPEG=1', language : 'cpp')
@@ -84,6 +92,7 @@ core = static_library('undershell-core',
   'src/app.cpp',
   'src/audio.cpp',
   'src/calendar.cpp',
+  'src/calsources.cpp',
   'src/canvas.cpp',
   'src/clock.cpp',
   'src/clockparts.cpp',
@@ -98,6 +107,7 @@ core = static_library('undershell-core',
   'src/fireworks.cpp',
   'src/gl.cpp',
   'src/i18n.cpp',
+  'src/ics.cpp',
   'src/image.cpp',
   'src/inspector.cpp',
   'src/layers.cpp',

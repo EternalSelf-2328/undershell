@@ -101,7 +101,8 @@ public:
   [[nodiscard]] virtual const char* cursor() const { return "default"; }
 
   // Files the widget shows: the App watches their folders and calls
-  // filesChanged() when one of them is written (no polling).
+  // filesChanged() when one of them is written (no polling). A path ending
+  // in '/' is a folder: any file written in it counts.
   [[nodiscard]] virtual std::vector<std::string> watchedFiles() const { return {}; }
   virtual void filesChanged() {}
 

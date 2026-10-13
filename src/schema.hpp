@@ -193,7 +193,11 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
     return v;
   }();
   static const std::vector<PropSpec> calendar = {
-      {K::Enum, "layout", "Layout", "Disposición", {"month", "week", "day"}, 0, 0, 0, 0, "month"},
+      {K::Enum, "layout", "Layout", "Disposición", {"month", "week", "day", "agenda"}, 0, 0, 0, 0, "month"},
+      {K::Text, "ics", ".ics files", "Archivos .ics", {}, 0, 0, 0, 0, ""},
+      {K::Bool, "khal", "khal calendars", "Calendarios khal", {}, 0, 1, 1, 0},
+      {K::Bool, "evolution", "Evolution / GNOME", "Evolution / GNOME", {}, 0, 1, 1, 0},
+      {K::Number, "agenda_days", "Days ahead", "Días a mostrar", {}, 1, 60, 1, 7, "", true},
       {K::Enum, "plate", "Plate", "Fondo", {"glass", "solid", "none"}, 0, 0, 0, 0, "glass"},
       {K::Font, "font", "Font", "Fuente", {}, 0, 0, 0, 0, "Space Grotesk"},
       {K::Color, "accent", "Accent", "Acento", {}, 0, 0, 0, 0, "primary"},

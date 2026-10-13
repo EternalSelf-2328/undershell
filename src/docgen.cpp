@@ -99,7 +99,10 @@ std::string optionsMarkdown() {
   md += "\n## `type = \"lyrics\"`\n\nThe synced lyrics of the song playing (LRCLIB), with the text widget's styles and "
         "effects; the keys after `style` are the text widget's.\n\n";
   table(md, "lyrics");
-  md += "\n## `type = \"calendar\"`\n\nThe month, the week or today's page, today in the accent colour.\n\n";
+  md += "\n## `type = \"calendar\"`\n\nThe month, the week, today's page or an agenda, today in the accent colour. Events are "
+        "read from this computer only (never fetched): `.ics` files or folders of them (`ics`, separated by `;`), khal's calendars "
+        "(its config's vdirs) and Evolution's / GNOME Calendar's (local ones, and the copies it keeps of online ones; hidden or "
+        "disabled ones are left out). They are watched, and Evolution's cache looked at every 10 minutes.\n\n";
   table(md, "calendar");
   md += "| `date` | `YYYY-MM-DD` | `\"\"` | shows that day instead of today (not in the inspector) |\n";
   md += "\n## `type = \"notes\"`\n\nA note kept in a Markdown file (headings, lists, `- [ ]` tasks ticked with a click), "

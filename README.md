@@ -257,14 +257,25 @@ It redraws only when the second (or minute) changes; `flip` animates at 30 fps.
 ## Calendar
 
 The **calendar** widget: the **month** as a grid (ISO week numbers if you
-like), the **week** as a strip, or **today** as a tear-off page, with today in
-the accent colour, days gone by faint and weekends tinted. On a glass or
-solid plate or on nothing, in any font, the week starting on Monday or
-Sunday, in English or Spanish; the mouse wheel steps through the layouts.
-It is drawn once and wakes again at midnight.
+like), the **week** as a strip, **today** as a tear-off page, or an
+**agenda** of the days ahead, with today in the accent colour, days gone by
+faint and weekends tinted. On a glass or solid plate or on nothing, in any
+font, the week starting on Monday or Sunday, in English or Spanish; the
+mouse wheel steps through the layouts.
+
+**Events**, read from this computer only (nothing is fetched): `.ics` files
+or folders of them (**.ics files**, separated by `;`), **khal**'s calendars
+(the vdirs in its config) and **Evolution / GNOME Calendar**'s (the local
+ones, and the copies Evolution keeps of online accounts; hidden or disabled
+calendars are left out). Repeating events, time zones, exceptions and moved
+occurrences are understood. The month and the week mark days with a dot per
+event in its calendar's colour, the page lists today's, and the agenda shows
+what is coming with times and places. Sources are watched, so a change shows
+at once (Evolution's cache is looked at every 10 minutes); otherwise it
+wakes only at midnight.
 
 <p align="center">
-  <img src="docs/media/calendar.webp" alt="The calendar as a month, as today's page and as a week" width="480">
+  <img src="docs/media/calendar.webp" alt="The calendar as a month and a week with event dots, today's page with its events, and an agenda" width="640">
 </p>
 
 ## Weather
@@ -1111,7 +1122,8 @@ makes it fail (for development); if you change a look on purpose:
 | `src/text.*` | text: Pango → cached textures |
 | `src/textfx.*`, `src/textwidget.*` | text with effects (fill, outline, shadow, glow, 3D, moving letters) and the text widget |
 | `src/lyricswidget.*` | the lyrics widget: synced lines, layouts, transitions, karaoke |
-| `src/calendar.*` | the calendar widget: month, week, today's page |
+| `src/calendar.*` | the calendar widget: month, week, today's page, agenda |
+| `src/ics.*`, `src/calsources.*` | iCalendar events (repeats, time zones) and where they come from: .ics, khal, Evolution |
 | `src/notes.*` | the notes widget: Markdown, tasks, typing on it, its watched file |
 | `src/weather.*`, `src/weatherfeed.*` | the weather widget and its Open-Meteo feed (geocoding, forecast, disk cache) |
 | `src/net.*` | HTTPS fetches (http/https only, size-limited) and the cache folder |

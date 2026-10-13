@@ -7,11 +7,19 @@
 #include "i18n.hpp"
 #include "noctalia.hpp"
 #include "gnome.hpp"
+#include "ics.hpp"
+#include "calsources.hpp"
+
+#include <glib.h>
+#ifdef US_HAVE_SQLITE
+#include <sqlite3.h>
+#endif
 #include "plasma.hpp"
 
 #include <filesystem>
 
 using namespace undershell;
+namespace fs = std::filesystem;
 
 int main() {
   const std::string dir = std::filesystem::temp_directory_path() / "undershell-test-config";
@@ -525,6 +533,115 @@ int main() {
   }
 
   std::filesystem::remove_all(dir);
+
+  // iCalendar: timed and all-day events, repeating rules, exceptions, moved
+  // occurrences, time zones across daylight saving, folding, cancellations
+  {
+    setenv("TZ", "UTC", 1);
+    tzset();
+    auto at = [](int y, int m, int d, int h = 0, int mi = 0) {
+      GDateTime* t = g_date_time_new_utc(y, m, d, h, mi, 0);
+      const int64_t u = g_date_time_to_unix(t);
+      g_date_time_unref(t);
+      return u;
+    };
+    const std::string ics =
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-APPLE-CALENDAR-COLOR:#33aa55\r\n"
+        "BEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261014T150000Z\r\nDTEND:20261014T160000Z\r\nSUMMARY:Dentista\\, revisión\r\n"
+        "  anual\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:b\r\nDTSTART;VALUE=DATE:20261020\r\nDTEND;VALUE=DATE:20261022\r\nSUMMARY:Viaje\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:c\r\nDTSTART:20261005T090000Z\r\nDURATION:PT30M\r\nRRULE:FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4\r\n"
+        "EXDATE:20261007T090000Z\r\nSUMMARY:Standup\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:d\r\nDTSTART:20260130T180000Z\r\nRRULE:FREQ=MONTHLY;BYDAY=-1FR\r\nSUMMARY:Cierre\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:e\r\nDTSTART:20261001T100000Z\r\nRRULE:FREQ=DAILY\r\nSUMMARY:Café\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:e\r\nRECURRENCE-ID:20261003T100000Z\r\nDTSTART:20261003T120000Z\r\nSUMMARY:Café tarde\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:f\r\nSTATUS:CANCELLED\r\nDTSTART:20261015T100000Z\r\nSUMMARY:No\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:g\r\nDTSTART;TZID=America/New_York:20261030T090000\r\nRRULE:FREQ=DAILY;COUNT=4\r\nSUMMARY:NY\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:h\r\nDTSTART:20100101T080000Z\r\nRRULE:FREQ=DAILY\r\nSUMMARY:Old daily\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n";
+    const auto ev = parseIcs(ics, at(2026, 10, 1), at(2026, 11, 3), "#000000");
+    auto named = [&](const std::string& t) {
+      std::vector<CalEvent> v;
+      for (const auto& e : ev)
+        if (e.title == t) v.push_back(e);
+      return v;
+    };
+    const auto dent = named("Dentista, revisión anual");  // unfolded, unescaped
+    CHECK(dent.size() == 1 && dent[0].start == at(2026, 10, 14, 15) && dent[0].end == at(2026, 10, 14, 16) && dent[0].color == "#33aa55");
+    const auto trip = named("Viaje");
+    CHECK(trip.size() == 1 && trip[0].allDay && trip[0].end - trip[0].start == 2 * 86400);
+    const auto standup = named("Standup");  // Mon 5, (Wed 7 excluded), Mon 12, Wed 14: COUNT counts the excluded one
+    CHECK(standup.size() == 3 && standup[0].start == at(2026, 10, 5, 9) && standup[1].start == at(2026, 10, 12, 9) &&
+          standup[2].start == at(2026, 10, 14, 9) && standup[0].end - standup[0].start == 1800);
+    const auto closing = named("Cierre");  // the last Friday: Oct 30
+    CHECK(closing.size() == 1 && closing[0].start == at(2026, 10, 30, 18));
+    const auto coffee = named("Café"), moved = named("Café tarde");
+    CHECK(coffee.size() == 32 && moved.size() == 1 && moved[0].start == at(2026, 10, 3, 12));  // 33 days less the moved one
+    CHECK(named("No").empty());
+    const auto ny = named("NY");  // 09:00 in New York: 13:00 UTC, then 14:00 once DST ends (Nov 1)
+    CHECK(ny.size() == 4 && ny[0].start == at(2026, 10, 30, 13) && ny[3].start == at(2026, 11, 2, 14));
+    const auto old = named("Old daily");  // since 2010, found without walking 16 years
+    CHECK(old.size() == 33 && old[0].start == at(2026, 10, 1, 8));
+    CHECK(parseIcs("garbage\nBEGIN:VEVENT\nDTSTART:bad\nEND:VEVENT", 0, INT64_MAX).empty());
+
+    // where events come from: khal's vdirs (with their colour), Evolution's
+    // local calendars (a hidden one left out) and its cache of online ones
+    const fs::path root = fs::temp_directory_path() / "undershell-test-cal";
+    fs::remove_all(root);
+    fs::create_directories(root / "cfg/khal");
+    fs::create_directories(root / "cals/home");
+    writeFileAtomic((root / "cfg/khal/config").string(), "[calendars]\n  [[home]]\n    path = " + (root / "cals/*").string() +
+                                                             "\n    type = discover\n[default]\nhighlight_event_days = True\n");
+    writeFileAtomic((root / "cals/home/color").string(), "#11aa22\n");
+    writeFileAtomic((root / "cals/home/one.ics").string(),
+                    "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:k1\nDTSTART:20261014T150000Z\nSUMMARY:khal event\nEND:VEVENT\nEND:VCALENDAR\n");
+    setenv("XDG_CONFIG_HOME", (root / "cfg").c_str(), 1);
+    setenv("XDG_DATA_HOME", (root / "data").c_str(), 1);
+    setenv("XDG_CACHE_HOME", (root / "cache").c_str(), 1);
+    const auto khal = khalSources();
+    CHECK(khal.size() == 1 && khal[0].folder && khal[0].color == "#11aa22");
+    const auto kev = loadEvents(khal, at(2026, 10, 1), at(2026, 11, 1));
+    CHECK(kev.size() == 1 && kev[0].title == "khal event" && kev[0].color == "#11aa22");
+    // Evolution: a shown local calendar, a hidden one
+    fs::create_directories(root / "data/evolution/calendar/system");
+    fs::create_directories(root / "data/evolution/calendar/hidden1");
+    fs::create_directories(root / "cfg/evolution/sources");
+    writeFileAtomic((root / "data/evolution/calendar/system/calendar.ics").string(),
+                    "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:e1\nDTSTART:20261015T150000Z\nSUMMARY:personal\nEND:VEVENT\nEND:VCALENDAR\n");
+    writeFileAtomic((root / "data/evolution/calendar/hidden1/calendar.ics").string(),
+                    "BEGIN:VCALENDAR\nBEGIN:VEVENT\nUID:e2\nDTSTART:20261015T150000Z\nSUMMARY:hidden\nEND:VEVENT\nEND:VCALENDAR\n");
+    writeFileAtomic((root / "cfg/evolution/sources/system-calendar.source").string(), "[Data Source]\nEnabled=true\n\n[Calendar]\nColor=#ff0088\nSelected=true\n");
+    writeFileAtomic((root / "cfg/evolution/sources/hidden1.source").string(), "[Data Source]\nEnabled=true\n\n[Calendar]\nSelected=false\n");
+#ifdef US_HAVE_SQLITE
+    // an online calendar as Evolution keeps it
+    fs::create_directories(root / "cache/evolution/calendar/online1");
+    sqlite3* db = nullptr;
+    CHECK(sqlite3_open((root / "cache/evolution/calendar/online1/cache.db").c_str(), &db) == SQLITE_OK);
+    sqlite3_exec(db, "CREATE TABLE ECacheObjects (ECacheUID TEXT, ECacheOBJ TEXT);"
+                     "INSERT INTO ECacheObjects VALUES ('o1', 'BEGIN:VEVENT\r\nUID:o1\r\nDTSTART:20261016T150000Z\r\nSUMMARY:online\r\nEND:VEVENT');",
+                 nullptr, nullptr, nullptr);
+    sqlite3_close(db);
+#endif
+    const auto evo = evolutionSources();
+    const auto eev = loadEvents(evo, at(2026, 10, 1), at(2026, 11, 1));
+    bool personal = false, hidden = false, online = false;
+    for (const auto& e : eev) {
+      personal = personal || (e.title == "personal" && e.color == "#ff0088");
+      hidden = hidden || e.title == "hidden";
+      online = online || e.title == "online";
+    }
+    CHECK(personal && !hidden);
+#ifdef US_HAVE_SQLITE
+    CHECK(online);
+#endif
+    const auto plain = icsSources((root / "cals/home").string() + " ; ~/nowhere.ics");
+    CHECK(plain.size() == 2 && plain[0].folder && !plain[1].folder);
+    CHECK(!sourcesStamp(khal).empty());
+    unsetenv("XDG_CONFIG_HOME");
+    unsetenv("XDG_DATA_HOME");
+    unsetenv("XDG_CACHE_HOME");
+    fs::remove_all(root);
+  }
 
   return TEST_RESULT();
 }

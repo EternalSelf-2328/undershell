@@ -64,6 +64,10 @@ CalendarConfig CalendarConfig::fromTable(const toml::table& t) {
   c.language = get<std::string>(t, "language", c.language);
   if (auto d = t["opacity"].value<double>()) c.opacity = std::clamp(*d, 0.0, 1.0);
   c.date = get<std::string>(t, "date", c.date);
+  c.ics = get<std::string>(t, "ics", c.ics);
+  c.khal = get<bool>(t, "khal", c.khal);
+  c.evolution = get<bool>(t, "evolution", c.evolution);
+  if (auto d = t["agenda_days"].value<int64_t>()) c.agendaDays = static_cast<int>(std::clamp<int64_t>(*d, 1, 60));
   return c;
 }
 
@@ -78,9 +82,68 @@ void CalendarWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noc
   m_fixed = {};
   int y = 0, m = 0, d = 0;
   if (std::sscanf(m_cfg.date.c_str(), "%d-%d-%d", &y, &m, &d) == 3 && m >= 1 && m <= 12 && d >= 1 && d <= daysIn(y, m)) m_fixed = {y, m, d};
+  m_sources = icsSources(m_cfg.ics);
+  if (m_cfg.khal)
+    for (auto& s : khalSources()) m_sources.push_back(s);
+  if (m_cfg.evolution)
+    for (auto& s : evolutionSources()) m_sources.push_back(s);
+  m_stamp.clear();  // read them again
 }
 
-void CalendarWidget::tick(const TickContext&) {}
+std::vector<std::string> CalendarWidget::watchedFiles() const {
+  std::vector<std::string> out;
+  for (const auto& s : m_sources) out.push_back(s.folder ? s.path + "/" : s.path);
+  return out;
+}
+
+namespace {
+int64_t localMidnight(int y, int m, int d) {
+  std::tm tm{};
+  tm.tm_year = y - 1900;
+  tm.tm_mon = m - 1;
+  tm.tm_mday = d;
+  tm.tm_isdst = -1;
+  return static_cast<int64_t>(std::mktime(&tm));
+}
+}  // namespace
+
+void CalendarWidget::loadEvents(const Day& t) {
+  if (m_sources.empty()) {
+    m_events.clear();
+    return;
+  }
+  // the month shown, a week round it, and the agenda's days
+  const int64_t from = localMidnight(t.y, t.m, 1) - 7 * 86400;
+  const int64_t to = std::max(localMidnight(t.y, t.m, daysIn(t.y, t.m)) + 8 * 86400, localMidnight(t.y, t.m, t.d) + (m_cfg.agendaDays + 1) * 86400);
+  const std::string window = std::format("{}-{}", from, to);
+  const std::string stamp = sourcesStamp(m_sources);
+  if (stamp == m_stamp && window == m_window) return;
+  m_stamp = stamp;
+  m_window = window;
+  m_events = undershell::loadEvents(m_sources, from, to);
+}
+
+void CalendarWidget::tick(const TickContext&) { loadEvents(today()); }
+
+std::vector<const CalEvent*> CalendarWidget::eventsOn(int y, int m, int d) const {
+  std::vector<const CalEvent*> out;
+  const int64_t a = localMidnight(y, m, d), b = a + 86400;
+  for (const auto& e : m_events)
+    if (e.start < b && std::max(e.end, e.start + 1) > a) out.push_back(&e);
+  return out;
+}
+
+// up to three dots under a day, one per event, in its calendar's colour
+void CalendarWidget::dots(Canvas& c, int y, int m, int d, float cx, float cy, float r, Color over) const {
+  const auto ev = eventsOn(y, m, d);
+  const int n = std::min<int>(3, static_cast<int>(ev.size()));
+  const float op = static_cast<float>(m_cfg.opacity);
+  for (int k = 0; k < n; ++k) {
+    Color col = over.a > 0 ? over : (ev[static_cast<size_t>(k)]->color.empty() ? m_accent : Color::fromHex(ev[static_cast<size_t>(k)]->color));
+    col.a = op;
+    c.circle(cx + (static_cast<float>(k) - (n - 1) / 2.0F) * r * 2.8F, cy, r, col);
+  }
+}
 
 CalendarWidget::Day CalendarWidget::today() const {
   if (m_fixed.y) return m_fixed;
@@ -96,7 +159,17 @@ double CalendarWidget::nextWakeup(double now) const {
   std::tm tm{};
   localtime_r(&tt, &tm);
   const int left = 86400 - (tm.tm_hour * 3600 + tm.tm_min * 60 + tm.tm_sec);
-  return now + left + 1;
+  double next = now + left + 1;
+  // Evolution writes its cache without closing it: looked at every 10 minutes
+  if (std::ranges::any_of(m_sources, [](const CalSource& s) { return s.sqlite; })) next = std::min(next, now + 600);
+  // the agenda and the page drop an event once it is over
+  if (m_cfg.layout == "agenda" || m_cfg.layout == "day")
+    for (const auto& e : m_events)
+      if (!e.allDay && e.end > tt) {
+        next = std::min(next, now + static_cast<double>(e.end - tt) + 1);
+        break;
+      }
+  return next;
 }
 
 namespace {
@@ -117,8 +190,10 @@ void CalendarWidget::draw(const DrawContext& ctx) {
     c.roundRect(0, 0, w, h, radius, withA(m_surface.mix(m_accent, 0.06F), a * op), 1, withA(m_ink, 0.10F * op));
   }
   const Day t = today();
+  if (m_events.empty() && !m_sources.empty()) loadEvents(t);  // drawn before its first tick
   if (m_cfg.layout == "week") drawWeek(c, w, h, t);
   else if (m_cfg.layout == "day") drawPage(c, w, h, t);
+  else if (m_cfg.layout == "agenda") drawAgenda(c, w, h, t);
   else drawMonth(c, w, h, t);
   if (ctx.text) ctx.text->collect(60);
 }
@@ -169,9 +244,11 @@ void CalendarWidget::drawMonth(Canvas& c, float w, float h, const Day& t) {
       const float cx = pad + wkW + cw * (k + 0.5F), cy = gy + ch * (r + 0.5F);
       if (d == t.d) {
         c.circle(cx, cy, fs * 0.4F, withA(m_accent, op));
-        centred(c, std::to_string(d), numToday, cx, cy, withA(m_onAccent, op));
+        centred(c, std::to_string(d), numToday, cx, cy - fs * 0.04F, withA(m_onAccent, op));
+        dots(c, t.y, t.m, d, cx, cy + fs * 0.26F, fs * 0.04F, m_onAccent);
         continue;
       }
+      dots(c, t.y, t.m, d, cx, cy + fs * 0.3F, fs * 0.045F, Color{0, 0, 0, 0});
       const bool weekend = wd == 0 || wd == 6;
       const bool past = d < t.d;
       Color col = m_cfg.weekends && weekend ? m_accent.mix(m_ink, 0.35F) : m_ink;
@@ -213,7 +290,9 @@ void CalendarWidget::drawWeek(Canvas& c, float w, float h, const Day& t) {
     const bool past = sys_days{d} < sys_days{today};
     const float a = isToday ? 1.0F : past ? 0.45F : 0.92F;
     centred(c, m_es ? kShortEs[dwd] : kShortEn[dwd], ini, cx, top + ch * 0.3F, withA(ink, a * 0.8F * op));
-    centred(c, std::to_string(static_cast<unsigned>(d.day())), num, cx, top + ch * 0.64F, withA(ink, a * op));
+    centred(c, std::to_string(static_cast<unsigned>(d.day())), num, cx, top + ch * 0.62F, withA(ink, a * op));
+    dots(c, static_cast<int>(d.year()), static_cast<int>(static_cast<unsigned>(d.month())), static_cast<int>(static_cast<unsigned>(d.day())), cx,
+         top + ch * 0.85F, fs * 0.035F, isToday ? m_onAccent : Color{0, 0, 0, 0});
   }
 }
 
@@ -236,11 +315,100 @@ void CalendarWidget::drawPage(Canvas& c, float w, float h, const Day& t) {
   }
   const int wd = weekdayOf(ymd(t.y, t.m, t.d));
   const float rest = h - band;
-  const TextStyle big{.family = m_cfg.font, .size = std::min(rest * 0.56F, w * 0.5F), .weight = 700};
-  centred(c, std::to_string(t.d), big, w / 2, band + rest * 0.42F, withA(m_ink, op));
-  const TextStyle sub{.family = m_cfg.font, .size = std::min(rest * 0.13F, w * 0.09F), .weight = 500};
+  // today's events under the date, when there are any: the date makes room
+  std::vector<const CalEvent*> ev;
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  for (const CalEvent* e : eventsOn(t.y, t.m, t.d))
+    if (e->allDay || e->end > now || m_fixed.y) ev.push_back(e);
+  const float k = ev.empty() ? 1.0F : 0.62F;
+  const TextStyle big{.family = m_cfg.font, .size = std::min(rest * 0.56F * k, w * 0.5F), .weight = 700};
+  centred(c, std::to_string(t.d), big, w / 2, band + rest * 0.42F * k, withA(m_ink, op));
+  const TextStyle sub{.family = m_cfg.font, .size = std::min(rest * 0.13F, w * 0.09F) * (ev.empty() ? 1.0F : 0.85F), .weight = 500};
   const std::string day = std::format("{}  ·  {}", m_es ? kDaysEs[wd] : kDaysEn[wd], t.y);
-  centred(c, day, sub, w / 2, band + rest * 0.82F, withA(m_ink, 0.6F * op));
+  centred(c, day, sub, w / 2, band + rest * (ev.empty() ? 0.82F : 0.5F), withA(m_ink, 0.6F * op));
+  if (ev.empty()) return;
+  const float pad = w * 0.09F, rowH = rest * 0.13F;
+  const TextStyle row{.family = m_cfg.font, .size = rowH * 0.62F, .weight = 500, .maxWidth = w - 2 * pad - rowH * 2.6F, .maxLines = 1};
+  const TextStyle time{.family = m_cfg.font, .size = rowH * 0.56F, .weight = 600};
+  float y = band + rest * 0.62F;
+  // as many rows as fit; when some are left over, the last row says how many
+  const auto fit = static_cast<size_t>(std::max(1.0F, std::floor((h - rest * 0.04F - y) / rowH)));
+  for (size_t i = 0; i < ev.size() && i < fit; ++i, y += rowH) {
+    const CalEvent& e = *ev[i];
+    if (i + 1 == fit && ev.size() > fit) {
+      const size_t more = ev.size() - i;
+      c.text(m_es ? std::format("y {} más", more) : std::format("and {} more", more), time, pad + rowH * 0.35F,
+             y + (rowH - Canvas::measure("y", time).h) / 2, withA(m_ink, 0.5F * op));
+      break;
+    }
+    const Color col = e.color.empty() ? m_accent : Color::fromHex(e.color);
+    c.roundRect(pad, y + rowH * 0.18F, std::max(2.0F, rowH * 0.1F), rowH * 0.64F, 1, withA(col, op));
+    std::tm tm{};
+    const std::time_t st = static_cast<std::time_t>(e.start);
+    localtime_r(&st, &tm);
+    const std::string when = e.allDay ? std::string("·") : std::format("{:02}:{:02}", tm.tm_hour, tm.tm_min);
+    c.text(when, time, pad + rowH * 0.35F, y + (rowH - Canvas::measure(when, time).h) / 2, withA(m_ink, 0.65F * op));
+    c.text(e.title, row, pad + rowH * 2.6F, y + (rowH - Canvas::measure(e.title, row).h) / 2, withA(m_ink, op));
+  }
+}
+
+// What is coming: the next days' events, under a line for each day
+void CalendarWidget::drawAgenda(Canvas& c, float w, float h, const Day& t) {
+  const float op = static_cast<float>(m_cfg.opacity);
+  const float pad = std::min(w, h) * 0.08F;
+  const float unit = std::clamp(std::min(w * 0.06F, h * 0.055F), 9.0F, 26.0F);
+  const TextStyle title{.family = m_cfg.font, .size = unit * 1.35F, .weight = 700};
+  const TextStyle dayStyle{.family = m_cfg.font, .size = unit * 0.85F, .weight = 700, .letterSpacing = unit * 0.04F};
+  const TextStyle time{.family = m_cfg.font, .size = unit * 0.85F, .weight = 600};
+  const TextStyle what{.family = m_cfg.font, .size = unit, .weight = 500, .maxWidth = w - 2 * pad - unit * 4.6F, .maxLines = 1};
+  const TextStyle where{.family = m_cfg.font, .size = unit * 0.78F, .weight = 500, .maxWidth = w - 2 * pad - unit * 4.6F, .maxLines = 1};
+  float y = pad;
+  c.text(m_es ? "Agenda" : "Agenda", title, pad, y, withA(m_ink, op));
+  y += Canvas::measure("Ag", title).h + unit * 0.5F;
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  bool any = false;
+  for (int k = 0; k < m_cfg.agendaDays && y < h - pad; ++k) {
+    const year_month_day day{sys_days{ymd(t.y, t.m, t.d)} + days{k}};
+    const int dy = static_cast<int>(day.year()), dm = static_cast<int>(static_cast<unsigned>(day.month())),
+              dd = static_cast<int>(static_cast<unsigned>(day.day()));
+    std::vector<const CalEvent*> ev;
+    for (const CalEvent* e : eventsOn(dy, dm, dd))
+      if (k > 0 || e->allDay || e->end > now || m_fixed.y) ev.push_back(e);
+    if (ev.empty()) continue;
+    any = true;
+    const int wd = weekdayOf(day);
+    std::string label = k == 0 ? (m_es ? "HOY" : "TODAY") : k == 1 ? (m_es ? "MAÑANA" : "TOMORROW")
+                                                                    : std::format("{} {}", m_es ? kShortEs[wd] : kShortEn[wd], dd);
+    for (char& ch : label) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+    c.text(label, dayStyle, pad, y, withA(k == 0 ? m_accent : m_ink, (k == 0 ? 1.0F : 0.55F) * op));
+    y += unit * 1.35F;
+    for (const CalEvent* e : ev) {
+      const float rh = e->place.empty() ? unit * 1.6F : unit * 2.35F;
+      if (y + rh > h - pad * 0.6F) {
+        y = h;  // out of room
+        break;
+      }
+      const Color col = e->color.empty() ? m_accent : Color::fromHex(e->color);
+      c.roundRect(pad, y + unit * 0.2F, std::max(2.5F, unit * 0.16F), rh - unit * 0.55F, 1.5F, withA(col, op));
+      std::tm tm{};
+      const std::time_t st = static_cast<std::time_t>(std::max(e->start, localMidnight(dy, dm, dd)));
+      localtime_r(&st, &tm);
+      const std::string when = e->allDay ? (m_es ? "Todo el día" : "All day") : std::format("{:02}:{:02}", tm.tm_hour, tm.tm_min);
+      c.text(when, e->allDay ? TextStyle{.family = m_cfg.font, .size = unit * 0.66F, .weight = 600} : time, pad + unit * 0.6F, y + unit * 0.12F,
+             withA(m_ink, 0.6F * op));
+      c.text(e->title, what, pad + unit * 4.4F, y, withA(m_ink, op));
+      if (!e->place.empty()) c.text(e->place, where, pad + unit * 4.4F, y + unit * 1.25F, withA(m_ink, 0.5F * op));
+      y += rh;
+    }
+    y += unit * 0.45F;
+  }
+  if (!any) {
+    const std::string none = m_sources.empty() ? (m_es ? "Sin calendarios: elige .ics, khal o Evolution en el inspector"
+                                                       : "No calendars: pick .ics, khal or Evolution in the inspector")
+                                               : (m_es ? "Nada en los próximos días" : "Nothing in the days ahead");
+    const TextStyle st{.family = m_cfg.font, .size = unit * 0.9F, .weight = 500, .maxWidth = w - 2 * pad, .maxLines = 3};
+    c.text(none, st, pad, y + unit * 0.4F, withA(m_ink, 0.55F * op));
+  }
 }
 
 }  // namespace undershell
