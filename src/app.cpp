@@ -980,6 +980,7 @@ void App::onFrameDone(Widget* w) {
   ctx.now = nowSeconds();
   ctx.audio = audioFrame();
   ctx.media = &m_media;
+  ctx.weather = &m_weather;
   if ((w->impl && w->impl->animating(ctx)) || m_drag != Drag::None) w->needsRender = true;
 }
 
@@ -1059,6 +1060,7 @@ void App::render(Widget& w) {
   tctx.dt = dt;
   tctx.audio = audioFrame(&w);
   tctx.media = &m_media;
+  tctx.weather = &m_weather;
   w.impl->tick(tctx);
   // after the tick: what it just showed is not what it waits for next (an
   // animation's next frame, not the one it has put up)
@@ -1754,6 +1756,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                : w->cfg.type == "lyrics"   ? w->cfg.options["layout"].value_or(std::string("lines"))
                                : w->cfg.type == "calendar" ? w->cfg.options["layout"].value_or(std::string("month"))
                                : w->cfg.type == "notes"    ? w->cfg.options["plate"].value_or(std::string("paper"))
+                               : w->cfg.type == "weather"  ? w->cfg.options["layout"].value_or(std::string("now"))
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"
@@ -1955,7 +1958,17 @@ int App::run() {
     if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();
-    if (r > 0 && (fds[5].revents & POLLIN)) m_jobs.dispatch();
+    if (r > 0 && (fds[5].revents & POLLIN)) {
+      m_jobs.dispatch();
+      if (m_weather.generation() != m_weatherGen) {  // a weather report landed
+        m_weatherGen = m_weather.generation();
+        for (auto& w : m_widgets)
+          if (w->impl && w->impl->wantsWeather()) {
+            w->needsRender = true;
+            w->drewEmpty = false;
+          }
+      }
+    }
     if (r > 0 && (fds[6].revents & (POLLIN | POLLHUP))) m_picker.dispatch();
     if (r > 0 && (fds[7].revents & POLLIN)) {
       m_dconf.dispatch();

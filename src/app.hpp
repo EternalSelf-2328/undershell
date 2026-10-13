@@ -13,6 +13,7 @@
 #include "ipc.hpp"
 #include "jobs.hpp"
 #include "media.hpp"
+#include "weatherfeed.hpp"
 #include "noctalia.hpp"
 #include "overlay.hpp"
 #include "schema.hpp"
@@ -371,6 +372,8 @@ private:
   Audio m_audio;
   Jobs m_jobs{2};
   MediaService m_media{m_jobs};
+  WeatherService m_weather{m_jobs};
+  uint64_t m_weatherGen = 0;
   uint64_t m_mediaGen = 0;
   Widget* m_hoverWidget = nullptr;  // widget surface under the pointer (not editing)
   bool m_audioOk = false;

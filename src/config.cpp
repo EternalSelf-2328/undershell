@@ -672,6 +672,10 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "weather") {
+    b += std::format("layout = \"{}\"           # now card week hours\n", look.empty() ? "now" : look);
+    b += "location = \"\"            # your city (\"Quito, Ecuador\") or \"lat, lon\": only Open-Meteo sees it\n"
+         "units = \"metric\"         # metric imperial\n";
   } else if (type == "notes") {
     b += "plate = \"paper\"           # paper glass none\n"
          "file = \"\"                # a Markdown file; empty: ~/.local/share/undershell/notes/<id>.md\n";

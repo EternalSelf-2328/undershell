@@ -61,7 +61,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -106,6 +106,10 @@ std::string optionsMarkdown() {
         "typed on in the editor (double-click it) or in any text editor; the file is watched.\n\n";
   table(md, "notes");
   md += "| `file` | path (`~/` allowed) | `\"\"` | the Markdown file; empty: `~/.local/share/undershell/notes/<id>.md` |\n";
+  md += "\n## `type = \"weather\"`\n\nThe weather from Open-Meteo (no account or key) for the `location` you write: a city "
+        "(sent once to Open-Meteo's geocoding) or `\"lat, lon\"`. Only coordinates rounded to 0.01° are sent after that, every "
+        "half hour; answers are cached in `~/.cache/undershell/weather`.\n\n";
+  table(md, "weather");
   return md;
 }
 

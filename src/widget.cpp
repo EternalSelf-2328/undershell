@@ -10,6 +10,7 @@
 #include "shape.hpp"
 #include "textwidget.hpp"
 #include "visualizer.hpp"
+#include "weather.hpp"
 
 namespace undershell {
 
@@ -22,10 +23,11 @@ std::unique_ptr<WidgetImpl> createWidget(const std::string& type) {
   if (type == "lyrics") return std::make_unique<LyricsWidget>();
   if (type == "calendar") return std::make_unique<CalendarWidget>();
   if (type == "notes") return std::make_unique<NotesWidget>();
+  if (type == "weather") return std::make_unique<WeatherWidget>();
   if (type == "image") return std::make_unique<ImageWidget>();
   return nullptr;
 }
 
-std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes"}; }
+std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather"}; }
 
 }  // namespace undershell

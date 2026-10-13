@@ -8,6 +8,8 @@
 #include "shape.hpp"
 #include "textwidget.hpp"
 #include "notes.hpp"
+#include "weatherfeed.hpp"
+#include "jobs.hpp"
 #include "media.hpp"
 #include <array>
 #include <chrono>
@@ -1203,6 +1205,46 @@ int main(int argc, char** argv) {
     }
     CHECK(accent > 60);
     std::filesystem::remove(md);
+  }
+
+  // weather: an Open-Meteo answer read into a report, coordinates written by
+  // hand, the codes in words; a report drawn (no network: set by hand), and
+  // the hint without a place
+  {
+    const std::string fc = R"({"utc_offset_seconds":-18000,"current":{"time":"2026-10-13T14:00","temperature_2m":17.4,
+      "apparent_temperature":16.1,"relative_humidity_2m":73,"is_day":1,"weather_code":80,"wind_speed_10m":7.2},
+      "hourly":{"time":["2026-10-13T14:00","2026-10-13T15:00"],"temperature_2m":[17.4,15.0],"weather_code":[80,61],"is_day":[1,1]},
+      "daily":{"time":["2026-10-13","2026-10-14"],"weather_code":[80,3],"temperature_2m_max":[17.9,20.0],
+      "temperature_2m_min":[10.2,9.0],"precipitation_probability_max":[85,10]}})";
+    WeatherReport r;
+    CHECK(WeatherService::parseForecast(fc, r));
+    CHECK(std::abs(r.temp - 17.4) < 1e-9 && r.humidity == 73 && r.code == 80 && r.utcOffset == -18000);
+    CHECK(r.hours.size() == 2 && r.hours[1].at - r.hours[0].at == 3600);
+    CHECK(r.days.size() == 2 && r.days[0].rain == 85 && r.days[1].m == 10 && r.days[1].d == 14);
+    CHECK(!WeatherService::parseForecast("{not json", r));
+    double lat = 0, lon = 0;
+    CHECK(WeatherService::parseCoordinates("-0.18, -78.47", lat, lon) && lat < 0 && lon < -78);
+    CHECK(!WeatherService::parseCoordinates("Quito, Ecuador", lat, lon));
+    CHECK(!WeatherService::parseCoordinates("95, 10", lat, lon));
+    CHECK(weatherText(95, true) == "Tormenta" && skyOf(61) == Sky::Rain && skyOf(73) == Sky::Snow);
+    Jobs jobs(1);
+    WeatherService svc(jobs);
+    r.place = "Quito, Ecuador";
+    svc.setForTest("Quito", false, false, r);
+    toml::table o;
+    o.insert_or_assign("location", "Quito");
+    o.insert_or_assign("language", "en");
+    o.insert_or_assign("plate", "none");
+    const Image img = renderWidget("weather", o, 400, 160, pal, 1000, 1, 0, &svc);
+    size_t lit = 0;
+    for (size_t i = 3; i < img.rgba.size(); i += 4) lit += img.rgba[i] > 128;
+    CHECK(lit > 2500);
+    toml::table none;
+    none.insert_or_assign("plate", "none");
+    const Image hint = renderWidget("weather", none, 400, 160, pal, 1000, 1, 0, &svc);
+    size_t hl = 0;
+    for (size_t i = 3; i < hint.rgba.size(); i += 4) hl += hint.rgba[i] > 128;
+    CHECK(hl > 100 && hl < lit);
   }
 
   return TEST_RESULT();

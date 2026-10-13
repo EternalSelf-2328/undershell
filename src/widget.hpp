@@ -17,6 +17,7 @@ namespace undershell {
 
 class TextRenderer;
 class MediaService;
+class WeatherService;
 
 struct Rect {
   float x = 0, y = 0, w = 0, h = 0;
@@ -45,6 +46,7 @@ struct TickContext {
   double dt = 0;   // since this widget's previous tick
   AudioFrame audio;
   MediaService* media = nullptr;
+  WeatherService* weather = nullptr;
 };
 
 struct DrawContext {
@@ -117,12 +119,13 @@ public:
   // shared feeds this widget needs (the App only runs what someone wants)
   [[nodiscard]] virtual bool wantsMedia() const { return false; }
   [[nodiscard]] virtual bool wantsLyrics() const { return false; }
+  [[nodiscard]] virtual bool wantsWeather() const { return false; }
 
 protected:
   bool m_editable = false;  // its text can be typed on in the editor
 };
 
-// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 

@@ -135,6 +135,8 @@ core = static_library('undershell-core',
   'src/text.cpp',
   'src/video.cpp',
   'src/visualizer.cpp',
+  'src/weather.cpp',
+  'src/weatherfeed.cpp',
   'src/wallkind.cpp',
   'src/widget.cpp',
   dependencies : deps)

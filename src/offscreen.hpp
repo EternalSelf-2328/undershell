@@ -13,6 +13,8 @@
 
 namespace undershell {
 
+class WeatherService;
+
 struct Image {
   int w = 0, h = 0;
   std::vector<std::uint8_t> rgba;  // top-down, premultiplied
@@ -50,7 +52,7 @@ Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaStat
 // 1/60 s from `now` (needs Headless). A widget that loads on a thread (an
 // image) is drawn again until something shows, for up to `waitSeconds`.
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct,
-                   double now = 1000, int ticks = 1, double waitSeconds = 0);
+                   double now = 1000, int ticks = 1, double waitSeconds = 0, WeatherService* weather = nullptr);
 // Lays `src` (a rendered widget) on a surface at `degrees` the way the daemon
 // draws a turned widget; the result is the turned box's surface (needs Headless).
 Image renderRotated(const Image& src, double degrees);

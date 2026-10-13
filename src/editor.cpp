@@ -74,6 +74,7 @@ const char* lookKey(const Widget& w) {
   if (w.cfg.type == "image") return "fit";
   if (w.cfg.type == "calendar") return "layout";
   if (w.cfg.type == "notes") return "plate";
+  if (w.cfg.type == "weather") return "layout";
   return "style";
 }
 std::string lookOf(const Widget& w) {
@@ -84,6 +85,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "text" || w.cfg.type == "lyrics") return w.cfg.options["style"].value_or(std::string("plain"));
   if (w.cfg.type == "calendar") return w.cfg.options["layout"].value_or(std::string("month"));
   if (w.cfg.type == "notes") return w.cfg.options["plate"].value_or(std::string("paper"));
+  if (w.cfg.type == "weather") return w.cfg.options["layout"].value_or(std::string("now"));
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
@@ -1385,6 +1387,8 @@ void App::onScroll(double value) {
     looks = {"month", "week", "day"};
   } else if (w.cfg.type == "notes") {
     looks = {"paper", "glass", "none"};
+  } else if (w.cfg.type == "weather") {
+    looks = {"now", "card", "week", "hours"};
   } else if (w.cfg.type == "visualizer") {
     for (const char* l : kLooks)
       if (std::string(l) != "frame") looks.push_back(l);  // frame owns the whole screen

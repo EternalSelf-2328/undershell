@@ -185,6 +185,11 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "weather") {
+    if (key == "place") return o["layout"].value_or(std::string("now")) == "now" || o["layout"].value_or(std::string("now")) == "card";
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (c.type == "notes") {
     if (key == "paper") return o["plate"].value_or(std::string("paper")) == "paper";
     if (key == "depth_level") return o["depth"].value_or(true);
@@ -714,6 +719,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "lyrics") return es ? "Letras" : "Lyrics";
   if (type == "calendar") return es ? "Calendario" : "Calendar";
   if (type == "notes") return es ? "Notas" : "Notes";
+  if (type == "weather") return es ? "Clima" : "Weather";
   return "Widget";
 }
 }  // namespace
@@ -738,6 +744,12 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   if (type == "text") dw = 640, dh = 180;
   if (type == "lyrics") dw = 820, dh = 260;
   if (type == "notes") dw = 340, dh = 380;
+  if (type == "weather") {
+    if (look == "card") dw = 420, dh = 330;
+    else if (look == "week") dw = 700, dh = 220;
+    else if (look == "hours") dw = 660, dh = 170;
+    else dw = 400, dh = 160;
+  }
   if (type == "calendar") {  // its layout sets its shape
     if (look == "week") dw = 620, dh = 170;
     else if (look == "day") dw = 260, dh = 300;
@@ -1180,6 +1192,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "lyrics") return "lyrics";
   if (type == "calendar") return "calendar";
   if (type == "notes") return "notes";
+  if (type == "weather") return "weather";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1497,7 +1510,7 @@ void App::layoutUi(const EditSurface& e) {
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
     const float gx = std::clamp(addRect.x - 10, 12.0F, W - 282), gy = kBarY + kBarH + 10;
-    const char* types[] = {"visualizer", "clock", "calendar", "notes", "now_playing", "lyrics", "text", "shape", "image"};
+    const char* types[] = {"visualizer", "clock", "calendar", "weather", "notes", "now_playing", "lyrics", "text", "shape", "image"};
     m_ui.push_back({UiControl::Panel, {gx, gy, 270, std::size(types) * 70.0F + 10}, -1, "gallery"});
     float y = gy + 8;
     for (const char* t : types) {
@@ -2505,6 +2518,11 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "weather") {  // a sun behind a cloud
+    c.circle(cx - 2.5F, cy - 2.5F, 4, col);
+    c.circle(cx - 1, cy + 2.5F, 3.3F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.circle(cx + 3, cy + 1.5F, 3.8F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.segment(cx - 3.5F, cy + 6, cx + 6, cy + 6, 1.5F, col);
   } else if (name == "notes") {  // a sticky note with its corner turned
     c.triangle(cx + 2, cy + 7, cx + 7, cy + 2, cx + 2, cy + 2, col);
     c.segment(cx - 7, cy - 7, cx + 7, cy - 7, 1.5F, col, false);
@@ -3015,6 +3033,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "lyrics"  ? (es ? "La canción, línea a línea · karaoke" : "The song, line by line · karaoke")
                        : c.value == "calendar" ? (es ? "Mes · semana · hoja del día" : "Month · week · today's page")
                        : c.value == "notes"   ? (es ? "Markdown · tareas · nota adhesiva" : "Markdown · tasks · sticky note")
+                       : c.value == "weather" ? (es ? "Open-Meteo · ahora · horas · semana" : "Open-Meteo · now · hours · week")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);

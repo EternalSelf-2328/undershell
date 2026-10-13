@@ -243,7 +243,7 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
 }
 
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct, double now,
-                   int ticks, double waitSeconds) {
+                   int ticks, double waitSeconds, WeatherService* weather) {
   std::unique_ptr<WidgetImpl> widget = createWidget(type);
   if (!widget) return {};
   WidgetConfig wc;
@@ -255,6 +255,7 @@ Image renderWidget(const std::string& type, const toml::table& options, int w, i
     TickContext tc;
     tc.now = now + i / 60.0;
     tc.dt = 1 / 60.0;
+    tc.weather = weather;
     widget->tick(tc);
   }
   auto once = [&] {
