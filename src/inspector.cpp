@@ -5,6 +5,7 @@
 // same time so a change shows on the very next frame.
 #include "app.hpp"
 #include "schema.hpp"
+#include "notes.hpp"
 #include "textwidget.hpp"
 
 #include <climits>
@@ -184,6 +185,11 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "notes") {
+    if (key == "paper") return o["plate"].value_or(std::string("paper")) == "paper";
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (c.type == "calendar") {
     if (key == "week_numbers") return o["layout"].value_or(std::string("month")) == "month";
     if (key == "first_day" || key == "weekends") return o["layout"].value_or(std::string("month")) != "day";
@@ -356,6 +362,10 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   for (const auto& p : all)
     if (expanded == "*" || optionApplies(w.cfg, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
+  if (w.cfg.type == "notes") {
+    // write on it, or open its file in a text editor
+    s.insert(s.begin(), PropSpec{K::Action, "_note", "Write on it", "Escribir en la nota", {"write", "open"}});
+  }
   if (w.cfg.type == "image") {
     // the picture: a button that opens the desktop's chooser, then its name (× takes it out)
     const std::string file = w.cfg.options["file"].value_or(std::string());
@@ -703,6 +713,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "text") return es ? "Texto" : "Text";
   if (type == "lyrics") return es ? "Letras" : "Lyrics";
   if (type == "calendar") return es ? "Calendario" : "Calendar";
+  if (type == "notes") return es ? "Notas" : "Notes";
   return "Widget";
 }
 }  // namespace
@@ -726,6 +737,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   if (type == "shape" || type == "image") dw = dh = 300;
   if (type == "text") dw = 640, dh = 180;
   if (type == "lyrics") dw = 820, dh = 260;
+  if (type == "notes") dw = 340, dh = 380;
   if (type == "calendar") {  // its layout sets its shape
     if (look == "week") dw = 620, dh = 170;
     else if (look == "day") dw = 260, dh = 300;
@@ -1167,6 +1179,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "text") return "text";
   if (type == "lyrics") return "lyrics";
   if (type == "calendar") return "calendar";
+  if (type == "notes") return "notes";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1479,7 +1492,7 @@ void App::layoutUi(const EditSurface& e) {
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
     const float gx = std::clamp(addRect.x - 10, 12.0F, W - 282), gy = kBarY + kBarH + 10;
-    const char* types[] = {"visualizer", "clock", "calendar", "now_playing", "lyrics", "text", "shape", "image"};
+    const char* types[] = {"visualizer", "clock", "calendar", "notes", "now_playing", "lyrics", "text", "shape", "image"};
     m_ui.push_back({UiControl::Panel, {gx, gy, 270, std::size(types) * 70.0F + 10}, -1, "gallery"});
     float y = gy + 8;
     for (const char* t : types) {
@@ -1809,6 +1822,7 @@ bool App::uiPress(int index, double x) {
   // armed only for the very next click
   if (!(c.type == UiControl::SaveRow && c.value == m_renaming)) commitRename();
   if (!(c.type == UiControl::LayerRow && c.value == m_layerRenaming)) commitLayerRename();
+  if (c.type != UiControl::Action) endNote();
   if (c.type != UiControl::TextField) commitField();
   if (c.type != UiControl::SaveDelete) m_confirmDelete.clear();
   if (c.type != UiControl::PaintClear) m_confirmClear = false;
@@ -2054,6 +2068,23 @@ bool App::uiPress(int index, double x) {
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "file" &&
           !m_picker.busy())
         pickFiles(*w, false, "file");
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "_note") {
+        if (c.value == "open") {  // in the desktop's text editor; the file is watched
+          endNote();
+          const std::string path = NotesWidget::pathFor(w->cfg.id, w->cfg.options["file"].value_or(std::string()));
+          std::error_code ec;
+          fs::create_directories(fs::path(path).parent_path(), ec);
+          if (!fs::exists(path, ec)) writeFileAtomic(path, "");
+          const gchar* argv[] = {"xdg-open", path.c_str(), nullptr};
+          g_spawn_async(nullptr, const_cast<gchar**>(argv), nullptr,
+                        static_cast<GSpawnFlags>(G_SPAWN_SEARCH_PATH | G_SPAWN_STDOUT_TO_DEV_NULL | G_SPAWN_STDERR_TO_DEV_NULL),
+                        nullptr, nullptr, nullptr, nullptr);
+        } else if (m_noteFor == w->cfg.id) {
+          endNote();
+        } else {
+          beginNote(*w);
+        }
+      }
       if (c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "_depth_model" &&
           m_depthGen.needsModel())
         m_depthGen.download();
@@ -2423,6 +2454,14 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "notes") {  // a sticky note with its corner turned
+    c.triangle(cx + 2, cy + 7, cx + 7, cy + 2, cx + 2, cy + 2, col);
+    c.segment(cx - 7, cy - 7, cx + 7, cy - 7, 1.5F, col, false);
+    c.segment(cx - 7, cy - 7, cx - 7, cy + 7, 1.5F, col, false);
+    c.segment(cx + 7, cy - 7, cx + 7, cy + 2, 1.5F, col, false);
+    c.segment(cx - 7, cy + 7, cx + 2, cy + 7, 1.5F, col, false);
+    c.segment(cx - 4, cy - 3, cx + 4, cy - 3, 1.3F, col);
+    c.segment(cx - 4, cy + 0.5F, cx + 1, cy + 0.5F, 1.3F, col);
   } else if (name == "calendar") {  // a page with its rings and a marked day
     c.roundRect(cx - 7, cy - 5.5F, 14, 12.5F, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.segment(cx - 7, cy - 1.5F, cx + 7, cy - 1.5F, 1.4F, col, false);
@@ -2825,6 +2864,10 @@ void App::drawUi(EditSurface& e) {
               cv.roundRect(bx, y + 3, bw, 24, 8, hot && !waiting ? withAlphaC(ink, 0.14F) : raised, 1, line);
               std::string t = es ? p.labelEs : p.labelEn;
               if (value == "folder") t = es ? "+ Carpeta" : "+ Folder";
+              if (p.key == "_note")
+                t = value == "open"           ? (es ? "Abrir el .md" : "Open the .md")
+                    : m_noteFor == w->cfg.id ? (es ? "Listo (Esc)" : "Done (Esc)")
+                                             : (es ? "Escribir" : "Write");
               if (waiting) t = k == 0 ? (es ? "Eligiendo…" : "Choosing…") : std::string();
               if (fetch)
                 t = m_depthGen.downloading() ? std::format("{} {:.0f} %", es ? "Descargando el modelo…" : "Downloading the model…",
@@ -2920,6 +2963,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "text"    ? (es ? "10 estilos · efectos · animaciones" : "10 styles · effects · animation")
                        : c.value == "lyrics"  ? (es ? "La canción, línea a línea · karaoke" : "The song, line by line · karaoke")
                        : c.value == "calendar" ? (es ? "Mes · semana · hoja del día" : "Month · week · today's page")
+                       : c.value == "notes"   ? (es ? "Markdown · tareas · nota adhesiva" : "Markdown · tasks · sticky note")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);

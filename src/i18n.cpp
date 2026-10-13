@@ -67,6 +67,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"solid", "Sólido"}, {"pulse", "Pulso"}, {"glow", "Brillo"}, {"stretch", "Estirar"}, {"bounce", "Rebote"},
       {"retro", "Retro"}, {"sticker", "Sticker"}, {"chrome", "Cromo"}, {"glitch", "Glitch"}, {"rainbow", "Arcoíris"},
       {"typewriter", "Máquina de escribir"}, {"flicker", "Parpadeo"}, {"shake", "Temblor"}, {"letters", "Letras que saltan"},
+      {"paper", "Papel"}, {"write", "Escribir"}, {"open", "Abrir"},
       {"month", "Mes"}, {"week", "Semana"}, {"day", "Día"}, {"monday", "Lunes"}, {"sunday", "Domingo"},
       {"lines", "Tres líneas"}, {"karaoke", "Karaoke"}, {"slide", "Deslizar"}, {"fade", "Fundido"}, {"pop", "Salto"}, {"title", "Título"},
   };

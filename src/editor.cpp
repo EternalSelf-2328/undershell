@@ -73,6 +73,7 @@ const char* lookKey(const Widget& w) {
   if (w.cfg.type == "now_playing") return "layout";
   if (w.cfg.type == "image") return "fit";
   if (w.cfg.type == "calendar") return "layout";
+  if (w.cfg.type == "notes") return "plate";
   return "style";
 }
 std::string lookOf(const Widget& w) {
@@ -82,6 +83,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "image") return w.cfg.options["fit"].value_or(std::string("fit"));
   if (w.cfg.type == "text" || w.cfg.type == "lyrics") return w.cfg.options["style"].value_or(std::string("plain"));
   if (w.cfg.type == "calendar") return w.cfg.options["layout"].value_or(std::string("month"));
+  if (w.cfg.type == "notes") return w.cfg.options["plate"].value_or(std::string("paper"));
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
@@ -453,6 +455,7 @@ bool App::keyAction(uint32_t key) {
   if (!m_renaming.empty()) return textKey(key);
   if (!m_layerRenaming.empty()) return layerKey(key);
   if (!m_fieldKey.empty()) return fieldKey(key);
+  if (!m_noteFor.empty()) return noteKey(key);
   if (!m_colorPickFor.empty()) return colorKey(key);
   if (!m_fontPickFor.empty()) return fontKey(key);
   if (m_paintMode) {
@@ -609,6 +612,116 @@ bool App::textKey(uint32_t key) {
     return true;
   }
   return false;
+}
+
+// ── typing on a widget (a note) ─────────────────────────────────────────────
+// Enter breaks the line, the arrows, Home and End move the caret, Ctrl+S
+// keeps what is typed; Esc or a click elsewhere keeps it and stops.
+
+void App::beginNote(Widget& w) {
+  if (!w.impl) return;
+  endNote();
+  m_noteFor = w.cfg.id;
+  m_noteText = w.impl->editableText();
+  m_noteCaret = m_noteText.size();
+  w.impl->setEditing(&m_noteText, m_noteCaret);
+  w.needsRender = true;
+  markEditDirty();
+}
+
+void App::endNote(bool keep) {
+  if (m_noteFor.empty()) return;
+  for (auto& w : m_widgets)
+    if (w->cfg.id == m_noteFor && w->impl) {
+      if (keep && m_noteText != w->impl->editableText()) w->impl->saveEditedText(m_noteText);
+      w->impl->setEditing(nullptr, 0);
+      w->needsRender = true;
+      w->drewEmpty = false;
+    }
+  m_noteFor.clear();
+  m_noteText.clear();
+  markEditDirty();
+}
+
+bool App::noteKey(uint32_t key) {
+  std::string& t = m_noteText;
+  size_t& c = m_noteCaret;
+  c = std::min(c, t.size());
+  auto prev = [&](size_t i) {  // the start of the character before i
+    if (i == 0) return i;
+    do --i;
+    while (i > 0 && (static_cast<unsigned char>(t[i]) & 0xC0) == 0x80);
+    return i;
+  };
+  auto next = [&](size_t i) {
+    if (i >= t.size()) return t.size();
+    do ++i;
+    while (i < t.size() && (static_cast<unsigned char>(t[i]) & 0xC0) == 0x80);
+    return i;
+  };
+  auto lineStart = [&](size_t i) { return i == 0 ? 0 : (t.rfind('\n', i - 1) == std::string::npos ? 0 : t.rfind('\n', i - 1) + 1); };
+  auto lineEnd = [&](size_t i) { return t.find('\n', i) == std::string::npos ? t.size() : t.find('\n', i); };
+  // the same column (in characters) on another line
+  auto column = [&](size_t from, size_t to) {
+    size_t cols = 0;
+    for (size_t i = lineStart(from); i < from; i = next(i)) ++cols;
+    size_t i = to;
+    const size_t end = lineEnd(to);
+    while (cols-- > 0 && i < end) i = next(i);
+    return i;
+  };
+  bool edited = false, moved = true;
+  const bool ctrl = modActive(XKB_MOD_NAME_CTRL);
+  switch (key) {
+    case KEY_ESC: endNote(); return false;
+    case KEY_ENTER:
+    case KEY_KPENTER: t.insert(c, 1, '\n'), ++c, edited = true; break;
+    case KEY_BACKSPACE:
+      if (c > 0) {
+        const size_t p = prev(c);
+        t.erase(p, c - p);
+        c = p;
+        edited = true;
+      }
+      break;
+    case KEY_DELETE:
+      if (c < t.size()) t.erase(c, next(c) - c), edited = true;
+      break;
+    case KEY_LEFT: c = prev(c); break;
+    case KEY_RIGHT: c = next(c); break;
+    case KEY_HOME: c = lineStart(c); break;
+    case KEY_END: c = lineEnd(c); break;
+    case KEY_UP:
+      if (lineStart(c) > 0) c = column(c, lineStart(lineStart(c) - 1));
+      break;
+    case KEY_DOWN:
+      if (lineEnd(c) < t.size()) c = column(c, lineEnd(c) + 1);
+      break;
+    default: moved = false;
+  }
+  if (!moved && ctrl && key == KEY_S) {  // keep it and go on typing
+    for (auto& w : m_widgets)
+      if (w->cfg.id == m_noteFor && w->impl) w->impl->saveEditedText(t);
+    return false;
+  }
+  if (!moved && !ctrl && m_xkbState) {
+    char buf[16] = {};
+    const int n = xkb_state_key_get_utf8(m_xkbState, key + 8, buf, sizeof buf);
+    if (n > 0 && static_cast<unsigned char>(buf[0]) >= 0x20 && buf[0] != 0x7f && t.size() < 20000) {
+      t.insert(c, buf, static_cast<size_t>(n));
+      c += static_cast<size_t>(n);
+      edited = moved = true;
+    }
+  }
+  if (!moved) return false;
+  (void)edited;
+  for (auto& w : m_widgets)
+    if (w->cfg.id == m_noteFor && w->impl) {
+      w->impl->setEditing(&t, c);
+      w->needsRender = true;
+    }
+  markEditDirty();
+  return true;
 }
 
 // Typing in an inspector Text row: the widget shows it as it is typed;
@@ -1080,6 +1193,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     commitRename();
     commitLayerRename();
     commitField();
+    if (!m_noteFor.empty() && !(w && w->cfg.id == m_noteFor)) endNote();  // a click on the note keeps typing
     markEditDirty();
     if (modActive(XKB_MOD_NAME_SHIFT)) {  // Shift+click: in or out of the selection (empty space keeps it)
       if (w) toggleSelected(w);
@@ -1108,6 +1222,12 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
       selectOnly(nullptr);  // clicking empty space clears the selection
       return;
     }
+    if (twice && !multiSelected() && w->impl && w->impl->editable() && !w->cfg.locked) {  // a note: type on it
+      selectOnly(w);
+      beginNote(*w);
+      return;
+    }
+    if (!m_noteFor.empty() && w->cfg.id == m_noteFor) return;  // typing: the note stays put
     if (twice && multiSelected() && isSelected(w)) selectOnly(w);
     else if (!isSelected(w)) selectGroup(w);
     if (w->cfg.locked) return;  // picked, never moved
@@ -1251,6 +1371,8 @@ void App::onScroll(double value) {
     looks = TextWidget::styles();
   } else if (w.cfg.type == "calendar") {
     looks = {"month", "week", "day"};
+  } else if (w.cfg.type == "notes") {
+    looks = {"paper", "glass", "none"};
   } else if (w.cfg.type == "visualizer") {
     for (const char* l : kLooks)
       if (std::string(l) != "frame") looks.push_back(l);  // frame owns the whole screen

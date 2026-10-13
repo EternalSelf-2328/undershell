@@ -24,6 +24,7 @@
 #include <format>
 #include <linux/input-event-codes.h>
 #include <poll.h>
+#include <set>
 #include <sys/inotify.h>
 #include <unistd.h>
 #include <wayland-client.h>
@@ -438,6 +439,26 @@ void App::syncSourceWatches() {
       m_wdSource.push_back(wd);
 }
 
+// the folders of the files widgets show, watched while some widget shows one
+void App::syncFileWatches() {
+  if (m_inotify < 0) return;
+  std::set<std::string> dirs, have;
+  for (auto& w : m_widgets)
+    if (w->impl && !w->cfg.hidden)
+      for (const auto& f : w->impl->watchedFiles())
+        if (!f.empty()) dirs.insert(fs::path(f).parent_path().string());
+  for (const auto& [wd, d] : m_wdFiles) have.insert(d);
+  if (dirs == have) return;
+  for (const auto& [wd, d] : m_wdFiles) inotify_rm_watch(m_inotify, wd);
+  m_wdFiles.clear();
+  for (const auto& d : dirs) {
+    std::error_code ec;
+    fs::create_directories(d, ec);  // a note's folder, before its first save
+    if (const int wd = inotify_add_watch(m_inotify, d.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE); wd >= 0)
+      m_wdFiles[wd] = d;
+  }
+}
+
 void App::noctaliaChanged() {
   for (auto& w : m_widgets) {
     if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
@@ -675,6 +696,7 @@ void App::syncWidgets() {
         m_pendingSelect.clear();
       }
   validateEditPointers();
+  syncFileWatches();
 }
 
 // ── surfaces ────────────────────────────────────────────────────────────────
@@ -1180,6 +1202,7 @@ void App::setEditMode(bool on) {
   closeColorPick();
   m_confirmDelete.clear();
   if (!on) {
+    endNote();
     commitRename();
     setPaintMode(false);
   }
@@ -1730,6 +1753,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                : w->cfg.type == "text"     ? w->cfg.options["style"].value_or(std::string("plain"))
                                : w->cfg.type == "lyrics"   ? w->cfg.options["layout"].value_or(std::string("lines"))
                                : w->cfg.type == "calendar" ? w->cfg.options["layout"].value_or(std::string("month"))
+                               : w->cfg.type == "notes"    ? w->cfg.options["plate"].value_or(std::string("paper"))
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"
@@ -1795,6 +1819,17 @@ void App::handleInotify() {
       if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
       if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
       if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
+      if (auto f = m_wdFiles.find(ev->wd); f != m_wdFiles.end() && !name.empty()) {
+        const std::string path = f->second + "/" + name;
+        for (auto& w : m_widgets) {
+          if (!w->impl) continue;
+          const auto files = w->impl->watchedFiles();
+          if (std::ranges::find(files, path) == files.end()) continue;
+          w->impl->filesChanged();
+          w->needsRender = true;
+          w->drewEmpty = false;
+        }
+      }
       p += sizeof(inotify_event) + ev->len;
     }
   }
@@ -1886,6 +1921,7 @@ int App::run() {
   m_wdNoctState = inotify_add_watch(m_inotify, fs::path(Noctalia::settingsPath()).parent_path().c_str(), mask);
   m_wdNoctConfig = inotify_add_watch(m_inotify, Noctalia::configDir().c_str(), mask);
   syncSourceWatches();
+  syncFileWatches();
   // KDE Plasma's desktop, colour and activity files (written by rename)
   if (Plasma::present() || Plasma::session()) m_wdPlasma = inotify_add_watch(m_inotify, Plasma::configDir().c_str(), mask);
   if (Gnome::session()) m_dconf.start();

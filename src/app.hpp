@@ -397,6 +397,7 @@ private:
   IpcServer m_ipc;
   int m_inotify = -1;
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdPlasma = -1;
+  std::map<int, std::string> m_wdFiles;  // folders of files widgets show (WidgetImpl::watchedFiles)
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
   double m_depthTick = 0;  // redraws the editor's download progress
   double m_sourcePollAt = 0;  // asks a shell or wallpaper tool again (polls())
@@ -513,6 +514,13 @@ private:
   void deleteSelection();
   void duplicateSelection();
   void commitLayerRename();
+  void syncFileWatches();
+  // typing on a widget (a note): its id, the draft and the caret (bytes)
+  std::string m_noteFor, m_noteText;
+  size_t m_noteCaret = 0;
+  void beginNote(Widget& w);
+  void endNote(bool keep = true);
+  bool noteKey(uint32_t key);
   void setTextStyle(Widget& w, const std::string& style);
   bool fieldKey(uint32_t key);
   void previewField();

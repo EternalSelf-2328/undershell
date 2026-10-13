@@ -247,6 +247,22 @@ It is drawn once and wakes again at midnight.
   <img src="docs/media/calendar.webp" alt="The calendar as a month, as today's page and as a week" width="480">
 </p>
 
+## Notes
+
+The **notes** widget keeps a note in a Markdown file: headings, lists (nested
+too), quotes, rules and tasks (`- [ ]` / `- [x]`), which are ticked with a
+click right on the desktop. Write it in the editor straight on the widget
+(double-click it, or **Write** in the inspector; Enter breaks the line, the
+arrows, Home and End move, Esc or a click elsewhere keeps it), or in any text
+editor (**Open the .md**, or `file = "~/notes/today.md"`): the file is
+watched, so a change shows at once and nothing is polled. On a sticky-note
+paper of any colour, a glass plate or nothing; without a `file` it is kept
+in `~/.local/share/undershell/notes/<id>.md`. It draws once per change.
+
+<p align="center">
+  <img src="docs/media/notes.webp" alt="Three notes: a list of tasks on yellow paper, groceries on pink paper and a reading list on glass" width="560">
+</p>
+
 ## Now playing (card)
 
 Ryoku's music card: the cover (downloaded and decoded in the background),
@@ -355,7 +371,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
-undershell msg add clock flip  # add a widget to the config: visualizer, clock, calendar, now_playing, lyrics, text, shape, image
+undershell msg add clock flip  # add a widget to the config: visualizer, clock, calendar, notes, now_playing, lyrics, text, shape, image
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
@@ -1056,6 +1072,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/textfx.*`, `src/textwidget.*` | text with effects (fill, outline, shadow, glow, 3D, moving letters) and the text widget |
 | `src/lyricswidget.*` | the lyrics widget: synced lines, layouts, transitions, karaoke |
 | `src/calendar.*` | the calendar widget: month, week, today's page |
+| `src/notes.*` | the notes widget: Markdown, tasks, typing on it, its watched file |
 | `src/shape.*` | the shape widget (one distance shader) |
 | `src/image.*`, `src/video.*` | the image widget; decoding stills, GIFs and videos (FFmpeg, gdk-pixbuf) |
 | `src/layers.cpp` | the Layers panel's model: order, groups, hiding, locking, moving several widgets |

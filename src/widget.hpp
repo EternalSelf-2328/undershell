@@ -98,12 +98,31 @@ public:
   }
   [[nodiscard]] virtual const char* cursor() const { return "default"; }
 
+  // Files the widget shows: the App watches their folders and calls
+  // filesChanged() when one of them is written (no polling).
+  [[nodiscard]] virtual std::vector<std::string> watchedFiles() const { return {}; }
+  virtual void filesChanged() {}
+
+  // Text typed straight on the widget in the editor (a note): what to start
+  // from, the draft being typed with its caret (a byte offset; nullptr when
+  // typing ends), and keeping it.
+  [[nodiscard]] virtual std::string editableText() const { return {}; }
+  virtual void setEditing(const std::string* text, size_t caret) {
+    (void)text;
+    (void)caret;
+  }
+  virtual void saveEditedText(const std::string& text) { (void)text; }
+  [[nodiscard]] bool editable() const { return m_editable; }
+
   // shared feeds this widget needs (the App only runs what someone wants)
   [[nodiscard]] virtual bool wantsMedia() const { return false; }
   [[nodiscard]] virtual bool wantsLyrics() const { return false; }
+
+protected:
+  bool m_editable = false;  // its text can be typed on in the editor
 };
 
-// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 

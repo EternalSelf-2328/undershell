@@ -208,6 +208,20 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  static const std::vector<PropSpec> notes = {
+      {K::Enum, "plate", "Plate", "Fondo", {"paper", "glass", "none"}, 0, 0, 0, 0, "paper"},
+      {K::Color, "paper", "Paper", "Papel", {"#ffe58a", "#ffb3c7", "#b8f0c8", "#a8d8ff", "#e0c8ff", "#ffffff", "#2b2b30"}, 0, 0, 0, 0,
+       "#ffe58a"},
+      {K::Color, "ink", "Ink", "Tinta", {}, 0, 0, 0, 0, "auto"},
+      {K::Color, "accent", "Accent", "Acento", {}, 0, 0, 0, 0, "primary"},
+      {K::Font, "font", "Font", "Fuente", {}, 0, 0, 0, 0, "Space Grotesk"},
+      {K::Number, "size", "Text size", "Tamaño", {}, 8, 72, 1, 18, "", true},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> image = {
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
       {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
@@ -232,6 +246,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   if (type == "text") return text;
   if (type == "lyrics") return lyrics;
   if (type == "calendar") return calendar;
+  if (type == "notes") return notes;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;
   if (type == "now_playing") return nowPlaying;

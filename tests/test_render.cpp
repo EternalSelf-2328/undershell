@@ -7,6 +7,7 @@
 #include "offscreen.hpp"
 #include "shape.hpp"
 #include "textwidget.hpp"
+#include "notes.hpp"
 #include "media.hpp"
 #include <array>
 #include <chrono>
@@ -1169,6 +1170,39 @@ int main(int argc, char** argv) {
     const double mon = discX("monday"), sun = discX("sunday");
     CHECK(mon > 0 && mon < 380.0 / 7 + 20);
     CHECK(sun > mon + 30);
+  }
+
+  // notes: Markdown read into lines (headings, tasks, nesting, inline marks
+  // dropped); a note drawn from its file on its paper, a ticked box in the accent
+  {
+    const auto lines = NotesWidget::parse("# Title\n- [ ] milk\n- [x] **bread**\n  - nested\n> quote\n---\ntext\n\n\n");
+    CHECK(lines.size() == 7);
+    CHECK(lines[0].kind == NotesWidget::Line::Heading1 && lines[0].text == "Title");
+    CHECK(lines[1].kind == NotesWidget::Line::Task && lines[2].kind == NotesWidget::Line::Done && lines[2].text == "bread");
+    CHECK(lines[3].kind == NotesWidget::Line::Bullet && lines[3].indent == 1);
+    CHECK(lines[4].kind == NotesWidget::Line::Quote && lines[5].kind == NotesWidget::Line::Rule && lines[6].kind == NotesWidget::Line::Text);
+    const std::string md = (std::filesystem::temp_directory_path() / "undershell-test-note.md").string();
+    CHECK(writeFileAtomic(md, "# Today\n- [x] done\n- [ ] to do\n"));
+    toml::table o;
+    o.insert_or_assign("file", md);
+    const Image img = renderWidget("notes", o, 300, 300, pal);
+    const Color acc = pal.color("primary", Color{});
+    size_t paper = 0, accent = 0;
+    for (size_t i = 0; i + 3 < img.rgba.size(); i += 4) {
+      const uint8_t* p = &img.rgba[i];
+      if (p[3] >= 250 && p[0] > 240 && p[1] > 210 && p[2] < 170) ++paper;  // the yellow sticky note
+    }
+    CHECK(paper > 300 * 300 / 2);
+    // on glass the accent is the theme's own (on paper it may be darkened to show)
+    o.insert_or_assign("plate", "glass");
+    const Image gl = renderWidget("notes", o, 300, 300, pal);
+    accent = 0;
+    for (size_t i = 0; i + 3 < gl.rgba.size(); i += 4) {
+      const uint8_t* p = &gl.rgba[i];
+      if (p[3] > 250 && std::abs(p[0] / 255.0 - acc.r) + std::abs(p[1] / 255.0 - acc.g) + std::abs(p[2] / 255.0 - acc.b) < 0.08) ++accent;
+    }
+    CHECK(accent > 60);
+    std::filesystem::remove(md);
   }
 
   return TEST_RESULT();
