@@ -1985,9 +1985,10 @@ int App::run() {
                    0.05 * (0.5 + 0.5 * std::sin(now * 17.0 + i * 2.1));
         m_demoBands[static_cast<size_t>(i)] = static_cast<float>(std::clamp(v, 0.0, 1.0) * 0.9);
       }
-      // only the widgets that are playing the demo
+      // only the widgets that are playing the demo (a still shape or clock
+      // stays asleep, however many there are)
       for (auto& w : m_widgets)
-        if (m_demo || m_edit || w->idleState == 2) w->needsRender = true;
+        if ((m_demo || m_edit || w->idleState == 2) && w->impl && (w->impl->usesAudio() || w->impl->wantsMedia())) w->needsRender = true;
     }
     for (auto& w : m_widgets) {
       // a live option change (inspector) may turn a boxed look fullscreen
