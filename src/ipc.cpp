@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <poll.h>
 #include <sys/socket.h>
@@ -12,9 +13,11 @@
 
 namespace undershell {
 
+// In the user's own runtime folder (0700). Never /tmp: there another user
+// could take the name first and answer in undershell's place.
 std::string IpcServer::socketPath() {
   const char* rt = std::getenv("XDG_RUNTIME_DIR");
-  return std::string(rt && *rt ? rt : "/tmp") + "/undershell.sock";
+  return (rt && *rt ? std::string(rt) : "/run/user/" + std::to_string(getuid())) + "/undershell.sock";
 }
 
 IpcServer::~IpcServer() {
@@ -51,21 +54,50 @@ bool IpcServer::listen(Handler handler) {
 }
 
 void IpcServer::dispatch() {
-  int c = accept4(m_fd, nullptr, nullptr, SOCK_CLOEXEC);
+  int c = accept4(m_fd, nullptr, nullptr, SOCK_CLOEXEC | SOCK_NONBLOCK);
   if (c < 0) return;
+  // only this user's own programs (the folder is 0700 too)
+  ucred cred{};
+  socklen_t len = sizeof(cred);
+  if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0 || cred.uid != getuid()) {
+    close(c);
+    return;
+  }
+  // one line, at most 64 KiB, within a second: a slow or endless sender
+  // cannot hold the main loop (and the widgets) up
+  constexpr size_t kMax = 64 * 1024;
+  const double until = nowSeconds() + 1.0;
   std::string cmd;
-  char buf[512];
+  char buf[4096];
   pollfd p{c, POLLIN, 0};
-  while (poll(&p, 1, 200) > 0) {
+  bool ok = false;
+  for (double left = 1.0; left > 0; left = until - nowSeconds()) {
+    if (poll(&p, 1, static_cast<int>(left * 1000) + 1) <= 0) break;
     ssize_t n = read(c, buf, sizeof(buf));
     if (n <= 0) break;
     cmd.append(buf, static_cast<size_t>(n));
-    if (cmd.find('\n') != std::string::npos) break;
+    if (cmd.find('\n') != std::string::npos) {
+      cmd.resize(cmd.find('\n'));
+      ok = true;
+      break;
+    }
+    if (cmd.size() > kMax) break;
   }
-  while (!cmd.empty() && (cmd.back() == '\n' || cmd.back() == '\r' || cmd.back() == ' ')) cmd.pop_back();
+  if (!ok && (cmd.empty() || cmd.size() > kMax)) {
+    close(c);
+    return;
+  }
+  while (!cmd.empty() && (cmd.back() == '\r' || cmd.back() == ' ')) cmd.pop_back();
   std::string reply = m_handler ? m_handler(cmd) : "error";
   reply += "\n";
-  (void)!write(c, reply.data(), reply.size());
+  // written as the reader takes it, for a second at most
+  size_t done = 0;
+  pollfd w{c, POLLOUT, 0};
+  while (done < reply.size() && poll(&w, 1, static_cast<int>(std::max(0.0, until + 1.0 - nowSeconds()) * 1000)) > 0) {
+    const ssize_t n = write(c, reply.data() + done, reply.size() - done);
+    if (n <= 0) break;
+    done += static_cast<size_t>(n);
+  }
   close(c);
 }
 

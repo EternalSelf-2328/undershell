@@ -8,6 +8,7 @@
 #include <cmath>
 #include <ctime>
 #include <filesystem>
+#include <cstring>
 #include <regex>
 #include <sstream>
 #include <toml++/toml.hpp>
@@ -204,10 +205,20 @@ static bool findBlock(const std::vector<std::string>& lines, const std::string& 
   return false;
 }
 
+// a key as a regex that matches only itself
+static std::string keyRegex(const std::string& key) {
+  std::string out;
+  for (char c : key) {
+    if (std::strchr(".^$|()[]{}*+?\\", c)) out += '\\';
+    out += c;
+  }
+  return out;
+}
+
 static void setLine(std::vector<std::string>& lines, size_t start, size_t& end, const std::string& key,
                     const std::string& value) {
   // a value: a string, an array (corner pins, paths that may hold "]"), or a bare token
-  const std::regex re("^(\\s*" + key +
+  const std::regex re("^(\\s*" + keyRegex(key) +
                       R"(\s*=\s*)("(?:[^"\\]|\\.)*"|\[(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\]"'])*\]|(?:[^#\s\[][^#\s]*)?)(\s*#.*)?\s*$)");
   for (size_t k = start + 1; k < end; ++k) {
     std::smatch m;
@@ -615,7 +626,7 @@ std::string Config::setBlockKey(const std::string& block, const std::string& key
   } else {
     // taken out: set it to a marker first, so a value over several lines is one line
     setLine(lines, 0, end, key, "0");
-    const std::regex re("^\\s*" + key + R"(\s*=)");
+    const std::regex re("^\\s*" + keyRegex(key) + R"(\s*=)");
     for (size_t k = 1; k < end; ++k)
       if (std::regex_search(lines[k], re)) {
         lines.erase(lines.begin() + static_cast<long>(k));

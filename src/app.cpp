@@ -24,6 +24,7 @@
 #include <format>
 #include <linux/input-event-codes.h>
 #include <poll.h>
+#include <regex>
 #include <set>
 #include <sys/inotify.h>
 #include <unistd.h>
@@ -1486,16 +1487,33 @@ std::string App::handleCommand(const std::string& cmd) {
     std::getline(in, value);
     value.erase(0, value.find_first_not_of(' '));
     if (id.empty() || key.empty() || value.empty()) return "error: usage: set <id|all> <key> <value>";
+    // a plain key, and no control characters: nothing else can reach the file
+    static const std::regex kKey("^[a-z][a-z0-9_]{0,63}$");
+    if (!std::regex_match(key, kKey)) return "error: not an option name: " + key;
+    if (std::ranges::any_of(value, [](char ch) { return static_cast<unsigned char>(ch) < 0x20 || ch == 0x7f; }))
+      return "error: control characters are not allowed in a value";
+    // what a widget is, and the command it may run, change only in the file
+    if (key == "id" || key == "type" || key == "music_app") return "error: " + key + " can only be changed in the config file";
     if (m_motion && (key == "depth" || key == "depth_level"))
       return "error: depth is locked while a video or scene is the wallpaper";
+    // a number TOML reads as one, true/false, or else a string (quotes optional), escaped
     auto isNumber = [](const std::string& v) {
-      char* end = nullptr;
-      std::strtod(v.c_str(), &end);
-      return end && *end == '\0';
+      try {
+        const auto t = toml::parse("v = " + v);
+        return t["v"].is_number();
+      } catch (const std::exception&) {
+        return false;
+      }
     };
-    const std::string toml = (value == "true" || value == "false" || isNumber(value) || value.front() == '"')
-                                 ? value
-                                 : "\"" + value + "\"";
+    std::string text = value;
+    if (text.size() >= 2 && text.front() == '"' && text.back() == '"') text = text.substr(1, text.size() - 2);
+    std::string quoted = "\"";
+    for (char ch : text) {
+      if (ch == '"' || ch == '\\') quoted += '\\';
+      quoted += ch;
+    }
+    quoted += '"';
+    const std::string toml = (value == "true" || value == "false" || isNumber(value)) ? value : quoted;
     int n = 0;
     // shape keys reshape the widget (presets, grid size), like the inspector
     const bool shapeKey = key == "warp" || key == "mesh_preset" || key == "mesh_amount" || key == "mesh_grid" || key == "mesh_between";
@@ -1524,6 +1542,8 @@ std::string App::handleCommand(const std::string& cmd) {
     std::string type, look;
     in >> type >> look;
     if (!createWidget(type)) return "error: unknown widget type '" + type + "'";
+    static const std::regex kLook("^[A-Za-z0-9_-]{0,64}$");
+    if (!std::regex_match(look, kLook)) return "error: not a look: " + look;
     const std::string id = addWidget(type, look, INT32_MIN, INT32_MIN, false);
     return id.empty() ? "error: could not write the config" : "added " + id;
   }
@@ -1801,6 +1821,8 @@ std::string App::handleCommand(const std::string& cmd) {
                        m ? fs::path(m->fieldNpy).filename().string().substr(0, 12) : std::string("none"),
                        w->frames, stale ? 0.0 : w->fpsMeasured, layers);
     }
+    // titles and names come from other programs: no escape sequences reach the terminal
+    std::erase_if(s, [](char ch) { return (static_cast<unsigned char>(ch) < 0x20 && ch != '\n') || ch == 0x7f; });
     return s;
   }
   return "error: unknown command (edit, edit-on, edit-off, demo, set, add, remove, select, layer, group, ungroup, pick-files, depth-model, gallery, reset, reload, status, json, saves, save, save-load, save-overwrite, save-rename, save-delete, quit)";
@@ -1887,7 +1909,15 @@ int App::run() {
   // Wayland first: without layer-shell and without the GNOME extension
   // there is nothing to do, and a clean exit keeps systemd from retrying
   if (!initWayland()) return m_noHost ? 0 : 1;
-  if (!m_ipc.listen([this](const std::string& c) { return handleCommand(c); })) return 1;
+  if (!m_ipc.listen([this](const std::string& c) {
+        // a bad command is an error for its sender, never the end of the daemon
+        try {
+          return handleCommand(c);
+        } catch (const std::exception& e) {
+          return std::string("error: ") + e.what();
+        }
+      }))
+    return 1;
   if (!initEgl()) return 1;
 
   m_configPath = Config::defaultPath();
