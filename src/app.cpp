@@ -1031,7 +1031,6 @@ void App::render(Widget& w) {
   const double now = nowSeconds();
   const double dt = w.lastTick > 0 ? std::min(0.1, now - w.lastTick) : 1.0 / 60;
   w.lastTick = now;
-  w.wakeAt = w.impl->nextWakeup(now);
 
   TickContext tctx;
   tctx.now = now;
@@ -1039,6 +1038,9 @@ void App::render(Widget& w) {
   tctx.audio = audioFrame(&w);
   tctx.media = &m_media;
   w.impl->tick(tctx);
+  // after the tick: what it just showed is not what it waits for next (an
+  // animation's next frame, not the one it has put up)
+  w.wakeAt = w.impl->nextWakeup(now);
 
   const bool show = w.impl->visible();
   if (!show && w.drewEmpty) {
