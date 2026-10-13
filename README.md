@@ -378,6 +378,25 @@ flickers at 12 fps, and only moving letters draw at 60.
   <img src="docs/media/text.webp" alt="The ten text styles: plain, neon, retro, comic, outline, sticker, chrome, glitch, rainbow and typewriter" width="600">
 </p>
 
+## Wallpaper filter
+
+The **filter** widget changes how the wallpaper looks: brightness,
+contrast, saturation, hue, warmth, a tint or a two-tone in any colours, a
+vignette, blur, grain, posterize or pixelate. Ten styles set them at once
+(warm, cool, noir, vintage, dream, night, vivid, faded, duotone, or custom),
+and each can then be changed; the wheel steps through the styles. A widget
+cannot filter what lies under it, so this one draws the wallpaper again,
+fitted exactly as the shell fits it (checked: with nothing changed it
+matches the real wallpaper pixel for pixel), under every other widget. Turn
+**Background only** (its depth) on and the wallpaper's subject stays as it
+is: only what lies behind it is filtered. One texture and one draw per
+wallpaper or option change, nothing while still; a video or scene
+wallpaper has no still picture, and then the filter draws nothing.
+
+<p align="center">
+  <img src="docs/media/filters.webp" alt="One landscape: unchanged, warm, cool, noir, vintage, dream, night, vivid, faded and duotone" width="760">
+</p>
+
 ## Shapes
 
 Geometric shapes to build compositions out of layers (see **Layers** and
@@ -421,7 +440,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
-undershell msg add clock flip  # add a widget to the config: visualizer, clock, calendar, weather, notes, now_playing, lyrics, text, shape, image
+undershell msg add clock flip  # add a widget to the config: visualizer, clock, calendar, weather, notes, now_playing, lyrics, text, shape, image, filter
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
@@ -1127,6 +1146,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/notes.*` | the notes widget: Markdown, tasks, typing on it, its watched file |
 | `src/weather.*`, `src/weatherfeed.*` | the weather widget and its Open-Meteo feed (geocoding, forecast, disk cache) |
 | `src/net.*` | HTTPS fetches (http/https only, size-limited) and the cache folder |
+| `src/filter.*` | the wallpaper filter: the wallpaper drawn again through colour adjustments |
 | `src/shape.*` | the shape widget (one distance shader) |
 | `src/image.*`, `src/video.*` | the image widget; decoding stills, GIFs and videos (FFmpeg, gdk-pixbuf) |
 | `src/layers.cpp` | the Layers panel's model: order, groups, hiding, locking, moving several widgets |

@@ -5,6 +5,7 @@
 // same time so a change shows on the very next frame.
 #include "app.hpp"
 #include "schema.hpp"
+#include "filter.hpp"
 #include "notes.hpp"
 #include "textwidget.hpp"
 
@@ -185,6 +186,13 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "filter") {
+    const FilterConfig f = FilterConfig::fromTable(o);
+    if (key == "tint") return f.tintAmount > 0;
+    if (key == "dark" || key == "light") return f.duotone;
+    if (key == "depth_level") return o["depth"].value_or(false);
+    return true;
+  }
   if (c.type == "weather") {
     if (key == "place") return o["layout"].value_or(std::string("now")) == "now" || o["layout"].value_or(std::string("now")) == "card";
     if (key == "depth_level") return o["depth"].value_or(true);
@@ -345,9 +353,10 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   using K = PropSpec::Kind;
   std::vector<PropSpec> s;
   std::vector<PropSpec> all = schemaFor(w.cfg.type);
-  if (w.cfg.type == "text" || w.cfg.type == "lyrics") {
+  if (w.cfg.type == "text" || w.cfg.type == "lyrics" || w.cfg.type == "filter") {
     // a key the block leaves out shows its style's value
-    const auto& preset = TextWidget::preset(w.cfg.options["style"].value_or(std::string("plain")));
+    const auto& preset = w.cfg.type == "filter" ? FilterWidget::preset(w.cfg.options["style"].value_or(std::string("warm")))
+                                                : TextWidget::preset(w.cfg.options["style"].value_or(std::string("plain")));
     for (auto& p : all)
       if (auto it = preset.find(p.key); it != preset.end()) {
         const std::string& v = it->second;
@@ -724,6 +733,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "calendar") return es ? "Calendario" : "Calendar";
   if (type == "notes") return es ? "Notas" : "Notes";
   if (type == "weather") return es ? "Clima" : "Weather";
+  if (type == "filter") return es ? "Filtro del fondo" : "Wallpaper filter";
   return "Widget";
 }
 }  // namespace
@@ -842,7 +852,7 @@ void App::setTextStyle(Widget& w, const std::string& style) {
   std::string blocks;
   for (std::string b : Config::splitBlocks(Config::widgetBlocks(text))) {
     if (Config::blockId(b) == w.cfg.id) {
-      for (const auto& [k, v] : TextWidget::preset(style)) b = Config::setBlockKey(b, k, "");
+      for (const auto& [k, v] : (w.cfg.type == "filter" ? FilterWidget::preset(style) : TextWidget::preset(style))) b = Config::setBlockKey(b, k, "");
       b = Config::setBlockKey(b, "style", "\"" + style + "\"");
     }
     if (!blocks.empty()) blocks += "\n";
@@ -850,7 +860,7 @@ void App::setTextStyle(Widget& w, const std::string& style) {
     if (!blocks.ends_with("\n")) blocks += "\n";
   }
   writeFileAtomic(m_configPath, Config::replaceWidgetBlocks(text, blocks));
-  for (const auto& [k, v] : TextWidget::preset(style)) w.cfg.options.erase(k);
+  for (const auto& [k, v] : (w.cfg.type == "filter" ? FilterWidget::preset(style) : TextWidget::preset(style))) w.cfg.options.erase(k);
   w.cfg.options.insert_or_assign("style", style);
   if (w.impl) w.impl->configure(w.cfg, m_noctalia.state());
   w.needsRender = true;
@@ -858,7 +868,7 @@ void App::setTextStyle(Widget& w, const std::string& style) {
 }
 
 void App::setProp(Widget& w, const std::string& key, const std::string& tomlValue) {
-  if ((w.cfg.type == "text" || w.cfg.type == "lyrics") && key == "style" && tomlValue.size() >= 2) {
+  if ((w.cfg.type == "text" || w.cfg.type == "lyrics" || w.cfg.type == "filter") && key == "style" && tomlValue.size() >= 2) {
     setTextStyle(w, tomlValue.substr(1, tomlValue.size() - 2));
     return;
   }
@@ -1190,6 +1200,9 @@ bool isSaveControl(App::UiControl::Type t) {
          t == T::SaveRow;
 }
 
+// the gallery's rows fit under the toolbar in one column
+bool gy0Fits(int n, float screenH) { return 106 + n * 70.0F + 10 <= screenH - 12; }
+
 const char* chipIcon(const std::string& type) {
   if (type == "shape") return "shape";
   if (type == "image") return "image";
@@ -1198,6 +1211,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "calendar") return "calendar";
   if (type == "notes") return "notes";
   if (type == "weather") return "weather";
+  if (type == "filter") return "filter";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1514,14 +1528,16 @@ void App::layoutUi(const EditSurface& e) {
 
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
-    const float gx = std::clamp(addRect.x - 10, 12.0F, W - 282), gy = kBarY + kBarH + 10;
-    const char* types[] = {"visualizer", "clock", "calendar", "weather", "notes", "now_playing", "lyrics", "text", "shape", "image"};
-    m_ui.push_back({UiControl::Panel, {gx, gy, 270, std::size(types) * 70.0F + 10}, -1, "gallery"});
-    float y = gy + 8;
-    for (const char* t : types) {
-      m_ui.push_back({UiControl::GalleryItem, {gx + 8, y, 254, 62}, -1, t});
-      y += 70;
-    }
+    const char* types[] = {"visualizer", "clock",  "calendar", "weather", "notes",  "now_playing",
+                           "lyrics",     "text",   "shape",    "image",   "filter"};
+    // two columns when one would not fit the screen's height
+    const int n = static_cast<int>(std::size(types));
+    const int cols = gy0Fits(n, H) ? 1 : 2, rows = (n + cols - 1) / cols;
+    const float pw = cols * 262.0F + 8;
+    const float gx = std::clamp(addRect.x - 10, 12.0F, W - pw - 12), gy = kBarY + kBarH + 10;
+    m_ui.push_back({UiControl::Panel, {gx, gy, pw, rows * 70.0F + 10}, -1, "gallery"});
+    for (int i = 0; i < n; ++i)
+      m_ui.push_back({UiControl::GalleryItem, {gx + 8 + (i / rows) * 262.0F, gy + 8 + (i % rows) * 70.0F, 254, 62}, -1, types[i]});
   }
   if (m_savesOpen) {
     const int n = static_cast<int>(m_saves.size());
@@ -2523,6 +2539,9 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "filter") {  // a frame half in colour
+    c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.triangle(cx - 6, cy + 5, cx + 6, cy - 5, cx + 6, cy + 5, col);
   } else if (name == "weather") {  // a sun behind a cloud
     c.circle(cx - 2.5F, cy - 2.5F, 4, col);
     c.circle(cx - 1, cy + 2.5F, 3.3F, Color{0, 0, 0, 0}, 1.5F, col);
@@ -3039,6 +3058,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "calendar" ? (es ? "Mes · semana · día · agenda" : "Month · week · day · agenda")
                        : c.value == "notes"   ? (es ? "Markdown · tareas · nota adhesiva" : "Markdown · tasks · sticky note")
                        : c.value == "weather" ? (es ? "Open-Meteo · ahora · horas · semana" : "Open-Meteo · now · hours · week")
+                       : c.value == "filter"  ? (es ? "Color, viñeta, grano… sobre el fondo" : "Colour, vignette, grain… on the wallpaper")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);

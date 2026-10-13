@@ -56,6 +56,10 @@ struct DrawContext {
   TextRenderer* text = nullptr;
   MediaService* media = nullptr;
   double now = 0;
+  // the wallpaper under the widget's output, as the shell fits it there
+  std::string wallpaper;
+  int fillMode = 1;              // center crop fit stretch repeat span
+  bool movingWallpaper = false;  // a video or a scene: no still picture to work with
 };
 
 class WidgetImpl {
@@ -126,7 +130,7 @@ protected:
   bool m_editable = false;  // its text can be typed on in the editor
 };
 
-// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "filter". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 

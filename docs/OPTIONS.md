@@ -24,7 +24,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | Key | Values | Default | |
 |---|---|---|---|
 | `id` | text | type name | unique name (used by `msg set/select/remove`) |
-| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather` | `"visualizer"` | |
+| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `filter` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
@@ -315,5 +315,32 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
+
+## `type = "filter"`
+
+A colour filter over the wallpaper: it draws the wallpaper again (fitted as the shell fits it) through the options below, under every other widget. With `depth = true` only the background behind the wallpaper's subject is filtered. Nothing for a video or scene wallpaper. A `style` sets the options after it; the defaults below are the `custom` style's (nothing changed).
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `style` | `warm`, `cool`, `noir`, `vintage`, `dream`, `night`, `vivid`, `faded`, `duotone`, `custom` | `"warm"` | Style |
+| `brightness` | -1 – 1 | `0` | Brightness |
+| `contrast` | 0 – 2 | `1` | Contrast |
+| `saturation` | 0 – 2 | `1` | Saturation |
+| `hue` | -180 – 180 | `0` | Hue ° |
+| `temperature` | -1 – 1 | `0` | Warmth |
+| `tint_amount` | 0 – 1 | `0` | Tint |
+| `tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Tint colour |
+| `duotone` | `true` / `false` | `false` | Two-tone |
+| `dark` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#1b1530"` | Shadows |
+| `light` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#ffd9a8"` | Lights |
+| `vignette` | 0 – 1 | `0` | Vignette |
+| `blur` | 0 – 20 | `0` | Blur |
+| `grain` | 0 – 1 | `0` | Grain |
+| `posterize` | 0 – 16 | `0` | Posterize |
+| `pixelate` | 0 – 40 | `0` | Pixelate |
+| `opacity` | 0.05 – 1 | `1` | Strength |
+| `depth` | `true` / `false` | `false` | Background only |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |

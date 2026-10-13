@@ -6,6 +6,7 @@
 #include "app.hpp"
 #include "i18n.hpp"
 #include "clock.hpp"
+#include "filter.hpp"
 #include "shape.hpp"
 #include "textwidget.hpp"
 #include "snap.hpp"
@@ -86,6 +87,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "calendar") return w.cfg.options["layout"].value_or(std::string("month"));
   if (w.cfg.type == "notes") return w.cfg.options["plate"].value_or(std::string("paper"));
   if (w.cfg.type == "weather") return w.cfg.options["layout"].value_or(std::string("now"));
+  if (w.cfg.type == "filter") return w.cfg.options["style"].value_or(std::string("warm"));
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
@@ -1389,6 +1391,8 @@ void App::onScroll(double value) {
     looks = {"paper", "glass", "none"};
   } else if (w.cfg.type == "weather") {
     looks = {"now", "card", "week", "hours"};
+  } else if (w.cfg.type == "filter") {
+    looks = FilterWidget::styles();
   } else if (w.cfg.type == "visualizer") {
     for (const char* l : kLooks)
       if (std::string(l) != "frame") looks.push_back(l);  // frame owns the whole screen
@@ -1401,7 +1405,7 @@ void App::onScroll(double value) {
   const int n = static_cast<int>(looks.size());
   idx = ((idx + step) % n + n) % n;
   m_selected = &w;
-  if (w.cfg.type == "text" || w.cfg.type == "lyrics") {
+  if (w.cfg.type == "text" || w.cfg.type == "lyrics" || w.cfg.type == "filter") {
     setTextStyle(w, looks[static_cast<size_t>(idx)]);
   } else {
     pushUndo(w, "style");

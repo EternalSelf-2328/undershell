@@ -683,6 +683,10 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "filter") {
+    b += std::format("style = \"{}\"             # warm cool noir vintage dream night vivid faded duotone custom\n", look.empty() ? "warm" : look);
+    b += "depth = false              # true: only the background, behind the wallpaper's subject\n"
+         "layer = -999               # under every other widget\n";
   } else if (type == "weather") {
     b += std::format("layout = \"{}\"           # now card week hours\n", look.empty() ? "now" : look);
     b += "location = \"\"            # your city (\"Quito, Ecuador\") or \"lat, lon\": only Open-Meteo sees it\n"

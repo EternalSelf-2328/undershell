@@ -243,6 +243,30 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  // the defaults are the "custom" style's (nothing changed); a style brings its own (FilterWidget::preset)
+  static const std::vector<PropSpec> filter = {
+      {K::Enum, "style", "Style", "Estilo", {"warm", "cool", "noir", "vintage", "dream", "night", "vivid", "faded", "duotone", "custom"}, 0, 0,
+       0, 0, "warm"},
+      {K::Number, "brightness", "Brightness", "Brillo", {}, -1, 1, 0.02, 0},
+      {K::Number, "contrast", "Contrast", "Contraste", {}, 0, 2, 0.05, 1},
+      {K::Number, "saturation", "Saturation", "Saturación", {}, 0, 2, 0.05, 1},
+      {K::Number, "hue", "Hue °", "Tono °", {}, -180, 180, 5, 0, "", true},
+      {K::Number, "temperature", "Warmth", "Calidez", {}, -1, 1, 0.05, 0},
+      {K::Number, "tint_amount", "Tint", "Teñido", {}, 0, 1, 0.05, 0},
+      {K::Color, "tint", "Tint colour", "Color del teñido", {}, 0, 0, 0, 0, "primary"},
+      {K::Bool, "duotone", "Two-tone", "Duotono", {}, 0, 1, 1, 0},
+      {K::Color, "dark", "Shadows", "Sombras", {}, 0, 0, 0, 0, "#1b1530"},
+      {K::Color, "light", "Lights", "Luces", {}, 0, 0, 0, 0, "#ffd9a8"},
+      {K::Number, "vignette", "Vignette", "Viñeta", {}, 0, 1, 0.05, 0},
+      {K::Number, "blur", "Blur", "Desenfoque", {}, 0, 20, 0.5, 0},
+      {K::Number, "grain", "Grain", "Grano", {}, 0, 1, 0.05, 0},
+      {K::Number, "posterize", "Posterize", "Posterizar", {}, 0, 16, 1, 0, "", true},
+      {K::Number, "pixelate", "Pixelate", "Pixelar", {}, 0, 40, 1, 0, "", true},
+      {K::Number, "opacity", "Strength", "Intensidad", {}, 0.05, 1, 0.05, 1},
+      {K::Bool, "depth", "Background only", "Solo el fondo", {}, 0, 1, 1, 0},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> image = {
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
       {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
@@ -269,6 +293,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   if (type == "calendar") return calendar;
   if (type == "notes") return notes;
   if (type == "weather") return weather;
+  if (type == "filter") return filter;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;
   if (type == "now_playing") return nowPlaying;

@@ -1247,5 +1247,34 @@ int main(int argc, char** argv) {
     CHECK(hl > 100 && hl < lit);
   }
 
+  // the wallpaper filter: the wallpaper drawn again where it lies (custom:
+  // unchanged), and in grey with the noir style; nothing without a wallpaper
+  {
+    Image wall;
+    wall.w = 200, wall.h = 100;
+    wall.rgba.assign(200 * 100 * 4, 255);
+    for (int y = 0; y < 100; ++y)
+      for (int x = 0; x < 200; ++x) {
+        uint8_t* p = &wall.rgba[(static_cast<size_t>(y) * 200 + x) * 4];
+        p[0] = x < 100 ? 220 : 30, p[1] = 40, p[2] = x < 100 ? 30 : 220;
+      }
+    const std::string png = (std::filesystem::temp_directory_path() / "undershell-test-wall.png").string();
+    CHECK(writePng(wall, png, false));
+    toml::table o;
+    o.insert_or_assign("style", "custom");
+    const Image same = renderWidget("filter", o, 200, 100, pal, 1000, 1, 3.0, nullptr, png);
+    auto px = [](const Image& im, int x, int y) { return &im.rgba[(static_cast<size_t>(y) * im.w + x) * 4]; };
+    CHECK(px(same, 40, 50)[0] > 200 && px(same, 40, 50)[2] < 50 && px(same, 160, 50)[2] > 200 && px(same, 160, 50)[3] == 255);
+    o.insert_or_assign("style", "noir");
+    o.insert_or_assign("grain", 0.0);
+    o.insert_or_assign("vignette", 0.0);
+    const Image grey = renderWidget("filter", o, 200, 100, pal, 1000, 1, 3.0, nullptr, png);
+    const uint8_t* g = px(grey, 40, 50);
+    CHECK(std::abs(g[0] - g[1]) < 4 && std::abs(g[1] - g[2]) < 4);
+    const Image none = renderWidget("filter", o, 200, 100, pal);
+    CHECK(px(none, 100, 50)[3] == 0);
+    std::filesystem::remove(png);
+  }
+
   return TEST_RESULT();
 }

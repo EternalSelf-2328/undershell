@@ -1117,6 +1117,9 @@ void App::render(Widget& w) {
     dctx.text = &m_text;
     dctx.media = &m_media;
     dctx.now = now;
+    if (w.output) dctx.wallpaper = m_noctalia.state().wallpaperFor(w.output->name);
+    dctx.fillMode = m_noctalia.state().fillMode;
+    dctx.movingWallpaper = m_motion;
     m_media.uploadPending();
     try {
       w.impl->draw(dctx);
@@ -1522,7 +1525,7 @@ std::string App::handleCommand(const std::string& cmd) {
       Widget* live = nullptr;
       for (auto& w : m_widgets)
         if (w->cfg.id == c.id) live = w.get();
-      if (live && (live->cfg.type == "text" || live->cfg.type == "lyrics") && key == "style" && toml.size() >= 2) {  // the style's keys reset too
+      if (live && (live->cfg.type == "text" || live->cfg.type == "lyrics" || live->cfg.type == "filter") && key == "style" && toml.size() >= 2) {  // the style's keys reset too
         setTextStyle(*live, toml.substr(1, toml.size() - 2));
         ++n;
       } else if (shapeKey && live) {
@@ -1777,6 +1780,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                : w->cfg.type == "calendar" ? w->cfg.options["layout"].value_or(std::string("month"))
                                : w->cfg.type == "notes"    ? w->cfg.options["plate"].value_or(std::string("paper"))
                                : w->cfg.type == "weather"  ? w->cfg.options["layout"].value_or(std::string("now"))
+                               : w->cfg.type == "filter"   ? w->cfg.options["style"].value_or(std::string("warm"))
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"
