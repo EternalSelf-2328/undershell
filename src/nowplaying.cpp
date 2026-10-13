@@ -12,6 +12,7 @@
 #include <cmath>
 #include <linux/input-event-codes.h>
 #include <numbers>
+#include <sys/wait.h>
 #include <unistd.h>
 
 namespace undershell {
@@ -41,7 +42,8 @@ std::string stamp(double sec) {
 
 void spawnDetached(const std::string& cmd) {
   if (cmd.empty()) return;
-  if (fork() == 0) {
+  const pid_t pid = fork();
+  if (pid == 0) {
     setsid();
     if (fork() == 0) {
       execl("/bin/sh", "sh", "-c", cmd.c_str(), static_cast<char*>(nullptr));
@@ -49,6 +51,7 @@ void spawnDetached(const std::string& cmd) {
     }
     _exit(0);
   }
+  if (pid > 0) waitpid(pid, nullptr, 0);  // the go-between exits at once: no zombie left behind
 }
 
 // a music note glyph drawn with primitives (Ryoku's GlyphIcon "music")

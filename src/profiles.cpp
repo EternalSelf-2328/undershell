@@ -9,6 +9,7 @@
 #include "app.hpp"
 #include "wallkind.hpp"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace fs = std::filesystem;
@@ -57,6 +58,11 @@ void App::checkProfile() {
     // undershell was not running)
     std::string owner = readFile(marker);
     while (!owner.empty() && std::isspace(static_cast<unsigned char>(owner.back()))) owner.pop_back();
+    // a key names a file in profiles/: a SHA-256 or a colour's name, nothing else
+    const bool sane = (owner.size() == 64 && std::ranges::all_of(owner, [](char ch) { return std::isxdigit(static_cast<unsigned char>(ch)); })) ||
+                      (owner.starts_with("color-") && owner.size() < 64 &&
+                       std::ranges::all_of(owner.substr(6), [](char ch) { return std::isalnum(static_cast<unsigned char>(ch)); }));
+    if (!sane) owner.clear();
     m_profileKey = owner.empty() ? key : owner;
     m_profileWall = wall;
     if (owner.empty()) {

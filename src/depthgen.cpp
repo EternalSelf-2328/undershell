@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <map>
+#include <mutex>
 #include <format>
 #include <fstream>
 
@@ -49,6 +51,26 @@ std::string sha256File(const std::string& path) {
   std::string out = g_checksum_get_string(ck);
   g_checksum_free(ck);
   return out;
+}
+
+// The model is what undershell expects, byte for byte (its SHA-256), checked
+// once per file as it is now (worker threads; 95 MB take a moment). The one
+// undershell downloads is checked as it arrives; this covers the copy found in
+// Noctalia's plugin, which only its size vouched for.
+bool trustedModel(const std::string& path) {
+  static std::mutex lock;
+  static std::map<std::string, bool> seen;  // path + size + time -> its verdict
+  std::error_code ec;
+  const auto time = fs::last_write_time(path, ec).time_since_epoch().count();
+  const std::string key = std::format("{}\x1f{}\x1f{}", path, fs::file_size(path, ec), time);
+  {
+    std::lock_guard g(lock);
+    if (auto it = seen.find(key); it != seen.end()) return it->second;
+  }
+  const bool ok = sha256File(path) == DepthGen::kModelSha256;
+  std::lock_guard g(lock);
+  seen[key] = ok;
+  return ok;
 }
 
 int onProgress(void* ud, curl_off_t total, curl_off_t now, curl_off_t, curl_off_t) {
@@ -222,6 +244,14 @@ void DepthGen::next() {
   m_jobs->run([this, helper, mdl, wall, sha, out, background, keep = m_keep]() -> Jobs::Done {
     std::error_code ec;
     fs::create_directories(cacheDir(), ec);
+    if (mdl == pluginModel() && !trustedModel(mdl)) {  // ours was checked as it was downloaded
+      return [this, wall]() {
+        m_running.clear();
+        US_WARN("depth: the model at hand is not the expected one (checksum mismatch); not using it for {}",
+                fs::path(wall).filename().string());
+        next();
+      };
+    }
     const gchar* argv[] = {helper.c_str(), mdl.c_str(), wall.c_str(), out.c_str(), background ? "--background" : nullptr, nullptr};
     gchar *sout = nullptr, *serr = nullptr;
     gint status = 0;

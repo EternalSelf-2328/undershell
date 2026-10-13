@@ -267,7 +267,7 @@ void Noctalia::refreshPalette(NoctaliaState& s) {
   }
 
   std::string json;
-  if (s.themeSource == "wallpaper" && !s.defaultWallpaper.empty()) {
+  if (s.themeSource == "wallpaper" && s.defaultWallpaper.starts_with("/")) {  // a path, never something read as an option
     gchar* quoted = g_shell_quote(s.defaultWallpaper.c_str());
     gchar* scheme = g_shell_quote(s.themeScheme.c_str());
     json = runCommand(std::format("noctalia theme {} --scheme {} {}", quoted, scheme, dark ? "--dark" : "--light"), 20);
