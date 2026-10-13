@@ -192,6 +192,22 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       if (p.key != "text") v.push_back(p);
     return v;
   }();
+  static const std::vector<PropSpec> calendar = {
+      {K::Enum, "layout", "Layout", "Disposición", {"month", "week", "day"}, 0, 0, 0, 0, "month"},
+      {K::Enum, "plate", "Plate", "Fondo", {"glass", "solid", "none"}, 0, 0, 0, 0, "glass"},
+      {K::Font, "font", "Font", "Fuente", {}, 0, 0, 0, 0, "Space Grotesk"},
+      {K::Color, "accent", "Accent", "Acento", {}, 0, 0, 0, 0, "primary"},
+      {K::Color, "ink", "Ink", "Tinta", {}, 0, 0, 0, 0, "on_surface"},
+      {K::Enum, "first_day", "Week starts", "Semana empieza", {"monday", "sunday"}, 0, 0, 0, 0, "monday"},
+      {K::Bool, "weekends", "Tint weekends", "Resaltar finde", {}, 0, 1, 1, 1},
+      {K::Bool, "week_numbers", "Week numbers", "Nº de semana", {}, 0, 1, 1, 0},
+      {K::Enum, "language", "Language", "Idioma", {"system", "en", "es"}, 0, 0, 0, 0, "system"},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> image = {
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
       {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
@@ -215,6 +231,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   if (type == "image") return image;
   if (type == "text") return text;
   if (type == "lyrics") return lyrics;
+  if (type == "calendar") return calendar;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;
   if (type == "now_playing") return nowPlaying;

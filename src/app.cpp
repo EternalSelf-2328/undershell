@@ -1729,6 +1729,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                : w->cfg.type == "shape"    ? w->cfg.options["shape"].value_or(std::string("rect"))
                                : w->cfg.type == "text"     ? w->cfg.options["style"].value_or(std::string("plain"))
                                : w->cfg.type == "lyrics"   ? w->cfg.options["layout"].value_or(std::string("lines"))
+                               : w->cfg.type == "calendar" ? w->cfg.options["layout"].value_or(std::string("month"))
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"

@@ -1145,5 +1145,31 @@ int main(int argc, char** argv) {
     CHECK(left > 0 && right > 0 && left > right * 1.3);
   }
 
+  // the calendar: today's disc (the accent) sits under Monday the 12th of
+  // October 2026, one column on when the week starts on Sunday
+  {
+    const Color acc = pal.color("primary", Color{});
+    auto discX = [&](const char* first) {
+      toml::table o;
+      o.insert_or_assign("layout", "month");
+      o.insert_or_assign("date", "2026-10-12");
+      o.insert_or_assign("first_day", first);
+      o.insert_or_assign("plate", "none");
+      const Image img = renderWidget("calendar", o, 380, 360, pal);
+      double sx = 0, n = 0;
+      for (int y = img.h / 3; y < img.h; ++y)  // the grid, below the year (also in the accent)
+        for (int x = 0; x < img.w; ++x) {
+          const uint8_t* p = &img.rgba[(static_cast<size_t>(y) * img.w + x) * 4];
+          if (p[3] < 250) continue;
+          const double d = std::abs(p[0] / 255.0 - acc.r) + std::abs(p[1] / 255.0 - acc.g) + std::abs(p[2] / 255.0 - acc.b);
+          if (d < 0.08) sx += x, ++n;
+        }
+      return n > 300 ? sx / n : -1.0;
+    };
+    const double mon = discX("monday"), sun = discX("sunday");
+    CHECK(mon > 0 && mon < 380.0 / 7 + 20);
+    CHECK(sun > mon + 30);
+  }
+
   return TEST_RESULT();
 }

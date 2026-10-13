@@ -61,7 +61,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -99,6 +99,9 @@ std::string optionsMarkdown() {
   md += "\n## `type = \"lyrics\"`\n\nThe synced lyrics of the song playing (LRCLIB), with the text widget's styles and "
         "effects; the keys after `style` are the text widget's.\n\n";
   table(md, "lyrics");
+  md += "\n## `type = \"calendar\"`\n\nThe month, the week or today's page, today in the accent colour.\n\n";
+  table(md, "calendar");
+  md += "| `date` | `YYYY-MM-DD` | `\"\"` | shows that day instead of today (not in the inspector) |\n";
   return md;
 }
 

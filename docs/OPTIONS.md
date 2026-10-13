@@ -24,7 +24,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | Key | Values | Default | |
 |---|---|---|---|
 | `id` | text | type name | unique name (used by `msg set/select/remove`) |
-| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics` | `"visualizer"` | |
+| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
@@ -250,3 +250,25 @@ The synced lyrics of the song playing (LRCLIB), with the text widget's styles an
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+
+## `type = "calendar"`
+
+The month, the week or today's page, today in the accent colour.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `layout` | `month`, `week`, `day` | `"month"` | Layout |
+| `plate` | `glass`, `solid`, `none` | `"glass"` | Plate |
+| `font` |  | `"Space Grotesk"` | Font |
+| `accent` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Accent |
+| `ink` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Ink |
+| `first_day` | `monday`, `sunday` | `"monday"` | Week starts |
+| `weekends` | `true` / `false` | `true` | Tint weekends |
+| `week_numbers` | `true` / `false` | `false` | Week numbers |
+| `language` | `system`, `en`, `es` | `"system"` | Language |
+| `opacity` | 0.05 – 1 | `1` | Opacity |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
+| `date` | `YYYY-MM-DD` | `""` | shows that day instead of today (not in the inspector) |

@@ -672,6 +672,9 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "calendar") {
+    b += std::format("layout = \"{}\"           # month week day\n", look.empty() ? "month" : look);
+    b += "plate = \"glass\"           # glass solid none\n";
   } else if (type == "lyrics") {
     b += std::format("layout = \"{}\"           # lines line karaoke\n", look.empty() ? "lines" : look);
     b += "style = \"plain\"            # plain neon retro comic outline sticker chrome glitch rainbow typewriter\n";

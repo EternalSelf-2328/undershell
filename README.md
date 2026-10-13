@@ -234,6 +234,19 @@ Ryoku's QML with its same measurements; the design fits the widget box.
 Day and month names follow the system language (or `language = "en" | "es"`).
 It redraws only when the second (or minute) changes; `flip` animates at 30 fps.
 
+## Calendar
+
+The **calendar** widget: the **month** as a grid (ISO week numbers if you
+like), the **week** as a strip, or **today** as a tear-off page, with today in
+the accent colour, days gone by faint and weekends tinted. On a glass or
+solid plate or on nothing, in any font, the week starting on Monday or
+Sunday, in English or Spanish; the mouse wheel steps through the layouts.
+It is drawn once and wakes again at midnight.
+
+<p align="center">
+  <img src="docs/media/calendar.webp" alt="The calendar as a month, as today's page and as a week" width="480">
+</p>
+
 ## Now playing (card)
 
 Ryoku's music card: the cover (downloaded and decoded in the background),
@@ -342,7 +355,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
-undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing, lyrics, text, shape, image
+undershell msg add clock flip  # add a widget to the config: visualizer, clock, calendar, now_playing, lyrics, text, shape, image
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
@@ -1042,6 +1055,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/text.*` | text: Pango → cached textures |
 | `src/textfx.*`, `src/textwidget.*` | text with effects (fill, outline, shadow, glow, 3D, moving letters) and the text widget |
 | `src/lyricswidget.*` | the lyrics widget: synced lines, layouts, transitions, karaoke |
+| `src/calendar.*` | the calendar widget: month, week, today's page |
 | `src/shape.*` | the shape widget (one distance shader) |
 | `src/image.*`, `src/video.*` | the image widget; decoding stills, GIFs and videos (FFmpeg, gdk-pixbuf) |
 | `src/layers.cpp` | the Layers panel's model: order, groups, hiding, locking, moving several widgets |
