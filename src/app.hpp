@@ -270,7 +270,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, PanelGrab, Language, Collapse, Action, FileRemove,
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,
                 LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown } type = Panel;
     Rect r;       // output coordinates
@@ -414,7 +414,18 @@ private:
   EditSurface* m_pointerEdit = nullptr;  // editor surface under the pointer
   Widget* m_pointerWidget = nullptr;     // widget hovered / being dragged
   double m_px = 0, m_py = 0;             // pointer, output coordinates
-  enum class Drag { None, Move, Resize, Slider, Rotate, Panel, Pin, Layer, GroupResize, GroupRotate } m_drag = Drag::None;
+  enum class Drag { None, Move, Resize, Slider, Rotate, Panel, Pin, Layer, GroupResize, GroupRotate, Scroll } m_drag = Drag::None;
+  // a panel's scroll bar (by panel: the controls are laid out again every
+  // frame): its track, how much there is, how much shows, where it is
+  struct ScrollInfo {
+    Rect track;
+    float total = 0, visible = 0, pos = 0;
+  };
+  std::map<std::string, ScrollInfo> m_scrollInfo;
+  std::string m_scrollDrag;      // the panel whose bar is being dragged
+  float m_scrollGrab = 0;        // where on the thumb it was taken
+  void addScrollBar(const std::string& panel, Rect track, float total, float visible, float pos);
+  void scrollDragTo(double y);
   int m_pinCorner = -1;          // corner pin: the corner being moved (or last moved, for the arrows)
   double m_pinStart[2 * WidgetConfig::kMeshMax * WidgetConfig::kMeshMax] = {};  // the points when the drag began
   Rect m_loupe;                  // the magnifier while placing a corner (output px)

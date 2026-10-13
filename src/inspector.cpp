@@ -1215,6 +1215,7 @@ std::string tipFor(App::UiControl::Type t, bool es) {
 }  // namespace
 
 void App::layoutUi(const EditSurface& e) {
+  m_scrollInfo.clear();
   m_ui.clear();
   m_uiOutput = e.output;
   const float W = static_cast<float>(e.w), H = static_cast<float>(e.h);
@@ -1411,6 +1412,8 @@ void App::layoutUi(const EditSurface& e) {
       const float fy = py + panelH - kFootH + 8;
       m_ui.push_back({UiControl::Duplicate, {px + 14, fy, (kPanelW - 38) / 2, 30}});
       m_ui.push_back({UiControl::Delete, {px + 24 + (kPanelW - 38) / 2, fy, (kPanelW - 38) / 2, 30}});
+      addScrollBar("inspector", {px + kPanelW - 8, py + kHeadH + 4, 5, panelH - kHeadH - kFootH - 8}, contentH - kHeadH - kFootH,
+                   placeH - kHeadH - kFootH, m_inspScroll);
     }
   }
 
@@ -1452,6 +1455,8 @@ void App::layoutUi(const EditSurface& e) {
       const float fy = py + ph - kLayersFoot + 8, bw = (kLayersW - 28 - 18) / 4;
       const UiControl::Type foot[] = {UiControl::LayerGroup, UiControl::LayerUngroup, UiControl::LayerUp, UiControl::LayerDown};
       for (int k = 0; k < 4; ++k) m_ui.push_back({foot[k], {px + 14 + k * (bw + 6), fy, bw, 32}});
+      addScrollBar("layers", {px + kLayersW - 7, py + kLayersHead, 5, std::max(1, shown) * kLayerPitch - 2}, static_cast<float>(n),
+                   static_cast<float>(m_layerRows), static_cast<float>(m_layersScroll));
     }
   }
 
@@ -1528,6 +1533,8 @@ void App::layoutUi(const EditSurface& e) {
       m_ui.push_back({UiControl::SaveLoad, {bx, by, 68, 28}, -1, sv.id});
       ry += kSavePitch;
     }
+    addScrollBar("saves", {sx + kSavesW - 9, sy + kSavesHead + 48, 5, shown * kSavePitch - 6}, static_cast<float>(n),
+                 static_cast<float>(kSaveRows), static_cast<float>(m_saveScroll));
   }
   if (!m_fontPickFor.empty() && m_selected) {
     Rect insp;
@@ -1549,6 +1556,8 @@ void App::layoutUi(const EditSurface& e) {
       m_ui.push_back({UiControl::FontItem, {fx + 10, y, fw - 20, 32}, -1, i < 0 ? std::string() : fonts[static_cast<size_t>(i)]});
       y += 34;
     }
+    addScrollBar("fonts", {fx + fw - 8, top + 92, 5, rows * 34.0F - 2}, static_cast<float>(fonts.size() + 1), static_cast<float>(rows),
+                 static_cast<float>(m_fontScroll));
   }
   if (!m_colorPickFor.empty() && m_selected) {
     Rect insp;
@@ -1812,6 +1821,35 @@ int App::uiHit(double x, double y) const {
   return hit;
 }
 
+// ── scroll bars ─────────────────────────────────────────────────────────────
+// A thin bar at the right of a panel that scrolls: drag the thumb, or click
+// the track to jump there (and keep dragging).
+
+namespace {
+float thumbLength(float trackH, float visible, float total) { return std::max(28.0F, trackH * std::min(1.0F, visible / std::max(1.0F, total))); }
+}  // namespace
+
+void App::addScrollBar(const std::string& panel, Rect track, float total, float visible, float pos) {
+  if (total <= visible + 0.5F || track.h < 40) return;
+  m_scrollInfo[panel] = {track, total, visible, pos};
+  m_ui.push_back({UiControl::ScrollBar, {track.x - 3, track.y, track.w + 6, track.h}, -1, panel});
+}
+
+void App::scrollDragTo(double y) {
+  auto it = m_scrollInfo.find(m_scrollDrag);
+  if (it == m_scrollInfo.end()) return;
+  const ScrollInfo& s = it->second;
+  const float th = thumbLength(s.track.h, s.visible, s.total);
+  const float t = std::clamp((static_cast<float>(y) - m_scrollGrab - s.track.y) / std::max(1.0F, s.track.h - th), 0.0F, 1.0F);
+  const float pos = t * (s.total - s.visible);
+  const int row = static_cast<int>(std::lround(pos));
+  if (m_scrollDrag == "inspector") m_inspScroll = pos;
+  else if (m_scrollDrag == "fonts") m_fontScroll = row;
+  else if (m_scrollDrag == "layers") m_layersScroll = row;
+  else if (m_scrollDrag == "saves") m_saveScroll = row;
+  markEditDirty();
+}
+
 // ── interaction ─────────────────────────────────────────────────────────────
 
 bool App::uiPress(int index, double x) {
@@ -1853,6 +1891,19 @@ bool App::uiPress(int index, double x) {
       return true;
     case UiControl::ColorClose:
       closeColorPick();
+      return true;
+    case UiControl::ScrollBar:
+      if (auto it = m_scrollInfo.find(c.value); it != m_scrollInfo.end()) {
+        const ScrollInfo& s = it->second;
+        const float th = thumbLength(s.track.h, s.visible, s.total);
+        const float ty = s.track.y + (s.track.h - th) * (s.pos / std::max(1.0F, s.total - s.visible));
+        const auto py = static_cast<float>(m_py);
+        // on the thumb: taken where it was grabbed; on the track: the thumb's middle jumps there
+        m_scrollGrab = py >= ty && py <= ty + th ? py - ty : th / 2;
+        m_scrollDrag = c.value;
+        m_drag = Drag::Scroll;
+        scrollDragTo(m_py);
+      }
       return true;
     case UiControl::ColorSV:
     case UiControl::ColorHue:  // dragged like a slider: live, one undo step
@@ -3469,6 +3520,20 @@ void App::drawUi(EditSurface& e) {
       }
       default: break;
     }
+  }
+
+  // ── scroll bars: a faint track, the thumb brighter and wider under the pointer ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::ScrollBar) continue;
+    auto it = m_scrollInfo.find(c.value);
+    if (it == m_scrollInfo.end()) continue;
+    const ScrollInfo& s = it->second;
+    const bool active = (m_drag == Drag::Scroll && m_scrollDrag == c.value) || hovered(c);
+    const float th = thumbLength(s.track.h, s.visible, s.total);
+    const float ty = s.track.y + (s.track.h - th) * std::clamp(s.pos / std::max(1.0F, s.total - s.visible), 0.0F, 1.0F);
+    const float bw = active ? 6 : 4, bx = s.track.x + s.track.w / 2 - bw / 2;
+    cv.roundRect(bx, s.track.y, bw, s.track.h, bw / 2, withAlphaC(ink, active ? 0.10F : 0.05F));
+    cv.roundRect(bx, ty, bw, th, bw / 2, active ? withAlphaC(accent, 0.9F) : withAlphaC(ink, 0.32F));
   }
 
   // ── fold buttons: a chevron up folds the panel to its title, down unfolds it ──

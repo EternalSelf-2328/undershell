@@ -897,6 +897,10 @@ void App::onPointerMotion(double x, double y) {
     uiDrag(x);
     return;
   }
+  if (m_drag == Drag::Scroll) {
+    scrollDragTo(y);
+    return;
+  }
   if (m_drag == Drag::Layer) {  // a row of the Layers panel to another place
     if (std::abs(y - m_layerPressY) > 4) m_layerMoved = true;
     if (m_layerMoved) {
@@ -1105,6 +1109,14 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     return;
   }
   if (button != BTN_LEFT) return;
+  if (m_drag == Drag::Scroll) {
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      m_drag = Drag::None;
+      m_scrollDrag.clear();
+      markEditDirty();
+    }
+    return;
+  }
   if (m_drag == Drag::Slider) {
     if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
       // a colour dragged in the picker: one entry in the recent colours
