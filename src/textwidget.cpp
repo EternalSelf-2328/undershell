@@ -20,17 +20,6 @@ T get(const toml::table& t, std::string_view key, T def) {
   return def;
 }
 
-// a repeatable 0..1 from two integers
-float hash(uint32_t a, uint32_t b) {
-  uint32_t h = a * 0x9E3779B1U ^ (b + 0x7F4A7C15U + (a << 6) + (a >> 2));
-  h ^= h >> 15;
-  h *= 0x2C1B3C6DU;
-  h ^= h >> 12;
-  h *= 0x297A2D39U;
-  h ^= h >> 15;
-  return static_cast<float>(h & 0xFFFFFF) / static_cast<float>(0xFFFFFF);
-}
-
 // the motion's reach, a share of the size: room kept round the text for it
 float slackOf(const TextConfig& c) {
   float s = 0;
@@ -51,8 +40,6 @@ bool perLetter(const TextConfig& c) {
 
 // typewriter timing: letters a second, how long it holds once written
 constexpr double kTypeRate = 11, kTypeHold = 2.6, kTypeFade = 0.45, kTypeRest = 0.6;
-// glitch: a burst every few seconds
-constexpr double kGlitchEvery = 2.6, kGlitchBurst = 0.32;
 }  // namespace
 
 const std::vector<std::string>& TextWidget::styles() {
@@ -187,10 +174,8 @@ std::string TextWidget::expand(const std::string& text, const MediaState* media,
 
 void TextWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) { configure(TextConfig::fromTable(cfg.options), noct); }
 
-void TextWidget::configure(const TextConfig& cfg, const NoctaliaState& noct) {
-  const bool restart = cfg.animation != m_cfg.animation || cfg.text != m_cfg.text;
-  m_cfg = cfg;
-  TextFxStyle& s = m_style;
+TextFxStyle TextWidget::styleOf(const TextConfig& cfg, const NoctaliaState& noct, Color* accent) {
+  TextFxStyle s;
   s.font = cfg.font;
   s.weight = cfg.weight;
   s.italic = cfg.italic;
@@ -209,13 +194,23 @@ void TextWidget::configure(const TextConfig& cfg, const NoctaliaState& noct) {
   s.extrude = cfg.extrude;
   s.extrudeC = noct.color(cfg.extrudeColor, Color::fromHex("#1a1020"));
   s.extrudeAngle = cfg.extrudeAngle;
-  m_fx.setStyle(s);
-  // a white or grey text would turn the editor grey: then the glow's, the outline's or the theme's colour
-  auto vivid = [](Color c) { return std::max({c.r, c.g, c.b}) - std::min({c.r, c.g, c.b}) > 0.18F; };
-  m_accent = noct.color("primary", Color::fromHex("#e2342a"));
-  for (const auto& [on, c] : {std::pair{s.glow > 0, s.glowC}, std::pair{s.outline > 0, s.outlineC}, std::pair{s.fill == 1, s.c2},
-                              std::pair{s.fill == 0, s.c1}})
-    if (on && vivid(c)) m_accent = c;
+  if (cfg.react == "glow" && s.glow <= 0) s.glow = 0.001;  // a glow for the music to grow
+  if (accent) {
+    // a white or grey text would turn the editor grey: then the glow's, the outline's or the theme's colour
+    auto vivid = [](Color c) { return std::max({c.r, c.g, c.b}) - std::min({c.r, c.g, c.b}) > 0.18F; };
+    *accent = noct.color("primary", Color::fromHex("#e2342a"));
+    for (const auto& [on, c] : {std::pair{s.glow > 0.01, s.glowC}, std::pair{s.outline > 0, s.outlineC}, std::pair{s.fill == 1, s.c2},
+                                std::pair{s.fill == 0, s.c1}})
+      if (on && vivid(c)) *accent = c;
+  }
+  return s;
+}
+
+void TextWidget::configure(const TextConfig& cfg, const NoctaliaState& noct) {
+  const bool restart = cfg.animation != m_cfg.animation || cfg.text != m_cfg.text;
+  m_cfg = cfg;
+  m_style = styleOf(cfg, noct, &m_accent);
+  m_fx.setStyle(m_style);
   const std::string& t = cfg.text;
   m_media = t.find("{title}") != std::string::npos || t.find("{artist}") != std::string::npos || t.find("{album}") != std::string::npos;
   if (restart) m_start = m_now;
@@ -289,92 +284,26 @@ double TextWidget::nextWakeup(double now) const {
 // where every unit is this frame
 void TextWidget::move(double now, size_t n) {
   m_motion.assign(n, TextFxMotion{});
-  const float S = m_fx.size();
   const double t = (now - m_start) * m_cfg.speed;
   const auto& units = m_fx.units();
-  const std::string& a = m_cfg.animation;
-  // the letters that show, in order (spaces do not count where they would only pause)
-  size_t seen = 0;
-  for (size_t i = 0; i < n; ++i) {
-    TextFxMotion& m = m_motion[i];
-    const auto k = static_cast<float>(i);
-    if (a == "wave") {
-      m.dy = static_cast<float>(-std::sin(t * 4.2 - k * 0.55)) * 0.09F * S;
-    } else if (a == "bounce") {
-      const double ph = std::fmod(t * 1.1 - k * 0.07 + 100, 1.0);
-      const double hop = ph < 0.32 ? std::sin(ph / 0.32 * M_PI) : 0.0;
-      m.dy = static_cast<float>(-hop) * 0.22F * S;
-      m.scale = static_cast<float>(1 + 0.06 * hop);
-    } else if (a == "shake") {
-      const auto f = static_cast<uint32_t>(t * 30);
-      m.dx = (hash(static_cast<uint32_t>(i), f) - 0.5F) * 0.05F * S;
-      m.dy = (hash(static_cast<uint32_t>(i) + 977, f) - 0.5F) * 0.05F * S;
-    } else if (a == "flicker") {
-      // a tube that fails now and then: dim for a moment, sometimes twice
-      const auto f = static_cast<uint32_t>(t * 12);
-      const float r = hash(static_cast<uint32_t>(i) * 31 + 7, f / 3);
-      if (r < 0.07F && hash(static_cast<uint32_t>(i), f) < 0.7F) {
-        m.alpha = 0.3F;
-        m.glow = 0.15F;
-      }
-      // and the whole sign blinks, rarely
-      if (hash(9001, f / 2) < 0.012F) m.glow *= 0.4F;
-    } else if (a == "glitch") {
-      const double into = std::fmod(t, kGlitchEvery);
-      if (into < kGlitchBurst) {
-        const auto burst = static_cast<uint32_t>(t / kGlitchEvery), f = static_cast<uint32_t>(t * 30);
-        // a band of letters jumps sideways, everything splits red / cyan
-        const float lineHit = hash(burst * 13 + static_cast<uint32_t>(units[i].line), f);
-        if (lineHit < 0.45F) m.dx = (hash(static_cast<uint32_t>(i), f) - 0.5F) * 0.16F * S;
-        m.chroma = (0.02F + 0.04F * hash(burst, f)) * S;
-        if (hash(static_cast<uint32_t>(i) + 51, f) < 0.06F) m.alpha = 0;
-      }
-    } else if (a == "typewriter") {
-      const double cycle = n / kTypeRate + kTypeHold + kTypeFade + kTypeRest;
-      const double into = std::fmod(t, cycle);
-      const auto written = static_cast<size_t>(into * kTypeRate);
-      m.shown = seen < written;
-      const double fadeAt = n / kTypeRate + kTypeHold;
-      if (into > fadeAt) m.alpha = static_cast<float>(std::max(0.0, 1 - (into - fadeAt) / kTypeFade));
-    }
-    ++seen;
-  }
-  // the music
-  if (m_cfg.react == "letters" && !m_bands.empty()) {
-    size_t letters = 0;
-    for (const auto& u : units) letters += u.blank ? 0 : 1;
-    size_t j = 0;
+  animateUnits(m_cfg.animation, t, units, m_fx.size(), m_motion);
+  if (m_cfg.animation == "typewriter") {
+    const double cycle = n / kTypeRate + kTypeHold + kTypeFade + kTypeRest;
+    const double into = std::fmod(t, cycle);
+    const auto written = static_cast<size_t>(into * kTypeRate);
+    const double fadeAt = n / kTypeRate + kTypeHold;
     for (size_t i = 0; i < n; ++i) {
-      if (units[i].blank) continue;
-      // the bass on the left, the treble on the right; leave the very top out
-      const size_t band = std::min(m_bands.size() - 1, (j * m_bands.size() * 3 / 4) / std::max<size_t>(1, letters));
-      const float v = std::clamp(m_bands[band], 0.0F, 1.0F);
-      m_motion[i].dy -= v * 0.32F * S;
-      m_motion[i].scale *= 1 + v * 0.08F;
-      ++j;
+      m_motion[i].shown = i < written;
+      if (into > fadeAt) m_motion[i].alpha = static_cast<float>(std::max(0.0, 1 - (into - fadeAt) / kTypeFade));
     }
-  } else if (m_cfg.react == "pulse") {
-    const Rect ink = m_fx.inkBox();
-    const float bx = ink.x + ink.w / 2, by = ink.y + ink.h / 2;
-    const auto s = static_cast<float>(1 + 0.08 * m_beat);
-    for (size_t i = 0; i < n; ++i) {
-      const auto& u = units[i];
-      const float cx = u.x + u.w / 2, cy = u.y + u.h / 2;
-      m_motion[i].dx += (cx - bx) * (s - 1);
-      m_motion[i].dy += (cy - by) * (s - 1);
-      m_motion[i].scale *= s;
-    }
-  } else if (m_cfg.react == "glow") {
-    for (auto& m : m_motion) m.glow *= static_cast<float>(1 + 1.6 * m_beat);
   }
+  reactUnits(m_cfg.react, m_beat, m_bands, m_fx, m_motion);
 }
 
 void TextWidget::draw(const DrawContext& ctx) {
   // tick() fills m_shown; the first draw may come before it
   if (m_shown.empty() && !m_cfg.text.empty()) m_shown = expand(m_cfg.text, ctx.media ? &ctx.media->state() : nullptr, &m_time);
-  TextFxStyle st = m_style;
-  if (m_cfg.react == "glow" && st.glow <= 0) st.glow = 0.001;  // a glow to grow
-  m_fx.layout(m_shown, st, ctx.w, ctx.h, ctx.scale, slackOf(m_cfg), perLetter(m_cfg));
+  m_fx.layout(m_shown, m_style, ctx.w, ctx.h, ctx.scale, slackOf(m_cfg), perLetter(m_cfg));
   const size_t n = m_fx.units().size();
   move(m_now, n);
   const auto hue = static_cast<float>(std::fmod((m_now - m_start) * 0.12 * m_cfg.speed, 1.0));

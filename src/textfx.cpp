@@ -54,13 +54,16 @@ uniform vec2 u_depth;     // the extrusion's far end, logical px
 uniform vec4 u_depthC;
 uniform float u_chroma;
 uniform float u_alpha;
+uniform float u_lod;      // drawn smaller than it was rasterised: read a smaller mipmap
+uniform float u_wipe;     // karaoke: how much of the text is sung, in reading order (< 0: off)
+uniform float u_lines;
 
 const float TAU = 6.2831853;
 
 // the glyphs' alpha; nothing outside the texture
 float A(vec2 uv, float lod) {
     vec2 c = clamp(uv, 0.0, 1.0);
-    float a = textureLod(u_tex, c, lod).r;
+    float a = textureLod(u_tex, c, lod + u_lod).r;
     return c == uv ? a : 0.0;
 }
 vec2 toUv(vec2 px) { return px / u_quad; }
@@ -130,6 +133,12 @@ void main() {
         } else {
             col = vec4(c * a, a);
         }
+    }
+    if (u_wipe >= 0.0) {
+        // what is still to be sung, faint (its outline and glow too): line by line, left to right
+        float line = min(floor(clamp(v_block.y, 0.0, 0.999) * u_lines), u_lines - 1.0);
+        float r = (line + clamp(v_block.x, 0.0, 1.0)) / u_lines;
+        col *= mix(1.0, 0.3, smoothstep(u_wipe - 0.006, u_wipe + 0.006, r));
     }
     fragColor = col * u_alpha;
 }
@@ -222,6 +231,9 @@ void TextFx::layout(const std::string& text, const TextFxStyle& st, float w, flo
   if (!fit) ox = m_pad + (st.align == 1 ? (ts.maxWidth - ink.boxW) / 2 : st.align == 2 ? ts.maxWidth - ink.boxW : 0.0F);
   const float oy = (h - ink.h) / 2 - ink.y;
   m_ink = {ox + ink.x, oy + ink.y, std::max(1.0F, ink.w), std::max(1.0F, ink.h)};
+  const auto clusters = TextRenderer::clusters(text, ts);
+  m_lines = 1;
+  for (const auto& c : clusters) m_lines = std::max(m_lines, c.line + 1);
   if (!perLetter) {
     Unit u;
     u.text = text;
@@ -233,7 +245,7 @@ void TextFx::layout(const std::string& text, const TextFxStyle& st, float w, flo
     m_units.back().line = -1;  // the whole text: drawn with the layout's wrapping
     return;
   }
-  for (const auto& c : TextRenderer::clusters(text, ts)) {
+  for (const auto& c : clusters) {
     Unit u;
     u.text = c.text;
     u.x = ox + c.x;
@@ -251,7 +263,7 @@ void TextFx::bar(const DrawContext& ctx, float x, float y, float w, float h, Col
   m_canvas.roundRect(x, y, w, h, std::min(w, h) * 0.3F, c);
 }
 
-void TextFx::draw(const DrawContext& ctx, const std::vector<TextFxMotion>& motion, float hue, float opacity) {
+void TextFx::draw(const DrawContext& ctx, const std::vector<TextFxMotion>& motion, float hue, float opacity, float wipe) {
   if (m_units.empty() || m_size <= 0) return;
   if (!m_prog.valid()) m_prog.create(kVert, kFrag, "textfx");
   const float S = m_size;
@@ -266,6 +278,8 @@ void TextFx::draw(const DrawContext& ctx, const std::vector<TextFxMotion>& motio
   const double ga = m_st.angle * M_PI / 180;
   glUniform2f(m_prog.uniform("u_dir"), static_cast<float>(std::cos(ga)), static_cast<float>(std::sin(ga)));
   glUniform1f(m_prog.uniform("u_hue"), hue);
+  glUniform1f(m_prog.uniform("u_wipe"), wipe);
+  glUniform1f(m_prog.uniform("u_lines"), static_cast<float>(std::max(1, m_lines)));
   const float outW = static_cast<float>(m_st.outline * 0.09) * S;
   glUniform1f(m_prog.uniform("u_outW"), m_st.outline > 0 ? std::max(outW, 0.8F) : 0.0F);
   glUniform4f(m_prog.uniform("u_outC"), m_st.outlineC.r, m_st.outlineC.g, m_st.outlineC.b, 1);
@@ -309,11 +323,102 @@ void TextFx::draw(const DrawContext& ctx, const std::vector<TextFxMotion>& motio
       glUniform2f(m_prog.uniform("u_quad"), img.quadW, img.quadH);
       glUniform1f(m_prog.uniform("u_glowA"), m_st.glow > 0 ? static_cast<float>(m_st.glow) * mo.glow : 0.0F);
       glUniform1f(m_prog.uniform("u_chroma"), mo.chroma);
+      glUniform1f(m_prog.uniform("u_lod"), mo.scale < 0.95F ? std::log2(1 / std::max(0.05F, mo.scale)) : 0.0F);
       glUniform1f(m_prog.uniform("u_alpha"), opacity * mo.alpha);
       drawUnitQuad();
     }
   }
   glDisable(GL_BLEND);
+}
+
+namespace {
+// a repeatable 0..1 from two integers
+float hash(uint32_t a, uint32_t b) {
+  uint32_t h = a * 0x9E3779B1U ^ (b + 0x7F4A7C15U + (a << 6) + (a >> 2));
+  h ^= h >> 15;
+  h *= 0x2C1B3C6DU;
+  h ^= h >> 12;
+  h *= 0x297A2D39U;
+  h ^= h >> 15;
+  return static_cast<float>(h & 0xFFFFFF) / static_cast<float>(0xFFFFFF);
+}
+}  // namespace
+
+void animateUnits(const std::string& a, double t, const std::vector<TextFx::Unit>& units, float S, std::vector<TextFxMotion>& motion) {
+  const size_t n = std::min(units.size(), motion.size());
+  for (size_t i = 0; i < n; ++i) {
+    TextFxMotion& m = motion[i];
+    const auto k = static_cast<float>(i);
+    const auto ui = static_cast<uint32_t>(i);
+    if (a == "wave") {
+      m.dy += static_cast<float>(-std::sin(t * 4.2 - k * 0.55)) * 0.09F * S;
+    } else if (a == "bounce") {
+      const double ph = std::fmod(t * 1.1 - k * 0.07 + 100, 1.0);
+      const double hop = ph < 0.32 ? std::sin(ph / 0.32 * M_PI) : 0.0;
+      m.dy += static_cast<float>(-hop) * 0.22F * S;
+      m.scale *= static_cast<float>(1 + 0.06 * hop);
+    } else if (a == "shake") {
+      const auto f = static_cast<uint32_t>(t * 30);
+      m.dx += (hash(ui, f) - 0.5F) * 0.05F * S;
+      m.dy += (hash(ui + 977, f) - 0.5F) * 0.05F * S;
+    } else if (a == "flicker") {
+      // a tube that fails now and then: dim for a moment, sometimes twice
+      const auto f = static_cast<uint32_t>(t * 12);
+      if (hash(ui * 31 + 7, f / 3) < 0.07F && hash(ui, f) < 0.7F) {
+        m.alpha *= 0.3F;
+        m.glow *= 0.15F;
+      }
+      // and the whole sign blinks, rarely
+      if (hash(9001, f / 2) < 0.012F) m.glow *= 0.4F;
+    } else if (a == "glitch") {
+      const double into = std::fmod(t, kGlitchEvery);
+      if (into < kGlitchBurst) {
+        const auto burst = static_cast<uint32_t>(t / kGlitchEvery), f = static_cast<uint32_t>(t * 30);
+        // a band of letters jumps sideways, everything splits red / cyan
+        if (hash(burst * 13 + static_cast<uint32_t>(std::max(0, units[i].line)), f) < 0.45F) m.dx += (hash(ui, f) - 0.5F) * 0.16F * S;
+        m.chroma = (0.02F + 0.04F * hash(burst, f)) * S;
+        if (hash(ui + 51, f) < 0.06F) m.alpha = 0;
+      }
+    }
+  }
+}
+
+void scaleUnits(const TextFx& fx, float s, std::vector<TextFxMotion>& motion) {
+  const Rect ink = fx.inkBox();
+  const float bx = ink.x + ink.w / 2, by = ink.y + ink.h / 2;
+  const auto& units = fx.units();
+  for (size_t i = 0; i < std::min(units.size(), motion.size()); ++i) {
+    const auto& u = units[i];
+    const float cx = u.x + u.w / 2, cy = u.y + u.h / 2;
+    motion[i].dx += (cx - bx) * (s - 1);
+    motion[i].dy += (cy - by) * (s - 1);
+    motion[i].scale *= s;
+  }
+}
+
+void reactUnits(const std::string& react, double beat, const std::vector<float>& bands, const TextFx& fx,
+                std::vector<TextFxMotion>& motion) {
+  const auto& units = fx.units();
+  const float S = fx.size();
+  const size_t n = std::min(units.size(), motion.size());
+  if (react == "letters" && !bands.empty()) {
+    size_t letters = 0;
+    for (const auto& u : units) letters += u.blank ? 0 : 1;
+    size_t j = 0;
+    for (size_t i = 0; i < n; ++i) {
+      if (units[i].blank) continue;
+      // the bass on the left, the treble on the right; leave the very top out
+      const size_t band = std::min(bands.size() - 1, (j * bands.size() * 3 / 4) / std::max<size_t>(1, letters));
+      const float v = std::clamp(bands[band], 0.0F, 1.0F);
+      motion[i].dy -= v * 0.32F * S;
+      motion[i].scale *= 1 + v * 0.08F;
+      ++j;
+    }
+  } else if (react == "pulse") {
+    scaleUnits(fx, static_cast<float>(1 + 0.08 * beat), motion);
+  } else if (react == "glow") {
+    for (auto& m : motion) m.glow *= static_cast<float>(1 + 1.6 * beat);
+  }
 }
 
 }  // namespace undershell

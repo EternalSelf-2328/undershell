@@ -1479,7 +1479,7 @@ std::string App::handleCommand(const std::string& cmd) {
       Widget* live = nullptr;
       for (auto& w : m_widgets)
         if (w->cfg.id == c.id) live = w.get();
-      if (live && live->cfg.type == "text" && key == "style" && toml.size() >= 2) {  // the style's keys reset too
+      if (live && (live->cfg.type == "text" || live->cfg.type == "lyrics") && key == "style" && toml.size() >= 2) {  // the style's keys reset too
         setTextStyle(*live, toml.substr(1, toml.size() - 2));
         ++n;
       } else if (shapeKey && live) {
@@ -1728,6 +1728,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                : w->cfg.type == "clock"    ? w->cfg.options["face"].value_or(std::string("digital"))
                                : w->cfg.type == "shape"    ? w->cfg.options["shape"].value_or(std::string("rect"))
                                : w->cfg.type == "text"     ? w->cfg.options["style"].value_or(std::string("plain"))
+                               : w->cfg.type == "lyrics"   ? w->cfg.options["layout"].value_or(std::string("lines"))
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"

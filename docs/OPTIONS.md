@@ -24,7 +24,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | Key | Values | Default | |
 |---|---|---|---|
 | `id` | text | type name | unique name (used by `msg set/select/remove`) |
-| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text` | `"visualizer"` | |
+| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
@@ -185,6 +185,44 @@ Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song 
 | Key | Values | Default | |
 |---|---|---|---|
 | `text` | text | `"undershell"` | Text |
+| `style` | `plain`, `neon`, `retro`, `comic`, `outline`, `sticker`, `chrome`, `glitch`, `rainbow`, `typewriter` | `"plain"` | Style |
+| `font` |  | `"Inter Display"` | Font |
+| `weight` | 100 – 900 | `800` | Weight |
+| `italic` | `true` / `false` | `false` | Italic |
+| `spacing` | -0.1 – 0.6 | `0` | Letter spacing |
+| `align` | `left`, `center`, `right` | `"center"` | Align |
+| `fill` | `solid`, `gradient`, `rainbow`, `none` | `"solid"` | Fill |
+| `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Colour 1 |
+| `color2` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour 2 |
+| `angle` | 0 – 360 | `90` | Gradient angle |
+| `outline` | 0 – 1 | `0` | Outline |
+| `outline_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#111111"` | Outline colour |
+| `shadow` | 0 – 1 | `0.3` | Shadow |
+| `shadow_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#000000"` | Shadow colour |
+| `glow` | 0 – 1 | `0` | Glow |
+| `glow_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Glow colour |
+| `extrude` | 0 – 1 | `0` | 3D depth |
+| `extrude_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#1a1020"` | 3D colour |
+| `extrude_angle` | 0 – 360 | `135` | 3D direction ° |
+| `animation` | `none`, `wave`, `bounce`, `typewriter`, `glitch`, `flicker`, `shake` | `"none"` | Animation |
+| `speed` | 0.1 – 4 | `1` | Speed |
+| `react` | `none`, `pulse`, `letters`, `glow` | `"none"` | With the music |
+| `opacity` | 0.05 – 1 | `1` | Opacity |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
+
+## `type = "lyrics"`
+
+The synced lyrics of the song playing (LRCLIB), with the text widget's styles and effects; the keys after `style` are the text widget's.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `layout` | `lines`, `line`, `karaoke` | `"lines"` | Layout |
+| `transition` | `slide`, `fade`, `pop`, `typewriter` | `"slide"` | Change |
+| `fallback` | `title`, `note`, `hide` | `"title"` | Without lyrics |
+| `offset` | -5 – 5 | `0` | Delay s |
 | `style` | `plain`, `neon`, `retro`, `comic`, `outline`, `sticker`, `chrome`, `glitch`, `rainbow`, `typewriter` | `"plain"` | Style |
 | `font` |  | `"Inter Display"` | Font |
 | `weight` | 100 – 900 | `800` | Weight |

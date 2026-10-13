@@ -1119,5 +1119,31 @@ int main(int argc, char** argv) {
     }
   }
 
+  // lyrics (their sample lines, drawn without a desktop): three lines with
+  // the one being sung brightest in the middle; karaoke lights a line from
+  // the left as it is sung
+  {
+    auto rowAlpha = [](const Image& img, int y0, int y1) {
+      double sum = 0;
+      for (int y = y0; y < y1; ++y)
+        for (int x = 0; x < img.w; ++x) sum += img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3];
+      return sum;
+    };
+    toml::table lines;
+    lines.insert_or_assign("layout", "lines");
+    // the sample's second line is due 2.6 s into its cycle of 10.4 s
+    const Image l = renderWidget("lyrics", lines, 520, 180, pal, 1040 + 2.6 + 0.6 - 40 / 60.0, 40);
+    const double top = rowAlpha(l, 0, 60), mid = rowAlpha(l, 60, 120), bottom = rowAlpha(l, 120, 180);
+    CHECK(mid > 0 && top > 0 && bottom > 0 && mid > top && mid > bottom);
+    toml::table kar;
+    kar.insert_or_assign("layout", "karaoke");
+    kar.insert_or_assign("shadow", 0.0);
+    const Image k = renderWidget("lyrics", kar, 520, 180, pal, 1040 + 2.6 + 0.8 - 60 / 60.0, 60);
+    double left = 0, right = 0;
+    for (int y = 0; y < 180; ++y)
+      for (int x = 0; x < 520; ++x) (x < 260 ? left : right) += k.rgba[(static_cast<size_t>(y) * 520 + x) * 4 + 3];
+    CHECK(left > 0 && right > 0 && left > right * 1.3);
+  }
+
   return TEST_RESULT();
 }

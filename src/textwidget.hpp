@@ -63,6 +63,8 @@ public:
   // The keys a style sets, as TOML values (what the inspector writes when it
   // is picked; the widget reads the same table for keys left out).
   static const std::map<std::string, std::string>& preset(const std::string& style);
+  // The look a config asks for, with the editor's accent for it
+  static TextFxStyle styleOf(const TextConfig& cfg, const NoctaliaState& noct, Color* accent = nullptr);
   // `text` with its placeholders filled in
   static std::string expand(const std::string& text, const MediaState* media, bool* usesTime = nullptr);
 

@@ -180,6 +180,18 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  // the text widget's look, after how the lines come and go
+  static const std::vector<PropSpec> lyrics = [] {
+    std::vector<PropSpec> v = {
+        {K::Enum, "layout", "Layout", "Disposición", {"lines", "line", "karaoke"}, 0, 0, 0, 0, "lines"},
+        {K::Enum, "transition", "Change", "Cambio", {"slide", "fade", "pop", "typewriter"}, 0, 0, 0, 0, "slide"},
+        {K::Enum, "fallback", "Without lyrics", "Sin letra", {"title", "note", "hide"}, 0, 0, 0, 0, "title"},
+        {K::Number, "offset", "Delay s", "Retraso s", {}, -5, 5, 0.1, 0},
+    };
+    for (const auto& p : text)
+      if (p.key != "text") v.push_back(p);
+    return v;
+  }();
   static const std::vector<PropSpec> image = {
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
       {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
@@ -202,6 +214,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   if (type == "shape") return shape;
   if (type == "image") return image;
   if (type == "text") return text;
+  if (type == "lyrics") return lyrics;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;
   if (type == "now_playing") return nowPlaying;

@@ -83,8 +83,10 @@ public:
   static float fitSize(const std::string& text, const TextFxStyle& st, float w, float h, float slack);
 
   // Draws every shown unit; `motion` is per unit (missing ones stay put).
-  // `hue` turns a rainbow fill; `opacity` fades it all.
-  void draw(const DrawContext& ctx, const std::vector<TextFxMotion>& motion, float hue, float opacity);
+  // `hue` turns a rainbow fill; `opacity` fades it all; `wipe` (0..1, in
+  // reading order) leaves what comes after it faint, for karaoke.
+  void draw(const DrawContext& ctx, const std::vector<TextFxMotion>& motion, float hue, float opacity, float wipe = -1);
+  [[nodiscard]] int lines() const { return m_lines; }
   // A solid bar (a typewriter's caret), logical px.
   void bar(const DrawContext& ctx, float x, float y, float w, float h, Color c);
 
@@ -102,8 +104,24 @@ private:
   std::vector<Unit> m_units;
   TextStyle m_wholeStyle, m_glyphStyle;  // the whole text as laid out, and one grapheme
   float m_size = 0, m_scale = 1, m_pad = 0;
+  int m_lines = 1;
   Rect m_ink;
   std::string m_key;  // what the layout was made for
 };
+
+// glitch: a burst every few seconds
+inline constexpr double kGlitchEvery = 2.6, kGlitchBurst = 0.32;
+
+// The letters' own motion for an animation: wave, bounce, shake, flicker,
+// glitch (a typewriter belongs to its widget); `t` in seconds, already sped
+// up. `motion` has one entry per unit.
+void animateUnits(const std::string& animation, double t, const std::vector<TextFx::Unit>& units, float size,
+                  std::vector<TextFxMotion>& motion);
+// The music on top: "letters" (each jumps with its band of the spectrum),
+// "pulse" (the whole text grows on a kick, `beat` 0..1), "glow".
+void reactUnits(const std::string& react, double beat, const std::vector<float>& bands, const TextFx& fx,
+                std::vector<TextFxMotion>& motion);
+// Grows every unit by `s` about the text's middle, the gaps with them.
+void scaleUnits(const TextFx& fx, float s, std::vector<TextFxMotion>& motion);
 
 }  // namespace undershell

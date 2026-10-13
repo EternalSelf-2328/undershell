@@ -61,7 +61,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -96,6 +96,9 @@ std::string optionsMarkdown() {
         "`{time}`, `{date}` and `{day}` the clock; `\\n` starts a new line. A `style` sets the keys after `font`; a key "
         "the block sets wins over its style. The defaults below are the `plain` style's.\n\n";
   table(md, "text");
+  md += "\n## `type = \"lyrics\"`\n\nThe synced lyrics of the song playing (LRCLIB), with the text widget's styles and "
+        "effects; the keys after `style` are the text widget's.\n\n";
+  table(md, "lyrics");
   return md;
 }
 

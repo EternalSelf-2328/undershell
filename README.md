@@ -258,6 +258,25 @@ theme), `music_app`, `fps`, the `show_*` switches and the type options below.
 Widgets are click-through except on their buttons, so the desktop
 keeps working normally around them.
 
+## Lyrics
+
+The **lyrics** widget shows the song playing line by line, in time: the
+synced lyrics the music card already fetches from LRCLIB (and caches),
+from any MPRIS player. Three **layouts**: **three lines** that scroll, the
+one being sung in the middle and the ones around it smaller and faint;
+**one line** that gives way to the next with a slide, a fade, a pop or typed
+out; and **karaoke**, the line lighting up as it is sung. It takes the text
+widget's ten styles and every effect, animation and music reaction (the
+wheel steps through the styles here too). Without synced lyrics it shows
+the title and artist, a note, or nothing; **Delay** nudges the timing when a
+song's lyrics run early or late. Between lines it sleeps until the next one
+is due, so it only draws while a line changes (karaoke: 30 fps for the
+light).
+
+<p align="center">
+  <img src="docs/media/lyrics.webp" alt="Lyrics as three scrolling lines, as karaoke, as one neon line and as three retro lines" width="640">
+</p>
+
 ## Text
 
 Words on the desktop with effects: a **fill** (a colour, a gradient across
@@ -323,7 +342,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
-undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing, text, shape, image
+undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing, lyrics, text, shape, image
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
@@ -1022,6 +1041,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/media.*`, `src/jobs.*` | MPRIS (sd-bus), covers, album color, lyrics; background jobs |
 | `src/text.*` | text: Pango → cached textures |
 | `src/textfx.*`, `src/textwidget.*` | text with effects (fill, outline, shadow, glow, 3D, moving letters) and the text widget |
+| `src/lyricswidget.*` | the lyrics widget: synced lines, layouts, transitions, karaoke |
 | `src/shape.*` | the shape widget (one distance shader) |
 | `src/image.*`, `src/video.*` | the image widget; decoding stills, GIFs and videos (FFmpeg, gdk-pixbuf) |
 | `src/layers.cpp` | the Layers panel's model: order, groups, hiding, locking, moving several widgets |

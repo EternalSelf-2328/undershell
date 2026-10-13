@@ -184,7 +184,8 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
-  if (c.type == "text") {
+  if (c.type == "lyrics" && key == "transition") return o["layout"].value_or(std::string("lines")) == "line";
+  if (c.type == "text" || c.type == "lyrics") {
     const TextConfig t = TextConfig::fromTable(o);  // what its style leaves out counts too
     if (key == "color") return t.fill == "solid" || t.fill == "gradient";
     if (key == "color2" || key == "angle") return t.fill == "gradient";
@@ -323,7 +324,7 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   using K = PropSpec::Kind;
   std::vector<PropSpec> s;
   std::vector<PropSpec> all = schemaFor(w.cfg.type);
-  if (w.cfg.type == "text") {
+  if (w.cfg.type == "text" || w.cfg.type == "lyrics") {
     // a key the block leaves out shows its style's value
     const auto& preset = TextWidget::preset(w.cfg.options["style"].value_or(std::string("plain")));
     for (auto& p : all)
@@ -657,7 +658,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
   auto section = [&](const std::string& k) {
     if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle", "outline_color", "shadow_color", "glow_color", "extrude_color"})) return 1;
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
-    if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
+    if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz", "fallback", "offset"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
     if (in(k, {"warp", "tilt_x", "tilt_y", "skew", "perspective", "mesh_preset", "mesh_amount", "mesh_grid", "mesh_between",
                "mesh_reset"}))
@@ -692,6 +693,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "shape") return es ? "Forma" : "Shape";
   if (type == "image") return es ? "Imagen" : "Image";
   if (type == "text") return es ? "Texto" : "Text";
+  if (type == "lyrics") return es ? "Letras" : "Lyrics";
   return "Widget";
 }
 }  // namespace
@@ -714,6 +716,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   float dw = type == "visualizer" ? 1000 : 560, dh = type == "clock" ? 240 : 280;
   if (type == "shape" || type == "image") dw = dh = 300;
   if (type == "text") dw = 640, dh = 180;
+  if (type == "lyrics") dw = 820, dh = 260;
   if (type == "now_playing") nowPlayingDesignSize(look, dw, dh);  // its layout sets its shape
   const int w = static_cast<int>(std::lround(dw * k));
   const int h = static_cast<int>(std::lround(dh * k));
@@ -812,7 +815,7 @@ void App::setTextStyle(Widget& w, const std::string& style) {
 }
 
 void App::setProp(Widget& w, const std::string& key, const std::string& tomlValue) {
-  if (w.cfg.type == "text" && key == "style" && tomlValue.size() >= 2) {
+  if ((w.cfg.type == "text" || w.cfg.type == "lyrics") && key == "style" && tomlValue.size() >= 2) {
     setTextStyle(w, tomlValue.substr(1, tomlValue.size() - 2));
     return;
   }
@@ -1148,6 +1151,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "shape") return "shape";
   if (type == "image") return "image";
   if (type == "text") return "text";
+  if (type == "lyrics") return "lyrics";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1460,7 +1464,7 @@ void App::layoutUi(const EditSurface& e) {
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
     const float gx = std::clamp(addRect.x - 10, 12.0F, W - 282), gy = kBarY + kBarH + 10;
-    const char* types[] = {"visualizer", "clock", "now_playing", "text", "shape", "image"};
+    const char* types[] = {"visualizer", "clock", "now_playing", "lyrics", "text", "shape", "image"};
     m_ui.push_back({UiControl::Panel, {gx, gy, 270, std::size(types) * 70.0F + 10}, -1, "gallery"});
     float y = gy + 8;
     for (const char* t : types) {
@@ -2404,6 +2408,13 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "lyrics") {  // lines of words and a note
+    c.segment(cx - 7, cy - 5, cx + 1, cy - 5, 1.8F, col);
+    c.segment(cx - 7, cy, cx + 3, cy, 1.8F, col);
+    c.segment(cx - 7, cy + 5, cx - 1, cy + 5, 1.8F, col);
+    c.circle(cx + 4.5F, cy + 5.5F, 2.2F, col);
+    c.segment(cx + 6.2F, cy + 5.5F, cx + 6.2F, cy - 6, 1.4F, col, false);
+    c.segment(cx + 6.2F, cy - 6, cx + 8.5F, cy - 4.5F, 1.4F, col);
   } else if (name == "text") {  // a capital T
     c.segment(cx - 6.5F, cy - 6, cx + 6.5F, cy - 6, 2.2F, col, false);
     c.segment(cx, cy - 6, cx, cy + 7, 2.2F, col, false);
@@ -2886,6 +2897,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")
                        : c.value == "text"    ? (es ? "10 estilos · efectos · animaciones" : "10 styles · effects · animation")
+                       : c.value == "lyrics"  ? (es ? "La canción, línea a línea · karaoke" : "The song, line by line · karaoke")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);

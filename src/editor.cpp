@@ -79,7 +79,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "shape") return w.cfg.options["shape"].value_or(std::string("rect"));
   if (w.cfg.type == "now_playing") return w.cfg.options["layout"].value_or(std::string("sheet"));
   if (w.cfg.type == "image") return w.cfg.options["fit"].value_or(std::string("fit"));
-  if (w.cfg.type == "text") return w.cfg.options["style"].value_or(std::string("plain"));
+  if (w.cfg.type == "text" || w.cfg.type == "lyrics") return w.cfg.options["style"].value_or(std::string("plain"));
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
@@ -1245,7 +1245,7 @@ void App::onScroll(double value) {
     looks = ClockWidget::faces();
   } else if (w.cfg.type == "shape") {
     looks = ShapeWidget::shapes();
-  } else if (w.cfg.type == "text") {
+  } else if (w.cfg.type == "text" || w.cfg.type == "lyrics") {
     looks = TextWidget::styles();
   } else if (w.cfg.type == "visualizer") {
     for (const char* l : kLooks)
@@ -1259,7 +1259,7 @@ void App::onScroll(double value) {
   const int n = static_cast<int>(looks.size());
   idx = ((idx + step) % n + n) % n;
   m_selected = &w;
-  if (w.cfg.type == "text") {
+  if (w.cfg.type == "text" || w.cfg.type == "lyrics") {
     setTextStyle(w, looks[static_cast<size_t>(idx)]);
   } else {
     pushUndo(w, "style");
@@ -1293,6 +1293,7 @@ void App::drawEditorText(EditSurface& e) {
       const std::string file = w->cfg.options["file"].value_or(std::string());
       what = file.empty() ? (spanish() ? "sin imagen" : "no picture") : std::filesystem::path(file).filename().string();
     }
+    if (w->cfg.type == "lyrics") what += "  ·  " + optionLabel(w->cfg.options["layout"].value_or(std::string("lines")), spanish());
     if (w->cfg.type == "text") {  // the style and the first words
       std::string words = w->cfg.options["text"].value_or(std::string("undershell"));
       std::replace(words.begin(), words.end(), '\n', ' ');

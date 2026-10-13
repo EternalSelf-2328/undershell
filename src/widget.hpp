@@ -103,7 +103,7 @@ public:
   [[nodiscard]] virtual bool wantsLyrics() const { return false; }
 };
 
-// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 
