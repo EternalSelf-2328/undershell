@@ -6,6 +6,7 @@
 #include "app.hpp"
 #include "i18n.hpp"
 #include "clock.hpp"
+#include "shape.hpp"
 #include "snap.hpp"
 
 // the generated header names a parameter `namespace`
@@ -64,9 +65,10 @@ std::string degreesText(double d) {
 bool spanish() { return spanishUi(); }
 
 // the key that selects a widget's look, and its current value
-const char* lookKey(const Widget& w) { return w.cfg.type == "clock" ? "face" : "style"; }
+const char* lookKey(const Widget& w) { return w.cfg.type == "clock" ? "face" : w.cfg.type == "shape" ? "shape" : "style"; }
 std::string lookOf(const Widget& w) {
   if (w.cfg.type == "clock") return w.cfg.options["face"].value_or(std::string("digital"));
+  if (w.cfg.type == "shape") return w.cfg.options["shape"].value_or(std::string("rect"));
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
@@ -1151,6 +1153,8 @@ void App::onScroll(double value) {
   std::vector<std::string> looks;
   if (w.cfg.type == "clock") {
     looks = ClockWidget::faces();
+  } else if (w.cfg.type == "shape") {
+    looks = ShapeWidget::shapes();
   } else if (w.cfg.type == "visualizer") {
     for (const char* l : kLooks)
       if (std::string(l) != "frame") looks.push_back(l);  // frame owns the whole screen

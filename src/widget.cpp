@@ -3,6 +3,7 @@
 
 #include "clock.hpp"
 #include "nowplaying.hpp"
+#include "shape.hpp"
 #include "visualizer.hpp"
 
 namespace undershell {
@@ -11,9 +12,10 @@ std::unique_ptr<WidgetImpl> createWidget(const std::string& type) {
   if (type == "visualizer") return std::make_unique<Visualizer>();
   if (type == "clock") return std::make_unique<ClockWidget>();
   if (type == "now_playing") return std::make_unique<NowPlayingWidget>();
+  if (type == "shape") return std::make_unique<ShapeWidget>();
   return nullptr;
 }
 
-std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing"}; }
+std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing", "shape"}; }
 
 }  // namespace undershell

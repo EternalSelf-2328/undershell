@@ -60,7 +60,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -81,6 +81,8 @@ std::string optionsMarkdown() {
   md += "\n## `type = \"now_playing\"`\n\nRyoku's now-playing card.\n\n";
   table(md, "now_playing");
   md += "| `music_app` | shell command | `\"spotify\"` | opened by the corner button (not in the inspector) |\n";
+  md += "\n## `type = \"shape\"`\n\nA geometric shape, to build compositions out of layers.\n\n";
+  table(md, "shape");
   return md;
 }
 

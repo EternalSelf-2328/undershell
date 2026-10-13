@@ -1720,6 +1720,7 @@ std::string App::handleCommand(const std::string& cmd) {
     for (auto& w : m_widgets) {
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
                                : w->cfg.type == "clock"    ? w->cfg.options["face"].value_or(std::string("digital"))
+                               : w->cfg.type == "shape"    ? w->cfg.options["shape"].value_or(std::string("rect"))
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"

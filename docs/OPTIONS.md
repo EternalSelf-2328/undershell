@@ -24,7 +24,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | Key | Values | Default | |
 |---|---|---|---|
 | `id` | text | type name | unique name (used by `msg set/select/remove`) |
-| `type` | `visualizer`, `clock`, `now_playing` | `"visualizer"` | |
+| `type` | `visualizer`, `clock`, `now_playing`, `shape` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
@@ -127,3 +127,31 @@ Ryoku's now-playing card.
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
 | `music_app` | shell command | `"spotify"` | opened by the corner button (not in the inspector) |
+
+## `type = "shape"`
+
+A geometric shape, to build compositions out of layers.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `shape` | `rect`, `ellipse`, `triangle`, `polygon`, `star`, `heart`, `ring`, `line`, `pill`, `sunny`, `verySunny`, `cookie4Sided`, `cookie6Sided`, `cookie7Sided`, `cookie9Sided`, `cookie12Sided`, `clover4Leaf`, `clover8Leaf`, `burst`, `softBurst`, `flower`, `puffyDiamond` | `"rect"` | Shape |
+| `sides` | 3 – 16 | `5` | Sides / points |
+| `sharpness` | 0 – 1 | `0.5` | Sharpness |
+| `corner` | 0 – 1 | `0.15` | Rounding |
+| `thickness` | 0.02 – 1 | `0.25` | Thickness |
+| `arc` | 10 – 360 | `360` | Arc ° |
+| `fill` | `solid`, `gradient`, `radial`, `none` | `"solid"` | Fill |
+| `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour 1 |
+| `color2` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"tertiary"` | Colour 2 |
+| `angle` | 0 – 360 | `90` | Gradient angle |
+| `stroke` | 0 – 48 | `0` | Outline px |
+| `stroke_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Outline colour |
+| `glow` | 0 – 1 | `0` | Glow |
+| `shadow` | 0 – 1 | `0` | Shadow |
+| `react` | `none`, `pulse`, `glow` | `"none"` | With the music |
+| `spin` | -120 – 120 | `0` | Spin °/s |
+| `opacity` | 0.05 – 1 | `1` | Opacity |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |

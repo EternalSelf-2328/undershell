@@ -239,6 +239,35 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
   return img;
 }
 
+Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct, double now,
+                   int ticks) {
+  std::unique_ptr<WidgetImpl> widget = createWidget(type);
+  if (!widget) return {};
+  WidgetConfig wc;
+  wc.type = type;
+  wc.options = options;
+  widget->configure(wc, noct);
+  TextRenderer tr;
+  for (int i = 0; i < ticks; ++i) {
+    TickContext tc;
+    tc.now = now + i / 60.0;
+    tc.dt = 1 / 60.0;
+    widget->tick(tc);
+  }
+  Image img = renderToImage(w, h, [&] {
+    DrawContext dc;
+    dc.w = static_cast<float>(w);
+    dc.h = static_cast<float>(h);
+    dc.outputW = 1920;
+    dc.outputH = 1080;
+    dc.text = &tr;
+    dc.now = now;
+    widget->draw(dc);
+  });
+  tr.releaseGl();
+  return img;
+}
+
 Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now, const toml::table* options,
                        int settleSteps) {
   Jobs jobs(1);

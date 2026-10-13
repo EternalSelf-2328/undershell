@@ -119,7 +119,35 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  static const std::vector<PropSpec> shape = {
+      {K::Enum, "shape", "Shape", "Forma",
+       {"rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line", "pill", "sunny", "verySunny", "cookie4Sided",
+        "cookie6Sided", "cookie7Sided", "cookie9Sided", "cookie12Sided", "clover4Leaf", "clover8Leaf", "burst", "softBurst", "flower",
+        "puffyDiamond"},
+       0, 0, 0, 0, "rect"},
+      {K::Number, "sides", "Sides / points", "Lados / puntas", {}, 3, 16, 1, 5, "", true},
+      {K::Number, "sharpness", "Sharpness", "Agudeza", {}, 0, 1, 0.05, 0.5},
+      {K::Number, "corner", "Rounding", "Redondeo", {}, 0, 1, 0.05, 0.15},
+      {K::Number, "thickness", "Thickness", "Grosor", {}, 0.02, 1, 0.02, 0.25},
+      {K::Number, "arc", "Arc °", "Arco °", {}, 10, 360, 5, 360, "", true},
+      {K::Enum, "fill", "Fill", "Relleno", {"solid", "gradient", "radial", "none"}, 0, 0, 0, 0, "solid"},
+      {K::Color, "color", "Colour 1", "Color 1", {}, 0, 0, 0, 0, "primary"},
+      {K::Color, "color2", "Colour 2", "Color 2", {}, 0, 0, 0, 0, "tertiary"},
+      {K::Number, "angle", "Gradient angle", "Ángulo", {}, 0, 360, 15, 90, "", true},
+      {K::Number, "stroke", "Outline px", "Borde px", {}, 0, 48, 1, 0, "", true},
+      {K::Color, "stroke_color", "Outline colour", "Color del borde", {}, 0, 0, 0, 0, "on_surface"},
+      {K::Number, "glow", "Glow", "Brillo", {}, 0, 1, 0.05, 0},
+      {K::Number, "shadow", "Shadow", "Sombra", {}, 0, 1, 0.05, 0},
+      {K::Enum, "react", "With the music", "Con la música", {"none", "pulse", "glow"}, 0, 0, 0, 0, "none"},
+      {K::Number, "spin", "Spin °/s", "Giro °/s", {}, -120, 120, 5, 0},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> none;
+  if (type == "shape") return shape;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;
   if (type == "now_playing") return nowPlaying;

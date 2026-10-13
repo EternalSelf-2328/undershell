@@ -258,6 +258,23 @@ theme), `music_app`, `fps`, the `show_*` switches and the type options below.
 Widgets are click-through except on their buttons, so the desktop
 keeps working normally around them.
 
+## Shapes
+
+Geometric shapes to build compositions out of layers (see **Layers** and
+**Groups** under Usage): rectangle, ellipse, triangle, polygon (3–16 sides),
+star (its points and how sharp they are), heart, ring (or an arc of one),
+line, and the Material 3 shapes (cookies, clovers, bursts, flower, sun…).
+Each has a **fill** (a colour, a linear or radial gradient between two, or
+none), an **outline** inside its edge, a **glow** and a soft **shadow**, and
+can **spin** or **pulse** / **glow** with the music's kicks. Every colour can be
+a palette role or any colour from the picker. One distance shader draws it
+all, so a still shape is drawn once and then costs nothing; the mouse wheel
+over one in the editor steps through the shapes.
+
+<p align="center">
+  <img src="docs/media/shapes.webp" alt="Every shape, and a few with a gradient, a glow, an outline and a shadow" width="600">
+</p>
+
 ## Usage
 
 ```sh
@@ -265,7 +282,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
-undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing
+undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing, shape
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
@@ -304,10 +321,10 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 | Fold panels | The inspector, the layers panel and the depth brush panel have a chevron button in their title: it folds the panel to just its title (to see and paint the wallpaper behind it) and unfolds it again, in place. Panels still drag by their title while folded (`msg card fold inspector\|layers\|paint` does the same from a script) |
 | Tilt | drag the **knob** above the selected widget (0.1° steps; **Shift** = ten times finer; the magnet catches multiples of 15° within 2°) · **Ctrl+←/→** 0.1°, Ctrl+Shift 1° · Shift-drag any slider to nudge it · *Rotation* in the inspector · `rotation = 20` in the config (degrees, clockwise) |
 | Fine-tune | **arrows** 1 px · Shift+arrows 16 px · **Alt**+arrows = size (with key repeat) |
-| Change look | **wheel** over the widget (visualizer style or clock face) |
+| Change look | **wheel** over the widget (visualizer style, clock face or shape) |
 | Options | the **inspector** appears next to the selected widget, in sections (Look, Colour, Music, Time & data, Placement) showing only the settings that do something for its current look; drag it by its title to move it out of the way (double-click the title to put it back); the depth brush panel moves the same way. It offers: lists ‹ ›, switches, sliders (drag or wheel) and theme colour swatches; you see every change live |
 | Any colour | the **＋** at the end of a colour row opens the colour picker: a saturation/brightness square and a hue bar (dragged live, one undo step), a hex field (type `#rrggbb` or `#rgb`, or paste one with Ctrl+V, through `wl-paste` from wl-clipboard), an **eyedropper** that takes a colour from the wallpaper (a loupe shows the pixels under the pointer; Esc or right click cancels), the wallpaper's own dominant colours and the ones you used lately (kept in `~/.local/state/undershell/recent-colors`). The colour is stored as hex, e.g. `color = "#3a944a"`. A dark colour does not hide the editor: its accent is lifted until it reads |
-| Add | the **＋** button in the toolbar opens the gallery: visualizer, clock, music |
+| Add | the **＋** button in the toolbar opens the gallery: visualizer, clock, music, shape |
 | Duplicate / delete | **Ctrl+D** · **Del** (or the inspector buttons); with several selected, all of them (a duplicated group becomes a group of its own, stacked just above it) |
 | Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes, looks, options, additions, deletions, layers and groups) |
 | Exit | **Esc**, Enter or right-click |

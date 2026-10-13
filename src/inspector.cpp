@@ -182,6 +182,21 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "shape") {
+    const std::string shape = o["shape"].value_or(std::string("rect"));
+    const std::string fill = o["fill"].value_or(std::string("solid"));
+    if (key == "sides") return shape == "polygon" || shape == "star";
+    if (key == "sharpness") return shape == "star";
+    if (key == "corner") return in(shape, {"rect", "triangle", "polygon", "star", "line"});
+    if (key == "thickness") return shape == "ring" || shape == "line";
+    if (key == "arc") return shape == "ring";
+    if (key == "color") return fill != "none" || o["glow"].value_or(0.0) > 0;
+    if (key == "color2") return fill == "gradient" || fill == "radial";
+    if (key == "angle") return fill == "gradient";
+    if (key == "stroke_color") return o["stroke"].value_or(0.0) > 0 || o["stroke"].value_or(int64_t{0}) > 0;
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (c.type == "now_playing") {
     const std::string layout = o["layout"].value_or(std::string("sheet"));
     // the text layout is the track and nothing else: its fonts, the artist's
@@ -593,8 +608,8 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     return false;
   };
   auto section = [&](const std::string& k) {
-    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color"})) return 1;
-    if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps"})) return 2;
+    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle"})) return 1;
+    if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
     if (in(k, {"warp", "tilt_x", "tilt_y", "skew", "perspective", "mesh_preset", "mesh_amount", "mesh_grid", "mesh_between",
@@ -627,6 +642,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "visualizer") return es ? "Visualizador" : "Visualizer";
   if (type == "clock") return es ? "Reloj" : "Clock";
   if (type == "now_playing") return es ? "Música" : "Now playing";
+  if (type == "shape") return es ? "Forma" : "Shape";
   return "Widget";
 }
 }  // namespace
@@ -647,6 +663,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   // sizes designed on a 1080-px-high screen, scaled to this one
   const double k = std::clamp(oh / 1080.0, 0.5, 3.0);
   float dw = type == "visualizer" ? 1000 : 560, dh = type == "clock" ? 240 : 280;
+  if (type == "shape") dw = dh = 300;
   if (type == "now_playing") nowPlayingDesignSize(look, dw, dh);  // its layout sets its shape
   const int w = static_cast<int>(std::lround(dw * k));
   const int h = static_cast<int>(std::lround(dh * k));
@@ -1023,6 +1040,7 @@ bool isSaveControl(App::UiControl::Type t) {
 }
 
 const char* chipIcon(const std::string& type) {
+  if (type == "shape") return "shape";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1331,8 +1349,8 @@ void App::layoutUi(const EditSurface& e) {
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
     const float gx = std::clamp(addRect.x - 10, 12.0F, W - 282), gy = kBarY + kBarH + 10;
-    m_ui.push_back({UiControl::Panel, {gx, gy, 270, 3 * 70 + 10}, -1, "gallery"});
-    const char* types[] = {"visualizer", "clock", "now_playing"};
+    const char* types[] = {"visualizer", "clock", "now_playing", "shape"};
+    m_ui.push_back({UiControl::Panel, {gx, gy, 270, std::size(types) * 70.0F + 10}, -1, "gallery"});
     float y = gy + 8;
     for (const char* t : types) {
       m_ui.push_back({UiControl::GalleryItem, {gx + 8, y, 254, 62}, -1, t});
@@ -2246,6 +2264,9 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.segment(cx, cy - s * 6, cx, cy + s * 6, 1.8F, col);
     c.segment(cx, cy + s * 6, cx - 4.5F, cy + s * 1.5F, 1.8F, col);
     c.segment(cx, cy + s * 6, cx + 4.5F, cy + s * 1.5F, 1.8F, col);
+  } else if (name == "shape") {  // a square behind a circle
+    c.roundRect(cx - 7, cy - 7, 9, 9, 2, Color{0, 0, 0, 0}, 1.5F, col);
+    c.circle(cx + 2.5F, cy + 2.5F, 4.8F, col);
   } else if (name == "folder") {
     c.roundRect(cx - 7, cy - 4, 14, 10, 2, Color{0, 0, 0, 0}, 1.4F, col);
     c.roundRect(cx - 7, cy - 6.5F, 6, 4, 1.5F, col);
@@ -2707,8 +2728,9 @@ void App::drawUi(EditSurface& e) {
     cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 12, hot ? withAlphaC(accent, 0.16F) : raised);
     cv.roundRect(c.r.x + 12, c.r.y + 15, 32, 32, 10, withAlphaC(accent, 0.22F));
     icon(cv, chipIcon(c.value), c.r.x + 28, c.r.y + 31, accent);
-    const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 12 estilos" : "Audio spectrum · 12 looks")
+    const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 25 estilos" : "Audio spectrum · 25 looks")
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
+                       : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);

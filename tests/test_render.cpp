@@ -5,6 +5,7 @@
 #include "media.hpp"
 #include "nowplaying.hpp"
 #include "offscreen.hpp"
+#include "shape.hpp"
 #include <array>
 #include <chrono>
 #include <thread>
@@ -981,5 +982,57 @@ int main(int argc, char** argv) {
                  "%d image(s) differ from tests/golden: expected on a different GPU, driver or font stack; "
                  "not a failure (UNDERSHELL_GOLDEN=strict makes it one)\n",
                  g_goldenMismatches);
+  // shapes: every one draws, upright ones are symmetric, the ring opens at
+  // the bottom, an outline leaves the middle clear; one matches its golden
+  {
+    auto alphaAt = [](const Image& img, int x, int y) { return img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3]; };
+    for (const auto& name : ShapeWidget::shapes()) {
+      toml::table o;
+      o.insert_or_assign("shape", name);
+      const Image img = renderWidget("shape", o, 120, 120, pal);
+      size_t lit = 0, left = 0, right = 0;
+      for (int y = 0; y < 120; ++y)
+        for (int x = 0; x < 120; ++x) {
+          const int a = alphaAt(img, x, y);
+          lit += a > 128;
+          (x < 60 ? left : right) += static_cast<size_t>(a);
+        }
+      CHECK(lit > (name == "line" ? 1000u : 3000u));
+      if (name == "rect" || name == "ellipse" || name == "triangle" || name == "polygon" || name == "star" || name == "heart" ||
+          name == "ring")
+        CHECK(std::abs(static_cast<double>(left) - static_cast<double>(right)) < 0.02 * static_cast<double>(left + right));
+    }
+    toml::table ring;
+    ring.insert_or_assign("shape", "ring");
+    ring.insert_or_assign("arc", 270);
+    const Image r = renderWidget("shape", ring, 120, 120, pal);
+    CHECK(alphaAt(r, 60, 4) > 200 && alphaAt(r, 60, 115) < 20 && alphaAt(r, 60, 60) < 20);
+    toml::table outline;
+    outline.insert_or_assign("shape", "heart");
+    outline.insert_or_assign("fill", "none");
+    outline.insert_or_assign("stroke", 4);
+    const Image h = renderWidget("shape", outline, 120, 120, pal);
+    CHECK(alphaAt(h, 60, 60) < 10);
+    toml::table star;
+    star.insert_or_assign("shape", "star");
+    star.insert_or_assign("sides", 6);
+    star.insert_or_assign("fill", "gradient");
+    star.insert_or_assign("glow", 0.7);
+    star.insert_or_assign("stroke", 3);
+    star.insert_or_assign("shadow", 0.5);
+    const Image img = renderWidget("shape", star, 200, 200, pal);
+    CHECK(alphaAt(img, 100, 100) > 250 && alphaAt(img, 2, 2) < 4);
+    const std::string path = golden + "/shape-star.png";
+    if (update) {
+      writePng(img, path, false);
+    } else {
+      Image ref;
+      CHECK(readPng(path, ref));
+      const double d = imageDiff(img, ref);
+      if (d < 0 || d > 1.5) std::fprintf(stderr, "shape-star differs from golden: %.3f\n", d);
+      GOLDEN(d);
+    }
+  }
+
   return TEST_RESULT();
 }

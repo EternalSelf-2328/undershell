@@ -672,6 +672,11 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "shape") {
+    b += std::format("shape = \"{}\"           # rect ellipse triangle polygon star heart ring line, or a Material shape\n",
+                     look.empty() ? "rect" : look);
+    b += "fill = \"solid\"            # solid gradient radial none\n"
+         "color = \"primary\"\ncolor2 = \"tertiary\"\n";
   } else if (type == "now_playing") {
     b += std::format("layout = \"{}\"           # sheet vinyl tile poster strip portrait\n", look.empty() ? "sheet" : look);
     b += "plate = \"cover\"           # cover glass none\n"
