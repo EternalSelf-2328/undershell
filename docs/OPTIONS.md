@@ -24,7 +24,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | Key | Values | Default | |
 |---|---|---|---|
 | `id` | text | type name | unique name (used by `msg set/select/remove`) |
-| `type` | `visualizer`, `clock`, `now_playing`, `shape` | `"visualizer"` | |
+| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
@@ -150,6 +150,28 @@ A geometric shape, to build compositions out of layers.
 | `shadow` | 0 – 1 | `0` | Shadow |
 | `react` | `none`, `pulse`, `glow` | `"none"` | With the music |
 | `spin` | -120 – 120 | `0` | Spin °/s |
+| `opacity` | 0.05 – 1 | `1` | Opacity |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
+
+## `type = "image"`
+
+A picture, a sticker, a GIF or a video, with its transparency.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `file` | path (`~/` allowed) | `""` | PNG, JPG, GIF, WebP, APNG or a video (the inspector's Choose button) |
+| `fit` | `fit`, `fill`, `stretch` | `"fit"` | Fit |
+| `cut` | `none`, `circle`, `cookie12Sided`, `cookie9Sided`, `cookie7Sided`, `cookie6Sided`, `cookie4Sided`, `flower`, `clover8Leaf`, `clover4Leaf`, `softBurst`, `burst`, `sunny`, `verySunny`, `puffyDiamond`, `pentagon`, `pill`, `oval` | `"none"` | Cut to |
+| `corner` | 0 – 1 | `0` | Rounding |
+| `outline` | 0 – 40 | `0` | Sticker outline px |
+| `outline_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#ffffff"` | Outline colour |
+| `shadow` | 0 – 1 | `0` | Shadow |
+| `mirror` | `true` / `false` | `false` | Mirror |
+| `speed` | 0 – 4 | `1` | Speed |
+| `react` | `none`, `bounce`, `pulse` | `"none"` | With the music |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |

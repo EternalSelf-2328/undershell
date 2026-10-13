@@ -64,7 +64,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"spectrum", "Espectro"}, {"matrix", "Matrix"}, {"monitor", "Monitor del sistema"}, {"green", "Verde"}, {"amber", "Ámbar"}, {"peony", "Peonía"}, {"willow", "Sauce"}, {"heart", "Corazón"}, {"star", "Estrella"},
       {"bolt", "Rayo"}, {"note", "Nota"}, {"arrow", "Flecha"}, {"snow", "Nieve"}, {"petals", "Pétalos"}, {"black", "Negro"}, {"white", "Blanco"}, {"top", "Arriba"}, {"bottom", "Abajo"}, {"straight", "Recto"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
       {"rect", "Rectángulo"}, {"ellipse", "Elipse"}, {"triangle", "Triángulo"}, {"polygon", "Polígono"}, {"ring", "Anillo"},
-      {"solid", "Sólido"}, {"pulse", "Pulso"}, {"glow", "Brillo"},
+      {"solid", "Sólido"}, {"pulse", "Pulso"}, {"glow", "Brillo"}, {"stretch", "Estirar"}, {"bounce", "Rebote"},
   };
   static const std::map<std::string_view, const char*> kEn = {
       {"bighour", "Big hour"}, {"goodnight", "Good night"}, {"en", "English"}, {"es", "Spanish"},

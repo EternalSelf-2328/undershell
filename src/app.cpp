@@ -1516,14 +1516,15 @@ std::string App::handleCommand(const std::string& cmd) {
     markEditDirty();
     return "downloading the depth model (~95 MB); `undershell msg status` shows how far";
   }
-  if (cmd.rfind("pick-files ", 0) == 0) {  // the TV's "+ Files" / "+ Folder": pick-files <id> [folder]
+  if (cmd.rfind("pick-files ", 0) == 0) {  // the TV's "+ Files" / "+ Folder", an image's picture: pick-files <id> [folder]
     std::istringstream in(cmd.substr(11));
     std::string id, what;
     in >> id >> what;
     for (auto& w : m_widgets)
       if (w->cfg.id == id) {
         if (m_picker.busy()) return "error: a file chooser is already open";
-        pickFiles(*w, what == "folder");
+        if (w->cfg.type == "image") pickFiles(*w, false, "file");  // its one picture
+        else pickFiles(*w, what == "folder");
         return "choosing";
       }
     return "error: no widget " + id;

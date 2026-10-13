@@ -1034,5 +1034,37 @@ int main(int argc, char** argv) {
     }
   }
 
+  // a picture with transparency (a red disc on nothing): drawn in its box,
+  // outlined round its silhouette, clear where it is clear; an empty image
+  // widget shows its hint
+  {
+    Image disc;
+    disc.w = disc.h = 100;
+    disc.rgba.assign(100 * 100 * 4, 0);
+    for (int y = 0; y < 100; ++y)
+      for (int x = 0; x < 100; ++x)
+        if (std::hypot(x - 49.5, y - 49.5) < 30) {
+          uint8_t* p = &disc.rgba[(static_cast<size_t>(y) * 100 + x) * 4];
+          p[0] = 230, p[1] = 40, p[2] = 30, p[3] = 255;
+        }
+    const std::string png = (std::filesystem::temp_directory_path() / "undershell-test-disc.png").string();
+    CHECK(writePng(disc, png, false));
+    toml::table o;
+    o.insert_or_assign("file", png);
+    o.insert_or_assign("outline", 6);
+    const Image img = renderWidget("image", o, 160, 160, pal, 1000, 1, 3.0);
+    auto px = [&](int x, int y) { return &img.rgba[(static_cast<size_t>(y) * 160 + x) * 4]; };
+    CHECK(px(80, 80)[3] > 250 && px(80, 80)[0] > 180 && px(80, 80)[1] < 80);  // the disc
+    // the disc fills the box less its outline (7 px): radius (80 - 7) * 0.6; the band just outside is white
+    const int edge = 80 + static_cast<int>((80 - 7) * 0.6) + 3;
+    CHECK(px(edge, 80)[3] > 200 && px(edge, 80)[1] > 200 && px(edge, 80)[2] > 200);
+    CHECK(px(4, 4)[3] < 4 && px(155, 155)[3] < 4);  // clear round it
+    std::filesystem::remove(png);
+    const Image hint = renderWidget("image", toml::table{}, 120, 90, pal);
+    size_t lit = 0;
+    for (size_t i = 3; i < hint.rgba.size(); i += 4) lit += hint.rgba[i] > 100;
+    CHECK(lit > 100);
+  }
+
   return TEST_RESULT();
 }

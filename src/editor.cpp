@@ -15,6 +15,7 @@
 #undef namespace
 
 #include <cmath>
+#include <filesystem>
 #include <format>
 #include <numbers>
 #include <linux/input-event-codes.h>
@@ -65,10 +66,18 @@ std::string degreesText(double d) {
 bool spanish() { return spanishUi(); }
 
 // the key that selects a widget's look, and its current value
-const char* lookKey(const Widget& w) { return w.cfg.type == "clock" ? "face" : w.cfg.type == "shape" ? "shape" : "style"; }
+const char* lookKey(const Widget& w) {
+  if (w.cfg.type == "clock") return "face";
+  if (w.cfg.type == "shape") return "shape";
+  if (w.cfg.type == "now_playing") return "layout";
+  if (w.cfg.type == "image") return "fit";
+  return "style";
+}
 std::string lookOf(const Widget& w) {
   if (w.cfg.type == "clock") return w.cfg.options["face"].value_or(std::string("digital"));
   if (w.cfg.type == "shape") return w.cfg.options["shape"].value_or(std::string("rect"));
+  if (w.cfg.type == "now_playing") return w.cfg.options["layout"].value_or(std::string("sheet"));
+  if (w.cfg.type == "image") return w.cfg.options["fit"].value_or(std::string("fit"));
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace
@@ -1191,7 +1200,13 @@ void App::drawEditorText(EditSurface& e) {
   for (auto& w : m_widgets) {
     if (zoomed || w->output != e.output || !w->impl || w->impl->fullscreen() || !w->surface) continue;
     const bool sel = isSelected(w.get());
-    std::string label = std::format("{}  ·  {}  ·  {}×{}", layerName(*w), optionLabel(lookOf(*w), spanish()), w->cfg.width, w->cfg.height);
+    // what it is: its look, or for a picture the file's name
+    std::string what = optionLabel(lookOf(*w), spanish());
+    if (w->cfg.type == "image") {
+      const std::string file = w->cfg.options["file"].value_or(std::string());
+      what = file.empty() ? (spanish() ? "sin imagen" : "no picture") : std::filesystem::path(file).filename().string();
+    }
+    std::string label = std::format("{}  ·  {}  ·  {}×{}", layerName(*w), what, w->cfg.width, w->cfg.height);
     if (turnedOnly(w->cfg) && !handPlaced(w->cfg)) label += std::format("  ·  {}°", degreesText(w->cfg.rotation));
     if (m_drag != Drag::None && m_drag != Drag::Rotate && w.get() == m_pointerWidget)
       label += std::format("  @ {},{}", w->cfg.x, w->cfg.y);

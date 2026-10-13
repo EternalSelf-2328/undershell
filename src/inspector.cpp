@@ -182,6 +182,12 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "image") {
+    if (key == "corner") return o["cut"].value_or(std::string("none")) == "none";
+    if (key == "outline_color") return o["outline"].value_or(0.0) > 0 || o["outline"].value_or(int64_t{0}) > 0;
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (c.type == "shape") {
     const std::string shape = o["shape"].value_or(std::string("rect"));
     const std::string fill = o["fill"].value_or(std::string("solid"));
@@ -318,6 +324,22 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   for (const auto& p : all)
     if (expanded == "*" || optionApplies(w.cfg, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
+  if (w.cfg.type == "image") {
+    // the picture: a button that opens the desktop's chooser, then its name (× takes it out)
+    const std::string file = w.cfg.options["file"].value_or(std::string());
+    PropSpec pick{K::Action, "file", "Choose a picture…", "Elegir imagen…"};
+    PropSpec name;
+    name.kind = K::File;
+    name.key = "file";
+    name.def = file.empty() ? -1 : 0;
+    name.defText = file;
+    std::error_code ec;
+    const fs::path p = expandHome(file);
+    name.labelEn = file.empty() ? "PNG, JPG, GIF, WebP, APNG or a video" : p.filename().string();
+    name.labelEs = file.empty() ? "PNG, JPG, GIF, WebP, APNG o un video" : p.filename().string();
+    if (!file.empty() && !fs::exists(p, ec)) name.labelEn += "  (missing)", name.labelEs += "  (no existe)";
+    s.insert(s.begin(), {pick, name});
+  }
   if (w.cfg.type == "visualizer") {
     // with nothing playing: follow [general] idle, or its own choice
     std::vector<PropSpec> idle = {
@@ -608,7 +630,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     return false;
   };
   auto section = [&](const std::string& k) {
-    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle"})) return 1;
+    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle", "outline_color"})) return 1;
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz"})) return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
@@ -643,6 +665,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "clock") return es ? "Reloj" : "Clock";
   if (type == "now_playing") return es ? "Música" : "Now playing";
   if (type == "shape") return es ? "Forma" : "Shape";
+  if (type == "image") return es ? "Imagen" : "Image";
   return "Widget";
 }
 }  // namespace
@@ -663,7 +686,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   // sizes designed on a 1080-px-high screen, scaled to this one
   const double k = std::clamp(oh / 1080.0, 0.5, 3.0);
   float dw = type == "visualizer" ? 1000 : 560, dh = type == "clock" ? 240 : 280;
-  if (type == "shape") dw = dh = 300;
+  if (type == "shape" || type == "image") dw = dh = 300;
   if (type == "now_playing") nowPlayingDesignSize(look, dw, dh);  // its layout sets its shape
   const int w = static_cast<int>(std::lround(dw * k));
   const int h = static_cast<int>(std::lround(dh * k));
@@ -778,34 +801,47 @@ void App::reshapeMesh(Widget& w, const std::string& preset, double amount, int g
 // The desktop's file chooser for the TV's files: what is picked goes after
 // what the list has (each once), written home-relative ("~/…") like a person
 // would. The editor steps aside so the dialog gets the keyboard.
-void App::pickFiles(Widget& w, bool folders) {
+void App::pickFiles(Widget& w, bool folders, const std::string& key) {
   const bool es = spanishUi();
+  const bool one = key == "file";  // the image widget: one picture
   FilePicker::Request req;
   req.folders = folders;
-  req.title = folders ? (es ? "Carpetas de videos o GIFs" : "Folders of videos or GIFs") : (es ? "Videos o GIFs" : "Videos or GIFs");
-  req.filterName = es ? "Videos y GIFs" : "Videos and GIFs";
-  req.mimes = {"video/*", "image/gif", "image/webp", "image/apng"};
-  for (const char* x : {"gif", "mp4", "webm", "mkv", "mov", "avi", "m4v", "apng", "webp"}) {
+  req.multiple = !one;
+  if (one) {
+    req.title = es ? "Imagen, sticker, GIF o video" : "Picture, sticker, GIF or video";
+    req.filterName = es ? "Imágenes y videos" : "Pictures and videos";
+    req.mimes = {"image/*", "video/*"};
+  } else {
+    req.title = folders ? (es ? "Carpetas de videos o GIFs" : "Folders of videos or GIFs") : (es ? "Videos o GIFs" : "Videos or GIFs");
+    req.filterName = es ? "Videos y GIFs" : "Videos and GIFs";
+    req.mimes = {"video/*", "image/gif", "image/webp", "image/apng"};
+  }
+  std::vector<const char*> exts = {"gif", "mp4", "webm", "mkv", "mov", "avi", "m4v", "apng", "webp"};
+  if (one) exts.insert(exts.end(), {"png", "jpg", "jpeg", "svg", "avif", "bmp", "tif", "tiff"});
+  for (const char* x : exts) {
     std::string up = x;
     for (char& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     req.patterns.push_back(std::string("*.") + x);
     req.patterns.push_back("*." + up);
   }
   req.allName = es ? "Todos los archivos" : "All files";
-  // open where the latest file still there is, else the videos folder
-  const std::vector<std::string> have = pathList(w.cfg.options, "tv_files");
+  // open where the latest file still there is, else the pictures or videos folder
+  const std::vector<std::string> have = one ? std::vector<std::string>{w.cfg.options["file"].value_or(std::string())}
+                                            : pathList(w.cfg.options, key);
   std::error_code ec;
   for (auto it = have.rbegin(); it != have.rend() && req.startDir.empty(); ++it) {
+    if (it->empty()) continue;
     fs::path at = expandHome(*it);
     if (!fs::is_directory(at, ec)) at = at.parent_path();
     if (fs::is_directory(at, ec)) req.startDir = at.string();
   }
   if (req.startDir.empty())
-    if (const char* v = g_get_user_special_dir(G_USER_DIRECTORY_VIDEOS); v && fs::is_directory(v, ec)) req.startDir = v;
+    if (const char* v = g_get_user_special_dir(one ? G_USER_DIRECTORY_PICTURES : G_USER_DIRECTORY_VIDEOS); v && fs::is_directory(v, ec))
+      req.startDir = v;
   m_pickNote.clear();
   setEditorAside(true);
   const std::string id = w.cfg.id;
-  const bool opened = m_picker.open(std::move(req), [this, id, es](std::vector<std::string> paths, std::string error) {
+  const bool opened = m_picker.open(std::move(req), [this, id, es, key, one](std::vector<std::string> paths, std::string error) {
     setEditorAside(false);
     markEditDirty();
     if (!error.empty()) {
@@ -817,14 +853,25 @@ void App::pickFiles(Widget& w, bool folders) {
     for (auto& ww : m_widgets)
       if (ww->cfg.id == id) target = ww.get();
     if (!target || paths.empty()) return;  // gone, or cancelled
-    std::vector<std::string> list = pathList(target->cfg.options, "tv_files");
     const std::string home = expandHome("~");
-    for (std::string p : paths) {
+    auto tilde = [&](std::string p) {
       if (!home.empty() && home != "/" && p.starts_with(home + "/")) p = "~" + p.substr(home.size());
-      if (std::find(list.begin(), list.end(), p) == list.end()) list.push_back(p);
-    }
+      return p;
+    };
     m_lastOpKind.clear();
-    setProp(*target, "tv_files", pathsText(list));
+    if (one) {
+      std::string q = "\"";
+      for (char c : tilde(paths.front())) {
+        if (c == '"' || c == '\\') q += '\\';
+        q += c;
+      }
+      setProp(*target, key, q + "\"");
+      return;
+    }
+    std::vector<std::string> list = pathList(target->cfg.options, key);
+    for (const std::string& p : paths)
+      if (std::find(list.begin(), list.end(), tilde(p)) == list.end()) list.push_back(tilde(p));
+    setProp(*target, key, pathsText(list));
   });
   if (!opened) setEditorAside(false);
   markEditDirty();
@@ -1041,6 +1088,7 @@ bool isSaveControl(App::UiControl::Type t) {
 
 const char* chipIcon(const std::string& type) {
   if (type == "shape") return "shape";
+  if (type == "image") return "image";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1349,7 +1397,7 @@ void App::layoutUi(const EditSurface& e) {
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
     const float gx = std::clamp(addRect.x - 10, 12.0F, W - 282), gy = kBarY + kBarH + 10;
-    const char* types[] = {"visualizer", "clock", "now_playing", "shape"};
+    const char* types[] = {"visualizer", "clock", "now_playing", "shape", "image"};
     m_ui.push_back({UiControl::Panel, {gx, gy, 270, std::size(types) * 70.0F + 10}, -1, "gallery"});
     float y = gy + 8;
     for (const char* t : types) {
@@ -1920,6 +1968,9 @@ bool App::uiPress(int index, double x) {
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "tv_files" &&
           !m_picker.busy())
         pickFiles(*w, c.value == "folder");
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "file" &&
+          !m_picker.busy())
+        pickFiles(*w, false, "file");
       if (c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "_depth_model" &&
           m_depthGen.needsModel())
         m_depthGen.download();
@@ -1928,6 +1979,13 @@ bool App::uiPress(int index, double x) {
     case UiControl::FileRemove:
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
         const PropSpec p = m_inspSchema[static_cast<size_t>(c.prop)];
+        if (p.key == "file") {  // the image widget's picture
+          m_lastOpKind.clear();
+          setProp(*w, "file", "\"\"");
+          m_pickNote.clear();
+          markEditDirty();
+          return true;
+        }
         std::vector<std::string> paths = pathList(w->cfg.options, p.key);
         const auto i = static_cast<size_t>(p.def);
         if (i < paths.size()) {
@@ -2267,6 +2325,10 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
   } else if (name == "shape") {  // a square behind a circle
     c.roundRect(cx - 7, cy - 7, 9, 9, 2, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy + 2.5F, 4.8F, col);
+  } else if (name == "image") {  // a picture: a frame, a sun and a hill
+    c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
+    c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
   } else if (name == "folder") {
     c.roundRect(cx - 7, cy - 4, 14, 10, 2, Color{0, 0, 0, 0}, 1.4F, col);
     c.roundRect(cx - 7, cy - 6.5F, 6, 4, 1.5F, col);
@@ -2627,7 +2689,7 @@ void App::drawUi(EditSurface& e) {
             // a button across the row, or two side by side
             const int idx = static_cast<int>(&p - &schema[0]);
             const bool fetch = p.key == "_depth_model";
-            const bool waiting = (p.key == "tv_files" && m_picker.busy()) ||  // the chooser is open
+            const bool waiting = ((p.key == "tv_files" || p.key == "file") && m_picker.busy()) ||  // the chooser is open
                                  (fetch && (m_depthGen.downloading() || m_depthGen.computing()));
             const size_t n = p.options.size() == 2 ? 2 : 1;
             const float bw = n == 2 ? (kPanelW - 40) / 2 : kPanelW - 32;
@@ -2731,6 +2793,7 @@ void App::drawUi(EditSurface& e) {
     const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 25 estilos" : "Audio spectrum · 25 looks")
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
                        : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
+                       : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     cv.text(desc, label, c.r.x + 56, c.r.y + 34, dim);

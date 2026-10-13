@@ -60,7 +60,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -83,6 +83,14 @@ std::string optionsMarkdown() {
   md += "| `music_app` | shell command | `\"spotify\"` | opened by the corner button (not in the inspector) |\n";
   md += "\n## `type = \"shape\"`\n\nA geometric shape, to build compositions out of layers.\n\n";
   table(md, "shape");
+  md += "\n## `type = \"image\"`\n\nA picture, a sticker, a GIF or a video, with its transparency.\n\n";
+  md += "| Key | Values | Default | |\n|---|---|---|---|\n";
+  md += "| `file` | path (`~/` allowed) | `\"\"` | PNG, JPG, GIF, WebP, APNG or a video (the inspector's Choose button) |\n";
+  {
+    std::string rest;
+    table(rest, "image");
+    md += rest.substr(rest.find("|---|---|---|---|\n") + 18);
+  }
   return md;
 }
 

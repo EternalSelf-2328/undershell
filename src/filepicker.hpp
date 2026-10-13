@@ -21,6 +21,7 @@ class FilePicker {
 public:
   struct Request {
     bool folders = false;               // pick folders instead of files
+    bool multiple = true;               // several at once
     std::string title;
     std::string filterName;             // the files it shows first…
     std::vector<std::string> mimes;     // …by type (the portal)

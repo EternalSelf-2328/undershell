@@ -42,9 +42,10 @@ bool VideoSource::videoSupport() {
 #endif
 }
 
-bool VideoSource::open(const std::string& path, int w, int h) {
+bool VideoSource::open(const std::string& path, int w, int h, bool rgba) {
   close();
   m_path = path;
+  m_rgba = rgba;
   m_wantW = std::max(16, w);
   m_wantH = std::max(16, h);
   m_stop = false;
@@ -87,17 +88,25 @@ bool VideoSource::push(Frame&& f) {
 }
 
 void VideoSource::run() {
+#ifdef US_HAVE_FFMPEG
+  if (runFfmpeg()) return;
+#endif
+  runPixbuf();
+}
+
+#ifdef US_HAVE_FFMPEG
+bool VideoSource::runFfmpeg() {
   auto fail = [this](std::string why) {
     std::lock_guard lock(m_mutex);
     m_error = std::move(why);
-    US_WARN("tv: {}: {}", m_path, m_error);
+    US_WARN("video: {}: {}", m_path, m_error);
+    return true;
   };
-#ifdef US_HAVE_FFMPEG
   AVFormatContext* fmt = nullptr;
-  if (avformat_open_input(&fmt, m_path.c_str(), nullptr, nullptr) < 0) return fail("cannot open it");
+  if (avformat_open_input(&fmt, m_path.c_str(), nullptr, nullptr) < 0) return false;
   if (avformat_find_stream_info(fmt, nullptr) < 0) {
     avformat_close_input(&fmt);
-    return fail("no stream information");
+    return false;
   }
   const AVCodec* codec = nullptr;
   const int si = av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
@@ -140,23 +149,40 @@ void VideoSource::run() {
     last = pts;
     int w, h;
     fitSize(f->width, f->height, m_wantW, m_wantH, w, h);
-    sws = sws_getCachedContext(sws, f->width, f->height, static_cast<AVPixelFormat>(f->format), w, h, AV_PIX_FMT_YUV420P,
-                               SWS_BILINEAR, nullptr, nullptr, nullptr);
+    // JPEG's "J" formats are the plain ones in full range (swscale warns about them)
+    AVPixelFormat src = static_cast<AVPixelFormat>(f->format);
+    bool full = f->color_range == AVCOL_RANGE_JPEG;
+    switch (src) {
+      case AV_PIX_FMT_YUVJ420P: src = AV_PIX_FMT_YUV420P, full = true; break;
+      case AV_PIX_FMT_YUVJ422P: src = AV_PIX_FMT_YUV422P, full = true; break;
+      case AV_PIX_FMT_YUVJ444P: src = AV_PIX_FMT_YUV444P, full = true; break;
+      case AV_PIX_FMT_YUVJ440P: src = AV_PIX_FMT_YUV440P, full = true; break;
+      case AV_PIX_FMT_YUVJ411P: src = AV_PIX_FMT_YUV411P, full = true; break;
+      default: break;
+    }
+    sws = sws_getCachedContext(sws, f->width, f->height, src, w, h, m_rgba ? AV_PIX_FMT_RGBA : AV_PIX_FMT_YUV420P, SWS_BILINEAR,
+                               nullptr, nullptr, nullptr);
     if (!sws) return;
     {  // out in full range BT.601, whatever came in: the shader knows one form
       const int* srcCs = sws_getCoefficients(f->colorspace == AVCOL_SPC_BT709 ? SWS_CS_ITU709 : SWS_CS_ITU601);
-      sws_setColorspaceDetails(sws, srcCs, f->color_range == AVCOL_RANGE_JPEG ? 1 : 0, sws_getCoefficients(SWS_CS_ITU601), 1, 0,
-                               1 << 16, 1 << 16);
+      sws_setColorspaceDetails(sws, srcCs, full ? 1 : 0, sws_getCoefficients(SWS_CS_ITU601), 1, 0, 1 << 16, 1 << 16);
     }
     Frame out;
     out.pts = pts + loops * loopLen;
     out.w = w;
     out.h = h;
-    out.yuv.resize(static_cast<size_t>(w) * h * 3 / 2);
-    uint8_t* dst[4] = {out.yuv.data(), out.yuv.data() + static_cast<size_t>(w) * h,
-                       out.yuv.data() + static_cast<size_t>(w) * h * 5 / 4, nullptr};
-    const int dstStride[4] = {w, w / 2, w / 2, 0};
-    sws_scale(sws, f->data, f->linesize, 0, f->height, dst, dstStride);
+    if (m_rgba) {
+      out.yuv.resize(static_cast<size_t>(w) * h * 4);
+      uint8_t* dst[4] = {out.yuv.data(), nullptr, nullptr, nullptr};
+      const int dstStride[4] = {w * 4, 0, 0, 0};
+      sws_scale(sws, f->data, f->linesize, 0, f->height, dst, dstStride);
+    } else {
+      out.yuv.resize(static_cast<size_t>(w) * h * 3 / 2);
+      uint8_t* dst[4] = {out.yuv.data(), out.yuv.data() + static_cast<size_t>(w) * h,
+                         out.yuv.data() + static_cast<size_t>(w) * h * 5 / 4, nullptr};
+      const int dstStride[4] = {w, w / 2, w / 2, 0};
+      sws_scale(sws, f->data, f->linesize, 0, f->height, dst, dstStride);
+    }
     if (caching && loops == 0) {
       cacheBytes += out.yuv.size();
       if (cacheBytes > kCacheBudget || firstPass.size() >= kMaxFrames) {
@@ -199,16 +225,26 @@ void VideoSource::run() {
   av_packet_free(&pkt);
   avcodec_free_context(&ctx);
   avformat_close_input(&fmt);
-#else
-  // without FFmpeg: GIFs (and still images) through gdk-pixbuf, kept whole
-  // (its animation API is deprecated, and still the one there is)
+  return true;
+}
+#endif
+
+// GIFs and still pictures through gdk-pixbuf, kept whole (its animation API
+// is deprecated, and still the one there is): without FFmpeg, and for what
+// FFmpeg cannot open
+void VideoSource::runPixbuf() {
+  auto fail = [this](std::string why) {
+    std::lock_guard lock(m_mutex);
+    m_error = std::move(why);
+    US_WARN("video: {}: {}", m_path, m_error);
+  };
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   GError* err = nullptr;
   GdkPixbufAnimation* anim = gdk_pixbuf_animation_new_from_file(m_path.c_str(), &err);
   if (!anim) {
     if (err) g_error_free(err);
-    return fail("cannot open it (videos need undershell built with FFmpeg)");
+    return fail(videoSupport() ? "cannot open it" : "cannot open it (videos need undershell built with FFmpeg)");
   }
   GTimeVal t{0, 0};
   GdkPixbufAnimationIter* it = gdk_pixbuf_animation_get_iter(anim, &t);
@@ -227,9 +263,22 @@ void VideoSource::run() {
     f.pts = pts;
     f.w = w;
     f.h = h;
-    f.yuv.resize(static_cast<size_t>(w) * h * 3 / 2);
     const int stride = gdk_pixbuf_get_rowstride(rgba);
     const guchar* px = gdk_pixbuf_read_pixels(rgba);
+    if (m_rgba) {  // as it is
+      f.yuv.resize(static_cast<size_t>(w) * h * 4);
+      for (int y = 0; y < h; ++y) std::memcpy(f.yuv.data() + static_cast<size_t>(y) * w * 4, px + static_cast<size_t>(y) * stride, static_cast<size_t>(w) * 4);
+      g_object_unref(rgba);
+      g_object_unref(scaled);
+      frames.push_back(std::move(f));
+      const int delay = gdk_pixbuf_animation_iter_get_delay_time(it);
+      if (delay < 0) break;  // a still image
+      pts += std::max(20, delay) / 1000.0;
+      g_time_val_add(&t, static_cast<glong>(std::max(20, delay)) * 1000);
+      gdk_pixbuf_animation_iter_advance(it, &t);
+      continue;
+    }
+    f.yuv.resize(static_cast<size_t>(w) * h * 3 / 2);
     uint8_t* Y = f.yuv.data();
     uint8_t* U = Y + static_cast<size_t>(w) * h;
     uint8_t* V = U + static_cast<size_t>(w) * h / 4;
@@ -265,7 +314,6 @@ void VideoSource::run() {
   m_cache = std::move(frames);
   m_cached = !m_cache.empty();
 #pragma GCC diagnostic pop
-#endif
 }
 
 bool VideoSource::advance(double dt, double speed) {
@@ -307,9 +355,26 @@ bool VideoSource::advance(double dt, double speed) {
   return true;
 }
 
-// the three planes, as three one-channel textures
+// the three planes, as three one-channel textures (or the RGBA picture, with mipmaps)
 void VideoSource::upload(const Frame& f) {
   if (!m_tex[0]) glGenTextures(3, m_tex);
+  if (m_rgba) {
+    glBindTexture(GL_TEXTURE_2D, m_tex[0]);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    if (f.w != m_texW || f.h != m_texH) {
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, f.w, f.h, 0, GL_RGBA, GL_UNSIGNED_BYTE, f.yuv.data());
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    } else {
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, f.w, f.h, GL_RGBA, GL_UNSIGNED_BYTE, f.yuv.data());
+    }
+    glGenerateMipmap(GL_TEXTURE_2D);
+    m_texW = f.w;
+    m_texH = f.h;
+    return;
+  }
   const bool resize = f.w != m_texW || f.h != m_texH;
   const uint8_t* planes[3] = {f.yuv.data(), f.yuv.data() + static_cast<size_t>(f.w) * f.h,
                               f.yuv.data() + static_cast<size_t>(f.w) * f.h * 5 / 4};
@@ -330,6 +395,25 @@ void VideoSource::upload(const Frame& f) {
   glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
   m_texW = f.w;
   m_texH = f.h;
+}
+
+double VideoSource::nextFrameIn(double speed) const {
+  std::lock_guard lock(m_mutex);
+  if (!m_open || speed <= 0 || !m_error.empty()) return 1e9;
+  if (m_clock < 0) return 0.03;  // the first frame is on its way
+  if (!m_queue.empty()) return std::max(0.0, (m_queue.front().pts - m_clock) / speed);
+  if (m_cached) {
+    if (m_cache.size() < 2) return 1e9;  // a still picture
+    const double t = std::fmod(m_clock, m_cacheLength);
+    const double next = m_cacheIndex + 1 < m_cache.size() ? m_cache[m_cacheIndex + 1].pts : m_cacheLength;
+    return std::max(0.0, (next - t) / speed);
+  }
+  return 0.02;  // the decoder is behind
+}
+
+bool VideoSource::still() const {
+  std::lock_guard lock(m_mutex);
+  return m_cached && m_cache.size() == 1;
 }
 
 void VideoSource::releaseGl() {

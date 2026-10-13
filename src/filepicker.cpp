@@ -87,7 +87,7 @@ bool FilePicker::openPortal() {
   if (r >= 0) r = sd_bus_message_append(msg, "ss", "", m_req.title.c_str());
   if (r >= 0) r = sd_bus_message_open_container(msg, 'a', "{sv}");
   if (r >= 0) r = sd_bus_message_append(msg, "{sv}", "handle_token", "s", token.c_str());
-  if (r >= 0) r = sd_bus_message_append(msg, "{sv}", "multiple", "b", 1);
+  if (r >= 0) r = sd_bus_message_append(msg, "{sv}", "multiple", "b", m_req.multiple ? 1 : 0);
   if (r >= 0 && m_req.folders) r = sd_bus_message_append(msg, "{sv}", "directory", "b", 1);
   if (r >= 0 && !m_req.folders && !m_req.mimes.empty()) {
     // filters a(sa(us)): (name, [(0 = glob | 1 = mime type, pattern)])
@@ -191,7 +191,8 @@ bool FilePicker::spawnFallback() {
   for (const std::string& p : m_req.patterns) globs += (globs.empty() ? "" : " ") + p;
   const std::vector<std::vector<std::string>> tries = {
       [&] {
-        std::vector<std::string> a = {"zenity", "--file-selection", "--multiple", "--separator=\n", "--title=" + m_req.title};
+        std::vector<std::string> a = {"zenity", "--file-selection", "--separator=\n", "--title=" + m_req.title};
+        if (m_req.multiple) a.push_back("--multiple");
         if (m_req.folders) a.push_back("--directory");
         if (!dir.empty()) a.push_back("--filename=" + dir);
         if (!m_req.folders && !globs.empty()) {
@@ -205,7 +206,8 @@ bool FilePicker::spawnFallback() {
         if (m_req.folders) {
           a.insert(a.end(), {"--getexistingdirectory", dir.empty() ? std::string(".") : dir});
         } else {
-          a.insert(a.end(), {"--multiple", "--separate-output", "--getopenfilename", dir.empty() ? std::string(".") : dir});
+          if (m_req.multiple) a.insert(a.end(), {"--multiple", "--separate-output"});
+          a.insert(a.end(), {"--getopenfilename", dir.empty() ? std::string(".") : dir});
           if (!globs.empty()) a.push_back(globs + "|" + m_req.filterName);
         }
         return a;

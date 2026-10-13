@@ -672,6 +672,9 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "image") {
+    b += "file = \"\"                # a picture, a GIF or a video (the inspector's Choose button)\n"
+         "fit = \"fit\"               # fit fill stretch\n";
   } else if (type == "shape") {
     b += std::format("shape = \"{}\"           # rect ellipse triangle polygon star heart ring line, or a Material shape\n",
                      look.empty() ? "rect" : look);

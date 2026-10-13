@@ -275,6 +275,25 @@ over one in the editor steps through the shapes.
   <img src="docs/media/shapes.webp" alt="Every shape, and a few with a gradient, a glow, an outline and a shadow" width="600">
 </p>
 
+## Pictures and stickers
+
+The **image** widget puts a picture on the desktop: a photo, a sticker, a GIF,
+an animated WebP or APNG, or a video, keeping its transparency. **Choose a
+picture…** in the inspector opens the desktop's file chooser (or
+`msg pick-files <id>`, or `file = "~/Pictures/cat.png"`). It is fitted into
+its box (**Fit**: all of it, filling it, or stretched), with rounded corners
+or **cut** to a circle or a Material 3 shape, and as a sticker: an
+**outline** round its silhouette in any colour and a soft **shadow** under
+it. **Mirror** flips it; an animation has a **speed**; it can **bounce** or
+**pulse** with the music's kicks. Like every widget it can pass behind the
+wallpaper's subject.
+
+A still picture is decoded once, at the size it is shown, and drawn once. An
+animation is decoded on its own thread (FFmpeg, as for the TV; GIFs and still
+pictures also through gdk-pixbuf), kept whole when it is short, and the
+widget sleeps until its next frame is due: a 12 fps GIF is drawn 12 times a
+second.
+
 ## Usage
 
 ```sh
@@ -282,7 +301,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
-undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing, shape
+undershell msg add clock flip  # add a widget to the config: visualizer, clock, now_playing, shape, image
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
@@ -290,7 +309,7 @@ undershell msg remove clock    # remove it
 undershell msg select clock    # select it in the editor (scripts); several ids select them together
 undershell msg group viz clock # group widgets (ungroup <id>: its whole group)
 undershell msg layer clock up  # restack it: up, down, front, back
-undershell msg pick-files tv   # the TV's file chooser: adds to its tv_files ("folder" for folders)
+undershell msg pick-files tv   # the TV's file chooser: adds to its tv_files ("folder" for folders); an image's picture
 undershell msg depth-model     # download the depth model (~95 MB)
 undershell msg gallery         # open the editor with the gallery
 undershell msg reload
@@ -324,7 +343,7 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 | Change look | **wheel** over the widget (visualizer style, clock face or shape) |
 | Options | the **inspector** appears next to the selected widget, in sections (Look, Colour, Music, Time & data, Placement) showing only the settings that do something for its current look; drag it by its title to move it out of the way (double-click the title to put it back); the depth brush panel moves the same way. It offers: lists ‹ ›, switches, sliders (drag or wheel) and theme colour swatches; you see every change live |
 | Any colour | the **＋** at the end of a colour row opens the colour picker: a saturation/brightness square and a hue bar (dragged live, one undo step), a hex field (type `#rrggbb` or `#rgb`, or paste one with Ctrl+V, through `wl-paste` from wl-clipboard), an **eyedropper** that takes a colour from the wallpaper (a loupe shows the pixels under the pointer; Esc or right click cancels), the wallpaper's own dominant colours and the ones you used lately (kept in `~/.local/state/undershell/recent-colors`). The colour is stored as hex, e.g. `color = "#3a944a"`. A dark colour does not hide the editor: its accent is lifted until it reads |
-| Add | the **＋** button in the toolbar opens the gallery: visualizer, clock, music, shape |
+| Add | the **＋** button in the toolbar opens the gallery: visualizer, clock, music, shape, image |
 | Duplicate / delete | **Ctrl+D** · **Del** (or the inspector buttons); with several selected, all of them (a duplicated group becomes a group of its own, stacked just above it) |
 | Undo / redo | **Ctrl+Z** · **Ctrl+Shift+Z** / Ctrl+Y (moves, sizes, looks, options, additions, deletions, layers and groups) |
 | Exit | **Esc**, Enter or right-click |

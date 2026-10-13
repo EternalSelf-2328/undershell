@@ -47,9 +47,10 @@ struct MediaState;
 Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaState& noct, double now,
                        const toml::table* options = nullptr, int settleSteps = 60);
 // Renders any widget type from its [[widget]] table, after `ticks` ticks of
-// 1/60 s from `now` (needs Headless): the shapes, and widget types to come
+// 1/60 s from `now` (needs Headless). A widget that loads on a thread (an
+// image) is drawn again until something shows, for up to `waitSeconds`.
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct,
-                   double now = 1000, int ticks = 1);
+                   double now = 1000, int ticks = 1, double waitSeconds = 0);
 // Lays `src` (a rendered widget) on a surface at `degrees` the way the daemon
 // draws a turned widget; the result is the turned box's surface (needs Headless).
 Image renderRotated(const Image& src, double degrees);

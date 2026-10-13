@@ -12,6 +12,9 @@
 #include "text.hpp"
 #include "visualizer.hpp"
 
+#include <chrono>
+#include <thread>
+
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <cairo.h>
@@ -240,7 +243,7 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
 }
 
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct, double now,
-                   int ticks) {
+                   int ticks, double waitSeconds) {
   std::unique_ptr<WidgetImpl> widget = createWidget(type);
   if (!widget) return {};
   WidgetConfig wc;
@@ -254,16 +257,30 @@ Image renderWidget(const std::string& type, const toml::table& options, int w, i
     tc.dt = 1 / 60.0;
     widget->tick(tc);
   }
-  Image img = renderToImage(w, h, [&] {
-    DrawContext dc;
-    dc.w = static_cast<float>(w);
-    dc.h = static_cast<float>(h);
-    dc.outputW = 1920;
-    dc.outputH = 1080;
-    dc.text = &tr;
-    dc.now = now;
-    widget->draw(dc);
-  });
+  auto once = [&] {
+    return renderToImage(w, h, [&] {
+      DrawContext dc;
+      dc.w = static_cast<float>(w);
+      dc.h = static_cast<float>(h);
+      dc.outputW = 1920;
+      dc.outputH = 1080;
+      dc.text = &tr;
+      dc.now = now;
+      widget->draw(dc);
+    });
+  };
+  Image img = once();
+  for (double waited = 0; waited < waitSeconds; waited += 0.01) {
+    bool drawn = false;
+    for (size_t i = 3; i < img.rgba.size() && !drawn; i += 4) drawn = img.rgba[i] > 0;
+    if (drawn) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    TickContext tc;
+    tc.now = now + ticks / 60.0 + waited;
+    tc.dt = 0.01;
+    widget->tick(tc);
+    img = once();
+  }
   tr.releaseGl();
   return img;
 }

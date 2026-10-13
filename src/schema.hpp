@@ -146,8 +146,27 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  static const std::vector<PropSpec> image = {
+      {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
+      {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
+       "cookie4Sided", "flower", "clover8Leaf", "clover4Leaf", "softBurst", "burst", "sunny", "verySunny", "puffyDiamond", "pentagon",
+       "pill", "oval"}, 0, 0, 0, 0, "none"},
+      {K::Number, "corner", "Rounding", "Redondeo", {}, 0, 1, 0.05, 0},
+      {K::Number, "outline", "Sticker outline px", "Borde de sticker px", {}, 0, 40, 1, 0, "", true},
+      {K::Color, "outline_color", "Outline colour", "Color del borde", {}, 0, 0, 0, 0, "#ffffff"},
+      {K::Number, "shadow", "Shadow", "Sombra", {}, 0, 1, 0.05, 0},
+      {K::Bool, "mirror", "Mirror", "Espejo", {}, 0, 1, 1, 0},
+      {K::Number, "speed", "Speed", "Velocidad", {}, 0, 4, 0.05, 1},
+      {K::Enum, "react", "With the music", "Con la música", {"none", "bounce", "pulse"}, 0, 0, 0, 0, "none"},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> none;
   if (type == "shape") return shape;
+  if (type == "image") return image;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;
   if (type == "now_playing") return nowPlaying;

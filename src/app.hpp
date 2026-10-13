@@ -293,7 +293,9 @@ private:
   bool uiScroll(double x, double y, int step);
   void setProp(Widget& w, const std::string& key, const std::string& tomlValue);
   // the TV's files: the desktop's chooser adds to tv_files (inspector.cpp)
-  void pickFiles(Widget& w, bool folders);
+  // the TV's files: the desktop's chooser adds to tv_files; key "file": the
+  // image widget's one picture
+  void pickFiles(Widget& w, bool folders, const std::string& key = "tv_files");
   void setEditorAside(bool aside);  // under the windows while a dialog is open
   void applyProp(Widget& w, const std::string& key, const std::string& tomlValue);
   // stores an option in the widget and the file without an undo step (a
