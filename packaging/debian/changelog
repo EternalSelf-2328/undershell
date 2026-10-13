@@ -1,3 +1,12 @@
+undershell (1.2.0) unstable; urgency=medium
+
+  * Layers panel and groups; shape, image, text, lyrics, calendar and notes
+    widgets.
+  * Own depth maps without Noctalia's plugin; colour picker; scroll bars.
+  * Packages built for every release on GitHub.
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Tue, 13 Oct 2026 10:00:00 +0000
+
 undershell (1.1.0) unstable; urgency=medium
 
   * First Debian package.
