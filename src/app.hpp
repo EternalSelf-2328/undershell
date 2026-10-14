@@ -428,7 +428,10 @@ private:
   // the toolbar: top or bottom per output (it steps aside from widgets), and
   // the band left for the panels this frame
   std::map<std::string, bool> m_barBottom;
-  float m_barY = 50, m_areaTop = 110, m_areaBottom = 0;
+  float m_barY = 50, m_areaTop = 110, m_areaBottom = 0, m_areaLeft = 12, m_areaRight = 0;
+  int m_barSide = 0;        // where the user stood the toolbar up: -1 left, 1 right, 0 a row
+  bool m_barBelow = false;  // a row in the screen's lower half: popovers open above it
+  Rect m_barRect;
   std::string m_scrollDrag;      // the panel whose bar is being dragged
   float m_scrollGrab = 0;        // where on the thumb it was taken
   void addScrollBar(const std::string& panel, Rect track, float total, float visible, float pos);

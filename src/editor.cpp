@@ -926,6 +926,11 @@ void App::onPointerMotion(double x, double y) {
   }
   if (m_drag == Drag::Panel) {  // moving a panel out of the way
     m_panelPos[m_panelDrag] = {static_cast<float>(x) - m_panelGrabX, static_cast<float>(y) - m_panelGrabY};
+    if (m_panelDrag == "toolbar" && m_pointerEdit && m_pointerEdit->output) {
+      // near a side it stands up as a column there; anywhere else it is a row
+      const double ow = m_pointerEdit->output->logicalW();
+      m_barSide = x < 64 ? -1 : x > ow - 64 ? 1 : 0;
+    }
     markEditDirty();
     return;
   }

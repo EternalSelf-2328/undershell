@@ -1253,19 +1253,26 @@ void App::layoutUi(const EditSurface& e) {
   const float W = static_cast<float>(e.w), H = static_cast<float>(e.h);
   const TextStyle chipText{.family = "Space Grotesk", .size = 13, .weight = 600};
 
-  // ── toolbar: measure, then centre ──
+  // ── toolbar: a row (automatic, or placed by hand) or a column against a side ──
+  // Automatic: centred at the top, or at the bottom while a widget lies under
+  // it at the top. Dragged by its grip anywhere it stays there; let go near
+  // the left or right edge it stands up as a column there. A double click on
+  // the grip gives it back to the automatic place.
   struct Item {
     UiControl::Type type;
-    float w;
+    float w;  // its length along the bar
     std::string value;
   };
+  const bool manual = m_panelPos.count("toolbar") > 0;
+  const int side = manual ? m_barSide : 0;  // -1 left column, 1 right column, 0 a row
+  const bool vertical = side != 0;
   std::vector<Item> items = {{UiControl::Plus, kBtn, ""},   {UiControl::Panel, kSep, "sep"},
                              {UiControl::Undo, kBtn, ""},   {UiControl::Redo, kBtn, ""},
                              {UiControl::Panel, kSep, "sep"}, {UiControl::Magnet, kBtn, ""},
                              {UiControl::Grid, kBtn, ""},   {UiControl::Panel, kSep, "sep"},
                              {UiControl::Saves, kBtn, ""},  {UiControl::Layers, kBtn, ""},
                              {UiControl::Paint, kBtn, ""},  {UiControl::Panel, kSep, "sep"}};
-  // a chip per widget while they fit on the bar (the Layers panel lists them all)
+  // a chip per widget while they fit on a row (the Layers panel lists them all)
   std::vector<Item> chips;
   float chipsW = 0;
   for (auto& w : m_widgets) {
@@ -1275,22 +1282,30 @@ void App::layoutUi(const EditSurface& e) {
     chips.push_back({UiControl::Chip, tw + 44, w->cfg.id});
     chipsW += tw + 44 + kGap;
   }
-  float fixedW = 24 + kSep + kBtn + 44 + 2 * kGap;
+  float fixedW = 24 + kSep + kBtn + 44 + 2 * kGap + 18;
   for (auto& it : items) fixedW += it.w + kGap;
-  if (fixedW + chipsW + kSep + kGap <= W - 24) {
+  if (!vertical && fixedW + chipsW + kSep + kGap <= W - 24) {
     items.insert(items.end(), chips.begin(), chips.end());
     items.push_back({UiControl::Panel, kSep, "sep"});
   }
   items.push_back({UiControl::Help, kBtn, ""});
-  items.push_back({UiControl::Done, kBtn + 44, ""});
-  float total = 12;
+  items.push_back({UiControl::Done, vertical ? kBtn : kBtn + 44, ""});
+  constexpr float kGrip = 22;  // the grip at the bar's start
+  float total = kGrip + 4;
   for (auto& it : items) total += it.w + kGap;
   total += 12 - kGap;
-  const float bx = std::round((W - total) / 2);
-  // At the top, unless a widget lies there: then the bar steps aside to the
-  // bottom (and back once the top is clear), so what sits under it can be
-  // seen and grabbed -- also while one is being dragged up there.
-  {
+  float bx = std::round((W - total) / 2), by = kBarY;
+  if (vertical) {
+    // a column: as wide as the row is tall, against its side
+    bx = side < 0 ? 12.0F : W - kBarH - 12;
+    by = std::clamp(m_panelPos["toolbar"].second, 12.0F, std::max(12.0F, H - total - 12));
+  } else if (manual) {
+    const auto [mx, my] = m_panelPos["toolbar"];
+    bx = std::clamp(mx, 0.0F, std::max(0.0F, W - total));
+    by = std::clamp(my, 0.0F, std::max(0.0F, H - kBarH));
+  } else {
+    // at the top, unless a widget lies there: then the bottom (and back once
+    // the top is clear; it stays up when both edges are taken)
     const float bottomY = H - kBarH - 24;
     auto covered = [&](float y) {
       const Rect r{bx - 12, y - 12, total + 24, kBarH + 24};
@@ -1304,17 +1319,25 @@ void App::layoutUi(const EditSurface& e) {
     bool& bottom = m_barBottom[e.output ? e.output->name : std::string()];
     if (!bottom && covered(kBarY) && !covered(bottomY)) bottom = true;
     else if (bottom && (!covered(kBarY) || covered(bottomY))) bottom = covered(kBarY) && !covered(bottomY);
-    m_barY = bottom ? bottomY : kBarY;
-    m_areaTop = bottom ? 14.0F : kBarY + kBarH + 14;
-    m_areaBottom = bottom ? m_barY - 12 : H - 16;
+    by = bottom ? bottomY : kBarY;
   }
-  const bool barBelow = m_barY > kBarY;
-  m_ui.push_back({UiControl::Panel, {bx, m_barY, total, kBarH}, -1, "toolbar"});
-  float x = bx + 12;
+  m_barY = by;
+  m_barSide = side;
+  // the room the panels have: beside a column, or above / below a row
+  m_areaLeft = side < 0 ? bx + kBarH + 12 : 12.0F;
+  m_areaRight = side > 0 ? bx - 12 : W - 12;
+  const bool barBelow = !vertical && by + kBarH / 2 > H / 2;
+  m_barBelow = barBelow;
+  m_areaTop = vertical ? 14.0F : barBelow ? 14.0F : by + kBarH + 14;
+  m_areaBottom = vertical ? H - 16 : barBelow ? by - 12 : H - 16;
+  m_barRect = vertical ? Rect{bx, by, kBarH, total} : Rect{bx, by, total, kBarH};
+  m_ui.push_back({UiControl::Panel, m_barRect, -1, "toolbar"});
+  m_ui.push_back({UiControl::PanelGrab, vertical ? Rect{bx, by, kBarH, kGrip + 4} : Rect{bx, by, kGrip + 4, kBarH}, -1, "toolbar"});
+  float x = (vertical ? by : bx) + kGrip + 4;
   Rect addRect, savesRect;
   for (auto& it : items) {
     const float h = it.type == UiControl::Chip ? kChipH : kBtn;
-    Rect r{x, m_barY + (kBarH - h) / 2, it.w, h};
+    const Rect r = vertical ? Rect{bx + (kBarH - kBtn) / 2, x, kBtn, it.w} : Rect{x, by + (kBarH - h) / 2, it.w, h};
     if (it.value != "sep") m_ui.push_back({it.type, r, -1, it.value});
     if (it.type == UiControl::Plus) addRect = r;
     if (it.type == UiControl::Saves) savesRect = r;
@@ -1368,6 +1391,8 @@ void App::layoutUi(const EditSurface& e) {
       px = static_cast<float>(vb.x + vb.w) + 16;
       if (px + kPanelW > W - 12) px = static_cast<float>(vb.x) - 16 - kPanelW;
       if (px < 12) px = W - kPanelW - 16;
+      // never over the toolbar standing as a column at a side
+      px = std::clamp(px, m_areaLeft, std::max(m_areaLeft, m_areaRight - kPanelW));
       py = std::clamp(static_cast<float>(vb.y), top, std::max(top, m_areaBottom - placeH));
       if (handPlaced(w->cfg)) {
         // a point under the panel could not be grabbed: take the far side of the screen instead
@@ -1516,7 +1541,7 @@ void App::layoutUi(const EditSurface& e) {
 
   // ── depth brush panel (docked left) ──
   if (m_paintMode) {
-    float px = 24, py = m_areaTop;
+    float px = std::max(24.0F, m_areaLeft), py = m_areaTop;
     // not over the inspector: the other side of the screen
     for (const UiControl& c : m_ui)
       if (c.type == UiControl::Panel && c.value == "inspector" && c.r.x < px + kPaintW && px < c.r.x + c.r.w)
@@ -1554,10 +1579,15 @@ void App::layoutUi(const EditSurface& e) {
                            "lyrics",     "text",   "shape",    "image",   "filter"};
     // two columns when one would not fit the screen's height
     const int n = static_cast<int>(std::size(types));
-    const int cols = gy0Fits(n, m_areaBottom - m_areaTop + 106) ? 1 : 2, rows = (n + cols - 1) / cols;
+    const int cols = gy0Fits(n, vertical ? H - 24 + 106 - 12 : m_areaBottom - m_areaTop + 106) ? 1 : 2, rows = (n + cols - 1) / cols;
     const float pw = cols * 262.0F + 8;
-    const float gx = std::clamp(addRect.x - 10, 12.0F, W - pw - 12);
-    const float gy = barBelow ? m_barY - 10 - (rows * 70.0F + 10) : kBarY + kBarH + 10;
+    const float ph = rows * 70.0F + 10;
+    float gx = std::clamp(addRect.x - 10, 12.0F, W - pw - 12);
+    float gy = barBelow ? m_barY - 10 - ph : m_barY + kBarH + 10;
+    if (vertical) {  // beside the column, level with the button
+      gx = side < 0 ? m_barRect.x + m_barRect.w + 10 : m_barRect.x - 10 - pw;
+      gy = std::clamp(addRect.y - 8, 12.0F, std::max(12.0F, H - ph - 12));
+    }
     m_ui.push_back({UiControl::Panel, {gx, gy, pw, rows * 70.0F + 10}, -1, "gallery"});
     for (int i = 0; i < n; ++i)
       m_ui.push_back({UiControl::GalleryItem, {gx + 8 + (i / rows) * 262.0F, gy + 8 + (i % rows) * 70.0F, 254, 62}, -1, types[i]});
@@ -1570,8 +1600,12 @@ void App::layoutUi(const EditSurface& e) {
     m_saveScroll = std::clamp(m_saveScroll, 0, std::max(0, n - kSaveRows));
     const int shown = std::min(kSaveRows, n - m_saveScroll);
     const float sh = kSavesHead + 48 + (n == 0 ? 56 : shown * kSavePitch) + 10 + (n > kSaveRows ? 18 : 0);
-    const float sx = std::clamp(savesRect.x + savesRect.w / 2 - kSavesW / 2, 12.0F, W - kSavesW - 12);
-    const float sy = barBelow ? m_barY - 10 - sh : kBarY + kBarH + 10;
+    float sx = std::clamp(savesRect.x + savesRect.w / 2 - kSavesW / 2, 12.0F, W - kSavesW - 12);
+    float sy = barBelow ? m_barY - 10 - sh : m_barY + kBarH + 10;
+    if (vertical) {
+      sx = side < 0 ? m_barRect.x + m_barRect.w + 10 : m_barRect.x - 10 - kSavesW;
+      sy = std::clamp(savesRect.y - 8, 12.0F, std::max(12.0F, H - sh - 12));
+    }
     m_ui.push_back({UiControl::Panel, {sx, sy, kSavesW, sh}, -1, "saves"});
     m_ui.push_back({UiControl::SaveNew, {sx + 14, sy + kSavesHead, kSavesW - 28, 38}});
     float ry = sy + kSavesHead + 48;
@@ -1638,7 +1672,8 @@ void App::layoutUi(const EditSurface& e) {
   }
   if (m_helpOpen) {
     const float hw = 600, hh = 490;
-    const Rect card{std::round((W - hw) / 2), m_barY > kBarY ? std::max(8.0F, m_barY - 10 - hh) : kBarY + kBarH + 10, hw, hh};
+    const Rect card{std::round((W - hw) / 2),
+                    m_barSide != 0 ? std::round((H - hh) / 2) : m_barBelow ? std::max(8.0F, m_barY - 10 - hh) : m_barY + kBarH + 10, hw, hh};
     m_ui.push_back({UiControl::Panel, card, -1, "help"});
     // the interface language, at the foot of the card
     const float bw = 112, bx = card.x + card.w - 20 - 3 * bw - 8;
@@ -2788,14 +2823,22 @@ void App::drawUi(EditSurface& e) {
   // ── toolbar ──
   for (const UiControl& c : m_ui)
     if (c.type == UiControl::Panel && c.value == "toolbar") {
-      plateAt(c.r, c.r.h / 2);
-      // separators between groups
-      float prevRight = -1;
+      const bool column = c.r.h > c.r.w;
+      plateAt(c.r, std::min(c.r.w, c.r.h) / 2);
+      // separators between groups (the grip is not one of them)
+      float prev = -1;
       for (const UiControl& d : m_ui) {
-        if (d.r.y < c.r.y || d.r.y > c.r.y + c.r.h || d.type == UiControl::Panel) continue;
-        if (prevRight > 0 && d.r.x - prevRight > kGap + 4)
-          cv.segment((prevRight + d.r.x) / 2, c.r.y + 12, (prevRight + d.r.x) / 2, c.r.y + c.r.h - 12, 1, line, false);
-        prevRight = d.r.x + d.r.w;
+        if (d.type == UiControl::Panel || d.type == UiControl::PanelGrab) continue;
+        if (column ? (d.r.x < c.r.x || d.r.x > c.r.x + c.r.w || d.r.y < c.r.y || d.r.y > c.r.y + c.r.h)
+                   : (d.r.y < c.r.y || d.r.y > c.r.y + c.r.h || d.r.x < c.r.x || d.r.x > c.r.x + c.r.w))
+          continue;
+        const float from = column ? d.r.y : d.r.x, to = column ? d.r.y + d.r.h : d.r.x + d.r.w;
+        if (prev > 0 && from - prev > kGap + 4) {
+          const float mid = (prev + from) / 2;
+          if (column) cv.segment(c.r.x + 12, mid, c.r.x + c.r.w - 12, mid, 1, line, false);
+          else cv.segment(mid, c.r.y + 12, mid, c.r.y + c.r.h - 12, 1, line, false);
+        }
+        prev = to;
       }
     }
   const UiControl* tipCtl = nullptr;
@@ -2841,6 +2884,10 @@ void App::drawUi(EditSurface& e) {
       }
       case UiControl::Done: {
         cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, c.r.h / 2, hot ? withAlphaC(ink, 0.16F) : raised);
+        if (c.r.w < 60) {  // in a column: the tick alone
+          icon(cv, "check", cx, cy, ink);
+          break;
+        }
         icon(cv, "check", c.r.x + 17, cy, ink);
         cv.text(es ? "Listo" : "Done", strong, c.r.x + 30, cy - 9, ink);
         break;
@@ -3618,6 +3665,17 @@ void App::drawUi(EditSurface& e) {
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::PanelGrab) continue;
     const bool hot = hovered(c) || (m_drag == Drag::Panel && m_panelDrag == c.value);
+    if (c.value == "toolbar") {  // the bar's own grip: dots along its start
+      const bool column = c.r.w > c.r.h;
+      const float gx = c.r.x + c.r.w / 2, gy = c.r.y + c.r.h / 2;
+      for (int i = -1; i <= 1; ++i)
+        for (int j = 0; j < 2; ++j) {
+          const float a = i * 6.0F, b = (j - 0.5F) * 6.0F;
+          cv.circle(column ? gx + a : gx + b + 2, column ? gy + b + 2 : gy + a, 1.5F, withAlphaC(ink, hot ? 0.85F : 0.35F));
+        }
+      if (hot && m_drag != Drag::Panel) tipCtl = &c;
+      continue;
+    }
     const float gx = c.r.x + c.r.w - 26, gy = c.r.y + 18;
     for (int i = 0; i < 2; ++i)
       for (int j = 0; j < 3; ++j) cv.circle(gx + i * 6, gy + j * 6, 1.4F, withAlphaC(ink, hot ? 0.8F : 0.3F));
@@ -3681,12 +3739,19 @@ void App::drawUi(EditSurface& e) {
 
   // ── tooltip under the hovered toolbar button ──
   if (tipCtl) {
-    const std::string t = tipFor(tipCtl->type, es);
+    const bool grip = tipCtl->type == UiControl::PanelGrab;
+    const std::string t = grip ? (es ? "Arrastra para mover · a un lado: vertical · doble clic: automática"
+                                     : "Drag to move · to a side: upright · double-click: automatic")
+                               : tipFor(tipCtl->type, es);
     auto [tw, th] = measure(t, label);
-    const float tx = std::clamp(tipCtl->r.x + tipCtl->r.w / 2 - tw / 2 - 10, 8.0F, W - tw - 28);
+    float tx = std::clamp(tipCtl->r.x + tipCtl->r.w / 2 - tw / 2 - 10, 8.0F, W - tw - 28);
     const bool inPanel = isSaveControl(tipCtl->type) || isLayerControl(tipCtl->type) || tipCtl->type == UiControl::Collapse || tipCtl->type == UiControl::PaintZoomIn ||
                          tipCtl->type == UiControl::PaintZoomOut || tipCtl->type == UiControl::PaintZoomReset;
-    const float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : m_barY > kBarY ? m_barY - th - 20 : kBarY + kBarH + 8;
+    float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : m_barBelow ? m_barY - th - 20 : m_barY + kBarH + 8;
+    if (!inPanel && m_barSide != 0) {  // beside the column, level with the button
+      tx = m_barSide < 0 ? m_barRect.x + m_barRect.w + 10 : m_barRect.x - tw - 30;
+      ty = tipCtl->r.y + tipCtl->r.h / 2 - th / 2 - 6;
+    }
     if (inPanel || (!m_galleryOpen && !m_helpOpen && !m_savesOpen)) {
       cv.roundRect(tx, ty, tw + 20, th + 12, 8, Color{0.02F, 0.02F, 0.025F, 0.94F});
       cv.text(t, label, tx + 10, ty + 6, ink);
