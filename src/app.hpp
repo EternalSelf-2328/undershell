@@ -425,6 +425,10 @@ private:
     float total = 0, visible = 0, pos = 0;
   };
   std::map<std::string, ScrollInfo> m_scrollInfo;
+  // the toolbar: top or bottom per output (it steps aside from widgets), and
+  // the band left for the panels this frame
+  std::map<std::string, bool> m_barBottom;
+  float m_barY = 50, m_areaTop = 110, m_areaBottom = 0;
   std::string m_scrollDrag;      // the panel whose bar is being dragged
   float m_scrollGrab = 0;        // where on the thumb it was taken
   void addScrollBar(const std::string& panel, Rect track, float total, float visible, float pos);

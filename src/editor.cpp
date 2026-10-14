@@ -1459,7 +1459,7 @@ void App::drawEditorText(EditSurface& e) {
     float lx = static_cast<float>(std::max(8, vb.x + 10));
     float ly = static_cast<float>(vb.y) - 20;
     if (sel && !handPlaced(w->cfg)) ly -= OverlayPass::kHandleGap + OverlayPass::kHandleR;  // clear of the knob
-    if (ly < 106) ly = static_cast<float>(vb.y) + 10;  // keep clear of the toolbar
+    if (ly < (m_barY > 60 ? 8.0F : 106.0F)) ly = static_cast<float>(vb.y) + 10;  // keep clear of the toolbar (when it is up there)
     put(label, ls, lx, ly, sel ? readableAccent(w->impl->accent()) : ink);
   }
   drawUi(e);

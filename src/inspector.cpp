@@ -1287,12 +1287,34 @@ void App::layoutUi(const EditSurface& e) {
   for (auto& it : items) total += it.w + kGap;
   total += 12 - kGap;
   const float bx = std::round((W - total) / 2);
-  m_ui.push_back({UiControl::Panel, {bx, kBarY, total, kBarH}, -1, "toolbar"});
+  // At the top, unless a widget lies there: then the bar steps aside to the
+  // bottom (and back once the top is clear), so what sits under it can be
+  // seen and grabbed -- also while one is being dragged up there.
+  {
+    const float bottomY = H - kBarH - 24;
+    auto covered = [&](float y) {
+      const Rect r{bx - 12, y - 12, total + 24, kBarH + 24};
+      for (auto& w : m_widgets) {
+        if (!w->impl || w->output != e.output || w->cfg.hidden || w->impl->fullscreen()) continue;
+        const Box vb = visualBox(w->cfg);
+        if (vb.x < r.x + r.w && r.x < vb.x + vb.w && vb.y < r.y + r.h && r.y < vb.y + vb.h) return true;
+      }
+      return false;
+    };
+    bool& bottom = m_barBottom[e.output ? e.output->name : std::string()];
+    if (!bottom && covered(kBarY) && !covered(bottomY)) bottom = true;
+    else if (bottom && (!covered(kBarY) || covered(bottomY))) bottom = covered(kBarY) && !covered(bottomY);
+    m_barY = bottom ? bottomY : kBarY;
+    m_areaTop = bottom ? 14.0F : kBarY + kBarH + 14;
+    m_areaBottom = bottom ? m_barY - 12 : H - 16;
+  }
+  const bool barBelow = m_barY > kBarY;
+  m_ui.push_back({UiControl::Panel, {bx, m_barY, total, kBarH}, -1, "toolbar"});
   float x = bx + 12;
   Rect addRect, savesRect;
   for (auto& it : items) {
     const float h = it.type == UiControl::Chip ? kChipH : kBtn;
-    Rect r{x, kBarY + (kBarH - h) / 2, it.w, h};
+    Rect r{x, m_barY + (kBarH - h) / 2, it.w, h};
     if (it.value != "sep") m_ui.push_back({it.type, r, -1, it.value});
     if (it.type == UiControl::Plus) addRect = r;
     if (it.type == UiControl::Saves) savesRect = r;
@@ -1330,8 +1352,8 @@ void App::layoutUi(const EditSurface& e) {
     const auto& schema = m_inspSchema;
     float contentH = kHeadH + kFootH;
     for (const auto& p : schema) contentH += p.kind == PropSpec::Color ? kColorRowH : kRowH;
-    const float top = kBarY + kBarH + 14;
-    const float maxH = H - top - 16;
+    const float top = m_areaTop;
+    const float maxH = m_areaBottom - top;
     const bool folded = m_collapsed.count("inspector") > 0;  // only the title shows
     const float panelH = folded ? kHeadH + 6 : std::min(contentH, maxH);
     const float placeH = std::min(contentH, maxH);  // placed as if open, so folding does not move it
@@ -1346,7 +1368,7 @@ void App::layoutUi(const EditSurface& e) {
       px = static_cast<float>(vb.x + vb.w) + 16;
       if (px + kPanelW > W - 12) px = static_cast<float>(vb.x) - 16 - kPanelW;
       if (px < 12) px = W - kPanelW - 16;
-      py = std::clamp(static_cast<float>(vb.y), top, std::max(top, H - placeH - 16));
+      py = std::clamp(static_cast<float>(vb.y), top, std::max(top, m_areaBottom - placeH));
       if (handPlaced(w->cfg)) {
         // a point under the panel could not be grabbed: take the far side of the screen instead
         const double* hp = handlePoints(w->cfg);
@@ -1452,9 +1474,9 @@ void App::layoutUi(const EditSurface& e) {
   // ── layers panel (docked left, or right of the inspector's side) ──
   if (m_layersOpen && !m_paintMode) {
     const auto rows = layerItems(e.output);
-    const float top = kBarY + kBarH + 14;
+    const float top = m_areaTop;
     const int n = static_cast<int>(rows.size());
-    m_layerRows = std::max(3, static_cast<int>((H - top - 16 - kLayersHead - kLayersFoot - 8) / kLayerPitch));
+    m_layerRows = std::max(3, static_cast<int>((m_areaBottom - top - kLayersHead - kLayersFoot - 8) / kLayerPitch));
     m_layersScroll = std::clamp(m_layersScroll, 0, std::max(0, n - m_layerRows));
     const int shown = std::min(m_layerRows, n - m_layersScroll);
     const bool folded = m_collapsed.count("layers") > 0;
@@ -1494,7 +1516,7 @@ void App::layoutUi(const EditSurface& e) {
 
   // ── depth brush panel (docked left) ──
   if (m_paintMode) {
-    float px = 24, py = kBarY + kBarH + 14;
+    float px = 24, py = m_areaTop;
     // not over the inspector: the other side of the screen
     for (const UiControl& c : m_ui)
       if (c.type == UiControl::Panel && c.value == "inspector" && c.r.x < px + kPaintW && px < c.r.x + c.r.w)
@@ -1532,9 +1554,10 @@ void App::layoutUi(const EditSurface& e) {
                            "lyrics",     "text",   "shape",    "image",   "filter"};
     // two columns when one would not fit the screen's height
     const int n = static_cast<int>(std::size(types));
-    const int cols = gy0Fits(n, H) ? 1 : 2, rows = (n + cols - 1) / cols;
+    const int cols = gy0Fits(n, m_areaBottom - m_areaTop + 106) ? 1 : 2, rows = (n + cols - 1) / cols;
     const float pw = cols * 262.0F + 8;
-    const float gx = std::clamp(addRect.x - 10, 12.0F, W - pw - 12), gy = kBarY + kBarH + 10;
+    const float gx = std::clamp(addRect.x - 10, 12.0F, W - pw - 12);
+    const float gy = barBelow ? m_barY - 10 - (rows * 70.0F + 10) : kBarY + kBarH + 10;
     m_ui.push_back({UiControl::Panel, {gx, gy, pw, rows * 70.0F + 10}, -1, "gallery"});
     for (int i = 0; i < n; ++i)
       m_ui.push_back({UiControl::GalleryItem, {gx + 8 + (i / rows) * 262.0F, gy + 8 + (i % rows) * 70.0F, 254, 62}, -1, types[i]});
@@ -1542,13 +1565,13 @@ void App::layoutUi(const EditSurface& e) {
   if (m_savesOpen) {
     const int n = static_cast<int>(m_saves.size());
     // as many rows as the screen has room for
-    m_saveRows = std::clamp(static_cast<int>((H - (kBarY + kBarH + 10) - kSavesHead - 48 - 28 - 16) / kSavePitch), 1, kSaveRowsMax);
+    m_saveRows = std::clamp(static_cast<int>((m_areaBottom - m_areaTop - kSavesHead - 48 - 28) / kSavePitch), 1, kSaveRowsMax);
     const int kSaveRows = m_saveRows;
     m_saveScroll = std::clamp(m_saveScroll, 0, std::max(0, n - kSaveRows));
     const int shown = std::min(kSaveRows, n - m_saveScroll);
     const float sh = kSavesHead + 48 + (n == 0 ? 56 : shown * kSavePitch) + 10 + (n > kSaveRows ? 18 : 0);
     const float sx = std::clamp(savesRect.x + savesRect.w / 2 - kSavesW / 2, 12.0F, W - kSavesW - 12);
-    const float sy = kBarY + kBarH + 10;
+    const float sy = barBelow ? m_barY - 10 - sh : kBarY + kBarH + 10;
     m_ui.push_back({UiControl::Panel, {sx, sy, kSavesW, sh}, -1, "saves"});
     m_ui.push_back({UiControl::SaveNew, {sx + 14, sy + kSavesHead, kSavesW - 28, 38}});
     float ry = sy + kSavesHead + 48;
@@ -1574,8 +1597,8 @@ void App::layoutUi(const EditSurface& e) {
     Rect insp;
     for (const UiControl& c : m_ui)
       if (c.type == UiControl::Panel && c.value == "inspector") insp = c.r;
-    const float fw = 340, top = kBarY + kBarH + 14;
-    const float fh = std::min(540.0F, H - top - 16);
+    const float fw = 340, top = m_areaTop;
+    const float fh = std::min(540.0F, m_areaBottom - top);
     float fx = insp.x - 12 - fw;
     if (fx < 12) fx = std::min(W - fw - 12, insp.x + insp.w + 12);
     m_ui.push_back({UiControl::Panel, {fx, top, fw, fh}, -1, "fonts"});
@@ -1597,7 +1620,7 @@ void App::layoutUi(const EditSurface& e) {
     Rect insp;
     for (const UiControl& c : m_ui)
       if (c.type == UiControl::Panel && c.value == "inspector") insp = c.r;
-    const float fw = 300, fh = 338, top = kBarY + kBarH + 14;
+    const float fw = 300, fh = 338, top = m_areaTop;
     float fx = insp.x - 12 - fw;
     if (fx < 12) fx = std::min(W - fw - 12, insp.x + insp.w + 12);
     m_ui.push_back({UiControl::Panel, {fx, top, fw, fh}, -1, "colors"});
@@ -1615,7 +1638,7 @@ void App::layoutUi(const EditSurface& e) {
   }
   if (m_helpOpen) {
     const float hw = 600, hh = 490;
-    const Rect card{std::round((W - hw) / 2), kBarY + kBarH + 10, hw, hh};
+    const Rect card{std::round((W - hw) / 2), m_barY > kBarY ? std::max(8.0F, m_barY - 10 - hh) : kBarY + kBarH + 10, hw, hh};
     m_ui.push_back({UiControl::Panel, card, -1, "help"});
     // the interface language, at the foot of the card
     const float bw = 112, bx = card.x + card.w - 20 - 3 * bw - 8;
@@ -3663,7 +3686,7 @@ void App::drawUi(EditSurface& e) {
     const float tx = std::clamp(tipCtl->r.x + tipCtl->r.w / 2 - tw / 2 - 10, 8.0F, W - tw - 28);
     const bool inPanel = isSaveControl(tipCtl->type) || isLayerControl(tipCtl->type) || tipCtl->type == UiControl::Collapse || tipCtl->type == UiControl::PaintZoomIn ||
                          tipCtl->type == UiControl::PaintZoomOut || tipCtl->type == UiControl::PaintZoomReset;
-    const float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : kBarY + kBarH + 8;
+    const float ty = inPanel ? tipCtl->r.y + tipCtl->r.h + 6 : m_barY > kBarY ? m_barY - th - 20 : kBarY + kBarH + 8;
     if (inPanel || (!m_galleryOpen && !m_helpOpen && !m_savesOpen)) {
       cv.roundRect(tx, ty, tw + 20, th + 12, 8, Color{0.02F, 0.02F, 0.025F, 0.94F});
       cv.text(t, label, tx + 10, ty + 6, ink);
