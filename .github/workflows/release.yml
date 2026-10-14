@@ -16,7 +16,25 @@ permissions:
   contents: read
 
 jobs:
+  # a tag v1.2.3 must match the version the source says (meson.build), or
+  # the packages would carry the old number
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      - name: The tag and the source agree
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          src=$(sed -n "s/^  version : '\(.*\)',$/\1/p" meson.build)
+          echo "tag $TAG, meson.build $src"
+          [ "v$src" = "$TAG" ] || { echo "::error::the tag is $TAG but meson.build says $src: bump the version first"; exit 1; }
+
   build:
+    needs: version
     name: ${{ matrix.target }}
     runs-on: ubuntu-24.04
     container: ${{ matrix.image }}
