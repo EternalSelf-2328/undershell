@@ -20,11 +20,14 @@
 #include <filesystem>
 #include <format>
 #include <numbers>
+#include <sstream>
 #include <linux/input-event-codes.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
+
+namespace fs = std::filesystem;
 
 namespace undershell {
 
@@ -618,6 +621,44 @@ bool App::textKey(uint32_t key) {
   return false;
 }
 
+// ── where the user left the toolbar and the panels ──────────────────────────
+// Kept in ~/.local/state/undershell/editor.toml, not in the config: moving
+// a panel is not a setting and should not reload the layout.
+
+namespace {
+std::string placesPath() {
+  const char* xdg = std::getenv("XDG_STATE_HOME");
+  return std::string(xdg && *xdg ? xdg : expandHome("~/.local/state")) + "/undershell/editor.toml";
+}
+}  // namespace
+
+void App::loadPanelPlaces() {
+  m_placesLoaded = true;
+  try {
+    const auto t = toml::parse_file(placesPath());
+    m_barSide = static_cast<int>(std::clamp<int64_t>(t["toolbar_side"].value_or(int64_t{0}), -1, 1));
+    if (const auto* p = t["panels"].as_table())
+      for (const auto& [name, v] : *p)
+        if (const auto* a = v.as_array(); a && a->size() == 2)
+          m_panelPos[std::string(name.str())] = {static_cast<float>((*a)[0].value_or(0.0)), static_cast<float>((*a)[1].value_or(0.0))};
+  } catch (const std::exception&) {
+    // none yet, or unreadable: the automatic places
+  }
+}
+
+void App::savePanelPlaces() const {
+  toml::table panels;
+  for (const auto& [name, pos] : m_panelPos) panels.insert(name, toml::array{std::round(pos.first), std::round(pos.second)});
+  toml::table t;
+  t.insert("toolbar_side", m_barSide);
+  t.insert("panels", panels);
+  std::ostringstream out;
+  out << "# where the editor's toolbar and panels were left (undershell rewrites this)\n" << t << "\n";
+  std::error_code ec;
+  fs::create_directories(fs::path(placesPath()).parent_path(), ec);
+  writeFileAtomic(placesPath(), out.str());
+}
+
 // ── typing on a widget (a note) ─────────────────────────────────────────────
 // Enter breaks the line, the arrows, Home and End move the caret, Ctrl+S
 // keeps what is typed; Esc or a click elsewhere keeps it and stops.
@@ -1143,6 +1184,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
       m_drag = Drag::None;
       setCursor("grab");
+      savePanelPlaces();  // remembered next time
       markEditDirty();
     }
     return;

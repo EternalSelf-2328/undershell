@@ -1194,6 +1194,7 @@ void App::render(Widget& w) {
 
 void App::setEditMode(bool on) {
   if (on == m_edit) return;
+  if (on && !m_placesLoaded) loadPanelPlaces();
   m_edit = on;
   m_drag = Drag::None;
   m_groupMove = false;

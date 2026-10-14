@@ -1965,7 +1965,9 @@ bool App::uiPress(int index, double x) {
       const double now = nowSeconds();
       if (now - m_panelClickAt < 0.35 && m_panelDrag == c.value) {
         m_panelPos.erase(c.value);
+        if (c.value == "toolbar") m_barSide = 0;
         m_panelClickAt = 0;
+        savePanelPlaces();
         markEditDirty();
         return true;
       }

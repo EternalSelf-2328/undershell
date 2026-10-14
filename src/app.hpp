@@ -430,6 +430,9 @@ private:
   std::map<std::string, bool> m_barBottom;
   float m_barY = 50, m_areaTop = 110, m_areaBottom = 0, m_areaLeft = 12, m_areaRight = 0;
   int m_barSide = 0;        // where the user stood the toolbar up: -1 left, 1 right, 0 a row
+  bool m_placesLoaded = false;
+  void loadPanelPlaces();   // where the user left the toolbar and the panels (kept between sessions)
+  void savePanelPlaces() const;
   bool m_barBelow = false;  // a row in the screen's lower half: popovers open above it
   Rect m_barRect;
   std::string m_scrollDrag;      // the panel whose bar is being dragged
