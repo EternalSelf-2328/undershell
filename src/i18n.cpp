@@ -71,6 +71,9 @@ std::string optionLabel(const std::string& value, bool es) {
       {"paper", "Papel"}, {"write", "Escribir"}, {"open", "Abrir"},
       {"warm", "Cálido"}, {"cool", "Frío"}, {"noir", "Noir"}, {"vintage", "Vintage"}, {"dream", "Sueño"}, {"night", "Noche"},
       {"vivid", "Vívido"}, {"faded", "Desvaído"}, {"duotone", "Duotono"},
+      {"pond", "Onda de agua"}, {"aura", "Aura"}, {"stars", "Estrellas"}, {"rise", "Ascendente"},
+      {"arcane", "Arcana"}, {"holy", "Sagrada"}, {"frost", "Escarcha"}, {"nature", "Naturaleza"}, {"infernal", "Infernal"}, {"void", "Vacío"},
+      {"field", "Cielo"}, {"warp", "Velocidad luz"}, {"constellation", "Constelaciones"}, {"gold", "Oro"},
       {"agenda", "Agenda"}, {"month", "Mes"}, {"week", "Semana"}, {"day", "Día"}, {"monday", "Lunes"}, {"sunday", "Domingo"},
       {"lines", "Tres líneas"}, {"karaoke", "Karaoke"}, {"slide", "Deslizar"}, {"fade", "Fundido"}, {"pop", "Salto"}, {"title", "Título"},
   };
@@ -80,7 +83,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"cookie6Sided", "Cookie 6"}, {"cookie7Sided", "Cookie 7"}, {"cookie9Sided", "Cookie 9"}, {"slash", "Slash /"},
       {"on_surface", "Text"}, {"pin", "Corners"}, {"muzzle", "Muzzle flash"}, {"electric", "Electricity"}, {"sfx", "Onomatopoeia"}, {"speedlines", "Speed lines"}, {"petals", "Sakura petals"}, {"ripples", "Ripples"}, {"neon", "Neon sign"}, {"fireworks", "Fireworks"}, {"monitor", "System monitor"}, {"tv", "TV"}, {"static", "Static"}, {"colorbars", "Colour bars"},
       {"nosignal", "No signal"}, {"media", "Your videos"}, {"comic", "Comic"}, {"blue", "Electric blue"}, {"flash", "Realistic"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
-      {"letters", "Jumping letters"}, {"lines", "Three lines"}, {"metric", "Metric (°C)"}, {"imperial", "Imperial (°F)"},
+      {"letters", "Jumping letters"}, {"pond", "Water wave"}, {"warp", "Light speed"}, {"field", "Sky"}, {"lines", "Three lines"}, {"metric", "Metric (°C)"}, {"imperial", "Imperial (°F)"},
   };
   const auto& table = es ? kEs : kEn;
   if (auto it = table.find(value); it != table.end()) return it->second;

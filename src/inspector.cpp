@@ -130,7 +130,8 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
   };
   if (c.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
-    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal", "tv"});  // the newer looks draw their own way
+    const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal", "tv",
+                               "pond", "aura", "stars"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -153,6 +154,10 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "reflection")
       return in(look, {"bars", "dots", "segments", "wave", "ribbon", "curtain"}) && o["grow"].value_or(std::string("up")) == "up";
     if (key == "halo_pulse" && look == "muzzle") return !manga;  // the ember is the realistic flash's
+    // the perspective flattens the ring; shooting stars cross the sky; only the warp flies
+    if (key == "pond_flatten") return o["pond_form"].value_or(std::string("ring")) == "ring";
+    if (key == "stars_shooting") return o["stars_mode"].value_or(std::string("field")) == "field";
+    if (key == "stars_speed") return o["stars_mode"].value_or(std::string("field")) == "warp";
     if (in(key, {"grow", "mirror"})) return linear;
     if (key == "segments") return look == "segments";
     if (key == "peaks") return in(look, {"bars", "segments", "frame"});
@@ -489,6 +494,42 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
         {K::Number, "neon_size", "Size", "Tamaño", {}, 0.3, 1, 0.05, 0.8},
         {K::Number, "neon_flicker", "Failing tubes", "Tubos que fallan", {}, 0, 1, 0.05, 0.3},
         {K::Number, "halo_hits", "Beat flash", "Destello al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
+  }
+  if (look == "pond") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "pond_form", "Wave", "Onda", {"ring", "line"}, 0, 0, 0, 0, "ring"},
+        {K::Enum, "pond_colors", "Colours", "Colores", {"water", "theme"}, 0, 0, 0, 0, "water"},
+        {K::Number, "pond_flatten", "Perspective", "Perspectiva", {}, 0, 0.9, 0.05, 0.45},
+        {K::Number, "pond_size", "Size", "Tamaño", {}, 0.3, 1, 0.05, 0.9},
+        {K::Number, "pond_rings", "Waves at once", "Ondas a la vez", {}, 1, 4, 1, 1, "", true},
+        {K::Number, "halo_hits", "Beat wave", "Onda al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
+  }
+  if (look == "aura") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "aura_form", "Shape", "Forma", {"orb", "ring", "rise"}, 0, 0, 0, 0, "orb"},
+        {K::Enum, "aura_colors", "Colours", "Colores", {"arcane", "holy", "frost", "nature", "infernal", "void", "theme"}, 0, 0, 0, 0,
+         "arcane"},
+        {K::Number, "aura_size", "Size", "Tamaño", {}, 0.1, 0.7, 0.02, 0.32},
+        {K::Number, "aura_reach", "Flames", "Llamas", {}, 0.1, 1, 0.05, 0.45},
+        {K::Number, "aura_motes", "Motes of light", "Destellos", {}, 0, 1, 0.05, 0.35},
+        {K::Number, "aura_speed", "Speed", "Velocidad", {}, 0.2, 3, 0.1, 1},
+        {K::Number, "halo_hits", "Beat flare", "Llamarada al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
+  }
+  if (look == "stars") {
+    std::vector<PropSpec> f = {
+        {K::Enum, "stars_mode", "Stars", "Estrellas", {"field", "warp", "constellation"}, 0, 0, 0, 0, "field"},
+        {K::Enum, "stars_colors", "Colours", "Colores", {"night", "gold", "theme"}, 0, 0, 0, 0, "night"},
+        {K::Number, "stars_count", "How many", "Cantidad", {}, 20, 400, 10, 140, "", true},
+        {K::Number, "stars_size", "Size", "Tamaño", {}, 0.4, 2.5, 0.1, 1},
+        {K::Number, "stars_speed", "Speed", "Velocidad", {}, 0.2, 3, 0.1, 1},
+        {K::Bool, "stars_shooting", "Shooting stars", "Estrellas fugaces", {}, 0, 1, 1, 1},
+        {K::Number, "halo_hits", "Beat burst", "Fuerza del golpe", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, f.begin(), f.end());
   }
@@ -3121,7 +3162,7 @@ void App::drawUi(EditSurface& e) {
     cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 12, hot ? withAlphaC(accent, 0.16F) : raised);
     cv.roundRect(c.r.x + 12, c.r.y + 15, 32, 32, 10, withAlphaC(accent, 0.22F));
     icon(cv, chipIcon(c.value), c.r.x + 28, c.r.y + 31, accent);
-    const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 25 estilos" : "Audio spectrum · 25 looks")
+    const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 28 estilos" : "Audio spectrum · 28 looks")
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
                        : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")

@@ -230,13 +230,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 25 looks
+## Visualizer: 28 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`). Plus six of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `terminal` and `tv` (see below).
+and Ryoku's motion (`Motion.qml`). Plus sixteen of its own: `halo` (a glowing
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `terminal` and `tv` (see below).
 
 <p align="center">
   <img src="docs/media/looks.webp" alt="The same visualizer box in the editor switching through looks: vortex, fire, smoke, a comic KRAKOOM, rain, a neon LIVE sign, a terminal, bars, TV static, split bars, dots and a filled wave" width="800"><br>
@@ -730,6 +730,44 @@ burst two. Kind: `peony` (a sphere of sparks), `willow` (gold, long trails
 that droop), `ring`, or `mix`. The sparks slow, fall, trail and crackle out.
 Drawn as `flash` (light, classic colours or the theme's) or `manga` (inked
 sparks); Amount (which kicks), Size and Beat burst set the rest.
+
+## Water wave
+
+The `pond` look is a single wave in the middle of still water: the bass
+lifts the water at the centre and a kick sends one wave out, fast at first,
+then slowing and flattening as it spreads. The surface is lit like water --
+a bright crest where it faces the light, a soft shadow in the troughs either
+side. As a `ring` seen from above (Perspective flattens it, as water seen at
+an angle) or as a `line`, one wave running along a surface seen from the
+side. Waves at once (1 to 4), Size, Colours (`water` or `theme`) and Beat
+wave set the rest. In silence a slow wave goes out now and then.
+
+## Aura
+
+The `aura` look is a fantasy aura: thin tongues of light flowing out and
+licking upward, a soft glow round them and motes of light drifting up
+through it. Shape: `orb` (round a glowing orb), `ring` (round an empty
+middle -- put another widget in it) or `rise` (rising from the bottom edge,
+like a hero powering up). Colours: `arcane`, `holy`, `frost`, `nature`,
+`infernal`, `void` or `theme`. The groove makes the flames reach further and
+flow faster, a kick flares them (Beat flare); Size, Flames, Motes of light
+and Speed set the rest. The flames always fit in the box.
+
+## Stars
+
+The `stars` look, in three modes: `field`, a sky whose stars twinkle on
+their own and brighten with their band of the music, the brightest
+sparkling, and a shooting star across it on a strong kick; `warp`, flying
+through them, faster with the groove and leaping on a kick; and
+`constellation`, fixed stars joined by faint lines, a different figure
+lighting up on each kick. Colours `night`, `gold` or `theme`; How many,
+Size, Speed (the warp's) and Shooting stars set the rest. They are drawn as
+strokes of light, so only the pixels near a star cost anything.
+
+<p align="center">
+  <img src="docs/media/water-aura-stars.webp" alt="Six boxes over simulated music: a water wave spreading as a ring and as a line, a blue aura round an orb and a golden one rising, a starry sky with a shooting star and stars rushing past at light speed" width="760"><br>
+  <sub><code>pond</code> ring and line · <code>aura</code> orb and rise · <code>stars</code> field and warp</sub>
+</p>
 
 ## Terminal
 

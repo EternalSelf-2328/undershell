@@ -356,6 +356,73 @@ int main(int argc, char** argv) {
     }
   }
 
+  // the water wave: one ring round the middle, flattened by the perspective;
+  // as a line, one wave across the middle. The aura glows round the middle in
+  // every shape; the stars fill the sky in every mode. Pond, aura and the field
+  // of stars match their goldens.
+  {
+    auto bounds = [](const Image& img, int a) {
+      std::array<int, 4> b{img.w, -1, img.h, -1};
+      for (int y = 0; y < img.h; ++y)
+        for (int x = 0; x < img.w; ++x)
+          if (img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3] > a)
+            b[0] = std::min(b[0], x), b[1] = std::max(b[1], x), b[2] = std::min(b[2], y), b[3] = std::max(b[3], y);
+      return b;
+    };
+    auto golden1 = [&](const Image& img, const char* name) {
+      const std::string path = golden + "/" + name + ".png";
+      if (update) {
+        writePng(img, path, false);
+      } else {
+        Image ref;
+        CHECK(readPng(path, ref));
+        const double d = imageDiff(img, ref);
+        if (d < 0 || d > 1.5) std::fprintf(stderr, "%s differs from golden: %.3f\n", name, d);
+        GOLDEN(d);
+      }
+    };
+    toml::table o;
+    o.insert_or_assign("pond_preview", 0.6);
+    const Image ring = renderLook("pond", 400, 240, pal, &o);
+    const auto r = bounds(ring, 40);
+    CHECK(r[1] > r[0] && (r[1] - r[0]) > 1.4 * (r[3] - r[2]));  // lying flat
+    CHECK(std::abs((r[0] + r[1]) / 2 - 200) < 12 && std::abs((r[2] + r[3]) / 2 - 120) < 12);
+    golden1(ring, "pond");
+    o.insert_or_assign("pond_form", "line");
+    const auto l = bounds(renderLook("pond", 400, 240, pal, &o), 40);
+    CHECK(l[1] - l[0] > 200 && l[3] - l[2] < 140);  // across, not up the box
+
+    for (const char* form : {"orb", "ring", "rise"}) {
+      toml::table a;
+      a.insert_or_assign("aura_preview", 1.0);
+      a.insert_or_assign("aura_form", form);
+      const Image img = renderLook("aura", 320, 320, pal, &a);
+      const auto b = bounds(img, 30);
+      if (b[1] <= b[0]) std::fprintf(stderr, "aura %s drew nothing\n", form);
+      CHECK(b[1] > b[0] && std::abs((b[0] + b[1]) / 2 - 160) < 24);
+      if (std::string(form) == "orb") golden1(img, "aura");
+    }
+
+    for (const char* mode : {"field", "warp", "constellation"}) {
+      toml::table st;
+      st.insert_or_assign("stars_preview", 1.0);
+      st.insert_or_assign("stars_mode", mode);
+      const Image img = renderLook("stars", 400, 240, pal, &st);
+      // lit in every quarter: a sky, not a clump
+      int quarters = 0;
+      for (int q = 0; q < 4; ++q) {
+        size_t lit = 0;
+        for (int y = (q / 2) * 120; y < (q / 2 + 1) * 120; ++y)
+          for (int x = (q % 2) * 200; x < (q % 2 + 1) * 200; ++x)
+            if (img.rgba[(static_cast<size_t>(y) * 400 + x) * 4 + 3] > 60) ++lit;
+        quarters += lit > 10 ? 1 : 0;
+      }
+      if (quarters < 4) std::fprintf(stderr, "stars %s: lit in %d quarters\n", mode, quarters);
+      CHECK(quarters == 4);
+      if (std::string(mode) == "field") golden1(img, "stars");
+    }
+  }
+
   // the neon sign: its words lit in its colour round the box's middle, a shape
   // drawn in tubes; the text matches its golden (its face is bundled)
   {
