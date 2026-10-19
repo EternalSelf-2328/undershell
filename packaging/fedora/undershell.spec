@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.3.1
+Version:        1.4.0
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -84,6 +84,11 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Sun Oct 18 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.4.0-1
+- Water-wave, aura and stars visualizers (28 looks)
+- Editor: the toolbar and panels stay where they were left
+- Music card: the idle note as one union shape (no seams)
+
 * Wed Oct 14 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.3.1-1
 - Editor toolbar: steps aside from widgets, can be dragged or stood up at a side, remembers where it was left
 
