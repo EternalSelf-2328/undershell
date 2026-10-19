@@ -18,7 +18,7 @@ namespace undershell {
 struct MediaState;
 
 struct NowPlayingConfig {
-  std::string layout = "sheet";  // sheet vinyl tile poster strip portrait text
+  std::string layout = "sheet";  // sheet vinyl tile poster strip portrait cyber text
   std::string plate = "cover";   // cover glass none
   bool showLyrics = true;
   // the pieces, each of which can be left out
@@ -111,6 +111,10 @@ private:
   void drawRail(Canvas& c, const MediaState& s, const Places& p);
   void drawTransport(Canvas& c, const MediaState& s, const Places& p);
   void drawTrackOnly(Canvas& c, const MediaState& s, const Places& p);
+  // The cyber layout's chrome: a near-black plate with scanlines, the music
+  // as a thin data stream along the foot, neon corner brackets and seams.
+  // Called from the plate stage, so "Nothing playing" is drawn over it too.
+  void drawCyberChrome(Canvas& c, const Places& p, const MediaState& s);
   // what every piece draws with, for the frame in hand
   struct Paint {
     Color ink, dim, surface;

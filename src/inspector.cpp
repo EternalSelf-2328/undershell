@@ -262,27 +262,29 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
       if (layout == "poster" || o["plate"].value_or(std::string("cover")) == "cover") return true;
       if (layout == "text") return false;
       return o["show_rail"].value_or(true) || o["show_transport"].value_or(true) ||
-             (layout == "sheet" && (o["show_lyrics"].value_or(true) || o["show_viz"].value_or(true)));
+             (layout == "sheet" && (o["show_lyrics"].value_or(true) || o["show_viz"].value_or(true))) || layout == "cyber";
     }
     if (layout == "text")
       return in(key, {"layout", "plate", "show_artist", "title_font", "artist_font", "artist_size", "accent_source", "ink",
                       "opacity", "rotation", "depth", "depth_level", "layer"}) &&
              (key != "depth_level" || o["depth"].value_or(true)) &&
              (!in(key, {"artist_size", "artist_font"}) || o["show_artist"].value_or(true));
-    // only the sheet has a column beside the sleeve
-    if (in(key, {"show_lyrics", "lyrics_style", "show_viz"})) return layout == "sheet";
-    if (key == "viz") return layout == "sheet" && o["show_viz"].value_or(true);
+    // only the sheet has a column beside the sleeve; the cyber console puts
+    // the spectrum on its foot instead, as a data stream
+    if (in(key, {"show_lyrics", "lyrics_style"})) return layout == "sheet";
+    if (key == "show_viz") return in(layout, {"sheet", "cyber"});
+    if (key == "viz") return in(layout, {"sheet", "cyber"}) && o["show_viz"].value_or(true);
     if (key == "lyrics_style") return layout == "sheet" && o["show_lyrics"].value_or(true);
     if (key == "show_cover") return layout != "poster";  // the poster is the sleeve
-    if (key == "show_open") return layout == "sheet";
-    if (key == "show_pulse") return in(layout, {"sheet", "portrait"}) && o["show_cover"].value_or(true);
+    if (key == "show_open") return in(layout, {"sheet", "cyber"});
+    if (key == "show_pulse") return in(layout, {"sheet", "portrait", "cyber"}) && o["show_cover"].value_or(true);
 
     if (key == "rail_style") return o["show_rail"].value_or(true);
     if (in(key, {"artist_size", "artist_font"})) return o["show_artist"].value_or(true);
     if (in(key, {"time_size", "time_font"})) return o["show_time"].value_or(true);
     // the record is a disc and the poster is the whole card: neither is cut to a shape
     if (key == "cover_shape") return !in(layout, {"vinyl", "poster"}) && o["show_cover"].value_or(true);
-    if (key == "plate") return layout != "poster";
+    if (key == "plate") return !in(layout, {"poster", "cyber"});  // both wear their own
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }

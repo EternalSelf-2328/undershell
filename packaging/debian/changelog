@@ -1,6 +1,8 @@
 undershell (1.4.0) unstable; urgency=medium
 
   * Water-wave, aura and stars visualizers (28 looks).
+  * Music card: a cyberpunk "cyber" layout — CRT plate, neon corners,
+    the spectrum as a data stream.
   * Editor: the toolbar and panels stay where they were left.
   * Music card: the idle note as one union shape (no seams).
 

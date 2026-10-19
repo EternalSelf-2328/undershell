@@ -665,7 +665,7 @@ int main(int argc, char** argv) {
         for (const char* off : {"show_transport", "show_rail", "show_artist"}) o.insert(off, false);
       nowPlayingDesignSize(o, w, h);
     };
-    for (const char* name : {"sheet", "vinyl", "tile", "poster", "portrait"}) {
+    for (const char* name : {"sheet", "vinyl", "tile", "poster", "portrait", "cyber"}) {
       float fw = 0, fh = 0, bw = 0, bh = 0;
       sizeOf(name, false, fw, fh);
       sizeOf(name, true, bw, bh);
@@ -682,7 +682,7 @@ int main(int argc, char** argv) {
 
     // every layout, at the size it asks for -- which now follows the pieces it
     // is showing, so a card closes up around what is left of it
-    for (const char* name : {"vinyl", "tile", "poster", "strip", "portrait"}) {
+    for (const char* name : {"vinyl", "tile", "poster", "strip", "portrait", "cyber"}) {
       float dw = 0, dh = 0;
       nowPlayingDesignSize(name, dw, dh);
       const int w = static_cast<int>(dw), h = static_cast<int>(dh);

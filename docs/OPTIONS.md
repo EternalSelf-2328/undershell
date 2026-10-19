@@ -94,7 +94,7 @@ Ryoku's now-playing card.
 
 | Key | Values | Default | |
 |---|---|---|---|
-| `layout` | `sheet`, `vinyl`, `tile`, `poster`, `strip`, `portrait`, `text` | `"sheet"` | Layout |
+| `layout` | `sheet`, `vinyl`, `tile`, `poster`, `strip`, `portrait`, `cyber`, `text` | `"sheet"` | Layout |
 | `text_form` | `stacked`, `line` | `"stacked"` | Text form |
 | `text_align` | `left`, `center`, `right` | `"left"` | Align |
 | `text_valign` | `top`, `center`, `bottom` | `"center"` | Vertical |

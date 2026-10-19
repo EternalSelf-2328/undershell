@@ -713,7 +713,7 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
     b += "fill = \"solid\"            # solid gradient radial none\n"
          "color = \"primary\"\ncolor2 = \"tertiary\"\n";
   } else if (type == "now_playing") {
-    b += std::format("layout = \"{}\"           # sheet vinyl tile poster strip portrait\n", look.empty() ? "sheet" : look);
+    b += std::format("layout = \"{}\"           # sheet vinyl tile poster strip portrait cyber\n", look.empty() ? "sheet" : look);
     b += "plate = \"cover\"           # cover glass none\n"
          "show_lyrics = true          # synced lyrics from LRCLIB\n"
          "viz = \"bars\"              # bars wave (when there are no lyrics)\n"

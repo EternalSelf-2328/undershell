@@ -86,6 +86,7 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %changelog
 * Sun Oct 18 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.4.0-1
 - Water-wave, aura and stars visualizers (28 looks)
+- Music card: a cyberpunk "cyber" layout (CRT plate, neon corners, data-stream spectrum)
 - Editor: the toolbar and panels stay where they were left
 - Music card: the idle note as one union shape (no seams)
 

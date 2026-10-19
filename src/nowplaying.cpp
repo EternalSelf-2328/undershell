@@ -24,6 +24,8 @@ const char* MONO = "JetBrains Mono";
 const char* DISPLAY = "Fraunces 144pt";
 // Color's own default is opaque white, which is never what an outline wants
 constexpr Color kClear{0, 0, 0, 0};
+// the cyber console's neon pair
+constexpr Color kCyan{0.54F, 0.97F, 1.0F}, kMag{1.0F, 0.24F, 0.80F}, kChrome{0.03F, 0.04F, 0.055F};
 constexpr float kLead = 5;    // between the title's ink and the artist's
 constexpr float kRailH = 18;  // the row the seek rail lives on
 
@@ -208,11 +210,17 @@ float NowPlayingWidget::textBandHeight() const {
 }
 
 TextStyle NowPlayingWidget::titleStyle() const {
+  // cyber reads mono: the console's type is fixed-width unless another face is
+  // asked for
+  if (m_cfg.layout == "cyber" && m_cfg.titleFont.empty())
+    return {.family = MONO, .size = 16.5F * static_cast<float>(m_cfg.titleSize), .weight = 700};
   return {.family = m_cfg.titleFont.empty() ? DISPLAY : m_cfg.titleFont,
           .size = 20 * static_cast<float>(m_cfg.titleSize),
           .weight = 600};
 }
 TextStyle NowPlayingWidget::artistStyle() const {
+  if (m_cfg.layout == "cyber" && m_cfg.artistFont.empty())
+    return {.family = MONO, .size = 10.5F * static_cast<float>(m_cfg.artistSize), .weight = 500};
   return {.family = m_cfg.artistFont.empty() ? FONT : m_cfg.artistFont,
           .size = 12.5F * static_cast<float>(m_cfg.artistSize),
           .weight = 500};
@@ -281,6 +289,30 @@ NowPlayingWidget::Places NowPlayingWidget::places() const {
     p.clock = false;
     return p;
   }
+  // The cyber console: a dark, square-cornered plate. The sleeve leads on the
+  // left under neon; the track, its rail and the three moves stack to the
+  // right; the music runs as a thin data stream along the foot.
+  if (l == "cyber") {
+    const float pad = 18, gap = 12, stream = 16;  // `stream`: the foot's strip
+    p.w = 430;
+    const float rows = rowsHeight(16, gap);
+    // the artwork follows what stands beside it, as at the vinyl's deck: a
+    // card showing little keeps the square small instead of all edge
+    const float art = cover ? std::clamp(rows + 24, 84.0F, 112.0F) : 0;
+    p.h = std::max(art, rows) + 2 * pad + stream;
+    p.plate = {0, 0, p.w, p.h};
+    p.radius = 6;  // corners are square, like the chrome's
+    if (cover) {
+      p.cover = {pad, pad + 2, art, art};
+      p.coverRadius = 4;
+    }
+    // the corner button rides the top-left, clear of the bracket frames
+    if (m_cfg.showOpen) p.open = {pad + 6, 8, 24, 24};
+    const float x = pad + (cover ? art + 16 : 0);
+    stack(x, pad + 2 + (art > rows ? (art - rows) / 2 : 0), p.w - pad - x, gap, 16, 12, true);
+    return p;
+  }
+
   // A record on its deck: the sleeve is the label, and the disc turns while
   // the song plays. Everything else stands to its right.
   if (l == "vinyl") {
@@ -521,6 +553,13 @@ void NowPlayingWidget::drawSleeve(Canvas& c, const MediaState& s, const Places& 
     c.roundRect(r.x, r.y, r.w, r.h, p.coverRadius, tint(m_noct.color("surface_variant", m_paint.surface)));
     noteGlyph(c, r.x + r.w / 2, r.y + r.h / 2, std::min(40.0F, r.w * 0.24F), tint(m_paint.dim));
   }
+  // cyber: tick brackets bridging the sleeve's corners, cyan apposing magenta
+  if (m_cfg.layout == "cyber" && s.cover) {
+    c.segment(r.x, r.y + 13, r.x, r.y, 2, tint(kCyan), false);
+    c.segment(r.x, r.y, r.x + 13, r.y, 2, tint(kCyan), false);
+    c.segment(r.x + r.w, r.y + r.h - 13, r.x + r.w, r.y + r.h, 2, tint(kMag), false);
+    c.segment(r.x + r.w - 13, r.y + r.h, r.x + r.w, r.y + r.h, 2, tint(kMag), false);
+  }
   // now-playing pulse on the sleeve, only while sound is moving
   if (!s.playing || !m_cfg.showPulse || r.w < 90) return;
   const float barW = 3, gap = 2.5F, maxH = 13, pw = 4 * barW + 3 * gap;
@@ -672,6 +711,15 @@ void NowPlayingWidget::drawText(Canvas& c, const MediaState& s, const Places& p)
     if (p.align == 2) return p.text.x + band - i.w - i.x;
     return p.text.x - i.x;
   };
+  const bool cyberLayout = m_cfg.layout == "cyber";
+  if (cyberLayout) {
+    // neon: the title haloed more gently than it burns, then chromatic ghosts
+    // at its sides — apart, for a moment, when the glitch takes
+    c.text(s.title, tS, xOf(tI), y - tI.y, tint(m_accent), 0.6F, 1, 2.4F);
+    const float dx = s.playing && std::fmod(m_paint.now * 0.68, 5.3) < 0.34 ? 2.3F : 0.9F;
+    c.text(s.title, tS, xOf(tI) - dx, y - tI.y, tint(Color{1, 0.20F, 0.55F}, 0.5F));
+    c.text(s.title, tS, xOf(tI) + dx, y - tI.y, tint(kCyan, 0.5F));
+  }
   c.text(s.title, tS, xOf(tI), y - tI.y, tint(m_paint.ink));
   if (artist) c.text(s.artist, aS, xOf(aI), y + tI.h + lead - aI.y, tint(m_paint.dim));
   // the clock, in the slot this layout gives it or, with none, on the same
@@ -903,7 +951,9 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   c.setTransform(m_k, m_ox, m_oy);
 
   // ── the plate ──
-  if (p.coverPlate) {
+  if (m_cfg.layout == "cyber")
+    drawCyberChrome(c, p, s);  // the console's own chrome: plate, scanlines, neon
+  else if (p.coverPlate) {
     // the artwork is the card; a veil at its foot keeps the track readable
     if (s.present && s.cover && s.coverW > 0) {
       c.image(s.cover, s.coverW, s.coverH, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, m_paint.op);
@@ -966,6 +1016,49 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   drawRail(c, s, p);
   drawTransport(c, s, p);
   m_wasPlaying = s.playing;
+}
+
+void NowPlayingWidget::drawCyberChrome(Canvas& c, const Places& p, const MediaState& s) {
+  const Color cyan = tint(kCyan), mag = tint(kMag);
+  // the plate: a dark card to put the neon against
+  c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, tint(kChrome, 0.94F));
+  // scanlines: CRT bands across the card
+  for (float y = p.plate.y + 3.5F; y < p.plate.y + p.plate.h - 2.5F; y += 5)
+    c.roundRect(p.plate.x + 1, y, p.plate.w - 2, 1.5F, 0, Color{0, 0, 0, 0.11F * m_paint.op});
+  // a bloom under the sleeve, and only under the sleeve: with no song there
+  // is nothing drawn over it, so the bloom would stand as a plain colour
+  if (p.cover.w > 0 && s.present)
+    c.roundRect(p.cover.x - 3, p.cover.y - 3, p.cover.w + 6, p.cover.h + 6, p.coverRadius + 2, withAlpha(mag, 0.28F));
+  // the music as a data stream along the foot: the shared spectrum's bands;
+  // in silence a still row of stubs keeps the edge honest
+  if (m_cfg.showViz) {
+    const int n = static_cast<int>(m_viz.size());
+    const float x0 = 16, x1 = p.w - 16, pitch = (x1 - x0) / n, barW = std::max(2.0F, pitch * 0.5F);
+    const float base = p.h - 6;
+    for (int i = 0; i < n; ++i) {
+      const float hgt = std::max(1.6F, m_viz[static_cast<size_t>(i)] * 11);
+      c.roundRect(x0 + i * pitch + (pitch - barW) / 2, base - hgt, barW, hgt, 0, withAlpha(cyan, 0.85F));
+    }
+  }
+  // corner brackets: a soft glow under a hot core
+  const float arm = 16, inset = 5;
+  auto bracket = [&](float x, float y, float dx, float dy) {
+    c.segment(x, y, x + dx * arm, y, 3.2F, withAlpha(cyan, 0.34F), false);
+    c.segment(x, y, x + dx * arm, y, 1.4F, cyan, false);
+    c.segment(x, y, x, y + dy * arm, 3.2F, withAlpha(cyan, 0.34F), false);
+    c.segment(x, y, x, y + dy * arm, 1.4F, cyan, false);
+  };
+  bracket(inset, inset, 1, 1);
+  bracket(p.w - inset, inset, -1, 1);
+  bracket(inset, p.h - inset, 1, -1);
+  bracket(p.w - inset, p.h - inset, -1, -1);
+  // seams: a magenta datum on the left edge, meter ticks down the right
+  c.segment(0, p.h * 0.22F, 10, p.h * 0.22F, 2, withAlpha(mag, 0.8F), false);
+  c.segment(0, p.h * 0.22F + 5, 5, p.h * 0.22F + 5, 1.4F, withAlpha(mag, 0.5F), false);
+  for (int i = 0; i < 6; ++i) {
+    const float y = p.h - 30 - i * 7, len = i % 2 ? 3.5F : 6.5F;
+    c.segment(p.w, y, p.w - len, y, 1.6F, withAlpha(mag, 0.55F), false);
+  }
 }
 
 }  // namespace undershell
