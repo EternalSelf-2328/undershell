@@ -54,15 +54,9 @@ void spawnDetached(const std::string& cmd) {
   if (pid > 0) waitpid(pid, nullptr, 0);  // the go-between exits at once: no zombie left behind
 }
 
-// a music note glyph drawn with primitives (Ryoku's GlyphIcon "music")
-void noteGlyph(Canvas& c, float cx, float cy, float size, Color col) {
-  const float s = size / 14;
-  c.circle(cx - 3.2F * s, cy + 3.6F * s, 2.4F * s, col);
-  c.circle(cx + 3.8F * s, cy + 2.4F * s, 2.4F * s, col);
-  c.segment(cx - 1.0F * s, cy + 3.6F * s, cx - 1.0F * s, cy - 5.0F * s, 1.4F * s, col, false);
-  c.segment(cx + 6.0F * s, cy + 2.4F * s, cx + 6.0F * s, cy - 6.2F * s, 1.4F * s, col, false);
-  c.segment(cx - 1.0F * s, cy - 5.0F * s, cx + 6.0F * s, cy - 6.2F * s, 2.2F * s, col, false);
-}
+// a music note glyph drawn as one union shape (Canvas::note); Ryoku's
+// GlyphIcon "music"
+void noteGlyph(Canvas& c, float cx, float cy, float size, Color col) { c.note(cx, cy, size, col); }
 }  // namespace
 
 NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {

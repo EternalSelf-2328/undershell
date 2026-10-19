@@ -28,6 +28,9 @@ public:
   void triangle(float x1, float y1, float x2, float y2, float x3, float y3, Color color);
   // a sine stroke from x0 to x1 around baseline y: amplitude, wavelength, phase (px)
   void wave(float x0, float x1, float y, float amplitude, float wavelength, float phase, float thickness, Color color);
+  // a music note (the eighth-note pair) as one union SDF: overlapping pieces
+  // never show seams, however translucent the ink is
+  void note(float cx, float cy, float size, Color color);
   // an RGBA texture drawn "cover"-fitted into a rounded rect; blur in design px
   // `shape`: 128 radii of a Material 3 shape (m3shapes) to cut the image to
   // instead of a rounded rectangle

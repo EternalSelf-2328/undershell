@@ -23,7 +23,7 @@ static const char* kShapeFrag = R"(#version 300 es
 precision highp float;
 in vec2 v_px;
 out vec4 fragColor;
-uniform int u_kind;        // 0 round rect, 1 circle, 2 segment, 3 arc, 4 triangle, 5 wave
+uniform int u_kind;        // 0 round rect, 1 circle, 2 segment, 3 arc, 4 triangle, 5 wave, 6 note
 uniform vec4 u_a;          // kind-specific
 uniform vec4 u_b;
 uniform vec4 u_fill;       // straight alpha
@@ -63,6 +63,20 @@ void main() {
             vec2 local = vec2(dot(q, t) - len * 0.5, dot(q, vec2(-t.y, t.x)));
             d = roundBox(local, vec2(len * 0.5 + u_b.x, u_b.x), 0.0);
         }
+    } else if (u_kind == 6) {     // a: cx cy s   the music note, one union
+        // Distance to the note's five pieces in glyph units (×1/14 of size),
+        // joined by min: one quad, one blend — overlapping pieces (each stem
+        // over its head, the beam over both stems) cannot show seams the way
+        // separate translucent quads do (an R's bowl over its stem, a 4's bar).
+        vec2 c = u_a.xy;
+        float s = u_a.z;
+        vec2 n = (p - c) / s;
+        d = length(n - vec2(-3.2, 3.6)) - 2.4;   // head, left
+        d = min(d, length(n - vec2(3.8, 2.4)) - 2.4);  // head, right
+        d = min(d, segDist(n, vec2(-1.0, 3.6), vec2(-1.0, -5.0)) - 0.7);   // stem, left
+        d = min(d, segDist(n, vec2(6.0, 2.4), vec2(6.0, -6.2)) - 0.7);     // stem, right
+        d = min(d, segDist(n, vec2(-1.0, -5.0), vec2(6.0, -6.2)) - 1.1);   // beam
+        d *= s;                                    // back to surface px so u_aa applies
     } else if (u_kind == 4) {     // a: x1 y1 x2 y2   b: x3 y3
         vec2 p0 = u_a.xy, p1 = u_a.zw, p2 = u_b.xy;
         vec2 e0 = p1 - p0, e1 = p2 - p1, e2 = p0 - p2;
@@ -244,6 +258,15 @@ void main() {
     fragColor = vec4(c.rgb * a, a);
 }
 )";
+
+void Canvas::note(float cx, float cy, float size, Color color) {
+  // the eighth-note pair of nowplaying, as one union SDF (kind 6): a single
+  // blend, so its overlapping pieces show no seams when translucent.
+  // Glyph units: everything below is in 1/14 of `size`.
+  const float X = m_ox + cx * m_scale, Y = m_oy + cy * m_scale, S = size / 14 * m_scale;
+  const float p[8] = {X, Y, S, 0, 0, 0, 0, 0};
+  shape(6, X - 5.6F * S, Y - 7.3F * S, X + 6.7F * S, Y + 6.0F * S, p, color, 0, {});
+}
 
 void Canvas::image(GLuint texture, int texW, int texH, float x, float y, float w, float h, float radius, float opacity,
                    float blur, const float* shape) {
