@@ -539,7 +539,7 @@ EffectCode effectCode(const std::vector<const EffectSpec*>& fx) {
   return code;
 }
 
-std::vector<PropSpec> effectRows(const toml::table& opts, bool all) {
+std::vector<PropSpec> effectRows(const toml::table& opts, bool all, bool box) {
   using K = PropSpec::Kind;
   std::vector<PropSpec> rows;
   PropSpec head;
@@ -595,11 +595,15 @@ std::vector<PropSpec> effectRows(const toml::table& opts, bool all) {
     where.optionNames = {{"Everywhere", "En todo"}, {"Background", "Solo el fondo"}, {"Subject", "Solo la figura"},
                          {"Above a line", "Arriba de línea"}, {"Below a line", "Abajo de línea"},
                          {"Painted 1", "Pintura 1"}, {"Painted 2", "Pintura 2"}, {"Painted 3", "Pintura 3"}, {"Painted 4", "Pintura 4"}};
+    if (box) {  // a widget's own box: everywhere, or above / below a line
+      where.options = {"all", "above", "below"};
+      where.optionNames = {where.optionNames[0], where.optionNames[3], where.optionNames[4]};
+    }
     rows.push_back(row(where));
     const std::string m = opts[effectKey(e.id, "mask")].value_or(std::string("all"));
     if (all || m == "above" || m == "below")
       rows.push_back(row({K::Number, effectKey(e.id, "split"), "Line height", "Altura de línea", {}, 0, 1, 0.01, 0.5}));
-    if (all || m.starts_with("paint")) {
+    if (!box && (all || m.starts_with("paint"))) {
       // the brush, open on that mask
       PropSpec paint{K::Action, effectKey(e.id, "paint"), "Paint the mask…", "Pintar la máscara…"};
       paint.defText = m;

@@ -357,7 +357,20 @@ std::vector<PropSpec> fileRows(const toml::table& opts, const std::string& key, 
   return rows;
 }
 
+std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expanded);
+
+// a widget's own rows, then its animated effects (the wallpaper widget
+// places its own, near the top)
 std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded) {
+  std::vector<PropSpec> s = inspectorRowsOwn(w, expanded);
+  if (w.cfg.type != "filter") {
+    std::vector<PropSpec> fx = effectRows(w.cfg.options, expanded == "*", true);
+    s.insert(s.end(), fx.begin(), fx.end());
+  }
+  return s;
+}
+
+std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expanded) {
   using K = PropSpec::Kind;
   std::vector<PropSpec> s;
   std::vector<PropSpec> all = schemaFor(w.cfg.type);

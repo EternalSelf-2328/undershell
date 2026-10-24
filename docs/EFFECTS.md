@@ -33,6 +33,9 @@ vec2 warp(vec2 uv) {
 ```
 
 Turn it on with `fx_heat = true` in the widget's block, or with the switch in the editor.
+Effects also work on any other widget (a clock, a picture, text): there `uv` covers the
+widget's own box, `wall()` reads the widget's own picture, and "where" is everywhere or
+above / below a line (the depth and the painted masks belong to the wallpaper).
 
 ## The header
 

@@ -3,6 +3,7 @@
 // (with GL) that every built-in compiles and draws.
 #include "check.hpp"
 #include "effects.hpp"
+#include "widget.hpp"
 #include "noctalia.hpp"
 #include "offscreen.hpp"
 
@@ -30,7 +31,8 @@ static bool hasRow(const std::vector<PropSpec>& rows, const std::string& key) {
 int main() {
   const fs::path dir = fs::temp_directory_path() / ("undershell-effects-" + std::to_string(getpid()));
   fs::create_directories(dir / "undershell/effects");
-  setenv("XDG_CONFIG_HOME", dir.c_str(), 1);  // never the person's own folder
+  setenv("XDG_CONFIG_HOME", dir.c_str(), 1);  // never the person's own folders
+  setenv("XDG_DATA_HOME", dir.c_str(), 1);
   const std::string fxDir = (dir / "undershell/effects").string();
   CHECK(userEffectsDir() == fxDir);
 
@@ -120,6 +122,19 @@ int main() {
   CHECK(hasRow(effectRows(toml::table{}, true), "fx_godrays_tint"));  // every default, for lookups
   for (const auto& r : effectRows(toml::table{}, true))
     if (r.key == "fx_pulse_source") CHECK(r.optionNames.size() == 4 && r.optionNames[0].second == "Graves");
+  // in a widget's own box: everywhere or a line only
+  for (const auto& r : effectRows(opts, false, true))
+    if (r.key == "fx_waves_mask") CHECK(r.options.size() == 3 && r.optionNames[1].second == "Arriba de línea");
+  CHECK(!hasRow(effectRows(opts, false, true), "fx_waves_paint"));
+  // the wrapper keeps what the widget is: a note can still be typed on
+  {
+    auto note = createWidget("notes");
+    WidgetConfig wc;
+    wc.type = "notes";
+    wc.id = "n";
+    note->configure(wc, testPalette());
+    CHECK(note->editable());
+  }
   // a painted mask: its button opens the brush on that mask
   opts.insert_or_assign("fx_waves_mask", "paint3");
   bool button = false;
@@ -238,6 +253,26 @@ int main() {
           }
       if (!(up > 50 && down < 1)) std::fprintf(stderr, "mist above: up %.0f down %.0f\n", up, down);
       CHECK(up > 50 && down < 1);
+    }
+    // any other widget: drawn into its own texture, then through the effects
+    {
+      toml::table sq;
+      sq.insert_or_assign("shape", "rect");
+      const Image still = renderWidget("shape", sq, 120, 120, pal);
+      sq.insert_or_assign("fx_waves", true);
+      sq.insert_or_assign("fx_waves_strength", 2.0);
+      const Image moved = renderWidget("shape", sq, 120, 120, pal);
+      CHECK(still.w == 120 && moved.w == 120 && imageDiff(moved, still) > 0.2);
+      sq.insert_or_assign("fx_waves_mask", "below");
+      sq.insert_or_assign("fx_waves_split", 0.5);
+      const Image half = renderWidget("shape", sq, 120, 120, pal);
+      double up = 0;
+      for (int y = 0; y < 50; ++y)
+        for (int x = 0; x < 120; ++x)
+          for (int k = 0; k < 4; ++k) up += std::abs(half.rgba[(static_cast<size_t>(y) * 120 + x) * 4 + k] - still.rgba[(static_cast<size_t>(y) * 120 + x) * 4 + k]);
+      CHECK(up < 200);  // the top as it was (upright, not flipped)
+      sq.erase("fx_waves");
+      CHECK(imageDiff(renderWidget("shape", sq, 120, 120, pal), still) < 0.01);  // nothing on: drawn straight
     }
     // all together in one pass
     const Image every = renderWidget("filter", all, 160, 90, pal, 1000, 30, 3.0, nullptr, png);

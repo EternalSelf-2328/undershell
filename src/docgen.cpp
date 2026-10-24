@@ -129,7 +129,8 @@ std::string optionsMarkdown() {
         "`above`, `below`, `paint1` … `paint4`: `above` and `below` split the picture at `fx_<effect>_split`, 0 – 1 from the top; "
         "`paint1` … `paint4` are masks painted with the editor's brush, kept per wallpaper in "
         "`~/.config/undershell/effect-masks`) — `background`, `subject` and the painted masks need the wallpaper's depth map. Your own effects go in `~/.config/undershell/effects/<name>.glsl` "
-        "(see [EFFECTS.md](EFFECTS.md)).\n\n";
+        "(see [EFFECTS.md](EFFECTS.md)). The same `fx_…` keys work in **every other widget type**, on the widget's own "
+        "picture; there `fx_<effect>_mask` is `all`, `above` or `below`.\n\n";
   md += "| Effect | Option | Values | Default | |\n|---|---|---|---|---|\n";
   for (const EffectSpec& e : builtinEffects()) {
     md += std::format("| `fx_{}` | | `true` / `false` | `false` | {} |\n", e.id, e.nameEn);

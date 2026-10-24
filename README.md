@@ -423,6 +423,12 @@ that GPU at 30 fps. It stays at full resolution (a softer copy of the
 wallpaper would show at once); under load the governor lowers the effects'
 quality and the lights pass's resolution instead.
 
+The same effects work on **every other widget** too (a clock in the wind, a
+picture under water, a title with a shine): the "Animated effects" section
+at the end of any widget's inspector, or `fx_<effect> = true` in its block.
+There the widget draws into a texture of its own size and the effects draw
+that texture; with none on it costs nothing more.
+
 You can write your own: a small GLSL function with a JSON header that
 declares its options, saved as `~/.config/undershell/effects/<name>.glsl`. It
 shows up in the inspector with its own rows as soon as it is saved (format
@@ -1277,6 +1283,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/weather.*`, `src/weatherfeed.*` | the weather widget and its Open-Meteo feed (geocoding, forecast, disk cache) |
 | `src/net.*` | HTTPS fetches (http/https only, size-limited) and the cache folder |
 | `src/filter.*` | the wallpaper widget: the wallpaper drawn again through colour adjustments and the animated effects (one pass, plus a smaller one for the lights) |
+| `src/effectchain.*`, `src/fxwidget.*` | the effects of one widget ready to draw (options, music, programs, lights pass), and the wrapper that gives them to every widget type |
 | `src/effects.*`, `src/fx/*.inc` | animated effects: the annotated format, the built-in effects, your own folder, joining them into one shader, their inspector rows |
 | `src/shape.*` | the shape widget (one distance shader) |
 | `src/image.*`, `src/video.*` | the image widget; decoding stills, GIFs and videos (FFmpeg, gdk-pixbuf) |

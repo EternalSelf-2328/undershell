@@ -109,7 +109,8 @@ inline std::string effectKey(const std::string& id, const std::string& param) { 
 
 // The inspector rows: a header, a switch per effect, and the options of
 // those that are on (all of them when `all`, for default lookups).
-[[nodiscard]] std::vector<PropSpec> effectRows(const toml::table& opts, bool all);
+// `box`: for a widget's own box (no depth or painted masks there).
+[[nodiscard]] std::vector<PropSpec> effectRows(const toml::table& opts, bool all, bool box = false);
 
 // The values of an effect's `mask` (its where): all, background, subject,
 // above, below, paint1..paint4 (the painted effect masks); the index is the
