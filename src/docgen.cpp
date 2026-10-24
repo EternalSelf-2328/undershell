@@ -122,8 +122,8 @@ std::string optionsMarkdown() {
   table(md, "weather");
   md += "\n## `type = \"scene\"`\n\nA Wallpaper Engine wallpaper from your own Steam install: `scene` is its Workshop id (or a "
         "folder with a `project.json`). Videos play through FFmpeg; scenes are unpacked by `undershell-scene`, a confined helper, "
-        "into `~/.cache/undershell/scenes` and drawn layer by layer (Wallpaper Engine's own effects, particles, text and puppets are "
-        "not drawn yet). Nothing of Wallpaper Engine ships with undershell.\n\n";
+        "into `~/.cache/undershell/scenes` and drawn layer by layer, with their effects (as undershell's own), particles, camera, bloom and text, whose scripts run "
+        "in `undershell-script`, a confined helper (puppet animations and other scripts are not drawn yet). Nothing of Wallpaper Engine ships with undershell.\n\n";
   table(md, "scene");
   md += "\n## `type = \"filter\"`\n\nA colour filter over the wallpaper: it draws the wallpaper again (fitted as the shell fits it) "
         "through the options below, under every other widget. With `depth = true` only the background behind the wallpaper's "

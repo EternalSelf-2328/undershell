@@ -149,6 +149,7 @@ core = static_library('undershell-core',
   'src/pond.cpp',
   'src/ripples.cpp',
   'src/saves.cpp',
+  'src/scripthost.cpp',
   'src/scene.cpp',
   'src/sfx.cpp',
   'src/shape.cpp',
@@ -179,6 +180,15 @@ executable('undershell', 'src/main.cpp', dependencies : core_dep, install : true
 if onnx_dep.found()
   executable('undershell-depth', 'src/depthhelper.cpp', dependencies : [onnx_dep, dependency('gdk-pixbuf-2.0')],
              install : true, install_dir : libexecdir)
+endif
+# scene scripts (SceneScript): undershell-script runs them in quickjs-ng,
+# in a process of its own with no file access
+cxx = meson.get_compiler('cpp')
+qjs_dep = cxx.find_library('qjs', required : get_option('scripts'), has_headers : ['quickjs.h'])
+summary({'Wallpaper Engine scene scripts (quickjs-ng)' : qjs_dep.found()}, section : 'Features')
+if qjs_dep.found()
+  executable('undershell-script', 'src/scripthelper.cpp', dependencies : [qjs_dep, dependency('nlohmann_json')], install : true,
+             install_dir : libexecdir)
 endif
 if lz4_dep.found()
   executable('undershell-scene', 'src/scenehelper.cpp', dependencies : [lz4_dep], install : true, install_dir : libexecdir)
@@ -212,5 +222,6 @@ foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles
 endforeach
 if lz4_dep.found()
   test('scene', executable('test_scene', 'tests/test_scene.cpp', dependencies : core_dep, cpp_args : test_args),
-       env : ['UNDERSHELL_SCENE_HELPER=' + meson.current_build_dir() / 'undershell-scene'])
+       env : ['UNDERSHELL_SCENE_HELPER=' + meson.current_build_dir() / 'undershell-scene',
+              'UNDERSHELL_SCRIPT_HELPER=' + meson.current_build_dir() / 'undershell-script'])
 endif

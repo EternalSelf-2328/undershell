@@ -11,6 +11,7 @@
 
 #include "effectchain.hpp"
 #include "particles.hpp"
+#include "scripthost.hpp"
 #include "gl.hpp"
 #include "video.hpp"
 #include "wallstore.hpp"
@@ -100,9 +101,24 @@ private:
   std::map<size_t, std::unique_ptr<LayerFx>> m_fx;  // by layer index
   NoctaliaState m_noct;
   ParticleField m_pt;  // the scene's particle systems
+  std::unique_ptr<ScriptHost> m_scripts;  // its text layers' scripts, run apart
+  std::map<int, std::string> m_texts;     // layer index -> what its script says now
+  std::vector<int> m_scriptIds;
+  double m_scriptAt = 0, m_scriptLast = -1;
   std::map<std::string, int> m_formats;  // texture key -> .tex format
   bool m_moving = false, m_audio = false;
   bool m_stillTried = false;
+  bool m_camera = true;      // let the camera drift and shake (the scene's own settings)
+  double m_camStart = -1;
+  // bloom: the scene into its own texture, its bright parts blurred small and added back
+  struct Bloom {
+    Program bright, blur, mix;
+    GLuint fbo[3] = {}, tex[3] = {};  // the scene, then two small ones
+    int w = 0, h = 0;
+    ~Bloom();
+  };
+  Bloom m_bloom;
+  void drawBloomed(const DrawContext& ctx);
   std::string m_stillPath;
   std::shared_ptr<std::atomic<bool>> m_still = std::make_shared<std::atomic<bool>>(false);  // written
   VideoSource m_video;

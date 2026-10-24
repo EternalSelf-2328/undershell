@@ -66,6 +66,7 @@ struct WeLayer {
   std::string align = "center";
   bool visible = true;
   float alpha = 1, brightness = 1;
+  float depthX = 1, depthY = 1;  // parallaxDepth: how much the camera's drift moves it
   Color color{1, 1, 1, 1};
   bool additive = false;
   std::string texture;           // "materials/foo" (no extension): in the scene, else in the assets
@@ -86,11 +87,23 @@ struct WeLayer {
   std::vector<Fx> fx;
   int unmapped = 0;              // effects with no counterpart yet
   int particle = -1;             // a particle system's object: its index in WeScene::particles
+  // a text object: what it says (or what its script starts from), its script
+  // (SceneScript, run by undershell-script) and how it is set
+  bool isText = false;
+  std::string text, script, scriptProps;  // scriptProps: its script's values, as JSON
+  std::string font = "Sans";
+  float pointsize = 32;
+  std::string halign = "center", valign = "center";
 };
 
 struct WeScene {
   float width = 1920, height = 1080;  // the orthographic projection
   Color clear{0, 0, 0, 1};
+  // the camera: parallax (Wallpaper Engine follows the mouse; a background
+  // layer gets no pointer on Wayland, so it drifts slowly), shake, bloom
+  bool parallax = false, shake = false, bloom = false;
+  float parallaxAmount = 0.5F, shakeAmplitude = 0.5F, shakeRoughness = 1, shakeSpeed = 3;
+  float bloomStrength = 2, bloomThreshold = 0.65F;
   std::vector<WeLayer> layers;        // in drawing order
   // files the scene refers to that are not in its folder (asked from the assets)
   std::vector<std::string> needs;

@@ -275,6 +275,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   static const std::vector<PropSpec> scene = {
       {K::Text, "scene", "Workshop id or folder", "Id del Workshop o carpeta", {}, 0, 0, 0, 0, ""},
       {K::Number, "speed", "Video speed", "Velocidad del video", {}, 0.25, 2, 0.05, 1},
+      {K::Bool, "camera", "Camera moves", "Cámara en movimiento", {}, 0, 1, 1, 1},
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 0},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, -999, "", true},
   };

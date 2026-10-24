@@ -242,6 +242,8 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
   return img;
 }
 
+Image renderDrawn(int w, int h, const std::function<void()>& draw) { return renderToImage(w, h, [&] { draw(); }); }
+
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct, double now,
                    int ticks, double waitSeconds, WeatherService* weather, const std::string& wallpaper, unsigned effectMasks) {
   std::unique_ptr<WidgetImpl> widget = createWidget(type);

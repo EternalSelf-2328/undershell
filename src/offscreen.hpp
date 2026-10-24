@@ -8,6 +8,7 @@
 #include <toml++/toml.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -63,6 +64,9 @@ Image renderWarped(const Image& src, double tiltX, double tiltY, double skew, do
 Image renderMeshed(const Image& src, const std::string& preset, double amount, int n = 3, bool smooth = true);
 // Renders one line of text in white (needs Headless).
 Image renderText(const std::string& text, const std::string& family, float size, int weight);
+
+// Whatever `draw` draws on a w x h surface (needs Headless), rows top down.
+Image renderDrawn(int w, int h, const std::function<void()>& draw);
 
 bool writePng(const Image& img, const std::string& path, bool overDark);
 bool readPng(const std::string& path, Image& img);

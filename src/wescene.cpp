@@ -444,6 +444,20 @@ bool readWeScene(const std::string& unpacked, const std::string& assets, const W
     out.height = std::clamp(op.value("height", 1080.0F), 16.0F, 16384.0F);
   }
   if (const auto c = floats(valueOf(general.value("clearcolor", json()), project)); c.size() >= 3) out.clear = Color{c[0], c[1], c[2], 1};
+  auto flag = [&](const char* key) {
+    const json v = valueOf(general.value(key, json(false)), project);
+    return v.is_boolean() && v.get<bool>();
+  };
+  auto number = [&](const char* key, float def) { return floatOf(valueOf(general.value(key, json(def)), project), def); };
+  out.parallax = flag("cameraparallax");
+  out.parallaxAmount = std::clamp(number("cameraparallaxamount", 0.5F), 0.0F, 4.0F);
+  out.shake = flag("camerashake");
+  out.shakeAmplitude = std::clamp(number("camerashakeamplitude", 0.5F), 0.0F, 4.0F);
+  out.shakeRoughness = std::clamp(number("camerashakeroughness", 1), 0.0F, 4.0F);
+  out.shakeSpeed = std::clamp(number("camerashakespeed", 3), 0.0F, 20.0F);
+  out.bloom = flag("bloom");
+  out.bloomStrength = std::clamp(number("bloomstrength", 2), 0.0F, 8.0F);
+  out.bloomThreshold = std::clamp(number("bloomthreshold", 0.65F), 0.0F, 0.99F);
   for (const json& o : scene.value("objects", json::array())) {
     if (!o.is_object()) continue;
     if (o.contains("particle") && o["particle"].is_string()) {
@@ -463,6 +477,42 @@ bool readWeScene(const std::string& unpacked, const std::string& assets, const W
       }
       if (const auto p = floats(valueOf(o.value("origin", json()), project)); p.size() >= 2) node.ox = p[0], node.oy = p[1];
       out.layers.push_back(node);
+      continue;
+    }
+    if (o.contains("text")) {  // a text object: drawn with undershell's text, its script run apart
+      WeLayer t;
+      t.isText = true;
+      t.compose = false;
+      t.id = o.value("id", -1);
+      t.parent = o.value("parent", -1);
+      t.name = o.value("name", std::string());
+      if (const auto v = floats(valueOf(o.value("origin", json()), project)); v.size() >= 2) t.ox = v[0], t.oy = v[1];
+      if (const auto v = floats(valueOf(o.value("scale", json()), project)); v.size() >= 2) t.sx = v[0], t.sy = v[1];
+      if (const auto v = floats(valueOf(o.value("angles", json()), project)); v.size() >= 3) t.angle = v[2];
+      if (const json v = valueOf(o.value("visible", json(true)), project); v.is_boolean()) t.visible = v.get<bool>();
+      t.alpha = std::clamp(floatOf(valueOf(o.value("alpha", json(1.0)), project), 1), 0.0F, 1.0F);
+      if (const auto c = floats(valueOf(o.value("color", json()), project)); c.size() >= 3) t.color = Color{c[0], c[1], c[2], 1};
+      t.pointsize = std::clamp(floatOf(valueOf(o.value("pointsize", json(32.0)), project), 32), 1.0F, 1000.0F);
+      if (const json a = o.value("horizontalalign", json()); a.is_string()) t.halign = a.get<std::string>();
+      if (const json a = o.value("verticalalign", json()); a.is_string()) t.valign = a.get<std::string>();
+      // "systemfont_arial" names a system font; a font of the scene's own falls back to the system's
+      const std::string font = o.value("font", std::string());
+      if (font.rfind("systemfont_", 0) == 0) {
+        t.font = font.substr(11);
+        if (!t.font.empty()) t.font[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(t.font[0])));
+      }
+      const json tx = o["text"];
+      if (tx.is_string()) t.text = tx.get<std::string>();
+      else if (tx.is_object()) {
+        const json v = valueOf(tx, project);
+        if (v.is_string()) t.text = v.get<std::string>();
+        if (tx.contains("script") && tx["script"].is_string()) t.script = tx["script"].get<std::string>();
+        json props = json::object();
+        if (tx.contains("scriptproperties") && tx["scriptproperties"].is_object())
+          for (const auto& [k, pv] : tx["scriptproperties"].items()) props[k] = valueOf(pv, project);
+        t.scriptProps = props.dump();
+      }
+      out.layers.push_back(std::move(t));
       continue;
     }
     if (!o.contains("image") || !o["image"].is_string()) {
@@ -490,6 +540,7 @@ bool readWeScene(const std::string& unpacked, const std::string& assets, const W
     if (const json a = valueOf(o.value("alignment", json()), project); a.is_string()) l.align = a.get<std::string>();
     if (const json v = valueOf(o.value("visible", json(true)), project); v.is_boolean()) l.visible = v.get<bool>();
     l.alpha = std::clamp(floatOf(valueOf(o.value("alpha", json(1.0)), project), 1), 0.0F, 1.0F);
+    if (const auto v = floats(valueOf(o.value("parallaxDepth", json()), project)); v.size() >= 2) l.depthX = v[0], l.depthY = v[1];
     l.brightness = std::clamp(floatOf(valueOf(o.value("brightness", json(1.0)), project), 1), 0.0F, 10.0F);
     if (const auto c = floats(valueOf(o.value("color", json()), project)); c.size() >= 3) l.color = Color{c[0], c[1], c[2], 1};
     // its model, then the model's material, then the material's first texture

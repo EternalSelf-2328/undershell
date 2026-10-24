@@ -480,7 +480,7 @@ each kept inside its own mask. Their **particles** run on undershell's
 particle engine, with their textures and sprite sheets, in the order they
 stand among the layers. Here that draws 2016 of the 2831 effects and 485
 particle systems of 126 scenes; the rest is authors' own shaders, scripts
-(SceneScript), text and puppet animations, not drawn yet. A layer with
+(SceneScript) beyond text, and puppet animations, not drawn yet. A layer with
 effects is processed at the size it shows on screen, so a typical scene
 costs 1 to 7 ms of GPU per frame at 1366×768 on an HD 520.
 
@@ -491,6 +491,17 @@ ready, with no gap. Once loaded, the scene leaves a **still** of itself
 (without particles, so it is the same every time) beside its unpacked files,
 and undershell takes it as that screen's wallpaper: the depth map and the
 layouts kept per wallpaper follow the scene.
+
+Scenes also get their **camera** (Wallpaper Engine follows the mouse; a
+background layer gets no pointer on Wayland, so the parallax drifts slowly,
+weighted by each layer's depth, and the shake shakes: switch it off with
+"Camera moves"), their **bloom** (from the balanced level up) and their
+**text**, drawn with undershell's own text. Most text in scenes is a clock or
+a date written by a **script** (SceneScript, JavaScript): those run in
+`undershell-script`, a separate process with quickjs-ng and none of its file,
+process or network modules, a memory limit and a time limit per call, and no
+file access at all once started (Landlock); a script that runs away is
+stopped and the rest go on.
 
 Nothing of Wallpaper Engine ships with undershell, and undershell is not
 affiliated with it: it only reads, at run time, what you installed.
@@ -1344,6 +1355,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/weather.*`, `src/weatherfeed.*` | the weather widget and its Open-Meteo feed (geocoding, forecast, disk cache) |
 | `src/net.*` | HTTPS fetches (http/https only, size-limited) and the cache folder |
 | `src/filter.*` | the wallpaper widget: the wallpaper drawn again through colour adjustments and the animated effects (one pass, plus a smaller one for the lights) |
+| `src/scripthelper.cpp`, `src/scripthost.*` | `undershell-script` (scene scripts in quickjs-ng, confined) and the scene widget's side of it |
 | `src/scene.*`, `src/wescene.*`, `src/scenehelper.cpp` | the scene widget (Wallpaper Engine scenes and videos), reading an unpacked scene, and `undershell-scene`, the confined helper that unpacks them |
 | `src/particles.*`, `src/pt/*.inc` | particles over the wallpaper: the JSON format, the built-in systems, your own folder, the fixed-step simulation and the instanced sprites |
 | `src/effectchain.*`, `src/fxwidget.*` | the effects of one widget ready to draw (options, music, programs, lights pass), and the wrapper that gives them to every widget type |

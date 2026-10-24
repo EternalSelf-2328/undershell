@@ -5,6 +5,7 @@
 #include "effects.hpp"
 #include "offscreen.hpp"
 #include "perf.hpp"
+#include "text.hpp"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
@@ -17,6 +18,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <ctime>
 #include <thread>
 #include <unistd.h>
 
@@ -49,9 +51,14 @@ out vec4 fragColor;
 uniform sampler2D u_tex;
 uniform vec4 u_tint;   // rgb (colour x brightness), alpha
 uniform int u_solid;   // the clear colour: no texture
-uniform int u_premul;  // the texture is premultiplied (a layer through effects)
+uniform int u_premul;  // 1: the texture is premultiplied (a layer through effects); 2: its red is the coverage (text)
 void main() {
     vec4 t = u_solid == 1 ? vec4(1.0) : texture(u_tex, v_uv);
+    if (u_premul == 2) {
+        float c = t.r * u_tint.a;
+        fragColor = vec4(u_tint.rgb * c, c);
+        return;
+    }
     if (u_premul == 1) {
         fragColor = vec4(t.rgb * u_tint.rgb, t.a) * u_tint.a;
         return;
@@ -214,6 +221,7 @@ void SceneWidget::filesChanged() {
 void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   m_noct = noct;
   m_speed = std::clamp(cfg.options["speed"].value_or(1.0), 0.1, 4.0);
+  m_camera = cfg.options["camera"].value_or(true);
   const std::string scene = cfg.options["scene"].value_or(std::string());
   // the author's properties as set in the inspector (colours through the palette)
   std::map<std::string, std::string> overrides;
@@ -239,6 +247,8 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
   m_tex.clear();
   m_fx.clear();
   m_pt.configureDefs({});
+  m_scripts.reset();
+  m_texts.clear();
   m_ready = false;
   m_stillTried = false;
   m_stillPath.clear();
@@ -435,6 +445,20 @@ void SceneWidget::tick(const TickContext& ctx) {
     m_pt.tick(ctx);
     m_moving = true;
   }
+  if (m_ready && m_camera && (m_model.parallax || m_model.shake)) m_moving = true;  // the camera moves
+  if (m_scripts) {
+    m_scripts->poll(m_texts);
+    if (ctx.now >= m_scriptAt) {  // twice a second: clocks and dates
+      const std::time_t tt = std::time(nullptr);
+      std::tm lt{};
+      localtime_r(&tt, &lt);
+      const double day = (lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec) / 86400.0;
+      const double run = m_camStart < 0 ? 0 : ctx.now - m_camStart;
+      m_scripts->update(run, m_scriptLast < 0 ? 0 : ctx.now - m_scriptLast, day, m_scriptIds);
+      m_scriptLast = ctx.now;
+      m_scriptAt = ctx.now + 0.5;
+    }
+  }
   for (auto& [i, f] : m_fx) {
     f->chain.tick(ctx);
     m_moving |= f->chain.moving();
@@ -448,6 +472,7 @@ bool SceneWidget::animating(const TickContext&) const { return m_ready && ((m_vi
 double SceneWidget::nextWakeup(double now) const {
   if (m_uploading) return now + 0.016;  // the next texture, next frame
   if (m_next) return now + 0.05;        // a reload: swap it in when done
+  if (m_scripts && m_scripts->running()) return now + 0.25;  // its scripts' new values
   if (m_ready && m_video.isOpen()) return now + std::max(0.004, m_video.nextFrameIn(m_speed));
   return m_ready || !m_load ? 1e18 : now + 0.1;  // loading: look again soon
 }
@@ -524,6 +549,23 @@ void SceneWidget::draw(const DrawContext& ctx) {
         }
         m_pt.configureDefs(m_model.particles);
         m_stillPath = m_load->out.empty() ? std::string() : m_load->out + "/still.png";
+        // the text layers' scripts, in their own confined process
+        m_scripts.reset();
+        m_texts.clear();
+        m_scriptIds.clear();
+        for (size_t i = 0; i < m_model.layers.size(); ++i)
+          if (m_model.layers[i].isText && !m_model.layers[i].script.empty()) m_scriptIds.push_back(static_cast<int>(i));
+        if (!m_scriptIds.empty()) {
+          m_scripts = std::make_unique<ScriptHost>();
+          if (m_scripts->start()) {
+            for (const int i : m_scriptIds) {
+              const WeLayer& t = m_model.layers[static_cast<size_t>(i)];
+              m_scripts->load(i, t.script, t.text, t.scriptProps);
+            }
+          } else {
+            m_scripts.reset();
+          }
+        }
         m_pt.setTextures([this](const std::string& key) -> std::pair<GLuint, bool> {
           const auto t = m_tex.find(key);
           if (t == m_tex.end()) return {0, false};
@@ -586,16 +628,149 @@ void SceneWidget::draw(const DrawContext& ctx) {
     m_uploadAll = false;
     m_uploading = !m_load->pixels.empty();
   }
-  drawLayers(ctx, true);
+  // bloom on the scene's own setting, from the balanced level up
+  if (m_model.bloom && m_model.bloomStrength > 0 && perfKnobs().quality >= 1) drawBloomed(ctx);
+  else drawLayers(ctx, true);
   captureStill(ctx);
+}
+
+namespace {
+// the scene's bright parts (rows read upright: every pass here is an off-screen render)
+const char* kBright = R"(#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_tex;
+uniform float u_threshold;
+void main() {
+    vec3 c = texture(u_tex, vec2(v_uv.x, 1.0 - v_uv.y)).rgb;
+    float l = max(c.r, max(c.g, c.b));
+    fragColor = vec4(c * max(l - u_threshold, 0.0) / max(l * (1.0 - u_threshold), 1e-3), 1.0);
+}
+)";
+// a 9-tap blur along one direction
+const char* kBlur = R"(#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_tex;
+uniform vec2 u_step;
+void main() {
+    vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);
+    vec3 c = texture(u_tex, uv).rgb * 0.227;
+    c += (texture(u_tex, uv + u_step * 1.38).rgb + texture(u_tex, uv - u_step * 1.38).rgb) * 0.316;
+    c += (texture(u_tex, uv + u_step * 3.23).rgb + texture(u_tex, uv - u_step * 3.23).rgb) * 0.070;
+    fragColor = vec4(c, 1.0);
+}
+)";
+// the scene with its glow added
+const char* kMix = R"(#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_scene, u_glow;
+uniform float u_strength;
+void main() {
+    vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);
+    vec4 s = texture(u_scene, uv);
+    fragColor = vec4(s.rgb + texture(u_glow, uv).rgb * u_strength * s.a, s.a);
+}
+)";
+}  // namespace
+
+SceneWidget::Bloom::~Bloom() {
+  for (int i = 0; i < 3; ++i) {
+    if (fbo[i]) glDeleteFramebuffers(1, &fbo[i]);
+    if (tex[i]) glDeleteTextures(1, &tex[i]);
+  }
+}
+
+void SceneWidget::drawBloomed(const DrawContext& ctx) {
+  GLint target = 0, vp[4] = {};
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &target);
+  glGetIntegerv(GL_VIEWPORT, vp);
+  const int w = std::max(1, vp[2]), h = std::max(1, vp[3]), bw = std::max(1, w / 4), bh = std::max(1, h / 4);
+  Bloom& B = m_bloom;
+  if (!B.fbo[0] || B.w != w || B.h != h) {
+    for (int i = 0; i < 3; ++i) {
+      if (!B.tex[i]) glGenTextures(1, &B.tex[i]);
+      glBindTexture(GL_TEXTURE_2D, B.tex[i]);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, i == 0 ? w : bw, i == 0 ? h : bh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+      if (!B.fbo[i]) glGenFramebuffers(1, &B.fbo[i]);
+      glBindFramebuffer(GL_FRAMEBUFFER, B.fbo[i]);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, B.tex[i], 0);
+    }
+    B.w = w, B.h = h;
+  }
+  if (!B.bright.valid()) {
+    B.bright.create(kQuadVertexShader, kBright, "bloom bright");
+    B.blur.create(kQuadVertexShader, kBlur, "bloom blur");
+    B.mix.create(kQuadVertexShader, kMix, "bloom mix");
+  }
+  // the scene, into its own texture
+  glBindFramebuffer(GL_FRAMEBUFFER, B.fbo[0]);
+  glViewport(0, 0, w, h);
+  glClearColor(0, 0, 0, 0);
+  glClear(GL_COLOR_BUFFER_BIT);
+  drawLayers(ctx, true);
+  glDisable(GL_BLEND);
+  glActiveTexture(GL_TEXTURE0);
+  // its bright parts, a quarter of the size, blurred one way then the other
+  glViewport(0, 0, bw, bh);
+  glBindFramebuffer(GL_FRAMEBUFFER, B.fbo[1]);
+  glUseProgram(B.bright.id());
+  glUniform1i(B.bright.uniform("u_tex"), 0);
+  glUniform1f(B.bright.uniform("u_threshold"), m_model.bloomThreshold);
+  glBindTexture(GL_TEXTURE_2D, B.tex[0]);
+  drawUnitQuad();
+  glUseProgram(B.blur.id());
+  glUniform1i(B.blur.uniform("u_tex"), 0);
+  for (int pass = 0; pass < 2; ++pass) {
+    glBindFramebuffer(GL_FRAMEBUFFER, B.fbo[pass == 0 ? 2 : 1]);
+    glBindTexture(GL_TEXTURE_2D, B.tex[pass == 0 ? 1 : 2]);
+    glUniform2f(B.blur.uniform("u_step"), pass == 0 ? 1.0F / bw : 0.0F, pass == 0 ? 0.0F : 1.0F / bh);
+    drawUnitQuad();
+  }
+  // back where it was drawing: the scene and its glow
+  glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(target));
+  glViewport(vp[0], vp[1], vp[2], vp[3]);
+  glUseProgram(B.mix.id());
+  glUniform1i(B.mix.uniform("u_scene"), 0);
+  glUniform1i(B.mix.uniform("u_glow"), 1);
+  glUniform1f(B.mix.uniform("u_strength"), std::min(m_model.bloomStrength, 4.0F) * 0.35F);
+  glBindTexture(GL_TEXTURE_2D, B.tex[0]);
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, B.tex[1]);
+  glActiveTexture(GL_TEXTURE0);
+  drawUnitQuad();
 }
 
 // the scene itself: clear colour, layers (some through effects) and,
 // unless asked not to, its particles among them
 void SceneWidget::drawLayers(const DrawContext& ctx, bool particles) {
   glEnable(GL_BLEND);
+  // the camera: a slow drift weighted by each layer's parallax depth (in
+  // place of the mouse), a shake, and a touch closer so no edge shows
+  if (m_camStart < 0) m_camStart = ctx.now;
+  const auto t = static_cast<float>(ctx.now - m_camStart);
+  std::array<float, 2> drift{0, 0}, shake{0, 0};
+  float margin = 1;
+  if (m_camera && particles && m_model.parallax) {  // (the still stays put)
+    const float a = m_model.parallaxAmount * 0.025F * m_model.width;
+    drift = {a * std::sin(t * 0.11F), a * 0.6F * std::sin(t * 0.07F + 1.3F)};
+  }
+  if (m_model.parallax) margin += std::min(0.15F, m_model.parallaxAmount * 0.06F);
+  if (m_camera && particles && m_model.shake) {
+    const float amp = m_model.shakeAmplitude * 0.006F * m_model.width, sp = m_model.shakeSpeed * 0.6F, r = m_model.shakeRoughness;
+    shake = {amp * (std::sin(t * sp) + r * 0.5F * std::sin(t * sp * 2.7F + 1)), amp * (std::sin(t * sp * 1.3F + 2) + r * 0.5F * std::sin(t * sp * 3.1F))};
+  }
+  if (m_model.shake) margin += std::min(0.08F, m_model.shakeAmplitude * 0.02F);
   // the scene's projection over the screen, filling it (cropped like a wallpaper)
-  const float s = std::max(ctx.w / m_model.width, ctx.h / m_model.height);
+  const float s = std::max(ctx.w / m_model.width, ctx.h / m_model.height) * margin;
   auto toSurface = [&](float x, float y) {
     return std::array<float, 2>{(x - m_model.width / 2) * s + ctx.w / 2, (m_model.height / 2 - y) * s + ctx.h / 2};
   };
@@ -640,6 +815,34 @@ void SceneWidget::drawLayers(const DrawContext& ctx, bool particles) {
         m_pt.draw(ctx, 0, 0, l.particle);
         sceneState();
       }
+      continue;
+    }
+    if (l.isText) {  // what it says (its script's latest), set in undershell's text
+      if (!l.visible || l.alpha <= 0 || !ctx.text) continue;
+      const auto said = m_texts.find(static_cast<int>(li));
+      const std::string& value = said != m_texts.end() ? said->second : l.text;
+      if (value.empty() || value.size() > 2000) continue;
+      TextStyle st;
+      st.family = l.font;
+      st.size = std::clamp(l.pointsize * 1.6F * std::abs(l.sx) * s, 4.0F, 600.0F);
+      st.maxLines = 8;
+      st.maxWidth = ctx.w;
+      st.align = l.halign == "left" ? 0 : l.halign == "right" ? 2 : 1;
+      const TextImage& img = ctx.text->get(value, st, ctx.scale);
+      if (!img.texture) continue;
+      const auto q = weLayerQuad(m_model, l, 0, 0);  // no size: its origin, through its parents
+      const auto p = toSurface(q[0] + drift[0] * l.depthX + shake[0], q[1] + drift[1] * l.depthY + shake[1]);
+      const float bx = l.halign == "left" ? p[0] : l.halign == "right" ? p[0] - img.w : p[0] - img.w / 2;
+      const float by = l.valign == "top" ? p[1] : l.valign == "bottom" ? p[1] - img.h : p[1] - img.h / 2;
+      const float x0 = bx + img.quadX, y0 = by + img.quadY, x1 = x0 + img.quadW, y1 = y0 + img.quadH;
+      const std::array<float, 12> pos = {x0, y0, x1, y0, x0, y1, x0, y1, x1, y0, x1, y1};
+      glBindTexture(GL_TEXTURE_2D, img.texture);
+      glUniform1i(m_prog.uniform("u_premul"), 2);
+      glUniform4f(m_prog.uniform("u_tint"), l.color.r, l.color.g, l.color.b, l.alpha);
+      glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+      glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, kUv.data());
+      glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, pos.data());
+      glDrawArrays(GL_TRIANGLES, 0, 6);
       continue;
     }
     if (!l.visible || l.compose || li >= m_layerTex.size() || m_layerTex[li].empty() || l.alpha <= 0) continue;
@@ -707,7 +910,9 @@ void SceneWidget::drawLayers(const DrawContext& ctx, bool particles) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, premul ? kUvFlipped.data() : kUv.data());
     glUniform1i(m_prog.uniform("u_premul"), premul ? 1 : 0);
     const auto q = weLayerQuad(m_model, l, static_cast<float>(t->second.second[0]), static_cast<float>(t->second.second[1]));
-    const auto a = toSurface(q[0], q[1]), b = toSurface(q[2], q[3]), c = toSurface(q[4], q[5]), d = toSurface(q[6], q[7]);
+    const float ox = drift[0] * l.depthX + shake[0], oy = drift[1] * l.depthY + shake[1];
+    const auto a = toSurface(q[0] + ox, q[1] + oy), b = toSurface(q[2] + ox, q[3] + oy), c = toSurface(q[4] + ox, q[5] + oy),
+               d = toSurface(q[6] + ox, q[7] + oy);
     const std::array<float, 12> pos = {a[0], a[1], b[0], b[1], c[0], c[1], c[0], c[1], b[0], b[1], d[0], d[1]};
     glBindTexture(GL_TEXTURE_2D, tex);
     glUniform4f(m_prog.uniform("u_tint"), l.color.r * l.brightness, l.color.g * l.brightness, l.color.b * l.brightness, l.alpha);

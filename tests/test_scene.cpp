@@ -6,6 +6,8 @@
 #include "offscreen.hpp"
 #include "wescene.hpp"
 #include "wallgallery.hpp"
+#include "scene.hpp"
+#include "text.hpp"
 
 #include <lz4.h>
 
@@ -306,6 +308,45 @@ int main() {
         if (!tex) usleep(10000);
       }
       CHECK(tex != 0 && size[0] <= ThumbCache::kW && size[1] <= ThumbCache::kH && size[0] > 0);
+    }
+  }
+
+  // a text layer whose script (run by undershell-script, confined) says what it shows
+  if (const char* sh = std::getenv("UNDERSHELL_SCRIPT_HELPER"); sh && fs::exists(sh)) {
+    using namespace undershell;
+    fs::create_directories(dir / "txt");
+    std::ofstream(dir / "txt/project.json") << R"({"type": "scene"})";
+    std::ofstream(dir / "txt/scene.pkg", std::ios::binary)
+        << pkg({{"scene.json", R"({"general": {"orthogonalprojection": {"width": 200, "height": 100}, "clearcolor": "0 0 0"},
+                   "objects": [{"id": 1, "origin": "100 50 0", "pointsize": 30, "color": "1 1 1", "systemfont": true, "font": "systemfont_arial",
+                     "text": {"value": "start", "script": "'use strict';\nexport function update(value) { return 'WALL ' + (value === 'start' ? 'E' : value.length); }"}}]})"}});
+    Headless gl;
+    if (gl.ok()) {
+      SceneWidget s;
+      WidgetConfig wc;
+      wc.type = "scene";
+      wc.options.insert_or_assign("scene", (dir / "txt").string());
+      s.configure(wc, testPalette());
+      TextRenderer tr;
+      Image last;
+      bool lit = false;
+      for (int k = 0; k < 200 && !lit; ++k) {
+        TickContext tc;
+        tc.now = 1000 + k * 0.05;
+        tc.dt = 0.05;
+        s.tick(tc);
+        last = renderDrawn(200, 100, [&] {
+          DrawContext dc;
+          dc.w = 200, dc.h = 100, dc.outputW = 200, dc.outputH = 100, dc.now = tc.now, dc.text = &tr;
+          s.draw(dc);
+        });
+        size_t white = 0;
+        for (size_t i = 0; i < last.rgba.size(); i += 4) white += last.rgba[i] > 200 && last.rgba[i + 1] > 200 && last.rgba[i + 2] > 200;
+        lit = white > 30;  // the script's words, drawn
+        usleep(20000);
+      }
+      CHECK(lit);
+      tr.releaseGl();
     }
   }
 
