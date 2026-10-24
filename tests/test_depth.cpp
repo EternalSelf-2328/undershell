@@ -96,6 +96,23 @@ int main() {
   mergeStroke(e, wide, DepthTool::Erase, 0, wb);
   CHECK(e.empty());
 
+  // effect masks: a stroke added to one channel and partly taken out, stored
+  // and read back; another size is refused; nothing painted removes the file
+  {
+    std::vector<std::uint8_t> fx(40 * 20 * 4, 0);
+    mergeMaskStroke(fx, 40, 2, stroke, box, false);
+    CHECK(fx[(10 * 40 + 10) * 4 + 2] == 255 && fx[(10 * 40 + 10) * 4 + 0] == 0 && fx[(10 * 40 + 30) * 4 + 2] == 0);
+    std::vector<float> half(40 * 20, 0.5F);
+    mergeMaskStroke(fx, 40, 2, half, {0, 0, 40, 20}, true);
+    CHECK(fx[(10 * 40 + 10) * 4 + 2] == 128);
+    CHECK(saveEffectMasks(dir + "/m.usfm", 40, 20, fx));
+    std::vector<std::uint8_t> got;
+    CHECK(loadEffectMasks(dir + "/m.usfm", 40, 20, got) && got == fx);
+    CHECK(!loadEffectMasks(dir + "/m.usfm", 41, 20, got));
+    CHECK(saveEffectMasks(dir + "/m.usfm", 40, 20, std::vector<std::uint8_t>(40 * 20 * 4, 0)));
+    CHECK(!std::filesystem::exists(dir + "/m.usfm"));
+  }
+
   // the smart brush: dabs centred on the dark half stop at its edge (x = 32)
   const int sw = 64, sh = 32;
   std::vector<float> img(static_cast<size_t>(sw) * sh), dep(static_cast<size_t>(sw) * sh), rough(static_cast<size_t>(sw) * sh, 0.0F),

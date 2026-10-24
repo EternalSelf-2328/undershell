@@ -229,7 +229,7 @@ std::vector<std::string> FilterWidget::watchedFiles() const { return {userEffect
 
 // the effects that are on and the values of their options
 void FilterWidget::applyEffects() {
-  static const std::vector<std::string> kMasks = {"all", "background", "subject", "above", "below"};
+  const std::vector<std::string>& kMasks = effectMaskModes();
   std::vector<Fx> fx;
   m_time = m_audio = m_depth = false;
   for (const EffectSpec* e : enabledEffects(m_opts)) {
@@ -267,7 +267,7 @@ void FilterWidget::applyEffects() {
     }
     m_time |= e->time;
     m_audio |= listening;
-    m_depth |= e->depth || f.mask == 1 || f.mask == 2;
+    m_depth |= e->depth || f.mask == 1 || f.mask == 2 || f.mask >= 5;  // painted masks come with the depth field
     fx.push_back(std::move(f));
   }
   m_fps = static_cast<int>(std::clamp(m_opts["fx_fps"].value_or(30.0), 10.0, 60.0));
@@ -394,6 +394,8 @@ void FilterWidget::shared(const Program& prog, int which, const DrawContext& ctx
   glUniform1i(prog.uniform("u_depth"), 1);
   glUniform1i(prog.uniform("u_noise"), 2);
   glUniform1i(prog.uniform("u_lights"), 3);
+  glUniform1i(prog.uniform("u_fxmasks"), 4);
+  glUniform1f(prog.uniform("u_fxmasksOn"), ctx.effectMasks ? 1.0F : 0.0F);
   glUniform1i(prog.uniform("u_fill"), ctx.fillMode);
   glUniform2f(prog.uniform("u_size"), ctx.w, ctx.h);
   const EffectLibrary& lib = effectLibrary();
@@ -473,6 +475,8 @@ void FilterWidget::draw(const DrawContext& ctx) {
   glBindTexture(GL_TEXTURE_2D, ctx.depthField);
   glActiveTexture(GL_TEXTURE2);
   glBindTexture(GL_TEXTURE_2D, m_noise);
+  glActiveTexture(GL_TEXTURE4);
+  glBindTexture(GL_TEXTURE_2D, ctx.effectMasks);
   const bool lights = m_lightProg.valid();
   if (lights) drawLights(*m_fade.current(), ctx);
   shared(m_prog, 0, ctx);

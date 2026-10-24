@@ -276,6 +276,84 @@ bool loadDepthEdits(const std::string& path, DepthEdits& out) {
   return true;
 }
 
+namespace {
+// run-length code of one byte plane: value, then the run's length in three bytes
+void rle(std::string& out, const std::vector<std::uint8_t>& v, size_t start, size_t stride) {
+  const size_t n = v.size() / stride;
+  for (size_t i = 0; i < n;) {
+    const std::uint8_t x = v[i * stride + start];
+    size_t run = 1;
+    while (i + run < n && v[(i + run) * stride + start] == x && run < 0xffffff) ++run;
+    out += static_cast<char>(x);
+    out += static_cast<char>(run & 0xff);
+    out += static_cast<char>((run >> 8) & 0xff);
+    out += static_cast<char>((run >> 16) & 0xff);
+    i += run;
+  }
+}
+}  // namespace
+
+bool saveEffectMasks(const std::string& path, int w, int h, const std::vector<std::uint8_t>& rgba) {
+  std::error_code ec;
+  if (std::ranges::all_of(rgba, [](std::uint8_t v) { return v == 0; })) {
+    fs::remove(path, ec);
+    return true;
+  }
+  if (w <= 0 || h <= 0 || rgba.size() != static_cast<size_t>(w) * h * 4) return false;
+  std::string out = "USFM";
+  for (const std::uint32_t v : {static_cast<std::uint32_t>(w), static_cast<std::uint32_t>(h)})
+    for (int i = 0; i < 4; ++i) out += static_cast<char>((v >> (8 * i)) & 0xff);
+  for (size_t c = 0; c < 4; ++c) rle(out, rgba, c, 4);
+  fs::create_directories(fs::path(path).parent_path(), ec);
+  return writeFileAtomic(path, out);
+}
+
+bool loadEffectMasks(const std::string& path, int w, int h, std::vector<std::uint8_t>& rgba) {
+  std::ifstream f(path, std::ios::binary);
+  if (!f) return false;
+  std::string data((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+  if (data.size() < 12 || data.compare(0, 4, "USFM") != 0) return false;
+  auto u32 = [&](size_t at) {
+    std::uint32_t v = 0;
+    for (int i = 0; i < 4; ++i) v |= static_cast<std::uint32_t>(static_cast<unsigned char>(data[at + i])) << (8 * i);
+    return v;
+  };
+  if (u32(4) != static_cast<std::uint32_t>(w) || u32(8) != static_cast<std::uint32_t>(h) || w <= 0 || h <= 0) return false;
+  const size_t n = static_cast<size_t>(w) * h;
+  std::vector<std::uint8_t> out(n * 4, 0);
+  size_t at = 12;
+  for (size_t c = 0; c < 4; ++c) {
+    for (size_t i = 0; i < n;) {
+      if (at + 4 > data.size()) return false;
+      const auto v = static_cast<std::uint8_t>(data[at]);
+      const size_t run = static_cast<unsigned char>(data[at + 1]) | (static_cast<unsigned char>(data[at + 2]) << 8) |
+                         (static_cast<size_t>(static_cast<unsigned char>(data[at + 3])) << 16);
+      at += 4;
+      if (run == 0 || i + run > n) return false;
+      for (size_t k = 0; k < run; ++k) out[(i + k) * 4 + c] = v;
+      i += run;
+    }
+  }
+  rgba = std::move(out);
+  return true;
+}
+
+void mergeMaskStroke(std::vector<std::uint8_t>& rgba, int w, int channel, const std::vector<float>& stroke, PixelBox box, bool erase) {
+  if (w <= 0 || channel < 0 || channel > 3) return;
+  const int h = static_cast<int>(rgba.size() / 4 / static_cast<size_t>(w));
+  box.clip(w, h);
+  for (int y = box.y0; y < box.y1; ++y)
+    for (int x = box.x0; x < box.x1; ++x) {
+      const size_t i = static_cast<size_t>(y) * w + x;
+      if (i >= stroke.size()) continue;
+      const float s = std::clamp(stroke[i], 0.0F, 1.0F);
+      if (s <= 0) continue;
+      std::uint8_t& v = rgba[i * 4 + static_cast<size_t>(channel)];
+      const float now = v / 255.0F, next = erase ? now * (1 - s) : std::max(now, s);
+      v = static_cast<std::uint8_t>(std::lround(next * 255));
+    }
+}
+
 void PixelBox::add(int x, int y, int r) {
   if (empty()) {
     x0 = x - r;

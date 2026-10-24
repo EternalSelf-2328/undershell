@@ -23,6 +23,7 @@ uniform vec3 u_view;      // centre (output px) and zoom of the brush view
 uniform vec2 u_viewAt;    // where that centre shows on the surface
 uniform sampler2D u_wall;
 uniform float u_wallMode;
+uniform vec4 u_pick;      // which channel of u_mask is the coverage
 
 float coverageAt(vec2 uv) {
     if (u_useField > 0.5) {
@@ -32,7 +33,7 @@ float coverageAt(vec2 uv) {
         if (hi <= lo) return d >= hi ? 1.0 : 0.0;
         return smoothstep(lo, hi, d);
     }
-    return texture(u_mask, uv).r;
+    return dot(texture(u_mask, uv), u_pick);
 }
 
 vec2 calculateWallpaperUV(vec2 uv, float imgWidth, float imgHeight) {
@@ -101,6 +102,7 @@ void MaskPass::setup(const MaskParams& p) {
   glUniform1i(m_prog.uniform("u_wall"), 1);
   glUniform1f(m_prog.uniform("u_wallMode"), 0.0F);
   glUniform4f(m_prog.uniform("u_tint"), 0, 0, 0, 0);
+  glUniform4f(m_prog.uniform("u_pick"), 1, 0, 0, 0);
 }
 
 void MaskPass::draw(const MaskParams& p) {
@@ -123,6 +125,21 @@ void MaskPass::drawTint(const MaskParams& p, Color tint) {
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, p.field);
   glUniform1f(m_prog.uniform("u_useField"), 1.0F);
+  glUniform4f(m_prog.uniform("u_tint"), tint.r, tint.g, tint.b, tint.a);
+  glEnable(GL_BLEND);
+  glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  drawUnitQuad();
+  glDisable(GL_BLEND);
+}
+
+void MaskPass::drawChannelTint(const MaskParams& p, GLuint masks, int channel, Color tint) {
+  if (!masks || channel < 0 || channel > 3 || p.surfaceW <= 0 || p.outputW <= 0 || p.imageW <= 0) return;
+  setup(p);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, masks);
+  glUniform1f(m_prog.uniform("u_useField"), 0.0F);
+  glUniform4f(m_prog.uniform("u_pick"), channel == 0 ? 1.0F : 0.0F, channel == 1 ? 1.0F : 0.0F, channel == 2 ? 1.0F : 0.0F,
+              channel == 3 ? 1.0F : 0.0F);
   glUniform4f(m_prog.uniform("u_tint"), tint.r, tint.g, tint.b, tint.a);
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);

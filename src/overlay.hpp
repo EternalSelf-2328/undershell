@@ -31,6 +31,9 @@ public:
   // the editor's depth preview: `tint` (straight alpha) where the field is
   // nearer than p.level, i.e. what would cover a widget on that plane
   void drawTint(const MaskParams& p, Color tint);
+  // the effect masks' `channel` (0..3) of `masks` (an RGBA texture over the
+  // picture) in `tint`: where the painted mask is (the mask brush)
+  void drawChannelTint(const MaskParams& p, GLuint masks, int channel, Color tint);
   // the wallpaper itself through the same maths and view (the zoomed brush)
   void drawWallpaper(const MaskParams& p, GLuint wallpaper);
 

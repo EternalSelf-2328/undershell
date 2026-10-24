@@ -32,6 +32,8 @@ uniform float u_aspect;       // the picture's width / height
 uniform vec2 u_screen;        // the surface, px
 uniform float u_depthOn, u_depthLevel, u_depthFeather;
 uniform int u_wrap;           // the picture repeats (tiled)
+uniform sampler2D u_fxmasks;  // the four painted effect masks (RGBA over the picture)
+uniform float u_fxmasksOn;
 vec2 screenPx;                // this pixel on the surface, px
 
 vec2 edgeSafe(vec2 uv) { return u_wrap == 1 ? uv : clamp(uv, 0.0005, 0.9995); }
@@ -71,8 +73,10 @@ float fbm(vec2 p) {
 }
 // an offset in picture heights -> picture uv
 vec2 pictureOffset(vec2 d) { return vec2(d.x / u_aspect, d.y); }
-// where an effect applies: everywhere, the background, the subject, above or below a line
+// where an effect applies: everywhere, the background, the subject, above or
+// below a line, or one of the four painted masks
 float fxMask(int mode, float split, vec2 uv) {
+    if (mode >= 5) return u_fxmasksOn > 0.5 ? texture(u_fxmasks, clamp(uv, 0.0, 1.0))[mode - 5] : 0.0;
     if (mode == 1) return 1.0 - subject(uv);
     if (mode == 2) return subject(uv);
     if (mode == 3) return 1.0 - smoothstep(split - 0.03, split + 0.03, uv.y);
@@ -145,7 +149,7 @@ uint64_t fnv(const std::string& s) {
 // names an option may not take: GLSL words and what kEffectApi defines
 bool reservedName(const std::string& k) {
   static const std::set<std::string> kWords = {
-      "strength", "mask", "split", "uv", "c", "L", "warp", "color", "light", "wall", "wallLod", "depth", "subject", "luma", "hash", "noise",
+      "strength", "mask", "split", "paint", "uv", "c", "L", "warp", "color", "light", "wall", "wallLod", "depth", "subject", "luma", "hash", "noise",
       "noise4", "flow", "fbm", "pictureOffset", "edgeSafe", "fxMask", "screenPx", "float", "int", "uint", "bool", "vec2", "vec3",
       "vec4", "ivec2", "ivec3", "ivec4", "bvec2", "bvec3", "bvec4", "mat2", "mat3", "mat4", "void", "true", "false", "if", "else",
       "for", "while", "do", "return", "break", "continue", "discard", "const", "in", "out", "inout", "uniform", "struct",
@@ -585,16 +589,28 @@ std::vector<PropSpec> effectRows(const toml::table& opts, bool all) {
       }
       rows.push_back(std::move(r));
     }
-    PropSpec where{K::Enum, effectKey(e.id, "mask"), "Where", "Dónde", {"all", "background", "subject", "above", "below"}, 0, 0, 0, 0, "all"};
+    PropSpec where{K::Enum, effectKey(e.id, "mask"), "Where", "Dónde", effectMaskModes(), 0, 0, 0, 0, "all"};
     where.optionNames = {{"Everywhere", "En todo"}, {"Background", "Solo el fondo"}, {"Subject", "Solo la figura"},
-                         {"Above a line", "Arriba de línea"}, {"Below a line", "Abajo de línea"}};
+                         {"Above a line", "Arriba de línea"}, {"Below a line", "Abajo de línea"},
+                         {"Painted 1", "Pintura 1"}, {"Painted 2", "Pintura 2"}, {"Painted 3", "Pintura 3"}, {"Painted 4", "Pintura 4"}};
     rows.push_back(row(where));
     const std::string m = opts[effectKey(e.id, "mask")].value_or(std::string("all"));
     if (all || m == "above" || m == "below")
       rows.push_back(row({K::Number, effectKey(e.id, "split"), "Line height", "Altura de línea", {}, 0, 1, 0.01, 0.5}));
+    if (all || m.starts_with("paint")) {
+      // the brush, open on that mask
+      PropSpec paint{K::Action, effectKey(e.id, "paint"), "Paint the mask…", "Pintar la máscara…"};
+      paint.defText = m;
+      rows.push_back(row(paint));
+    }
   }
   if (any) rows.push_back({K::Number, "fx_fps", "Effects FPS", "FPS de efectos", {}, 10, 60, 5, 30, "", true});
   return rows;
+}
+
+const std::vector<std::string>& effectMaskModes() {
+  static const std::vector<std::string> modes = {"all", "background", "subject", "above", "below", "paint1", "paint2", "paint3", "paint4"};
+  return modes;
 }
 
 std::vector<uint8_t> effectNoise() {

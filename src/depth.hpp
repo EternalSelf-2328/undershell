@@ -38,6 +38,11 @@ struct DepthMask {
   std::vector<std::uint8_t> colour;  // the wallpaper at the field's size (the brush's zoom)
   GLuint wallTexture = 0;
   bool wallStale = false;
+  // the effect masks (depthfield.hpp): four painted channels at the field's
+  // size, where wallpaper effects apply; empty until something is painted
+  std::vector<std::uint8_t> fxMask;
+  GLuint fxMaskTex = 0;
+  bool fxMaskUpload = false;  // the whole texture is (re)uploaded on next use
 };
 
 class Jobs;
@@ -49,8 +54,14 @@ public:
     m_jobs = jobs;
     m_fieldReady = std::move(ready);
   }
-  // where hand corrections are kept (one file per wallpaper)
+  // where hand corrections and painted effect masks are kept (one file per wallpaper)
   void setEditsDir(std::string dir) { m_editsDir = std::move(dir); }
+  void setMasksDir(std::string dir) { m_masksDir = std::move(dir); }
+  // the painted effect masks of an output's wallpaper as a texture (needs
+  // GL; 0 when none is painted), re-uploading a box after a stroke, saving
+  GLuint effectMasks(const std::string& output);
+  void uploadMaskRect(DepthMask& m, PixelBox box);
+  bool saveMasks(DepthMask& m);
   // the depth brush: a mask whose field is loaded, or nullptr
   DepthMask* paintable(const std::string& output);
   // re-uploads `box` of the field (needs GL), previewing `stroke` if given
@@ -85,7 +96,7 @@ private:
   std::map<std::string, HashEntry> m_hashes;
   bool m_enabled = false;
   Jobs* m_jobs = nullptr;
-  std::string m_editsDir;
+  std::string m_editsDir, m_masksDir;
   std::function<void()> m_fieldReady;
 };
 

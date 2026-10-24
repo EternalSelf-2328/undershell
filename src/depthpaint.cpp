@@ -37,13 +37,17 @@ void App::paintDab(double x, double y) {
   double fx = 0, fy = 0, fr = 0;
   if (!m || !paintMap(o, x, y, fx, fy, fr)) return;
   PixelBox dab;
-  const bool smart = m_smartBrush && m_paintTool != static_cast<int>(DepthTool::Erase);
+  const bool smart = m_smartBrush && (m_paintTarget > 0 || m_paintTool != static_cast<int>(DepthTool::Erase));
   // the smart brush looks at the image's tone only: the depth is what is
   // being fixed, so it must not decide where the stroke may go
   stampDab(m_stroke, m->fieldW, m->fieldH, fx, fy, fr, dab, smart ? &m->guide : nullptr);
   if (dab.empty()) return;
   m_strokeBox.add(dab.x0, dab.y0, 0);
   m_strokeBox.add(dab.x1 - 1, dab.y1 - 1, 0);
+  if (m_paintTarget > 0) {  // an effect mask: straight onto it, from how it was when the stroke began
+    maskApply(*m, m_stroke, dab);
+    return;
+  }
   const bool smooth = m_paintTool == static_cast<int>(DepthTool::Smooth);
   if (smooth) blurredDepth(m->base, m->edits, dab, 12, m_smoothTarget);
   // live: this dab's box, the stroke previewed over the saved corrections
@@ -56,10 +60,17 @@ void App::paintBegin(double x, double y) {
   DepthMask* m = o ? m_depth.paintable(o->name) : nullptr;
   double fx = 0, fy = 0, fr = 0;
   if (!m || !paintMap(o, x, y, fx, fy, fr)) return;
+  if (m_paintTarget > 0 && !maskReady(*m, o->name)) return;
   m_painting = true;
   m_paintOutput = o->name;
   m_stroke.assign(static_cast<size_t>(m->fieldW) * m->fieldH, 0.0F);
   m_strokeBox = {};
+  if (m_paintTarget > 0) {
+    m_lastDabX = x;
+    m_lastDabY = y;
+    paintDab(x, y);
+    return;
+  }
   m_smoothTarget.assign(m_stroke.size(), 0.0F);
   // Match takes the depth where the stroke starts
   const size_t i = static_cast<size_t>(std::clamp(static_cast<int>(fy), 0, m->fieldH - 1)) * m->fieldW +
@@ -87,6 +98,16 @@ void App::paintEnd() {
   m_painting = false;
   DepthMask* m = m_depth.paintable(m_paintOutput);
   if (!m || m_strokeBox.empty()) return;
+  if (m_paintTarget > 0) {
+    maskRemember(*m, m_strokeBox);
+    m_depth.saveMasks(*m);
+    m_stroke.clear();
+    m_stroke.shrink_to_fit();
+    m_maskBefore.clear();
+    m_maskBefore.shrink_to_fit();
+    markEditDirty();
+    return;
+  }
   m_editsUndo.push_back({m_paintOutput, m->edits});
   if (m_editsUndo.size() > 12) m_editsUndo.erase(m_editsUndo.begin());
   const bool smooth = m_paintTool == static_cast<int>(DepthTool::Smooth);
@@ -103,6 +124,23 @@ void App::paintEnd() {
 }
 
 void App::paintUndo() {
+  if (m_paintTarget > 0) {  // the last change to an effect mask
+    if (m_maskUndo.empty()) return;
+    MaskUndo u = std::move(m_maskUndo.back());
+    m_maskUndo.pop_back();
+    DepthMask* m = m_depth.paintable(u.output);
+    if (!m || !maskReady(*m, u.output)) return;
+    const int bw = u.box.x1 - u.box.x0;
+    for (int y = u.box.y0; y < u.box.y1; ++y)
+      for (int x = u.box.x0; x < u.box.x1; ++x)
+        m->fxMask[(static_cast<size_t>(y) * m->fieldW + x) * 4 + static_cast<size_t>(u.channel)] =
+            u.before[static_cast<size_t>(y - u.box.y0) * bw + (x - u.box.x0)];
+    m_depth.uploadMaskRect(*m, u.box);
+    m_depth.saveMasks(*m);
+    for (auto& w : m_widgets) w->needsRender = true;
+    markEditDirty();
+    return;
+  }
   if (m_editsUndo.empty()) return;
   auto [out, edits] = m_editsUndo.back();
   m_editsUndo.pop_back();
@@ -118,6 +156,21 @@ void App::paintUndo() {
 void App::paintClear() {
   const Output* o = m_uiOutput;
   DepthMask* m = o ? m_depth.paintable(o->name) : nullptr;
+  if (m && m_paintTarget > 0) {  // this mask only
+    m_paintOutput = o->name;
+    if (m->fxMask.empty() || !maskReady(*m, o->name)) return;
+    const PixelBox all{0, 0, m->fieldW, m->fieldH};
+    std::vector<float> full(static_cast<size_t>(m->fieldW) * m->fieldH, 1.0F);
+    const int tool = m_maskTool;
+    m_maskTool = 1;
+    maskApply(*m, full, all);
+    m_maskTool = tool;
+    maskRemember(*m, all);
+    m_depth.saveMasks(*m);
+    m_maskBefore.clear();
+    markEditDirty();
+    return;
+  }
   if (!m || m->edits.empty()) return;
   m_editsUndo.push_back({o->name, m->edits});
   m->edits.reset(m->fieldW, m->fieldH);
@@ -202,6 +255,15 @@ bool App::fieldAt(const Output* o, double wx, double wy, int& fx, int& fy) {
 // what the current action does to a whole selection, as one undo step
 void App::applySelection(DepthMask& m, std::vector<float>& mask, PixelBox box, float matchValue) {
   if (box.empty()) return;
+  if (m_paintTarget > 0) {  // an effect mask: the selection added or taken out
+    if (!maskReady(m, m_paintOutput)) return;
+    maskApply(m, mask, box);
+    maskRemember(m, box);
+    m_depth.saveMasks(m);
+    m_maskBefore.clear();
+    markEditDirty();
+    return;
+  }
   m_editsUndo.push_back({m_paintOutput, m.edits});
   if (m_editsUndo.size() > 12) m_editsUndo.erase(m_editsUndo.begin());
   std::vector<float> target;
@@ -277,6 +339,56 @@ void App::lassoClose() {
   box.clip(m->fieldW, m->fieldH);
   const size_t i = haveMatch ? static_cast<size_t>(fy) * m->fieldW + fx : 0;
   applySelection(*m, mask, box, haveMatch ? editedDepth(m->base.v[i], m->edits.target[i], m->edits.cover[i]) : 0.5F);
+}
+
+// ── effect masks ────────────────────────────────────────────────────────────
+
+bool App::maskReady(DepthMask& m, const std::string& output) {
+  const size_t n = static_cast<size_t>(m.fieldW) * m.fieldH;
+  if (n == 0) return false;
+  if (m.fxMask.size() != n * 4) {
+    m.fxMask.assign(n * 4, 0);
+    m.fxMaskUpload = true;
+  }
+  m_depth.effectMasks(output);  // its texture, so strokes can be uploaded box by box
+  // the channel as it is now: strokes are laid on this, so going over a spot twice does not add up
+  const size_t ch = static_cast<size_t>(std::clamp(m_paintTarget, 1, 4) - 1);
+  m_maskBefore.resize(n);
+  for (size_t i = 0; i < n; ++i) m_maskBefore[i] = m.fxMask[i * 4 + ch];
+  return true;
+}
+
+void App::maskApply(DepthMask& m, const std::vector<float>& sel, PixelBox box) {
+  box.clip(m.fieldW, m.fieldH);
+  const size_t ch = static_cast<size_t>(std::clamp(m_paintTarget, 1, 4) - 1);
+  if (box.empty() || m_maskBefore.size() * 4 != m.fxMask.size()) return;
+  for (int y = box.y0; y < box.y1; ++y)
+    for (int x = box.x0; x < box.x1; ++x) {
+      const size_t i = static_cast<size_t>(y) * m.fieldW + x;
+      const float s = i < sel.size() ? std::clamp(sel[i], 0.0F, 1.0F) : 0.0F;
+      const float b = m_maskBefore[i] / 255.0F;
+      const float v = m_maskTool == 1 ? b * (1 - s) : std::max(b, s);
+      m.fxMask[i * 4 + ch] = static_cast<std::uint8_t>(std::lround(v * 255));
+    }
+  m_depth.uploadMaskRect(m, box);
+  for (auto& w : m_widgets) w->needsRender = true;
+}
+
+// one undo step: the channel inside `box` as it was before
+void App::maskRemember(DepthMask& m, PixelBox box) {
+  box.clip(m.fieldW, m.fieldH);
+  if (box.empty() || m_maskBefore.size() * 4 != m.fxMask.size()) return;
+  MaskUndo u;
+  u.output = m_paintOutput;
+  u.channel = std::clamp(m_paintTarget, 1, 4) - 1;
+  u.box = box;
+  const int bw = box.x1 - box.x0;
+  u.before.resize(static_cast<size_t>(bw) * (box.y1 - box.y0));
+  for (int y = box.y0; y < box.y1; ++y)
+    for (int x = box.x0; x < box.x1; ++x)
+      u.before[static_cast<size_t>(y - box.y0) * bw + (x - box.x0)] = m_maskBefore[static_cast<size_t>(y) * m.fieldW + x];
+  m_maskUndo.push_back(std::move(u));
+  if (m_maskUndo.size() > 12) m_maskUndo.erase(m_maskUndo.begin());
 }
 
 }  // namespace undershell

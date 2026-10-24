@@ -409,7 +409,10 @@ moving **film** grain. Turn them on in the inspector (each switch opens its
 options), with `undershell msg set <id> fx_waves true`, or in the config
 (`fx_<effect> = true`, options in [docs/OPTIONS.md](docs/OPTIONS.md)). Each one
 has a strength and a **where**: everywhere, only the background or only the
-subject (from the wallpaper's depth), or above or below a line (sky, water).
+subject (from the wallpaper's depth), above or below a line (sky, water), or
+one of four **masks you paint** on the wallpaper with the depth brush (its
+"Paints on" row: the river for the waves, the trees for the wind). Each
+wallpaper keeps its own masks.
 
 All effects that are on are joined into **one shader**: one full-screen pass,
 plus a pass at a quarter to half the resolution for the soft ones (light

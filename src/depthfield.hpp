@@ -51,6 +51,13 @@ struct DepthEdits {
 bool loadDepthEdits(const std::string& path, DepthEdits& out);
 bool saveDepthEdits(const std::string& path, const DepthEdits& e);
 
+// Effect masks: four painted channels (RGBA, one byte each) at the field's
+// size, where the wallpaper effects that ask for them apply. Kept per
+// wallpaper like the depth corrections (run-length coded, plane by plane);
+// an all-empty set removes the file. Loading fails on another size.
+bool loadEffectMasks(const std::string& path, int w, int h, std::vector<std::uint8_t>& rgba);
+bool saveEffectMasks(const std::string& path, int w, int h, const std::vector<std::uint8_t>& rgba);
+
 struct PixelBox {
   int x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // [x0, x1) x [y0, y1)
   [[nodiscard]] bool empty() const { return x1 <= x0 || y1 <= y0; }
@@ -71,6 +78,10 @@ enum class DepthTool { Front = 0, Back = 1, Match = 2, Erase = 3, Smooth = 4 };
 // towards `perPixel` (a field-size target, e.g. the blurred depth).
 void mergeStroke(DepthEdits& e, const std::vector<float>& stroke, DepthTool tool, float value, PixelBox box,
                  const std::vector<float>* perPixel = nullptr);
+
+// A stroke or selection (0..1, field size) into one channel (0..3) of the
+// effect masks: added (kept at the max) or erased (scaled down by it).
+void mergeMaskStroke(std::vector<std::uint8_t>& rgba, int w, int channel, const std::vector<float>& stroke, PixelBox box, bool erase);
 
 // The magic wand: the region around (sx, sy) that continues smoothly in tone
 // and depth, stopping at edges. `tolerance` 0..1. Returns a field-size mask.

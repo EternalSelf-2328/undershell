@@ -65,6 +65,9 @@ struct DrawContext {
   // default plane that splits subject from background
   unsigned depthField = 0;
   float depthLevel = 0.5F, depthFeather = 0.1F;
+  // the effect masks painted on this wallpaper (RGBA: four channels over the
+  // picture, like depthField; 0 = none painted)
+  unsigned effectMasks = 0;
 };
 
 class WidgetImpl {

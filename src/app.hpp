@@ -222,6 +222,11 @@ private:
   void paintMove(double x, double y);
   void paintEnd();
   void paintUndo();
+  // effect masks: ready to paint (allocated, its texture made), and a box
+  // of `sel` (a stroke or selection) laid on the channel from m_maskBefore
+  bool maskReady(DepthMask& m, const std::string& output);
+  void maskApply(DepthMask& m, const std::vector<float>& sel, PixelBox box);
+  void maskRemember(DepthMask& m, PixelBox box);
   void paintClear();
   void setPaintMode(bool on);
   void paintWorld(const Output* o, double sx, double sy, double& wx, double& wy) const;  // screen -> wallpaper view
@@ -281,7 +286,7 @@ public:
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
-                PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
+                PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset, PaintTarget,
                 ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Perf, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,
                 LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown } type = Panel;
@@ -623,6 +628,17 @@ private:
   std::vector<float> m_stroke;            // the stroke being painted (field size)
   PixelBox m_strokeBox;
   std::vector<std::pair<std::string, DepthEdits>> m_editsUndo;
+  // the same brush on the effect masks (depthpaint.cpp)
+  int m_paintTarget = 0;  // 0 the depth, 1..4 an effect mask
+  int m_maskTool = 0;     // 0 add, 1 erase
+  struct MaskUndo {
+    std::string output;
+    int channel = 0;
+    PixelBox box;
+    std::vector<std::uint8_t> before;  // the channel inside box
+  };
+  std::vector<MaskUndo> m_maskUndo;
+  std::vector<std::uint8_t> m_maskBefore;  // the channel as the stroke began (field size)
   bool m_snapOn = true;   // magnet (Shift inverts)
   bool m_gridOn = true;   // grid drawn + snapping on release
   int m_uiHover = -1;

@@ -111,6 +111,11 @@ inline std::string effectKey(const std::string& id, const std::string& param) { 
 // those that are on (all of them when `all`, for default lookups).
 [[nodiscard]] std::vector<PropSpec> effectRows(const toml::table& opts, bool all);
 
+// The values of an effect's `mask` (its where): all, background, subject,
+// above, below, paint1..paint4 (the painted effect masks); the index is the
+// shader's mode.
+[[nodiscard]] const std::vector<std::string>& effectMaskModes();
+
 // A 256×256 RGBA tile of random bytes (the noise() texture), the same every run.
 [[nodiscard]] std::vector<uint8_t> effectNoise();
 

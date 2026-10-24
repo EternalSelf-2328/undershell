@@ -1314,6 +1314,7 @@ void App::render(Widget& w) {
         dctx.depthField = m->field;
         dctx.depthLevel = static_cast<float>(depthThreshold());
         dctx.depthFeather = static_cast<float>(depthFeather());
+        dctx.effectMasks = m_depth.effectMasks(w.output->name);
       }
     m_media.uploadPending();
     try {
@@ -1600,7 +1601,10 @@ void App::renderEdit(EditSurface& e) {
           mp.zoom = static_cast<float>(m_zoom);
           m_maskPass.drawWallpaper(mp, m_depth.wallpaperTexture(*m));
         }
-        m_maskPass.drawTint(mp, Color{accent.r, accent.g, accent.b, 0.42F});
+        if (m_paintTarget > 0)  // an effect mask: where it is painted
+          m_maskPass.drawChannelTint(mp, m_depth.effectMasks(e.output->name), m_paintTarget - 1, Color{accent.r, accent.g, accent.b, 0.5F});
+        else
+          m_maskPass.drawTint(mp, Color{accent.r, accent.g, accent.b, 0.42F});
       }
     }
     // placing a pinned corner: a loupe of the wallpaper under it
@@ -2201,6 +2205,7 @@ int App::run() {
 
   m_configPath = Config::defaultPath();
   m_depth.setEditsDir((fs::path(m_configPath).parent_path() / "depth-edits").string());
+  m_depth.setMasksDir((fs::path(m_configPath).parent_path() / "effect-masks").string());
   m_depth.setJobs(&m_jobs, [this] {
     for (auto& w : m_widgets) w->needsRender = true;
   });

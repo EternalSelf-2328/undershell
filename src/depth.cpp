@@ -73,11 +73,14 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
       m.fieldKey = key;
       m.fieldPixels.clear();
       m.fieldStale = m.field != 0;
+      m.fxMask.clear();  // the old wallpaper's: the new one's come with its field
+      m.fxMaskUpload = true;
       changed = true;
       if (!npy.empty() && m_jobs) {
         const std::string sha = sha256Of(wall);
         const std::string editsPath = m_editsDir.empty() ? std::string() : m_editsDir + "/" + sha + ".usde";
-        m_jobs->run([this, out, wall, npy, key, sha, editsPath]() -> Jobs::Done {
+        const std::string masksPath = m_masksDir.empty() ? std::string() : m_masksDir + "/" + sha + ".usfm";
+        m_jobs->run([this, out, wall, npy, key, sha, editsPath, masksPath]() -> Jobs::Done {
           DepthField raw, refined;
           std::vector<float> guide;
           std::vector<std::uint8_t> colour;
@@ -97,8 +100,10 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
               for (size_t i = 0; i < applied.size(); ++i) applied[i] = editedDepth(applied[i], edits.target[i], edits.cover[i]);
             half = toHalf(applied);
           }
+          std::vector<std::uint8_t> masks;
+          if (ok && !masksPath.empty() && !loadEffectMasks(masksPath, refined.w, refined.h, masks)) masks.clear();
           return [this, out, npy, key, ok, iw, ih, sha, hasEdits, refined = std::move(refined), guide = std::move(guide),
-                  edits = std::move(edits), half = std::move(half), colour = std::move(colour)]() mutable {
+                  edits = std::move(edits), half = std::move(half), colour = std::move(colour), masks = std::move(masks)]() mutable {
             auto found = m_masks.find(out);
             if (found == m_masks.end() || !found->second || found->second->fieldKey != key) return;  // superseded
             DepthMask* it = found->second.get();
@@ -119,6 +124,8 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
             it->hasEdits = hasEdits;
             it->colour = std::move(colour);
             it->wallStale = it->wallTexture != 0;
+            it->fxMask = std::move(masks);
+            it->fxMaskUpload = true;
             US_INFO("depth field for {}: {}x{}", out, fw, fh);
             if (m_fieldReady) m_fieldReady();
           };
@@ -138,6 +145,7 @@ void DepthMasks::freeRetired() {
     if (r.use_count() > 1) continue;  // taken back by an output
     if (r->field) glDeleteTextures(1, &r->field);
     if (r->wallTexture) glDeleteTextures(1, &r->wallTexture);
+    if (r->fxMaskTex) glDeleteTextures(1, &r->fxMaskTex);
   }
   m_retired.clear();
 }
@@ -244,13 +252,55 @@ bool DepthMasks::saveEdits(DepthMask& m) {
   return saveDepthEdits(path, m.edits);
 }
 
+GLuint DepthMasks::effectMasks(const std::string& output) {
+  auto it = m_masks.find(output);
+  if (it == m_masks.end() || !it->second) return 0;
+  DepthMask& m = *it->second;
+  const bool want = !m.fxMask.empty() && m.fieldW > 0 && m.fxMask.size() == static_cast<size_t>(m.fieldW) * m.fieldH * 4;
+  if (m.fxMaskUpload || !want) {
+    if (m.fxMaskTex) glDeleteTextures(1, &m.fxMaskTex);
+    m.fxMaskTex = 0;
+  }
+  if (!want) return 0;
+  if (!m.fxMaskTex) {
+    glGenTextures(1, &m.fxMaskTex);
+    glBindTexture(GL_TEXTURE_2D, m.fxMaskTex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m.fieldW, m.fieldH, 0, GL_RGBA, GL_UNSIGNED_BYTE, m.fxMask.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  }
+  m.fxMaskUpload = false;
+  return m.fxMaskTex;
+}
+
+void DepthMasks::uploadMaskRect(DepthMask& m, PixelBox box) {
+  box.clip(m.fieldW, m.fieldH);
+  if (box.empty() || !m.fxMaskTex || m.fxMaskUpload) return;  // a full upload is due anyway
+  glBindTexture(GL_TEXTURE_2D, m.fxMaskTex);
+  glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+  glPixelStorei(GL_UNPACK_ROW_LENGTH, m.fieldW);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0, GL_RGBA, GL_UNSIGNED_BYTE,
+                  m.fxMask.data() + (static_cast<size_t>(box.y0) * m.fieldW + box.x0) * 4);
+  glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+}
+
+bool DepthMasks::saveMasks(DepthMask& m) {
+  if (m_masksDir.empty() || m.sha.empty()) return false;
+  return saveEffectMasks(m_masksDir + "/" + m.sha + ".usfm", m.fieldW, m.fieldH, m.fxMask);
+}
+
 void DepthMasks::releaseGl() {
   freeRetired();
   for (auto& [k, m] : m_masks) {
     if (!m) continue;
     if (m->field) glDeleteTextures(1, &m->field);  // a shared one is zeroed on its first visit
     if (m->wallTexture) glDeleteTextures(1, &m->wallTexture);
-    m->field = m->wallTexture = 0;
+    if (m->fxMaskTex) glDeleteTextures(1, &m->fxMaskTex);
+    m->field = m->wallTexture = m->fxMaskTex = 0;
+    m->fxMaskUpload = true;
   }
 }
 

@@ -6,6 +6,8 @@
 #include "noctalia.hpp"
 #include "offscreen.hpp"
 
+#include <GLES3/gl3.h>
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -118,6 +120,14 @@ int main() {
   CHECK(hasRow(effectRows(toml::table{}, true), "fx_godrays_tint"));  // every default, for lookups
   for (const auto& r : effectRows(toml::table{}, true))
     if (r.key == "fx_pulse_source") CHECK(r.optionNames.size() == 4 && r.optionNames[0].second == "Graves");
+  // a painted mask: its button opens the brush on that mask
+  opts.insert_or_assign("fx_waves_mask", "paint3");
+  bool button = false;
+  for (const auto& r : effectRows(opts, false))
+    if (r.key == "fx_waves_paint") button = r.kind == PropSpec::Action && r.defText == "paint3";
+  CHECK(button && !hasRow(effectRows(opts, false), "fx_waves_split"));
+  for (const auto& r : effectRows(opts, false))
+    if (r.key == "fx_waves_mask") CHECK(r.options.size() == 9 && r.optionNames.size() == 9 && r.optionNames[7].second == "Pintura 3");
 
   // with GL: every built-in compiles and draws on a picture, alone and all together
   Headless gl;
@@ -180,6 +190,35 @@ int main() {
           if (y > 52) bottom += d;
         }
     CHECK(top < 1 && bottom > 50);
+    // a painted mask (channel 2, the lower half): the waves only there
+    {
+      toml::table painted = plain;
+      painted.insert_or_assign("fx_waves", true);
+      painted.insert_or_assign("fx_waves_mask", "paint2");
+      std::vector<std::uint8_t> rgba(160 * 90 * 4, 0);
+      for (int y = 45; y < 90; ++y)
+        for (int x = 0; x < 160; ++x) rgba[(static_cast<size_t>(y) * 160 + x) * 4 + 1] = 255;
+      GLuint masks = 0;
+      glGenTextures(1, &masks);
+      glBindTexture(GL_TEXTURE_2D, masks);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 160, 90, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      const Image masked = renderWidget("filter", painted, 160, 90, pal, 1000, 1, 3.0, nullptr, png, masks);
+      const Image unpainted = renderWidget("filter", painted, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
+      double up = 0, down = 0;
+      for (int y = 0; y < 90; ++y)
+        for (int x = 0; x < 160; ++x)
+          for (int k = 0; k < 3; ++k) {
+            const size_t i = (static_cast<size_t>(y) * 160 + x) * 4 + k;
+            const int d = std::abs(masked.rgba[i] - base.rgba[i]);
+            if (y < 40) up += d;
+            if (y > 50) down += d;
+          }
+      CHECK(up < 1 && down > 50);
+      CHECK(imageDiff(unpainted, base) < 0.05);  // nothing painted: nowhere
+      glDeleteTextures(1, &masks);
+    }
     // all together in one pass
     const Image every = renderWidget("filter", all, 160, 90, pal, 1000, 30, 3.0, nullptr, png);
     CHECK(every.w == 160 && every.rgba[(45 * 160 + 80) * 4 + 3] == 255);

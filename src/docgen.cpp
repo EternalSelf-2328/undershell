@@ -126,8 +126,9 @@ std::string optionsMarkdown() {
   md += "\n### Animated effects\n\nThe same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, and its options are "
         "`fx_<effect>_<option>`. All effects that are on are drawn in one pass at `fx_fps` frames a second (10 – 60, default 30). "
         "Every effect also has `fx_<effect>_strength` (0 – 2, default 1), `fx_<effect>_mask` (`all`, `background`, `subject`, "
-        "`above`, `below`: the last two split the picture at `fx_<effect>_split`, 0 – 1 from the top) — `background` and "
-        "`subject` follow the wallpaper's depth. Your own effects go in `~/.config/undershell/effects/<name>.glsl` "
+        "`above`, `below`, `paint1` … `paint4`: `above` and `below` split the picture at `fx_<effect>_split`, 0 – 1 from the top; "
+        "`paint1` … `paint4` are masks painted with the editor's brush, kept per wallpaper in "
+        "`~/.config/undershell/effect-masks`) — `background`, `subject` and the painted masks need the wallpaper's depth map. Your own effects go in `~/.config/undershell/effects/<name>.glsl` "
         "(see [EFFECTS.md](EFFECTS.md)).\n\n";
   md += "| Effect | Option | Values | Default | |\n|---|---|---|---|---|\n";
   for (const EffectSpec& e : builtinEffects()) {

@@ -1246,7 +1246,7 @@ constexpr float kBarY = 50, kBarH = 46, kBtn = 34, kGap = 6, kSep = 14, kChipH =
 constexpr float kSavesW = 540, kSavesHead = 92, kSaveRowH = 70, kSavePitch = 76;
 constexpr int kSaveRowsMax = 5;
 // the depth brush panel
-constexpr float kPaintW = 300, kPaintH = 478;
+constexpr float kPaintW = 300, kPaintH = 530;
 // the Layers panel
 constexpr float kLayersW = 288, kLayersHead = 50, kLayerRowH = 32, kLayerPitch = 34, kLayersFoot = 50;
 const char* kToolKeys[5][3] = {{"front", "Al frente", "To front"},
@@ -1301,10 +1301,14 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::LayerUngroup: return es ? "Desagrupar  (Ctrl+Shift+G)" : "Ungroup  (Ctrl+Shift+G)";
     case T::LayerUp: return es ? "Subir  (RePág; Shift: al frente)" : "Forward  (PgUp; Shift: to the front)";
     case T::LayerDown: return es ? "Bajar  (AvPág; Shift: al fondo)" : "Backward  (PgDn; Shift: to the back)";
-    case T::Paint: return es ? "Pincel de profundidad (no disponible con fondos animados)" : "Depth brush (not with moving wallpapers)";
+    case T::Paint:
+      return es ? "Pincel de profundidad y de máscaras (no disponible con fondos animados)" : "Depth and mask brush (not with moving wallpapers)";
     case T::PaintZoomIn: return es ? "Acercar (rueda o +)" : "Zoom in (wheel or +)";
     case T::PaintZoomOut: return es ? "Alejar (rueda o −)" : "Zoom out (wheel or −)";
     case T::PaintZoomReset: return es ? "Tamaño real (0)" : "Actual size (0)";
+    case T::PaintTarget:
+      return es ? "Profundidad, o una de las 4 máscaras de los efectos (en cada efecto: Dónde → Pintura N)"
+                : "The depth, or one of the 4 effect masks (in each effect: Where → Painted N)";
     case T::SaveOverwrite: return es ? "Sobrescribir con lo que hay en pantalla" : "Overwrite with what is on screen";
     case T::SaveRename: return es ? "Renombrar" : "Rename";
     case T::SaveDelete: return es ? "Eliminar (clic otra vez para confirmar)" : "Delete (click again to confirm)";
@@ -1624,20 +1628,30 @@ void App::layoutUi(const EditSurface& e) {
     m_ui.push_back({UiControl::PanelGrab, {px, py, kPaintW, 48}, -1, "paint"});
     m_ui.push_back({UiControl::Collapse, {px + kPaintW - 58, py + 16, 24, 24}, -1, "paint"});
     if (!folded) {
+      // what it paints: the depth, or one of the four effect masks
+      const float dw = 104, mw = (kPaintW - 28 - dw - 4 * 6) / 4;
+      m_ui.push_back({UiControl::PaintTarget, {px + 14, py + 80, dw, 30}, -1, "0"});
+      for (int t = 1; t <= 4; ++t)
+        m_ui.push_back({UiControl::PaintTarget, {px + 14 + dw + 6 + (t - 1) * (mw + 6), py + 80, mw, 30}, -1, std::to_string(t)});
       const float sw4 = (kPaintW - 28 - 18) / 4;
       for (int t = 0; t < 4; ++t)
-        m_ui.push_back({UiControl::PaintSelect, {px + 14 + t * (sw4 + 6), py + 84, sw4, 48}, -1, std::to_string(t)});
+        m_ui.push_back({UiControl::PaintSelect, {px + 14 + t * (sw4 + 6), py + 136, sw4, 48}, -1, std::to_string(t)});
       const float aw = (kPaintW - 28 - 12) / 3;
-      for (int t = 0; t < 5; ++t)
-        m_ui.push_back({UiControl::PaintTool, {px + 14 + (t % 3) * (aw + 6), py + 164 + (t / 3) * 40, aw, 34}, -1, std::to_string(t)});
-      if (m_selectTool <= 1) m_ui.push_back({UiControl::PaintSize, {px + 14, py + 272, kPaintW - 28 - 60, 20}});
-      if (m_selectTool == 0 || m_selectTool == 2) m_ui.push_back({UiControl::PaintSmart, {px + kPaintW - 14 - 38, py + 306, 38, 20}});
-      m_ui.push_back({UiControl::PaintZoomOut, {px + 14, py + 340, 34, 30}});
-      m_ui.push_back({UiControl::PaintZoomIn, {px + 14 + 34 + 70, py + 340, 34, 30}});
-      m_ui.push_back({UiControl::PaintZoomReset, {px + kPaintW - 14 - 56, py + 340, 56, 30}});
+      if (m_paintTarget > 0) {  // a mask: add or take out
+        const float hw = (kPaintW - 28 - 6) / 2;
+        for (int t = 0; t < 2; ++t) m_ui.push_back({UiControl::PaintTool, {px + 14 + t * (hw + 6), py + 216, hw, 34}, -1, std::to_string(t)});
+      } else {
+        for (int t = 0; t < 5; ++t)
+          m_ui.push_back({UiControl::PaintTool, {px + 14 + (t % 3) * (aw + 6), py + 216 + (t / 3) * 40, aw, 34}, -1, std::to_string(t)});
+      }
+      if (m_selectTool <= 1) m_ui.push_back({UiControl::PaintSize, {px + 14, py + 324, kPaintW - 28 - 60, 20}});
+      if (m_selectTool == 0 || m_selectTool == 2) m_ui.push_back({UiControl::PaintSmart, {px + kPaintW - 14 - 38, py + 358, 38, 20}});
+      m_ui.push_back({UiControl::PaintZoomOut, {px + 14, py + 392, 34, 30}});
+      m_ui.push_back({UiControl::PaintZoomIn, {px + 14 + 34 + 70, py + 392, 34, 30}});
+      m_ui.push_back({UiControl::PaintZoomReset, {px + kPaintW - 14 - 56, py + 392, 56, 30}});
       const float hb = (kPaintW - 28 - 8) / 2;
-      m_ui.push_back({UiControl::PaintUndo, {px + 14, py + 382, hb, 32}});
-      m_ui.push_back({UiControl::PaintClear, {px + 22 + hb, py + 382, hb, 32}});
+      m_ui.push_back({UiControl::PaintUndo, {px + 14, py + 434, hb, 32}});
+      m_ui.push_back({UiControl::PaintClear, {px + 22 + hb, py + 434, hb, 32}});
     }
   }
 
@@ -2106,7 +2120,15 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     case UiControl::PaintTool:
-      m_paintTool = std::clamp(std::atoi(c.value.c_str()), 0, 4);
+      if (m_paintTarget > 0) m_maskTool = std::clamp(std::atoi(c.value.c_str()), 0, 1);
+      else m_paintTool = std::clamp(std::atoi(c.value.c_str()), 0, 4);
+      markEditDirty();
+      return true;
+    case UiControl::PaintTarget:
+      paintEnd();
+      m_paintTarget = std::clamp(std::atoi(c.value.c_str()), 0, 4);
+      m_confirmClear = false;
+      for (auto& ww : m_widgets) ww->needsRender = true;
       markEditDirty();
       return true;
     case UiControl::PaintSelect:
@@ -2301,6 +2323,15 @@ bool App::uiPress(int index, double x) {
           endNote();
         } else {
           beginNote(*w);
+        }
+      }
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
+        // an effect's painted mask: the brush, open on that mask
+        const PropSpec& p = m_inspSchema[static_cast<size_t>(c.prop)];
+        if (p.key.starts_with("fx_") && p.key.ends_with("_paint") && p.defText.starts_with("paint") && !m_motion) {
+          m_paintTarget = std::clamp(std::atoi(p.defText.c_str() + 5), 1, 4);
+          setPaintMode(true);
+          for (auto& ww : m_widgets) ww->needsRender = true;
         }
       }
       if (c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "_depth_model" &&
@@ -3226,18 +3257,22 @@ void App::drawUi(EditSurface& e) {
     plateAt(P, 16);
     cv.roundRect(P.x + 16, P.y + 16, 24, 24, 8, withAlphaC(accent, 0.22F));
     icon(cv, "brush", P.x + 28, P.y + 28, accent);
-    cv.text(es ? "Pincel de profundidad" : "Depth brush", head, P.x + 50, P.y + 12, ink);
-    cv.text(es ? "Corrige qué queda delante" : "Fix what stands in front", label, P.x + 50, P.y + 32, dim);
+    const bool masks = m_paintTarget > 0;
+    cv.text(masks ? (es ? "Pincel de máscaras" : "Mask brush") : (es ? "Pincel de profundidad" : "Depth brush"), head, P.x + 50,
+            P.y + 12, ink);
+    cv.text(masks ? (es ? "Dónde actúan los efectos" : "Where effects apply") : (es ? "Corrige qué queda delante" : "Fix what stands in front"),
+            label, P.x + 50, P.y + 32, dim);
     if (m_collapsed.count("paint")) continue;  // folded to its title
-    cv.text(es ? "Herramienta" : "Tool", label, P.x + 14, P.y + 62, dim);
-    cv.text(es ? "Acción" : "Action", label, P.x + 14, P.y + 142, dim);
+    cv.text(es ? "Pinta en" : "Paints on", label, P.x + 14, P.y + 62, dim);
+    cv.text(es ? "Herramienta" : "Tool", label, P.x + 14, P.y + 114, dim);
+    cv.text(es ? "Acción" : "Action", label, P.x + 14, P.y + 194, dim);
     if (m_selectTool <= 1)
-      cv.text(m_selectTool == 1 ? (es ? "Tolerancia" : "Tolerance") : (es ? "Tamaño" : "Size"), label, P.x + 14, P.y + 250, dim);
+      cv.text(m_selectTool == 1 ? (es ? "Tolerancia" : "Tolerance") : (es ? "Tamaño" : "Size"), label, P.x + 14, P.y + 302, dim);
     if (m_selectTool == 0 || m_selectTool == 2)
-      cv.text(es ? "Ajustar a bordes" : "Keep to edges", label, P.x + 14, P.y + 306, dim);
+      cv.text(es ? "Ajustar a bordes" : "Keep to edges", label, P.x + 14, P.y + 358, dim);
     const std::string zoomText = std::format("{:.0f} %", m_zoom * 100);
     auto [zw, zh] = measure(zoomText, mono);
-    cv.text(zoomText, mono, P.x + 14 + 34 + 35 - zw / 2, P.y + 348, ink);
+    cv.text(zoomText, mono, P.x + 14 + 34 + 35 - zw / 2, P.y + 400, ink);
     const DepthMask* dm = m_uiOutput ? m_depth.paintable(m_uiOutput->name) : nullptr;
     const std::string who = m_selected ? m_selected->cfg.id : (es ? "los widgets" : "the widgets");
     const int plane = static_cast<int>(std::lround(previewPlane() * 100));
@@ -3246,19 +3281,23 @@ void App::drawUi(EditSurface& e) {
     static const char* hintsEn[4] = {"Drag to paint · Shift+wheel: size", "Click an object: takes all of it",
                                      "Click around · first point or Enter: close", "Drag to move the view"};
     if (dm) {
-      fitText(es ? hintsEs[m_selectTool] : hintsEn[m_selectTool], label, P.x + 14, P.y + 426, kPaintW - 28, ink);
-      fitText(std::format("{} {} · {} {} · {}", es ? "Teñido: tapa a" : "Tint: covers", who, es ? "plano" : "plane", plane,
-                          es ? "rueda: zoom" : "wheel: zoom"),
-              label, P.x + 14, P.y + 446, kPaintW - 28, dim);
+      fitText(es ? hintsEs[m_selectTool] : hintsEn[m_selectTool], label, P.x + 14, P.y + 478, kPaintW - 28, ink);
+      if (masks)
+        fitText(std::format("{} {} · {}", es ? "Teñido: máscara" : "Tint: mask", m_paintTarget, es ? "rueda: zoom" : "wheel: zoom"), label,
+                P.x + 14, P.y + 498, kPaintW - 28, dim);
+      else
+        fitText(std::format("{} {} · {} {} · {}", es ? "Teñido: tapa a" : "Tint: covers", who, es ? "plano" : "plane", plane,
+                            es ? "rueda: zoom" : "wheel: zoom"),
+                label, P.x + 14, P.y + 498, kPaintW - 28, dim);
     } else {
       fitText(es ? "Este fondo aún no tiene mapa de profundidad." : "No depth map for this wallpaper yet.", label, P.x + 14,
-              P.y + 426, kPaintW - 28, Color{1, 0.62F, 0.57F, 1});
+              P.y + 478, kPaintW - 28, Color{1, 0.62F, 0.57F, 1});
       const bool own = !DepthGen::helperPath().empty();
       const char* how = !own                      ? (es ? "Esta versión no trae ONNX Runtime." : "This build has no ONNX Runtime.")
                         : m_depthGen.needsModel() ? (es ? "Descarga el modelo en el inspector." : "Download the model in the inspector.")
                         : m_depthGen.computing()  ? (es ? "Calculándolo…" : "Computing it…")
                                                   : (es ? "No se pudo calcular." : "It could not be computed.");
-      fitText(how, label, P.x + 14, P.y + 446, kPaintW - 28, dim);
+      fitText(how, label, P.x + 14, P.y + 498, kPaintW - 28, dim);
     }
   }
   for (const UiControl& c : m_ui) {
@@ -3266,10 +3305,11 @@ void App::drawUi(EditSurface& e) {
     if (c.type == UiControl::PaintSelect || c.type == UiControl::PaintTool) {
       const bool sel = c.type == UiControl::PaintSelect;
       const int t = std::clamp(std::atoi(c.value.c_str()), 0, sel ? 3 : 4);
-      const bool on = t == (sel ? m_selectTool : m_paintTool);
+      const bool on = t == (sel ? m_selectTool : m_paintTarget > 0 ? m_maskTool : m_paintTool);
       cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 10, on ? withAlphaC(accent, 0.28F) : (hot ? withAlphaC(ink, 0.12F) : raised), 1,
                    on ? withAlphaC(accent, 0.75F) : line);
-      const char* const* k = sel ? kSelectKeys[t] : kToolKeys[t];
+      static const char* kMaskKeys[2][3] = {{"plus", "Añadir", "Add"}, {"erase", "Quitar", "Take out"}};
+      const char* const* k = sel ? kSelectKeys[t] : m_paintTarget > 0 ? kMaskKeys[std::min(t, 1)] : kToolKeys[t];
       const std::string name = es ? k[1] : k[2];
       auto [tw, th] = measure(name, label);
       if (sel) {  // icon above the name
@@ -3279,6 +3319,15 @@ void App::drawUi(EditSurface& e) {
         icon(cv, k[0], c.r.x + 15, c.r.y + c.r.h / 2, on ? accent : ink);
         cv.text(name, label, c.r.x + 28, c.r.y + (c.r.h - th) / 2, on ? ink : dim);
       }
+    } else if (c.type == UiControl::PaintTarget) {
+      const int t = std::clamp(std::atoi(c.value.c_str()), 0, 4);
+      const bool on = t == m_paintTarget;
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 10, on ? withAlphaC(accent, 0.28F) : (hot ? withAlphaC(ink, 0.12F) : raised), 1,
+                   on ? withAlphaC(accent, 0.75F) : line);
+      const std::string name = t == 0 ? (es ? "Profundidad" : "Depth") : std::to_string(t);
+      auto [tw, th] = measure(name, label);
+      cv.text(name, label, c.r.x + (c.r.w - tw) / 2, c.r.y + (c.r.h - th) / 2, on ? ink : dim);
+      if (hot) tipCtl = &c;
     } else if (c.type == UiControl::PaintSize) {
       const bool tol = m_selectTool == 1;
       const double t = tol ? m_wandTolerance : std::sqrt(std::clamp((m_brush - 6) / (320 - 6), 0.0, 1.0));
@@ -3302,7 +3351,7 @@ void App::drawUi(EditSurface& e) {
     } else if (c.type == UiControl::PaintUndo || c.type == UiControl::PaintClear) {
       const bool clr = c.type == UiControl::PaintClear;
       const bool armed = clr && m_confirmClear;
-      const bool can = clr ? true : !m_editsUndo.empty();
+      const bool can = clr ? true : m_paintTarget > 0 ? !m_maskUndo.empty() : !m_editsUndo.empty();
       const Color red{0.9F, 0.25F, 0.2F, 1};
       cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 10, armed ? red : clr ? withAlphaC(red, hot ? 0.32F : 0.18F) : (hot && can ? withAlphaC(ink, 0.14F) : raised));
       const std::string t = clr ? (armed ? (es ? "¿Seguro?" : "Sure?") : (es ? "Borrar todo" : "Clear all")) : (es ? "Deshacer" : "Undo");
