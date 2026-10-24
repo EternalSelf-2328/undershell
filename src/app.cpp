@@ -2,6 +2,7 @@
 #include "app.hpp"
 
 #include "visualizer.hpp"
+#include "wallset.hpp"
 
 // the generated header names a parameter `namespace`
 #define namespace namespace_
@@ -27,6 +28,7 @@
 #include <regex>
 #include <set>
 #include <sys/inotify.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include <wayland-cursor.h>
@@ -1665,9 +1667,68 @@ void App::setCursor(const char* name) {
 
 // ── commands ────────────────────────────────────────────────────────────────
 
+// ── setting the wallpaper (wallset.hpp) ────────────────────────────────────
+
+namespace {
+// this user's processes called `name` (their comm)
+std::vector<pid_t> processesNamed(const std::string& name) {
+  std::vector<pid_t> pids;
+  std::error_code ec;
+  const uid_t me = getuid();
+  for (const auto& e : fs::directory_iterator("/proc", ec)) {
+    const std::string n = e.path().filename().string();
+    if (n.empty() || !std::isdigit(static_cast<unsigned char>(n[0]))) continue;
+    struct stat st{};
+    if (::stat(e.path().c_str(), &st) != 0 || st.st_uid != me) continue;
+    std::ifstream f(e.path() / "comm");
+    std::string comm;
+    std::getline(f, comm);
+    if (comm == name) pids.push_back(static_cast<pid_t>(std::stoi(n)));
+  }
+  return pids;
+}
+}  // namespace
+
+std::string App::wallpaperSetter() const {
+  // skwd draws (or hands the picture on to the shell): its own daemon
+  if (!processesNamed("skwd-walld").empty()) return "skwd";
+  return m_noctalia.state().source;
+}
+
+// wallpaper-set <path> [output]: the program that draws the wallpaper is told
+// to show <path> (on <output>, a connected screen's name, or on all)
+std::string App::setWallpaper(const std::string& args) {
+  std::string rest = args, output;
+  rest.erase(0, rest.find_first_not_of(' '));
+  while (!rest.empty() && rest.back() == ' ') rest.pop_back();
+  if (const auto sp = rest.rfind(' '); sp != std::string::npos) {
+    const std::string last = rest.substr(sp + 1);
+    if (std::ranges::any_of(m_outputs, [&](const auto& o) { return o->name == last; })) {
+      output = last;
+      rest.resize(sp);
+    }
+  }
+  std::string why;
+  const std::string path = checkedWallpaperPath(rest, why);
+  if (path.empty()) return "error: " + why;
+  const std::string source = wallpaperSetter();
+  const NoctaliaState& st = m_noctalia.state();
+  const WallSet s = wallpaperSetCommands(source, path, output, {st.wallpaperByOutput, st.defaultWallpaper, st.fillMode});
+  if (!s.error.empty()) return "error: " + s.error;
+  if (!s.replaces.empty()) {
+    m_endPids = processesNamed(s.replaces);
+    m_endPidsAt = nowSeconds() + 1.0;  // once the new one has drawn
+  }
+  for (const auto& a : s.commands) spawnArgv(a);
+  US_INFO("wallpaper set through {}: {}{}", source, path, output.empty() ? "" : " on " + output);
+  m_refreshNoctAt = nowSeconds() + 0.6;  // read it back (programs without a file to watch)
+  return std::format("wallpaper set through {}{}", source, s.allOutputs ? " (it has one wallpaper for every screen)" : "");
+}
+
 std::string App::handleCommand(const std::string& cmd) {
   if (cmd == "ping") return "pong";
   if (cmd == "perf") return perfStatus();
+  if (cmd.rfind("wallpaper-set ", 0) == 0) return setWallpaper(cmd.substr(14));
   if (cmd.rfind("perf ", 0) == 0) {  // perf auto|eco|balanced|high|ultra: [general] performance
     const std::string v = cmd.substr(5);
     if (v != "auto" && !parsePerfLevel(v)) return "error: usage: perf [auto|eco|balanced|high|ultra]";
@@ -1965,10 +2026,10 @@ std::string App::handleCommand(const std::string& cmd) {
     std::string s = std::format(
         "{{\"motion\":{},\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
         "\"depth\":{{\"mask\":false,\"field\":{},\"computing\":{},\"threshold\":{:.0f},\"plugin_threshold\":{:.0f}}},"
-        "\"source\":{},\"performance\":{{\"mode\":{},\"level\":{},\"battery\":{},\"gpu\":{:.3f},\"cpu\":{:.3f}}},"
+        "\"source\":{},\"wallpaper_set\":{{\"through\":{},\"supported\":{}}},\"performance\":{{\"mode\":{},\"level\":{},\"battery\":{},\"gpu\":{:.3f},\"cpu\":{:.3f}}},"
         "\"outputs\":[",
         m_motion, m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, field,
-        m_depthGen.computing(), depthThreshold() * 100, depthThreshold() * 100, q(m_noctalia.state().source), q(m_config.performance),
+        m_depthGen.computing(), depthThreshold() * 100, depthThreshold() * 100, q(m_noctalia.state().source), q(wallpaperSetter()), wallpaperSetSupported(wallpaperSetter()), q(m_config.performance),
         q(perfLevelName(m_perfLevel)), m_onBattery, m_gpuBusy, m_cpuBusy);
     // the monitors (logical size), and how many widgets each shows
     for (size_t i = 0; i < m_outputs.size(); ++i) {
@@ -2075,7 +2136,7 @@ void App::handleInotify() {
 int App::computeTimeout() {
   const double now = nowSeconds();
   double next = 1e9;
-  for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt})
+  for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt, m_endPidsAt})
     if (t > 0) next = std::min(next, t);
   if (!m_noctalia.ready()) next = std::min(next, m_noctRetryAt);
   if (m_noctalia.polls()) next = std::min(next, m_sourcePollAt);
@@ -2218,6 +2279,11 @@ int App::run() {
     }
 
     const double now = nowSeconds();
+    if (m_endPidsAt > 0 && now >= m_endPidsAt) {
+      for (const pid_t p : m_endPids) kill(p, SIGTERM);
+      m_endPids.clear();
+      m_endPidsAt = 0;
+    }
     if (m_reloadConfigAt > 0 && now >= m_reloadConfigAt) {
       m_reloadConfigAt = 0;
       loadConfig();

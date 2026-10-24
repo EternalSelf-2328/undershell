@@ -354,6 +354,9 @@ private:
   void beginGpuTiming(Widget& w);
   void collectGpuTiming(Widget& w);
   std::string perfStatus() const;
+  // the program that draws the wallpaper now, as wallset.hpp names it
+  [[nodiscard]] std::string wallpaperSetter() const;
+  std::string setWallpaper(const std::string& args);
   void handleInotify();
   std::string handleCommand(const std::string& cmd);
   std::vector<std::string> outputNames() const;
@@ -645,6 +648,9 @@ private:
   bool m_perfActive = false;              // something was drawn this second
   double m_gpuBusy = 0, m_cpuBusy = 0;    // last second's share of wall time
   bool m_audioPaused = false;
+  // a wallpaper daemon started again (swaybg): the old ones end a moment later
+  std::vector<pid_t> m_endPids;
+  double m_endPidsAt = 0;
 };
 
 

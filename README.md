@@ -441,6 +441,7 @@ undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
 undershell msg perf         # performance level, load, what each widget costs (perf eco|balanced|high|ultra|auto sets it)
+undershell msg wallpaper-set ~/Pictures/a.jpg [eDP-1]  # through the program that draws the wallpaper
 undershell msg add clock flip  # add a widget to the config: visualizer, clock, calendar, weather, notes, now_playing, lyrics, text, shape, image, filter
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
@@ -1114,6 +1115,34 @@ The music card reads the MPRIS players directly when Noctalia's aggregator is
 not on the bus. `undershell msg status` shows which source is in use
 (`source=plasma`, `source=noctalia`, `+manual`).
 
+### Setting the wallpaper through any of them
+
+`undershell msg wallpaper-set <picture> [output]` asks whichever program draws
+the wallpaper to show another picture, with that program's own command (no
+shell in between; each form taken from the project's source). undershell
+never replaces the program you use:
+
+| Source | Command it runs | Per output |
+|---|---|---|
+| Noctalia | `noctalia msg wallpaper-set [output] <path>` | yes |
+| skwd-wall (when `skwd-walld` runs) | `skwd-helm apply <path> [-o output]` | yes |
+| caelestia | `caelestia wallpaper --file=<path>` | one for all |
+| DankMaterialShell | `dms ipc call wallpaper set <path>` / `setFor <output> <path>` | yes |
+| illogical-impulse | `switchwall.sh --image <path>` | one for all |
+| Ambxst | `ambxst wallpaper <path> [-monitor output]` (copies the picture into its folder) | yes |
+| HyprPanel | `hyprpanel setWallpaper <path>` (paths without spaces or shell characters) | one for all |
+| awww / swww | `awww img [-o output] --resize <fill> -- <path>` | yes |
+| hyprpaper 0.8 | `hyprctl hyprpaper wallpaper "<output>,<path>,<fit>"` | yes |
+| wpaperd | `wpaperctl set <path> [output]` | yes |
+| swaybg | started again with every screen's picture; the old one ends a second later | yes |
+| waypaper | `waypaper --wallpaper=<path> --fill <fill> [--monitor output]` | yes |
+| KDE Plasma | `plasma-apply-wallpaperimage -f <fill> <path>` | one for all |
+| GNOME | `gsettings set org.gnome.desktop.background picture-uri[-dark]` | one for all |
+
+COSMIC and mpvpaper are not covered yet. The fill mode in use is kept. A
+widget that draws the wallpaper again (the filter) crossfades to the new
+picture.
+
 ### GNOME
 
 GNOME (Mutter) does not implement layer-shell, so a client cannot put itself
@@ -1229,6 +1258,8 @@ makes it fail (for development); if you change a look on purpose:
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
 | `src/perf.*` | performance profiles, the load governor, battery |
+| `src/wallstore.*` | the wallpaper as a shared texture (decoded off the frame), crossfades |
+| `src/wallset.*` | setting the wallpaper through each shell or tool's own command |
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex, Bangers (OFL) |
 | `integrations/noctalia/undershell/` | the Noctalia bar plugin |
 | `packaging/arch/` | PKGBUILD |
