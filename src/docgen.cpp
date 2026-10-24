@@ -52,6 +52,10 @@ std::string optionsMarkdown() {
   md += "| `grid` | px | `16` | editor snap step |\n";
   md += "| `noise_reduction` | 0 – 1 | `0.45` | analyser smoothing (Ryoku's cava used 45) |\n";
   md += "| `monstercat` | `true` / `false` | `false` | spread peaks to neighbours |\n";
+  md += "| `performance` | `auto`, `eco`, `balanced`, `high`, `ultra` | `\"auto\"` | how much undershell may spend: frame rate cap, resolution of costly widgets, "
+        "particle counts, effect quality. `auto` starts at `high` and steps down while the widgets' measured GPU or CPU time goes over "
+        "a fifth of the time (back up when there is room). Also in the editor's help card and `undershell msg perf <level>` |\n";
+  md += "| `on_battery` | `lower`, `eco`, `keep` | `\"lower\"` | on battery: one step down, straight to `eco`, or no change |\n";
   md += "| `language` | `system`, `en`, `es` | `\"system\"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |\n";
   md += "| `wallpaper` | path | `\"\"` | the wallpaper, when neither Noctalia nor KDE Plasma says which it is (or to override them): depth and per-wallpaper layouts follow it |\n";
   md += "| `wallpaper_fill` | `center`, `crop`, `fit`, `stretch`, `repeat` | the source's, else `crop` | how that wallpaper is fitted to the screen |\n";

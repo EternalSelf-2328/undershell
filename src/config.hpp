@@ -97,6 +97,10 @@ struct Config {
   // audio analysis
   double noiseReduction = 0.45;  // Ryoku's cava noise_reduction = 45
   bool monstercat = false;
+  // performance profile (perf.hpp): auto | eco | balanced | high | ultra, and
+  // what running on battery does to it: lower (one step) | eco | keep
+  std::string performance = "auto";
+  std::string onBattery = "lower";
 
   static std::string defaultPath();
   static Config load(const std::string& path);

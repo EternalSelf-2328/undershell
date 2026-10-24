@@ -12,6 +12,8 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | `grid` | px | `16` | editor snap step |
 | `noise_reduction` | 0 – 1 | `0.45` | analyser smoothing (Ryoku's cava used 45) |
 | `monstercat` | `true` / `false` | `false` | spread peaks to neighbours |
+| `performance` | `auto`, `eco`, `balanced`, `high`, `ultra` | `"auto"` | how much undershell may spend: frame rate cap, resolution of costly widgets, particle counts, effect quality. `auto` starts at `high` and steps down while the widgets' measured GPU or CPU time goes over a fifth of the time (back up when there is room). Also in the editor's help card and `undershell msg perf <level>` |
+| `on_battery` | `lower`, `eco`, `keep` | `"lower"` | on battery: one step down, straight to `eco`, or no change |
 | `language` | `system`, `en`, `es` | `"system"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |
 | `wallpaper` | path | `""` | the wallpaper, when neither Noctalia nor KDE Plasma says which it is (or to override them): depth and per-wallpaper layouts follow it |
 | `wallpaper_fill` | `center`, `crop`, `fit`, `stretch`, `repeat` | the source's, else `crop` | how that wallpaper is fitted to the screen |

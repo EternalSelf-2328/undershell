@@ -5,6 +5,7 @@
 // fall, trail and crackle out. Hard kicks burst two.
 #include "looks.hpp"
 
+#include "perf.hpp"
 #include "widget.hpp"
 
 #include <algorithm>
@@ -152,6 +153,8 @@ private:
       n = 44;
       b.life = 1.2F;
     }
+    // fewer sparks on a lighter performance profile (a still preview: all of them)
+    if (m_preview < 0) n = std::max(12, static_cast<int>(std::lround(n * perfKnobs().particles)));
     const float tilt = m_rng.range(0.2F, 1.1F), turn = m_rng.range(0, 6.2831853F);
     for (int i = 0; i < n; ++i) {
       Spark s{};

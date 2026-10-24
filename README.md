@@ -440,6 +440,7 @@ undershell                  # start (one instance only)
 undershell msg edit         # editor on/off
 undershell msg demo         # synthetic spectrum for previewing looks
 undershell msg status       # widgets, fps, depth mask, audio
+undershell msg perf         # performance level, load, what each widget costs (perf eco|balanced|high|ultra|auto sets it)
 undershell msg add clock flip  # add a widget to the config: visualizer, clock, calendar, weather, notes, now_playing, lyrics, text, shape, image, filter
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
@@ -557,6 +558,36 @@ drawing, so it costs nothing) or `demo` (it moves on a demo spectrum). Each
 visualizer's **With no music** option (`idle = "auto" | "show" | "hide" |
 "demo"`) follows the general one on `auto` or overrides it. Music brings
 them back at once; while editing they are always shown.
+
+## Performance profiles
+
+`performance` in `[general]` (also in the editor's help card, or
+`undershell msg perf <level>`) sets how much undershell may spend:
+
+| Level | Frame rate | Costly widgets drawn at | Particles | Effects |
+|---|---|---|---|---|
+| `eco` | 30 fps | half resolution | 40 % | lowest quality, no bloom |
+| `balanced` | 60 fps | 75 % | 70 % | medium |
+| `high` | as each widget asks | full | all | high |
+| `ultra` | as each widget asks | full | 150 % | highest |
+
+`auto` (the default) starts at `high` and measures what the widgets cost
+every second (GPU time with `GL_EXT_disjoint_timer_query`, CPU time of the
+frames): over a fifth of the time for two seconds, it steps down; when there
+is room for the next level for a while, it steps back up. A widget only
+counts as costly (and is drawn at the reduced resolution, scaled back up by
+the compositor) when its own frames take over ~1 ms at full resolution, so
+text and clocks stay sharp. On battery it goes one level lower
+(`on_battery = "lower"`, or `"eco"`, or `"keep"`).
+
+Covered widgets cost nothing where the compositor stops asking hidden
+surfaces for frames (wlroots-based ones such as Sway do; tested with a
+fullscreen window): their drawing stops, and while no visible widget uses
+the spectrum the audio analysis pauses too.
+
+Measured on an Intel HD 520 with the Fire look at 1400×700: about 17 % of
+the GPU on `high`, 2 % on `eco`. `undershell msg perf` shows the level, the
+load and what each widget costs.
 
 ## Halo
 
@@ -1197,6 +1228,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/depthgen.*`, `src/depthhelper.cpp` | Depth: the model download, `undershell-depth` (which runs it) and the queue and cache of maps |
 | `src/wallkind.*` | still or moving wallpaper (depth is off for videos) |
 | `src/offscreen.*` | headless rendering (`--snapshot`, tests) |
+| `src/perf.*` | performance profiles, the load governor, battery |
 | `data/fonts/` | Space Grotesk, Fraunces, Inter Display, JetBrains Mono, Google Sans Flex, Bangers (OFL) |
 | `integrations/noctalia/undershell/` | the Noctalia bar plugin |
 | `packaging/arch/` | PKGBUILD |

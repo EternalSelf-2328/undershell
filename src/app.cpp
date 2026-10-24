@@ -39,6 +39,23 @@ namespace undershell {
 namespace fs = std::filesystem;
 static volatile std::sig_atomic_t g_quit = 0;
 
+// GL_EXT_disjoint_timer_query: GPU time of each widget's frame, read a few
+// frames later so nothing waits on the GPU
+#ifndef GL_TIME_ELAPSED_EXT
+#define GL_TIME_ELAPSED_EXT 0x88BF
+#endif
+#ifndef GL_GPU_DISJOINT_EXT
+#define GL_GPU_DISJOINT_EXT 0x8FBB
+#endif
+using GetQueryObjectui64v = void (*)(GLuint, GLenum, GLuint64*);
+static GetQueryObjectui64v g_queryResult64 = nullptr;
+
+static double threadCpuSeconds() {
+  timespec ts{};
+  clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+  return static_cast<double>(ts.tv_sec) + static_cast<double>(ts.tv_nsec) * 1e-9;
+}
+
 // ── listener trampolines ────────────────────────────────────────────────────
 
 static void regGlobal(void* d, wl_registry* r, uint32_t n, const char* i, uint32_t v) {
@@ -385,6 +402,12 @@ bool App::initEgl() {
   eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
   US_INFO("GL: {} / {}", reinterpret_cast<const char*>(glGetString(GL_RENDERER)),
           reinterpret_cast<const char*>(glGetString(GL_VERSION)));
+  const char* ext = reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS));
+  if (ext && std::strstr(ext, "GL_EXT_disjoint_timer_query"))
+    g_queryResult64 = reinterpret_cast<GetQueryObjectui64v>(eglGetProcAddress("glGetQueryObjectui64vEXT"));
+  m_timerQueries = g_queryResult64 != nullptr;
+  if (!m_timerQueries) US_INFO("no GPU timer queries: the performance governor goes by CPU time only");
+  setPerfKnobs(knobsFor(m_perfLevel));
   return true;
 }
 
@@ -795,12 +818,17 @@ void App::placeLayer(Widget& w) {
 
 void App::destroySurface(Widget& w) {
   std::erase(m_mapped, &w);
-  if (w.eglSurface != EGL_NO_SURFACE || w.rtFbo) {
+  if (w.eglSurface != EGL_NO_SURFACE || w.rtFbo || w.gpuQuery[0]) {
     eglMakeCurrent(m_egl, EGL_NO_SURFACE, EGL_NO_SURFACE, m_eglContext);
     if (w.rtFbo) glDeleteFramebuffers(1, &w.rtFbo);
     if (w.rtTex) glDeleteTextures(1, &w.rtTex);
     w.rtFbo = w.rtTex = 0;
     w.rtW = w.rtH = 0;
+    if (w.gpuQuery[0]) glDeleteQueries(3, w.gpuQuery);
+    for (int i = 0; i < 3; ++i) {
+      w.gpuQuery[i] = 0;
+      w.gpuPending[i] = false;
+    }
   }
   if (w.eglSurface != EGL_NO_SURFACE) {
     eglDestroySurface(m_egl, w.eglSurface);
@@ -935,10 +963,15 @@ float App::initialScale(const Output* o) const {
   return o ? static_cast<float>(o->scale) : 1.0F;
 }
 
+// device px per logical px of the buffer: a costly widget may draw at the
+// performance profile's reduced resolution (the viewport scales it up)
+static float bufferScale(const Widget& w) { return w.scale * (w.viewport ? w.renderScale : 1.0F); }
+static float bufferScale(const EditSurface& e) { return e.scale; }
+
 // (re)sizes the buffer behind a surface of nw x nh logical px
 template <class S> void App::sizeBuffer(S& x, int nw, int nh) {
-  const int bw = std::max(1, static_cast<int>(std::lround(nw * x.scale)));
-  const int bh = std::max(1, static_cast<int>(std::lround(nh * x.scale)));
+  const int bw = std::max(1, static_cast<int>(std::lround(nw * bufferScale(x))));
+  const int bh = std::max(1, static_cast<int>(std::lround(nh * bufferScale(x))));
   if (x.viewport) wp_viewport_set_destination(x.viewport, nw, nh);
   if (!x.eglWindow) {
     x.eglWindow = wl_egl_window_create(x.surface, bw, bh);
@@ -1050,8 +1083,160 @@ void App::updateIdle(double now) {
   }
 }
 
+// ── performance ─────────────────────────────────────────────────────────────
+// [general] performance picks a level (perf.hpp); "auto" lets the governor
+// move it by the measured load. Once a second: the battery (every 10 s), the
+// load of the last second, the level, and which widgets are costly enough to
+// draw at the level's reduced resolution.
+
+int App::fpsOf(const Widget& w) const {
+  const int f = std::max(1, w.impl ? w.impl->fps() : 60);
+  const int cap = perfKnobs().fpsCap;
+  return cap > 0 ? std::min(f, cap) : f;
+}
+
+bool App::audioWanted(double now) const {
+  if (m_edit) return true;
+  for (const auto& w : m_widgets) {
+    if (!w->impl || !w->impl->usesAudio() || w->cfg.hidden || !w->surface) continue;
+    // a frame asked for and not given for a second: the compositor is not
+    // showing it (a window covers it)
+    if (w->frameCb && now - w->frameAskedAt > 1.0) continue;
+    return true;
+  }
+  return false;
+}
+
+void App::beginGpuTiming(Widget& w) {
+  if (!m_timerQueries) return;
+  if (!w.gpuQuery[0]) glGenQueries(3, w.gpuQuery);
+  for (int i = 0; i < 3; ++i)
+    if (!w.gpuPending[i]) {
+      glBeginQuery(GL_TIME_ELAPSED_EXT, w.gpuQuery[i]);
+      w.gpuPending[i] = true;
+      // the resolution it is drawn at; negative while the query is still open
+      w.gpuQueryScale[i] = -std::max(0.05F, w.viewport ? w.renderScale : 1.0F);
+      return;
+    }
+}
+
+void App::collectGpuTiming(Widget& w) {
+  if (!m_timerQueries || !w.gpuQuery[0]) return;
+  GLint disjoint = 0;  // the GPU changed clocks or was reset: the times are not trustworthy
+  glGetIntegerv(GL_GPU_DISJOINT_EXT, &disjoint);
+  for (int i = 0; i < 3; ++i) {
+    if (!w.gpuPending[i] || w.gpuQueryScale[i] < 0) continue;
+    GLuint ready = 0;
+    glGetQueryObjectuiv(w.gpuQuery[i], GL_QUERY_RESULT_AVAILABLE, &ready);
+    if (!ready) continue;
+    GLuint64 ns = 0;
+    g_queryResult64(w.gpuQuery[i], GL_QUERY_RESULT, &ns);
+    w.gpuPending[i] = false;
+    if (disjoint) continue;
+    m_perfGpuNs += static_cast<double>(ns);
+    const double rs = w.gpuQueryScale[i];
+    const double fullMs = static_cast<double>(ns) * 1e-6 / (rs * rs);  // as if drawn at full resolution
+    w.gpuMs = w.gpuMs <= 0 ? fullMs : w.gpuMs * 0.9 + fullMs * 0.1;
+  }
+}
+
+void App::applyPerfLevel(PerfLevel level, const std::string& reason) {
+  m_perfReason = reason;
+  if (level == m_perfLevel) return;
+  US_INFO("performance: {} ({})", perfLevelName(level), reason);
+  m_perfLevel = level;
+  setPerfKnobs(knobsFor(level));
+  for (auto& w : m_widgets) {
+    w->needsRender = true;
+    w->drewEmpty = false;
+  }
+}
+
+void App::updatePerf(double now) {
+  // the battery: a file read every 10 s (no UPower needed)
+  if (now - m_batteryAt >= 10) {
+    m_batteryAt = now;
+    m_onBattery = onBattery();
+  }
+  const std::string& mode = m_config.performance;
+  const std::string& bat = m_config.onBattery;
+  const bool lower = m_onBattery && bat == "lower", eco = m_onBattery && bat == "eco";
+  const std::string key = std::format("{}/{}/{}", mode, bat, m_onBattery);
+  const bool reconfigured = key != m_perfConfigured;
+  if (reconfigured) {
+    m_perfConfigured = key;
+    // auto: from high down to eco; one step less on battery
+    const PerfLevel ceiling = eco ? PerfLevel::Eco : lower ? PerfLevel::Balanced : PerfLevel::High;
+    if (m_perfMark == 0) m_governor.reset(ceiling, PerfLevel::Eco, ceiling);
+    else m_governor.setCeiling(ceiling);
+  }
+  if (const auto fixed = parsePerfLevel(mode)) {
+    PerfLevel l = *fixed;
+    if (eco) l = PerfLevel::Eco;
+    else if (lower && l > PerfLevel::Eco) l = static_cast<PerfLevel>(static_cast<int>(l) - 1);
+    applyPerfLevel(l, m_onBattery && bat != "keep" ? "chosen, on battery" : "chosen");
+  } else if (reconfigured) {
+    applyPerfLevel(m_governor.level(), m_onBattery && bat != "keep" ? "auto, on battery" : "auto");
+  }
+  if (m_perfMark == 0) m_perfMark = now;
+  if (now - m_perfMark < 1.0) return;
+  const double span = now - m_perfMark;
+  m_perfMark = now;
+  m_gpuBusy = m_perfGpuNs * 1e-9 / span;
+  m_cpuBusy = m_perfCpu / span;
+  const bool active = m_perfActive && !m_edit;  // the editor's demo spectrum is not the desktop's load
+  m_perfGpuNs = m_perfCpu = 0;
+  m_perfActive = false;
+  if (!parsePerfLevel(mode)) {
+    const PerfLevel before = m_governor.level();
+    const PerfLevel l = m_governor.sample(now, m_gpuBusy, m_cpuBusy, active);
+    if (l != before)
+      applyPerfLevel(l, std::format("auto: GPU {:.0f} %, CPU {:.0f} % of the time", m_gpuBusy * 100, m_cpuBusy * 100));
+  }
+  // costly widgets (by their own GPU time) draw at the level's resolution
+  const float scale = perfKnobs().renderScale;
+  for (auto& w : m_widgets) {
+    if (w->gpuMs > 1.2) w->heavy = true;
+    else if (w->gpuMs < 0.8) w->heavy = false;
+    const float want = w->heavy ? scale : 1.0F;
+    if (w->viewport && w->eglWindow && std::abs(want - w->renderScale) > 1e-3F) {
+      w->renderScale = want;
+      sizeBuffer(*w, w->w, w->h);
+      w->needsRender = true;
+      w->drewEmpty = false;
+    }
+  }
+}
+
+std::string App::perfStatus() const {
+  const PerfKnobs& k = perfKnobs();
+  std::string s = std::format("performance={} level={} ({}) battery={} on_battery={}\n", m_config.performance, perfLevelName(m_perfLevel),
+                              m_perfReason, m_onBattery ? "yes" : "no", m_config.onBattery);
+  s += std::format("load: GPU {:.1f} % CPU {:.1f} % (last second{}) audio analysis {}\n", m_gpuBusy * 100, m_cpuBusy * 100,
+                   m_timerQueries ? "" : "; no GPU timer queries", m_audioOk ? (m_audioPaused ? "paused" : "on") : "off");
+  s += std::format("knobs: fps {} · resolution of costly widgets {:.0f} % · particles {:.0f} % · simulation {} Hz · quality {} · "
+                   "trails {:.0f} % · bloom {} · msaa {}\n",
+                   k.fpsCap > 0 ? std::to_string(k.fpsCap) : std::string("as asked"), k.renderScale * 100, k.particles * 100, k.simHz,
+                   k.quality, k.trails * 100, k.bloom ? "on" : "off", k.msaa);
+  for (const auto& w : m_widgets) {
+    if (!w->surface) continue;
+    // gpu: ms per frame as if drawn at full resolution (what decides "heavy")
+    s += std::format("  {} gpu_full={:.2f}ms{} scale={:.2f} fps={}\n", w->cfg.id, w->gpuMs, w->heavy ? " heavy" : "", w->renderScale, fpsOf(*w));
+  }
+  return s;
+}
+
 void App::render(Widget& w) {
   if (!w.configured || w.eglSurface == EGL_NO_SURFACE || w.frameCb || !w.impl) return;
+  // the CPU this frame costs (tick + draw), for the performance governor
+  struct CpuMeter {
+    App& app;
+    double t0 = threadCpuSeconds();
+    ~CpuMeter() {
+      app.m_perfCpu += threadCpuSeconds() - t0;
+      app.m_perfActive = true;
+    }
+  } cpuMeter{*this};
   const double now = nowSeconds();
   const double dt = w.lastTick > 0 ? std::min(0.1, now - w.lastTick) : 1.0 / 60;
   w.lastTick = now;
@@ -1078,12 +1263,14 @@ void App::render(Widget& w) {
   }
 
   eglMakeCurrent(m_egl, w.eglSurface, w.eglSurface, m_eglContext);
+  collectGpuTiming(w);
+  beginGpuTiming(w);
   // A turned widget draws its own box off-screen, then that picture is laid
   // on the surface at its angle; the depth mask comes after, in output space.
   const bool turn = show && !w.impl->fullscreen() && rotated(w.cfg);
   if (turn) {
-    const int tw = std::max(1, static_cast<int>(std::lround(w.cfg.width * w.scale)));
-    const int th = std::max(1, static_cast<int>(std::lround(w.cfg.height * w.scale)));
+    const int tw = std::max(1, static_cast<int>(std::lround(w.cfg.width * bufferScale(w))));
+    const int th = std::max(1, static_cast<int>(std::lround(w.cfg.height * bufferScale(w))));
     if (!w.rtFbo || w.rtW != tw || w.rtH != th) {
       if (!w.rtTex) glGenTextures(1, &w.rtTex);
       glBindTexture(GL_TEXTURE_2D, w.rtTex);
@@ -1113,7 +1300,7 @@ void App::render(Widget& w) {
     dctx.h = static_cast<float>(turn ? w.cfg.height : w.h);
     dctx.outputW = ow;
     dctx.outputH = oh;
-    dctx.scale = w.scale;
+    dctx.scale = bufferScale(w);
     dctx.text = &m_text;
     dctx.media = &m_media;
     dctx.now = now;
@@ -1173,7 +1360,13 @@ void App::render(Widget& w) {
     }
   }
   w.drewEmpty = !show;
+  for (int i = 0; i < 3; ++i)  // the query begun above ends with the frame's GL work
+    if (w.gpuPending[i] && w.gpuQueryScale[i] < 0) {
+      glEndQuery(GL_TIME_ELAPSED_EXT);
+      w.gpuQueryScale[i] = -w.gpuQueryScale[i];
+    }
   updateInputRegion(w);
+  w.frameAskedAt = now;
   w.frameCb = wl_surface_frame(w.surface);
   wl_callback_add_listener(w.frameCb, &kFrame, new WidgetCtx{this, &w});
   eglSwapBuffers(m_egl, w.eglSurface);
@@ -1471,6 +1664,15 @@ void App::setCursor(const char* name) {
 
 std::string App::handleCommand(const std::string& cmd) {
   if (cmd == "ping") return "pong";
+  if (cmd == "perf") return perfStatus();
+  if (cmd.rfind("perf ", 0) == 0) {  // perf auto|eco|balanced|high|ultra: [general] performance
+    const std::string v = cmd.substr(5);
+    if (v != "auto" && !parsePerfLevel(v)) return "error: usage: perf [auto|eco|balanced|high|ultra]";
+    if (!Config::setGeneral(m_configPath, "performance", "\"" + v + "\"")) return "error: could not write the config";
+    loadConfig();
+    updatePerf(nowSeconds());
+    return "performance " + v;
+  }
   if (cmd == "edit") {
     setEditMode(!m_edit);
     return m_edit ? "edit on" : "edit off";
@@ -1760,9 +1962,11 @@ std::string App::handleCommand(const std::string& cmd) {
     std::string s = std::format(
         "{{\"motion\":{},\"edit\":{},\"demo\":{},\"profiles\":{},\"profile\":{{\"key\":{},\"wallpaper\":{},\"saved\":{}}},"
         "\"depth\":{{\"mask\":false,\"field\":{},\"computing\":{},\"threshold\":{:.0f},\"plugin_threshold\":{:.0f}}},"
-        "\"source\":{},\"outputs\":[",
+        "\"source\":{},\"performance\":{{\"mode\":{},\"level\":{},\"battery\":{},\"gpu\":{:.3f},\"cpu\":{:.3f}}},"
+        "\"outputs\":[",
         m_motion, m_edit, m_demo, m_config.profiles, q(m_profileKey), q(fs::path(m_profileWall).filename().string()), saved, field,
-        m_depthGen.computing(), depthThreshold() * 100, depthThreshold() * 100, q(m_noctalia.state().source));
+        m_depthGen.computing(), depthThreshold() * 100, depthThreshold() * 100, q(m_noctalia.state().source), q(m_config.performance),
+        q(perfLevelName(m_perfLevel)), m_onBattery, m_gpuBusy, m_cpuBusy);
     // the monitors (logical size), and how many widgets each shows
     for (size_t i = 0; i < m_outputs.size(); ++i) {
       const Output& o = *m_outputs[i];
@@ -1886,7 +2090,7 @@ int App::computeTimeout() {
       continue;
     }
     if (w->frameCb) continue;
-    const double due = w->lastRender + 1.0 / std::max(1, w->impl->fps());
+    const double due = w->lastRender + 1.0 / fpsOf(*w);
     next = std::min(next, due);
   }
   for (auto& e : m_editSurfaces)
@@ -1899,7 +2103,7 @@ int App::computeTimeout() {
     for (auto& w : m_widgets) idleDemo = idleDemo || idleModeOf(*w) == "demo";
   if (m_demo || idleDemo || (m_edit && (!m_audioOk || m_audio.idle()))) timeout = timeout < 0 ? 16 : std::min(timeout, 16);
   if (const int mt = m_media.pollTimeoutMs(now); mt >= 0) timeout = timeout < 0 ? mt : std::min(timeout, mt);
-  if (m_audioOk) {
+  if (m_audioOk && !m_audioPaused) {
     int a = m_audio.pollTimeoutMs();
     if (a >= 0) timeout = timeout < 0 ? a : std::min(timeout, a);
   }
@@ -2039,7 +2243,10 @@ int App::run() {
       markEditDirty();
     }
 
-    if (m_audioOk && m_audio.tick()) {
+    // nothing shown uses the spectrum (no visualizer, or every one covered
+    // by a window): the samples keep arriving, the analysis waits
+    m_audioPaused = !audioWanted(now);
+    if (m_audioOk && !m_audioPaused && m_audio.tick()) {
       for (auto& w : m_widgets)
         if (w->impl && w->impl->usesAudio()) w->needsRender = true;
     }
@@ -2062,6 +2269,7 @@ int App::run() {
         }
     }
     updateIdle(now);
+    updatePerf(now);
     bool idleDemo = false;
     if (m_nothingPlaying)
       for (auto& w : m_widgets) idleDemo = idleDemo || idleModeOf(*w) == "demo";
@@ -2093,7 +2301,7 @@ int App::run() {
       // now): compare with the time fixed at the last tick, or it never comes
       if (w->impl && !w->needsRender && now >= w->wakeAt) w->needsRender = true;
       if (!w->needsRender) continue;
-      if (now + 0.0005 < w->lastRender + 1.0 / std::max(1, w->impl->fps())) continue;
+      if (now + 0.0005 < w->lastRender + 1.0 / fpsOf(*w)) continue;
       render(*w);
     }
     if (m_edit) editorTick(now);

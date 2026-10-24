@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 #include "geom.hpp"
+#include "perf.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -29,6 +30,8 @@ monstercat = false        # spread peaks to neighbours (cava's monstercat)
 idle = "show"             # visualizers with nothing playing: show | hide | demo
 language = "system"       # editor language: system (follows the locale) | en | es
 profiles = true           # remember a widget layout for each wallpaper
+performance = "auto"      # auto (adapts to the measured load) | eco | balanced | high | ultra
+on_battery = "lower"      # on battery: lower (one step down) | eco | keep
 # wallpaper = "~/Pictures/wall.jpg"   # only without Noctalia or KDE Plasma: the wallpaper
 # wallpaper_fill = "crop"             # (for depth and per-wallpaper layouts) and how it is fitted
 # depth_threshold = 30      # depth plane of widgets with depth_level 0 (higher is nearer)
@@ -106,6 +109,10 @@ Config Config::load(const std::string& path) {
     cfg.depthModel = get<bool>(*g, "depth_model", true);
     cfg.depthThreshold = get<double>(*g, "depth_threshold", -1.0);
     cfg.depthFeather = get<double>(*g, "depth_feather", -1.0);
+    cfg.performance = get<std::string>(*g, "performance", "auto");
+    if (cfg.performance != "auto" && !parsePerfLevel(cfg.performance)) cfg.performance = "auto";
+    cfg.onBattery = get<std::string>(*g, "on_battery", "lower");
+    if (cfg.onBattery != "eco" && cfg.onBattery != "keep") cfg.onBattery = "lower";
   }
   if (auto* arr = root["widget"].as_array()) {
     int n = 0;

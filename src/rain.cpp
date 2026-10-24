@@ -4,6 +4,7 @@
 // hardest. With depth on, it falls behind the wallpaper's subject.
 #include "looks.hpp"
 
+#include "perf.hpp"
 #include "widget.hpp"
 
 #include <algorithm>
@@ -143,7 +144,8 @@ private:
     if (b.kick) m_gust = std::max(m_gust, b.strength * std::clamp(m_hits / 0.7, 0.0, 1.45));
     m_gust *= std::exp(-b.dt / 0.6);
     // how many: the amount, more with the music, and a burst with a gust
-    const double cap = m_kind == "snow" ? 220 : m_kind == "petals" ? 90 : 420;
+    // (the performance profile scales the sky; a still preview is drawn in full)
+    const double cap = (m_kind == "snow" ? 220 : m_kind == "petals" ? 90 : 420) * (m_preview >= 0 ? 1.0 : perfKnobs().particles);
     const size_t want = static_cast<size_t>(cap * m_amount * (b.live ? 0.45 + 0.55 * b.energy : 0.25) + cap * 0.15 * m_gust);
     if (m_drops.empty())
       while (m_drops.size() < want) m_drops.push_back(spawn(true));  // the first fill starts mid-fall

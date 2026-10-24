@@ -16,6 +16,7 @@
 #include "weatherfeed.hpp"
 #include "noctalia.hpp"
 #include "overlay.hpp"
+#include "perf.hpp"
 #include "schema.hpp"
 #include "canvas.hpp"
 #include "text.hpp"
@@ -113,6 +114,16 @@ struct Widget {
   uint64_t framesAtMark = 0;
   double markAt = 0;
   double fpsMeasured = 0;
+  double frameAskedAt = 0;  // when the pending frame callback was asked for
+  // performance (perf.hpp): GPU time of its frames, smoothed and scaled to a
+  // full-resolution buffer; a costly widget draws at the profile's
+  // renderScale (needs a viewport), everything else at full resolution
+  double gpuMs = 0;
+  bool heavy = false;
+  float renderScale = 1;
+  GLuint gpuQuery[3] = {};
+  bool gpuPending[3] = {};
+  float gpuQueryScale[3] = {1, 1, 1};
 };
 
 // The editor's fullscreen input/canvas surface (overlay layer, one per output).
@@ -271,7 +282,7 @@ public:
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset,
-                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Collapse, Action, FileRemove,
+                ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Perf, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,
                 LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown } type = Panel;
     Rect r;       // output coordinates
@@ -333,6 +344,16 @@ private:
   AudioFrame audioFrame(const Widget* w = nullptr);
   std::string idleModeOf(const Widget& w) const;  // show | hide | demo
   void updateIdle(double now);
+  // performance profiles: once a second, the governor, the battery and which
+  // widgets are costly; the frame rate a widget is drawn at; whether anything
+  // shown needs the audio analysis right now
+  void updatePerf(double now);
+  void applyPerfLevel(PerfLevel level, const std::string& reason);
+  [[nodiscard]] int fpsOf(const Widget& w) const;
+  [[nodiscard]] bool audioWanted(double now) const;
+  void beginGpuTiming(Widget& w);
+  void collectGpuTiming(Widget& w);
+  std::string perfStatus() const;
   void handleInotify();
   std::string handleCommand(const std::string& cmd);
   std::vector<std::string> outputNames() const;
@@ -612,6 +633,18 @@ private:
   double m_silentSince = -1;
   double m_demoT = 0;
   std::vector<float> m_demoBands;
+  // performance
+  PerfGovernor m_governor;
+  PerfLevel m_perfLevel = PerfLevel::High;
+  std::string m_perfReason = "start";
+  std::string m_perfConfigured;  // [general] performance + on_battery the governor was set up for
+  bool m_timerQueries = false;   // GL_EXT_disjoint_timer_query
+  bool m_onBattery = false;
+  double m_batteryAt = -1e9, m_perfMark = 0;
+  double m_perfGpuNs = 0, m_perfCpu = 0;  // this second's GPU and render-CPU time
+  bool m_perfActive = false;              // something was drawn this second
+  double m_gpuBusy = 0, m_cpuBusy = 0;    // last second's share of wall time
+  bool m_audioPaused = false;
 };
 
 

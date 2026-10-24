@@ -11,6 +11,7 @@
 // pixels near a star cost anything.
 #include "looks.hpp"
 
+#include "perf.hpp"
 #include "widget.hpp"
 
 #include <algorithm>
@@ -38,7 +39,9 @@ public:
     m_shooting = t["stars_shooting"].value_or(true);
     m_hits = std::clamp(t["halo_hits"].value_or(0.7), 0.0, 1.0);
     m_preview = t["stars_preview"].value_or(-1.0);
-    if (count != static_cast<int>(m_stars.size()) || was != m_mode) seed(count);
+    m_count = count;
+    const int want = m_preview >= 0 ? count : std::max(20, static_cast<int>(std::lround(count * perfKnobs().particles)));
+    if (want != m_seeded || was != m_mode) seed(want);
     if (m_preview >= 0) {
       m_time = m_preview;
       m_energy = 0.6;
@@ -51,6 +54,8 @@ public:
 
   void tick(const Beat& b) override {
     if (m_preview >= 0) return;
+    // the performance profile scales the sky (a new sky only when it changes)
+    if (const int want = std::max(20, static_cast<int>(std::lround(m_count * perfKnobs().particles))); want != m_seeded) seed(want);
     const double dt = b.dt;
     m_time += dt;
     m_live = b.live;
@@ -170,6 +175,7 @@ private:
     float x = 0, y = 0, angle = 0, life = 0;
   };
   void seed(int count) {
+    m_seeded = count;
     BoltRandom r(1234);
     m_stars.assign(static_cast<size_t>(m_mode == 2 ? std::min(count, 60) : count), {});
     for (auto& s : m_stars) {
@@ -205,6 +211,7 @@ private:
   Color m_theme;
   const std::vector<float>* m_bands = nullptr;
   std::vector<Star> m_stars;
+  int m_count = 140, m_seeded = 0;  // stars asked for, and the count the sky was made with
   std::vector<std::pair<size_t, size_t>> m_links;
   Shoot m_shoot;
   BoltRandom m_rng{99};

@@ -1714,7 +1714,7 @@ void App::layoutUi(const EditSurface& e) {
       m_ui.push_back({UiControl::ColorPreset, {fx + 100 + k * 24.0F, top + 300, 20, 20}, -1, m_recentColors[k]});
   }
   if (m_helpOpen) {
-    const float hw = 600, hh = 490;
+    const float hw = 600, hh = 534;
     const Rect card{std::round((W - hw) / 2),
                     m_barSide != 0 ? std::round((H - hh) / 2) : m_barBelow ? std::max(8.0F, m_barY - 10 - hh) : m_barY + kBarH + 10, hw, hh};
     m_ui.push_back({UiControl::Panel, card, -1, "help"});
@@ -1723,6 +1723,11 @@ void App::layoutUi(const EditSurface& e) {
     const char* langs[] = {"system", "en", "es"};
     for (int i = 0; i < 3; ++i)
       m_ui.push_back({UiControl::Language, {bx + i * (bw + 4), card.y + hh - 44, bw, 28}, -1, langs[i]});
+    // the performance profile, above it
+    const float pw = 86, px = card.x + card.w - 20 - 5 * pw - 16;
+    const char* levels[] = {"auto", "eco", "balanced", "high", "ultra"};
+    for (int i = 0; i < 5; ++i)
+      m_ui.push_back({UiControl::Perf, {px + i * (pw + 4), card.y + hh - 88, pw, 28}, -1, levels[i]});
   }
 }
 
@@ -2301,6 +2306,13 @@ bool App::uiPress(int index, double x) {
       return true;
     case UiControl::Collapse:
       if (!m_collapsed.erase(c.value)) m_collapsed.insert(c.value);
+      markEditDirty();
+      return true;
+    case UiControl::Perf:
+      if (c.value != m_config.performance && Config::setGeneral(m_configPath, "performance", "\"" + c.value + "\"")) {
+        loadConfig();
+        updatePerf(nowSeconds());
+      }
       markEditDirty();
       return true;
     case UiControl::Language:
@@ -3767,10 +3779,26 @@ void App::drawUi(EditSurface& e) {
       cv.text(k, keyS, colX + 7, rowY + 11 - kh / 2, ink);
       fitText(es ? rows[i].es : rows[i].en, label, colX + kw + 24, rowY + 3, c.r.w / 2 - kw - 48, dim);
     }
-    // language
+    // performance, then language
+    const float py = c.r.y + c.r.h - 88;
+    cv.segment(c.r.x + 20, py - 10, c.r.x + c.r.w - 20, py - 10, 1, line, false);
+    cv.text(es ? "Rendimiento" : "Performance", strong, c.r.x + 20, py - 1, ink);
+    static const char* kNowEs[] = {"eco", "equilibrado", "alto", "ultra"};
+    const std::string now = es ? std::string("ahora: ") + kNowEs[static_cast<int>(m_perfLevel)] : std::string("now: ") + perfLevelName(m_perfLevel);
+    fitText(now + (m_onBattery && m_config.onBattery != "keep" ? (es ? " · batería" : " · battery") : ""), label, c.r.x + 20, py + 17, 140, dim);
     const float ly = c.r.y + c.r.h - 44;
-    cv.segment(c.r.x + 20, ly - 10, c.r.x + c.r.w - 20, ly - 10, 1, line, false);
     cv.text(es ? "Idioma" : "Language", strong, c.r.x + 20, ly + 6, ink);
+  }
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Perf) continue;
+    const bool on = c.value == m_config.performance;
+    static const std::map<std::string, std::pair<const char*, const char*>> kNames = {
+        {"auto", {"Auto", "Auto"}}, {"eco", {"Eco", "Eco"}}, {"balanced", {"Balanced", "Equilibrado"}}, {"high", {"High", "Alto"}}, {"ultra", {"Ultra", "Ultra"}}};
+    const auto& n = kNames.at(c.value);
+    const std::string t = es ? n.second : n.first;
+    cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 14, on ? accent : (hovered(c) ? withAlphaC(ink, 0.12F) : raised), 1, on ? accent : line);
+    auto [tw, th] = measure(t, label);
+    cv.text(t, label, c.r.x + (c.r.w - tw) / 2, c.r.y + c.r.h / 2 - th / 2, on ? onAccent : ink);
   }
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::Language) continue;
