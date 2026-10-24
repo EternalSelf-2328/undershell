@@ -5,12 +5,15 @@
 // center, stretch, repeat) -- through brightness, contrast, saturation, hue,
 // warmth, a tint or two-tone, a vignette, blur, grain, posterize or
 // pixelate. It sits at the bottom of the stack; with Depth on it is cut where
-// the wallpaper's subject stands, so only the background is filtered. One
-// texture and one draw per wallpaper or option change, nothing while still.
-// A video or scene wallpaper has no still picture: then it draws nothing.
+// the wallpaper's subject stands, so only the background is filtered. The
+// picture comes from the shared WallpaperStore (whatever program draws the
+// wallpaper); a new wallpaper crossfades in. One draw per wallpaper or option
+// change (and the frames of a fade), nothing while still. A video or scene
+// wallpaper has no still picture: then it draws nothing.
 #pragma once
 
 #include "gl.hpp"
+#include "wallstore.hpp"
 #include "widget.hpp"
 
 #include <map>
@@ -37,29 +40,24 @@ struct FilterConfig {
 
 class FilterWidget final : public WidgetImpl {
 public:
-  ~FilterWidget() override;
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool fullscreen() const override { return true; }
-  [[nodiscard]] double nextWakeup(double now) const override { return m_loading ? now + 0.05 : 1e18; }
+  [[nodiscard]] bool animating(const TickContext&) const override { return m_fade.animating(); }
+  // a picture still decoding: look again soon
+  [[nodiscard]] double nextWakeup(double now) const override { return m_fade.waiting() ? now + 0.05 : 1e18; }
   [[nodiscard]] Color accent() const override { return m_tintC; }
 
   static const std::vector<std::string>& styles();
   static const std::map<std::string, std::string>& preset(const std::string& style);
 
 private:
-  struct Load;  // a decode on its own thread
-  void startLoad(const std::string& path, int maxSide);
+  void drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity);
 
   FilterConfig m_cfg;
   Color m_tintC, m_darkC, m_lightC;
   Program m_prog;
-  GLuint m_texture = 0;
-  int m_texW = 0, m_texH = 0;  // the picture's own size
-  int m_pxW = 0, m_pxH = 0;    // the texture's
-  std::string m_path;  // the picture in the texture (or being decoded)
-  std::shared_ptr<Load> m_load;
-  bool m_loading = false;
+  WallpaperFade m_fade;
 };
 
 }  // namespace undershell

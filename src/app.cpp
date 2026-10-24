@@ -1314,6 +1314,9 @@ void App::render(Widget& w) {
       // a broken look must not take the daemon (and every other widget) down
       US_ERROR("widget {}: draw failed: {}", w.cfg.id, ex.what());
     }
+    // what it learnt while drawing (a new wallpaper still decoding) may
+    // bring its next wake-up closer
+    w.wakeAt = std::min(w.wakeAt, w.impl->nextWakeup(now));
     if (turn) {
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glViewport(0, 0, w.bufW, w.bufH);

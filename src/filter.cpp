@@ -2,14 +2,8 @@
 // The wallpaper filter (see filter.hpp).
 #include "filter.hpp"
 
-#include <EGL/egl.h>
-#include <gdk-pixbuf/gdk-pixbuf.h>
-
 #include <algorithm>
-#include <atomic>
 #include <cmath>
-#include <mutex>
-#include <thread>
 
 namespace undershell {
 
@@ -107,13 +101,6 @@ void main() {
 )";
 }  // namespace
 
-struct FilterWidget::Load {
-  std::mutex lock;
-  std::atomic<bool> done{false};
-  std::vector<uint8_t> rgba;
-  int w = 0, h = 0, imgW = 0, imgH = 0;
-};
-
 const std::vector<std::string>& FilterWidget::styles() {
   static const std::vector<std::string> all = {"warm", "cool", "noir", "vintage", "dream", "night", "vivid", "faded", "duotone", "custom"};
   return all;
@@ -184,10 +171,6 @@ FilterConfig FilterConfig::fromTable(const toml::table& given) {
   return c;
 }
 
-FilterWidget::~FilterWidget() {
-  if (m_texture && eglGetCurrentContext() != EGL_NO_CONTEXT) glDeleteTextures(1, &m_texture);
-}
-
 void FilterWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   m_cfg = FilterConfig::fromTable(cfg.options);
   m_tintC = noct.color(m_cfg.tint, Color::fromHex("#e2342a"));
@@ -195,73 +178,32 @@ void FilterWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct)
   m_lightC = noct.color(m_cfg.light, Color::fromHex("#ffd9a8"));
 }
 
-// the picture decoded on its own thread, no larger than the output needs
-void FilterWidget::startLoad(const std::string& path, int maxSide) {
-  auto load = std::make_shared<Load>();
-  m_load = load;
-  m_loading = true;
-  std::thread([load, path, maxSide] {
-    int iw = 0, ih = 0;
-    if (gdk_pixbuf_get_file_info(path.c_str(), &iw, &ih) && iw > 0 && ih > 0 && iw <= 32768 && ih <= 32768) {
-      GError* err = nullptr;
-      GdkPixbuf* pb = gdk_pixbuf_new_from_file_at_scale(path.c_str(), std::min(iw, maxSide), std::min(ih, maxSide), TRUE, &err);
-      if (err) g_error_free(err);
-      if (pb) {
-        GdkPixbuf* rgba = gdk_pixbuf_add_alpha(pb, FALSE, 0, 0, 0);
-        std::lock_guard g(load->lock);
-        load->w = gdk_pixbuf_get_width(rgba);
-        load->h = gdk_pixbuf_get_height(rgba);
-        load->imgW = iw;
-        load->imgH = ih;
-        const int stride = gdk_pixbuf_get_rowstride(rgba);
-        const guchar* src = gdk_pixbuf_read_pixels(rgba);
-        load->rgba.resize(static_cast<size_t>(load->w) * load->h * 4);
-        for (int y = 0; y < load->h; ++y)
-          std::copy_n(src + static_cast<size_t>(y) * stride, load->w * 4, load->rgba.data() + static_cast<size_t>(y) * load->w * 4);
-        g_object_unref(rgba);
-        g_object_unref(pb);
-      }
-    }
-    load->done = true;
-  }).detach();
-}
-
 void FilterWidget::draw(const DrawContext& ctx) {
   if (ctx.movingWallpaper || ctx.wallpaper.empty() || ctx.wallpaper.rfind("color:", 0) == 0) return;  // nothing still to filter
   const int maxSide = static_cast<int>(std::ceil(std::max(ctx.outputW, ctx.outputH) * std::max(1.0F, ctx.scale)));
-  if (ctx.wallpaper != m_path) {
-    m_path = ctx.wallpaper;
-    startLoad(m_path, maxSide);  // the old picture stays until the new one is in
-  }
-  if (m_load && m_load->done) {
-    std::lock_guard g(m_load->lock);
-    m_loading = false;
-    if (!m_load->rgba.empty()) {
-      if (!m_texture) glGenTextures(1, &m_texture);
-      glBindTexture(GL_TEXTURE_2D, m_texture);
-      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, m_load->w, m_load->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_load->rgba.data());
-      glGenerateMipmap(GL_TEXTURE_2D);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-      m_texW = m_load->imgW;
-      m_texH = m_load->imgH;
-      m_pxW = m_load->w;
-      m_pxH = m_load->h;
-    }
-    m_load.reset();
-  }
-  if (!m_texture || m_texW <= 0) return;
+  if (!m_fade.update(ctx.wallpaper, maxSide, ctx.now)) return;  // the old picture stays until the new one is in
   if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kFrag, "filter");
+  const float opacity = static_cast<float>(m_cfg.opacity);
+  glEnable(GL_BLEND);
+  glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  // a new wallpaper: the old one under it, the new one fading in on top
+  if (const WallPic* prev = m_fade.previous()) {
+    drawPicture(*prev, ctx, opacity);
+    drawPicture(*m_fade.current(), ctx, opacity * m_fade.mix());
+  } else {
+    drawPicture(*m_fade.current(), ctx, opacity);
+  }
+  glDisable(GL_BLEND);
+}
+
+void FilterWidget::drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity) {
   glUseProgram(m_prog.id());
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_texture);
-  const int tw = m_pxW, th = m_pxH;
+  glBindTexture(GL_TEXTURE_2D, pic.tex);
+  const int tw = pic.texW, th = pic.texH;
   glUniform1i(m_prog.uniform("u_tex"), 0);
   glUniform2f(m_prog.uniform("u_size"), ctx.w, ctx.h);
-  glUniform2f(m_prog.uniform("u_img"), static_cast<float>(m_texW), static_cast<float>(m_texH));
+  glUniform2f(m_prog.uniform("u_img"), static_cast<float>(pic.imgW), static_cast<float>(pic.imgH));
   glUniform1i(m_prog.uniform("u_fill"), ctx.fillMode);
   glUniform2f(m_prog.uniform("u_texSize"), static_cast<float>(tw), static_cast<float>(th));
   glUniform1f(m_prog.uniform("u_bright"), static_cast<float>(m_cfg.brightness));
@@ -279,11 +221,8 @@ void FilterWidget::draw(const DrawContext& ctx) {
   glUniform1f(m_prog.uniform("u_grain"), static_cast<float>(m_cfg.grain));
   glUniform1f(m_prog.uniform("u_levels"), static_cast<float>(m_cfg.posterize));
   glUniform1f(m_prog.uniform("u_pixel"), static_cast<float>(m_cfg.pixelate));
-  glUniform1f(m_prog.uniform("u_opacity"), static_cast<float>(m_cfg.opacity));
-  glEnable(GL_BLEND);
-  glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  glUniform1f(m_prog.uniform("u_opacity"), opacity);
   drawUnitQuad();
-  glDisable(GL_BLEND);
 }
 
 }  // namespace undershell

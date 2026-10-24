@@ -153,6 +153,7 @@ core = static_library('undershell-core',
   'src/weather.cpp',
   'src/weatherfeed.cpp',
   'src/wallkind.cpp',
+  'src/wallstore.cpp',
   'src/widget.cpp',
   dependencies : deps)
 core_dep = declare_dependency(link_with : core, include_directories : include_directories('src'), dependencies : deps)
