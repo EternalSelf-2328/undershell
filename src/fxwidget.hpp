@@ -32,6 +32,7 @@ public:
   [[nodiscard]] bool fullscreen() const override { return m_inner->fullscreen(); }
   [[nodiscard]] bool usesAudio() const override { return m_inner->usesAudio() || m_fx.audio(); }
   [[nodiscard]] bool wantsDepth() const override { return m_inner->wantsDepth(); }
+  [[nodiscard]] std::string stillWallpaper() const override { return m_inner->stillWallpaper(); }
   [[nodiscard]] bool keepsResolution() const override { return m_inner->keepsResolution(); }
   [[nodiscard]] Color accent() const override { return m_inner->accent(); }
   void rest() override { m_inner->rest(); }

@@ -225,6 +225,57 @@ int main() {
     }
   }
 
+  // the author's properties: read, set from the config, and a layer bound to one
+  {
+    using namespace undershell;
+    fs::create_directories(dir / "props");
+    std::ofstream(dir / "props/project.json") << R"({"type": "scene", "general": {"properties": {
+      "show": {"type": "bool", "value": true, "text": "<b>Show</b> the layer", "order": 2},
+      "tone": {"type": "color", "value": "1 0 0", "text": "ui_browse_properties_scheme_color", "order": 1},
+      "speed": {"type": "slider", "value": 0.5, "min": 0, "max": 2, "step": 0.1, "text": "Speed", "order": 3},
+      "mode": {"type": "combo", "value": "2", "options": [{"label": "One", "value": "1"}, {"label": "Two", "value": "2"}], "text": "Mode", "order": 4},
+      "note": {"type": "text", "value": "hi", "text": "Note"}}}})";
+    std::string red;
+    for (int i = 0; i < 4; ++i) red += std::string("\xff\x00\x00\xff", 4);
+    std::ofstream(dir / "props/scene.pkg", std::ios::binary)
+        << pkg({{"scene.json", R"({"general": {"orthogonalprojection": {"width": 100, "height": 50}, "clearcolor": "0 0 1"},
+                   "objects": [{"id": 1, "image": "models/m.json", "origin": "50 25 0", "size": "100 50", "visible": {"user": "show", "value": true}}]})"},
+                {"models/m.json", R"({"material": "materials/m.json"})"},
+                {"materials/m.json", R"({"passes": [{"textures": ["red"]}]})"},
+                {"materials/red.tex", tex(0, 2, 2, red, true)}});
+    WeProject proj;
+    std::string why;
+    CHECK(readWeProject((dir / "props").string(), proj, why));
+    CHECK(proj.props.size() == 4 && proj.props[0].name == "tone" && proj.props[0].label == "scheme color");  // the text one is not offered
+    CHECK(proj.props[1].label == "Show the layer" && proj.props[1].key == "we_show");
+    toml::table o;
+    o.insert_or_assign("we_tone", "#00ff00");
+    o.insert_or_assign("we_speed", 9.0);
+    o.insert_or_assign("we_show", false);
+    CHECK(weOverride(proj.props[0], o) == "0.0000 1.0000 0.0000");
+    CHECK(weOverride(proj.props[2], o) == "2");  // clamped to the slider
+    CHECK(weOverride(proj.props[1], o) == "false" && weOverride(proj.props[3], o).empty());
+    Headless gl;
+    if (gl.ok()) {
+      toml::table shown;
+      shown.insert_or_assign("scene", (dir / "props").string());
+      const Image a = renderWidget("scene", shown, 200, 100, testPalette(), 1000, 1, 5.0);
+      toml::table hidden = shown;
+      hidden.insert_or_assign("we_show", false);
+      const Image b = renderWidget("scene", hidden, 200, 100, testPalette(), 1000, 1, 5.0);
+      auto px = [](const Image& im, int x, int y) { return &im.rgba[(static_cast<size_t>(y) * im.w + x) * 4]; };
+      CHECK(px(a, 100, 50)[0] > 200 && px(b, 100, 50)[2] > 200 && px(b, 100, 50)[0] < 50);  // switched off: the clear colour
+      // its still, beside the unpacked files: the same picture, to stand for the wallpaper
+      bool still = false;
+      for (int i = 0; i < 200 && !still; ++i) {
+        for (const auto& e : fs::recursive_directory_iterator(dir / "cache"))
+          if (e.path().filename() == "still.png") still = true;
+        if (!still) usleep(10000);
+      }
+      CHECK(still);
+    }
+  }
+
   // Wallpaper Engine particles, into undershell's: units of a 1080-high scene with y down
   {
     using namespace undershell;

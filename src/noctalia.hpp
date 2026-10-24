@@ -13,6 +13,7 @@
 #include "shells.hpp"
 
 #include <map>
+#include <set>
 #include <optional>
 #include <string>
 
@@ -21,6 +22,7 @@ namespace undershell {
 struct NoctaliaState {
   std::string source = "none";  // where it came from: noctalia | plasma | none (+ "manual" wallpaper)
   bool manualWallpaper = false;
+  std::set<std::string> sceneOutputs;  // outputs where a scene stands for the wallpaper (its still in wallpaperByOutput)
   std::map<std::string, std::string> wallpaperByOutput;
   std::string defaultWallpaper;
   int fillMode = 1;  // center crop fit stretch repeat span (Noctalia's enum order)
@@ -46,6 +48,9 @@ public:
   [[nodiscard]] bool ready() const { return m_ready; }
   // a wallpaper from [general] (empty: none); true when it changed
   bool setManual(const std::string& wallpaper, const std::string& fill);
+  // outputs where undershell draws a scene: its still stands for their
+  // wallpaper; true when it changed
+  bool setSceneStills(std::map<std::string, std::string> stills);
   // each screen's connector and pixel size (picks images out of Plasma's
   // wallpaper packages); true when they changed
   bool setScreens(std::map<std::string, std::pair<int, int>> screens);
@@ -68,6 +73,7 @@ private:
   void refreshPalette(NoctaliaState& s);
   void compose();
   NoctaliaState m_base;   // what the source says
+  std::map<std::string, std::string> m_stills;  // output -> a scene's still
   NoctaliaState m_state;  // with the manual wallpaper over it
   std::string m_paletteKey;
   std::string m_lastExport;

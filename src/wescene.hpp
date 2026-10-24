@@ -27,6 +27,18 @@ namespace undershell {
 // a Workshop id ("1234567") or a folder: the wallpaper's folder, or ""
 [[nodiscard]] std::string weWallpaperDir(const std::string& idOrPath);
 
+// A user property the scene's author offers (project.json): a colour,
+// a switch, a slider or a choice; the inspector shows it as we_<key>.
+struct WeProperty {
+  std::string name, key;  // key: the config key, "we_" + the name made safe
+  std::string type;       // color, bool, slider, combo
+  std::string label;
+  std::string value;      // its default, as text (a colour: "r g b" 0..1)
+  double min = 0, max = 1, step = 0.01;
+  std::vector<std::pair<std::string, std::string>> options;  // combo: value, label
+  int order = 0;
+};
+
 struct WeProject {
   std::string type;   // scene, video, web, application (lowercase)
   std::string title;
@@ -34,7 +46,14 @@ struct WeProject {
   std::string preview;  // its preview picture (absolute), when there is one
   // user properties: name -> the value as text (colours "r g b" 0..1, bools "true"/"false")
   std::map<std::string, std::string> properties;
+  std::vector<WeProperty> props;  // the ones the inspector can show, in the author's order
 };
+// The project of a Workshop id or folder, read once and kept while its
+// project.json does not change (for the inspector); nullptr when none.
+[[nodiscard]] const WeProject* weProjectCached(const std::string& idOrPath);
+// A property's value from the config, as the scene reads it (a colour from
+// "#rrggbb" to "r g b"); "" when unset.
+[[nodiscard]] std::string weOverride(const WeProperty& p, const toml::table& opts);
 [[nodiscard]] bool readWeProject(const std::string& folder, WeProject& out, std::string& why);
 
 struct WeLayer {

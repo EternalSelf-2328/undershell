@@ -1308,7 +1308,8 @@ void App::render(Widget& w) {
     dctx.now = now;
     if (w.output) dctx.wallpaper = m_noctalia.state().wallpaperFor(w.output->name);
     dctx.fillMode = m_noctalia.state().fillMode;
-    dctx.movingWallpaper = m_motion;
+    // a scene standing for this output's wallpaper moves: nothing still to redraw over it
+    dctx.movingWallpaper = m_motion || (w.output && m_noctalia.state().sceneOutputs.contains(w.output->name) && !w.impl->stillWallpaper().size());
     if (w.impl->wantsDepth() && w.output && !m_motion)
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         dctx.depthField = m->field;
@@ -2303,6 +2304,17 @@ int App::run() {
     if (m_refreshNoctAt > 0 && now >= m_refreshNoctAt) {
       m_refreshNoctAt = 0;
       refreshNoctalia();
+    }
+    // scenes standing for their outputs' wallpapers (their stills)
+    {
+      std::map<std::string, std::string> stills;
+      for (auto& w : m_widgets)
+        if (w->impl && w->output && !w->cfg.hidden)
+          if (std::string s = w->impl->stillWallpaper(); !s.empty()) stills[w->output->name] = std::move(s);
+      if (m_noctalia.setSceneStills(std::move(stills))) {
+        noctaliaChanged();
+        m_refreshDepthAt = now;
+      }
     }
     if (m_refreshDepthAt > 0 && now >= m_refreshDepthAt) {
       m_refreshDepthAt = 0;

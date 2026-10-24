@@ -8,6 +8,7 @@
 #include "effects.hpp"
 #include "filter.hpp"
 #include "particles.hpp"
+#include "wescene.hpp"
 #include "notes.hpp"
 #include "textwidget.hpp"
 
@@ -362,8 +363,49 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
 
 // a widget's own rows, then its animated effects (the wallpaper widget
 // places its own, near the top)
+// a Wallpaper Engine scene: the properties its author offers, as rows
+std::vector<PropSpec> sceneRows(const Widget& w) {
+  using K = PropSpec::Kind;
+  std::vector<PropSpec> rows;
+  const WeProject* p = weProjectCached(w.cfg.options["scene"].value_or(std::string()));
+  if (!p || p->props.empty()) return rows;
+  PropSpec head;
+  head.kind = K::Header;
+  head.key = "_scene_props";
+  head.labelEn = "The scene's properties";
+  head.labelEs = "Propiedades de la escena";
+  rows.push_back(head);
+  for (const WeProperty& wp : p->props) {
+    PropSpec r;
+    r.key = wp.key;
+    r.labelEn = r.labelEs = wp.label;
+    if (wp.type == "bool") {
+      r.kind = K::Bool, r.min = 0, r.max = 1, r.step = 1, r.def = wp.value == "true" ? 1 : 0;
+    } else if (wp.type == "slider") {
+      r.kind = K::Number, r.min = wp.min, r.max = wp.max, r.step = wp.step;
+      r.def = std::clamp(std::atof(wp.value.c_str()), wp.min, wp.max);
+    } else if (wp.type == "combo") {
+      r.kind = K::Enum;
+      for (const auto& [v, l] : wp.options) r.options.push_back(v), r.optionNames.emplace_back(l, l);
+      r.defText = wp.value;
+    } else {  // a colour: its default as #rrggbb
+      r.kind = K::Color;
+      float c[3] = {1, 1, 1};
+      std::sscanf(wp.value.c_str(), "%f %f %f", &c[0], &c[1], &c[2]);
+      r.defText = std::format("#{:02x}{:02x}{:02x}", std::clamp(static_cast<int>(c[0] * 255), 0, 255),
+                              std::clamp(static_cast<int>(c[1] * 255), 0, 255), std::clamp(static_cast<int>(c[2] * 255), 0, 255));
+    }
+    rows.push_back(std::move(r));
+  }
+  return rows;
+}
+
 std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded) {
   std::vector<PropSpec> s = inspectorRowsOwn(w, expanded);
+  if (w.cfg.type == "scene") {
+    const std::vector<PropSpec> props = sceneRows(w);
+    s.insert(s.end(), props.begin(), props.end());
+  }
   if (w.cfg.type != "filter") {
     std::vector<PropSpec> fx = effectRows(w.cfg.options, expanded == "*", true);
     s.insert(s.end(), fx.begin(), fx.end());

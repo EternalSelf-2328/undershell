@@ -3,6 +3,7 @@
 #include "scene.hpp"
 
 #include "effects.hpp"
+#include "offscreen.hpp"
 #include "perf.hpp"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
@@ -214,24 +215,46 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
   m_noct = noct;
   m_speed = std::clamp(cfg.options["speed"].value_or(1.0), 0.1, 4.0);
   const std::string scene = cfg.options["scene"].value_or(std::string());
-  if (scene == m_scene) return;
+  // the author's properties as set in the inspector (colours through the palette)
+  std::map<std::string, std::string> overrides;
+  if (const WeProject* p = scene.empty() ? nullptr : weProjectCached(scene))
+    for (const WeProperty& wp : p->props) {
+      std::string v = weOverride(wp, cfg.options);
+      if (wp.type == "color" && !v.empty() && v.find(' ') == std::string::npos) {
+        const Color c = noct.color(v, Color{1, 1, 1, 1});
+        v = std::format("{:.4f} {:.4f} {:.4f}", c.r, c.g, c.b);
+      }
+      if (!v.empty()) overrides[wp.name] = v;
+    }
+  if (scene == m_scene) {
+    if (overrides != m_overrides) {  // the same scene with other properties: read again, swap when ready
+      m_overrides = std::move(overrides);
+      start(true);
+    }
+    return;
+  }
   m_scene = scene;
+  m_overrides = std::move(overrides);
   for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
   m_tex.clear();
   m_fx.clear();
   m_pt.configureDefs({});
   m_ready = false;
+  m_stillTried = false;
+  m_stillPath.clear();
+  m_still = std::make_shared<std::atomic<bool>>(false);
   m_video.close();
   m_model = {};
   start();
 }
 
 // off the frame: find it, unpack it, read it, decode its textures
-void SceneWidget::start() {
+void SceneWidget::start(bool keepShowing) {
   auto load = std::make_shared<Load>();
-  m_load = load;
+  if (keepShowing && m_ready) m_next = load;
+  else m_load = load;
   const std::string id = m_scene;
-  std::thread([load, id] {
+  std::thread([load, id, overrides = m_overrides] {
     auto fail = [&](std::string why) {
       std::lock_guard g(load->m);
       load->error = std::move(why);
@@ -239,14 +262,15 @@ void SceneWidget::start() {
     };
     // a stranger's scene can hold anything: whatever it makes throw is its error, not undershell's
     try {
-      loadScene(load, id, fail);
+      loadScene(load, id, overrides, fail);
     } catch (const std::exception& ex) {
       fail(std::string("could not be read: ") + ex.what());
     }
   }).detach();
 }
 
-void SceneWidget::loadScene(const std::shared_ptr<Load>& load, const std::string& id, const std::function<void(std::string)>& fail) {
+void SceneWidget::loadScene(const std::shared_ptr<Load>& load, const std::string& id, const std::map<std::string, std::string>& overrides,
+                            const std::function<void(std::string)>& fail) {
   {
     if (id.empty()) return fail("no scene chosen");
     const std::string dir = weWallpaperDir(id);
@@ -254,6 +278,7 @@ void SceneWidget::loadScene(const std::shared_ptr<Load>& load, const std::string
     WeProject project;
     std::string why;
     if (!readWeProject(dir, project, why)) return fail(why);
+    for (const auto& [name, value] : overrides) project.properties[name] = value;
     {
       std::lock_guard g(load->m);
       load->project = project;
@@ -391,6 +416,7 @@ void SceneWidget::loadScene(const std::shared_ptr<Load>& load, const std::string
       }
     }
     std::lock_guard g(load->m);
+    load->out = out.string();
     load->scene = std::move(scene);
     load->pixels = std::move(pixels);
     load->layerTex = std::move(layerTex);
@@ -417,9 +443,11 @@ void SceneWidget::tick(const TickContext& ctx) {
 }
 
 bool SceneWidget::animating(const TickContext&) const { return m_ready && ((m_video.isOpen() && !m_video.still()) || m_moving); }
+// (a reload beside it is looked at by nextWakeup)
 
 double SceneWidget::nextWakeup(double now) const {
   if (m_uploading) return now + 0.016;  // the next texture, next frame
+  if (m_next) return now + 0.05;        // a reload: swap it in when done
   if (m_ready && m_video.isOpen()) return now + std::max(0.004, m_video.nextFrameIn(m_speed));
   return m_ready || !m_load ? 1e18 : now + 0.1;  // loading: look again soon
 }
@@ -460,6 +488,25 @@ void SceneWidget::draw(const DrawContext& ctx) {
   if (!m_prog.valid()) m_prog.create(kVert, kFrag, "scene");
   glEnable(GL_BLEND);
   glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  // a reload beside it (other properties) finished: swap, all at once
+  if (m_next) {
+    bool done = false;
+    {
+      std::lock_guard g(m_next->m);
+      done = m_next->done;
+    }
+    if (done) {
+      for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
+      m_tex.clear();
+      m_formats.clear();
+      m_fx.clear();
+      m_load = std::move(m_next);
+      m_next.reset();
+      m_ready = false;
+      m_uploadAll = true;
+      m_stillTried = false;
+    }
+  }
   // what the loader has finished
   if (!m_ready && m_load) {
     std::lock_guard g(m_load->m);
@@ -476,6 +523,7 @@ void SceneWidget::draw(const DrawContext& ctx) {
           if (!f->chain.empty()) m_fx[i] = std::move(f);
         }
         m_pt.configureDefs(m_model.particles);
+        m_stillPath = m_load->out.empty() ? std::string() : m_load->out + "/still.png";
         m_pt.setTextures([this](const std::string& key) -> std::pair<GLuint, bool> {
           const auto t = m_tex.find(key);
           if (t == m_tex.end()) return {0, false};
@@ -518,7 +566,7 @@ void SceneWidget::draw(const DrawContext& ctx) {
   // one texture uploaded per frame, so loading never stalls one
   {
     std::lock_guard g(m_load->m);
-    if (!m_load->pixels.empty()) {
+    while (!m_load->pixels.empty()) {
       auto it = m_load->pixels.begin();
       GLuint tex = 0;
       glGenTextures(1, &tex);
@@ -533,9 +581,19 @@ void SceneWidget::draw(const DrawContext& ctx) {
       m_tex[it->first] = {tex, {it->second.w, it->second.h}};
       m_formats[it->first] = it->second.format;
       m_load->pixels.erase(it);
+      if (!m_uploadAll) break;  // one per frame, unless swapping in a reload
     }
+    m_uploadAll = false;
     m_uploading = !m_load->pixels.empty();
   }
+  drawLayers(ctx, true);
+  captureStill(ctx);
+}
+
+// the scene itself: clear colour, layers (some through effects) and,
+// unless asked not to, its particles among them
+void SceneWidget::drawLayers(const DrawContext& ctx, bool particles) {
+  glEnable(GL_BLEND);
   // the scene's projection over the screen, filling it (cropped like a wallpaper)
   const float s = std::max(ctx.w / m_model.width, ctx.h / m_model.height);
   auto toSurface = [&](float x, float y) {
@@ -578,8 +636,10 @@ void SceneWidget::draw(const DrawContext& ctx) {
   for (size_t li = 0; li < m_model.layers.size(); ++li) {
     const WeLayer& l = m_model.layers[li];
     if (l.particle >= 0) {  // a particle system, where its object stands among the layers
-      m_pt.draw(ctx, 0, 0, l.particle);
-      sceneState();
+      if (particles) {
+        m_pt.draw(ctx, 0, 0, l.particle);
+        sceneState();
+      }
       continue;
     }
     if (!l.visible || l.compose || li >= m_layerTex.size() || m_layerTex[li].empty() || l.alpha <= 0) continue;
@@ -659,5 +719,60 @@ void SceneWidget::draw(const DrawContext& ctx) {
   glDisableVertexAttribArray(1);
   glDisable(GL_BLEND);
 }
+
+// Once loaded, a still of the scene (no particles: the same every time)
+// kept beside its unpacked files: it stands for the output's wallpaper
+// (depth, layouts per wallpaper, colours).
+void SceneWidget::captureStill(const DrawContext& ctx) {
+  if (m_stillTried || m_uploading || m_stillPath.empty()) return;
+  {
+    std::lock_guard g(m_load->m);
+    if (!m_load->pixels.empty()) return;
+  }
+  m_stillTried = true;
+  std::error_code ec;
+  if (fs::exists(m_stillPath, ec)) {
+    m_still->store(true);
+    return;
+  }
+  const int w = std::clamp(static_cast<int>(std::lround(ctx.w * ctx.scale)), 16, 4096);
+  const int h = std::clamp(static_cast<int>(std::lround(ctx.h * ctx.scale)), 16, 4096);
+  GLint fbo = 0, vp[4] = {};
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+  glGetIntegerv(GL_VIEWPORT, vp);
+  GLuint tex = 0, target = 0;
+  glGenTextures(1, &tex);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+  glGenFramebuffers(1, &target);
+  glBindFramebuffer(GL_FRAMEBUFFER, target);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+  glViewport(0, 0, w, h);
+  glClearColor(0, 0, 0, 0);
+  glClear(GL_COLOR_BUFFER_BIT);
+  drawLayers(ctx, false);
+  auto img = std::make_shared<Image>();
+  img->w = w, img->h = h;
+  std::vector<uint8_t> rows(static_cast<size_t>(w) * h * 4);
+  glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, rows.data());
+  img->rgba.resize(rows.size());
+  for (int y = 0; y < h; ++y)  // rows bottom up -> top down, made opaque
+    for (int x = 0; x < w * 4; ++x)
+      img->rgba[static_cast<size_t>(y) * w * 4 + x] = (x % 4 == 3) ? 255 : rows[static_cast<size_t>(h - 1 - y) * w * 4 + x];
+  glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(fbo));
+  glViewport(vp[0], vp[1], vp[2], vp[3]);
+  glDeleteFramebuffers(1, &target);
+  glDeleteTextures(1, &tex);
+  // written off the frame, then announced
+  std::thread([img, path = m_stillPath, done = m_still] {
+    if (writePng(*img, path + ".part", false)) {
+      std::error_code e;
+      fs::rename(path + ".part", path, e);
+      if (!e) done->store(true);
+    }
+  }).detach();
+}
+
+std::string SceneWidget::stillWallpaper() const { return m_still->load() ? m_stillPath : std::string(); }
 
 }  // namespace undershell

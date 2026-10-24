@@ -17,6 +17,7 @@
 #include "wescene.hpp"
 #include "widget.hpp"
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -36,6 +37,7 @@ public:
   [[nodiscard]] bool keepsResolution() const override { return true; }
   [[nodiscard]] bool animating(const TickContext& ctx) const override;
   [[nodiscard]] bool usesAudio() const override { return m_audio; }
+  [[nodiscard]] std::string stillWallpaper() const override;
   [[nodiscard]] double nextWakeup(double now) const override;
   [[nodiscard]] int fps() const override { return 30; }
   // the person's own effects (used by layers too) change: read again
@@ -69,6 +71,7 @@ private:
     std::vector<std::string> layerTex;     // per layer: its texture key ("" none)
     std::vector<std::string> layerMasks;   // per layer: its effect masks' key ("" none)
     std::vector<toml::table> layerFx;      // per layer: its effects' options, masks filled in
+    std::string out;                       // where it was unpacked
   };
   // a layer drawn through undershell's effects: into its own texture first
   struct LayerFx {
@@ -77,13 +80,18 @@ private:
     int w = 0, h = 0;
     ~LayerFx();
   };
-  void start();
-  static void loadScene(const std::shared_ptr<Load>& load, const std::string& id, const std::function<void(std::string)>& fail);
+  void start(bool keepShowing = false);  // keepShowing: load beside the scene on screen, swap when done
+  static void loadScene(const std::shared_ptr<Load>& load, const std::string& id, const std::map<std::string, std::string>& overrides,
+                        const std::function<void(std::string)>& fail);
   void drawCover(GLuint tex, float texW, float texH, const DrawContext& ctx, float alpha);
+  void drawLayers(const DrawContext& ctx, bool particles);
+  void captureStill(const DrawContext& ctx);
 
   std::string m_scene, m_speedText;
   double m_speed = 1;
-  std::shared_ptr<Load> m_load;
+  std::shared_ptr<Load> m_load, m_next;
+  std::map<std::string, std::string> m_overrides;  // property -> value from the config
+  bool m_uploadAll = false;
   bool m_ready = false, m_uploading = false;
   WeProject m_project;
   WeScene m_model;
@@ -94,6 +102,9 @@ private:
   ParticleField m_pt;  // the scene's particle systems
   std::map<std::string, int> m_formats;  // texture key -> .tex format
   bool m_moving = false, m_audio = false;
+  bool m_stillTried = false;
+  std::string m_stillPath;
+  std::shared_ptr<std::atomic<bool>> m_still = std::make_shared<std::atomic<bool>>(false);  // written
   VideoSource m_video;
   WallpaperFade m_preview;
   Program m_prog;

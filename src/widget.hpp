@@ -96,6 +96,10 @@ public:
   [[nodiscard]] virtual int fps() const { return 60; }
   [[nodiscard]] virtual bool fullscreen() const { return false; }
   [[nodiscard]] virtual bool usesAudio() const { return false; }
+  // a still picture this widget shows as the wallpaper of its output (a
+  // Wallpaper Engine scene): the app then treats it as that output's
+  // wallpaper, for depth and the layouts kept per wallpaper ("" = none)
+  [[nodiscard]] virtual std::string stillWallpaper() const { return {}; }
   // DrawContext::depthField is filled in (wallpaper effects)
   [[nodiscard]] virtual bool wantsDepth() const { return false; }
   // drawn at full resolution even when costly: the wallpaper itself, where

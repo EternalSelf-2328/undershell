@@ -473,6 +473,14 @@ particle systems of 126 scenes; the rest is authors' own shaders, scripts
 effects is processed at the size it shows on screen, so a typical scene
 costs 1 to 7 ms of GPU per frame at 1366×768 on an HD 520.
 
+The **properties** a scene's author offers (a colour scheme, things to show
+or hide, sliders, choices) appear in the scene widget's inspector; changing
+one reads the scene again beside the one on screen and swaps them when it is
+ready, with no gap. Once loaded, the scene leaves a **still** of itself
+(without particles, so it is the same every time) beside its unpacked files,
+and undershell takes it as that screen's wallpaper: the depth map and the
+layouts kept per wallpaper follow the scene.
+
 Nothing of Wallpaper Engine ships with undershell, and undershell is not
 affiliated with it: it only reads, at run time, what you installed.
 

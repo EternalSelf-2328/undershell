@@ -271,6 +271,39 @@ bool weParticle(const json& o, const WeProject& project, WeScene& out, Locate& l
   return true;
 }
 
+const WeProject* weProjectCached(const std::string& idOrPath) {
+  static std::map<std::string, std::pair<std::string, WeProject>> cache;  // id -> (stamp, project)
+  const std::string dir = weWallpaperDir(idOrPath);
+  if (dir.empty()) return nullptr;
+  std::error_code ec;
+  const auto t = fs::last_write_time(fs::path(dir) / "project.json", ec);
+  const std::string stamp = dir + std::to_string(t.time_since_epoch().count());
+  auto& slot = cache[idOrPath];
+  if (slot.first != stamp) {
+    std::string why;
+    slot.second = {};
+    if (!readWeProject(dir, slot.second, why)) return nullptr;
+    slot.first = stamp;
+  }
+  return &slot.second;
+}
+
+std::string weOverride(const WeProperty& p, const toml::table& opts) {
+  const auto node = opts[p.key];
+  if (!node) return {};
+  if (p.type == "bool") return node.value_or(false) ? "true" : "false";
+  if (p.type == "slider") {
+    const double v = node.value_or(0.0);
+    return std::format("{}", std::clamp(v, p.min, p.max));
+  }
+  const std::string s = node.value_or(std::string());
+  if (p.type == "color" && s.size() == 7 && s[0] == '#') {
+    const Color c = Color::fromHex(s);
+    return std::format("{:.4f} {:.4f} {:.4f}", c.r, c.g, c.b);
+  }
+  return s;
+}
+
 std::vector<std::string> weWorkshopDirs() {
   std::vector<std::string> dirs;
   std::error_code ec;
@@ -337,7 +370,44 @@ bool readWeProject(const std::string& folder, WeProject& out, std::string& why) 
       if (v.is_boolean()) out.properties[name] = v.get<bool>() ? "true" : "false";
       else if (v.is_number()) out.properties[name] = std::format("{}", v.get<double>());
       else if (v.is_string()) out.properties[name] = v.get<std::string>();
+      // the ones the inspector can show
+      WeProperty wp;
+      wp.name = name;
+      wp.type = p.value("type", std::string());
+      if (wp.type != "color" && wp.type != "bool" && wp.type != "slider" && wp.type != "combo") continue;
+      wp.key = "we_";
+      for (const unsigned char c : name) wp.key += std::isalnum(c) ? static_cast<char>(std::tolower(c)) : '_';
+      if (wp.key.size() > 60) continue;
+      // its label: the author's text without markup, or a stock key made readable
+      std::string label = p.value("text", name);
+      std::string plain;
+      for (bool tag = false; const char c : label) {
+        if (c == '<') tag = true;
+        else if (c == '>') tag = false;
+        else if (!tag) plain += c;
+      }
+      if (plain.rfind("ui_browse_properties_", 0) == 0) plain = plain.substr(21);
+      if (plain.rfind("ui_", 0) == 0) plain = plain.substr(3);
+      if (plain.find(' ') == std::string::npos) std::ranges::replace(plain, '_', ' ');
+      while (!plain.empty() && std::isspace(static_cast<unsigned char>(plain.back()))) plain.pop_back();
+      wp.label = plain.empty() ? name : plain.substr(0, 40);
+      wp.value = out.properties[name];
+      wp.order = p.value("order", 0);
+      if (wp.type == "slider") {
+        wp.min = p.value("min", 0.0), wp.max = p.value("max", 1.0), wp.step = std::max(1e-4, p.value("step", 0.01));
+        if (!(wp.max > wp.min)) continue;
+      }
+      if (wp.type == "combo") {
+        for (const json& o : p.value("options", json::array()))
+          if (o.is_object() && o.contains("value")) {
+            const std::string val = o["value"].is_string() ? o["value"].get<std::string>() : o["value"].dump();
+            wp.options.emplace_back(val, o.value("label", val));
+          }
+        if (wp.options.empty()) continue;
+      }
+      out.props.push_back(std::move(wp));
     }
+  std::ranges::sort(out.props, [](const WeProperty& a, const WeProperty& b) { return a.order < b.order; });
   return true;
 }
 

@@ -219,6 +219,14 @@ void Noctalia::compose() {
     s.wallpaperByOutput.clear();
     if (!m_manualFill.empty()) s.fillMode = fillModeIndex(m_manualFill);
   }
+  // a scene's still on its output, filling it as the scene does
+  for (const auto& [out, still] : m_stills) {
+    if (s.wallpaperByOutput.empty() && !s.defaultWallpaper.empty())
+      for (const auto& [o, p] : m_screens) s.wallpaperByOutput[o] = s.defaultWallpaper;  // keep the others' as they were
+    s.wallpaperByOutput[out] = still;
+    s.sceneOutputs.insert(out);
+    s.fillMode = 1;
+  }
   m_state = std::move(s);
 }
 
@@ -227,6 +235,13 @@ bool Noctalia::setManual(const std::string& wallpaper, const std::string& fill) 
   if (w == m_manual && fill == m_manualFill) return false;
   m_manual = w;
   m_manualFill = fill;
+  compose();
+  return true;
+}
+
+bool Noctalia::setSceneStills(std::map<std::string, std::string> stills) {
+  if (stills == m_stills) return false;
+  m_stills = std::move(stills);
   compose();
   return true;
 }
