@@ -101,6 +101,9 @@ const Builtin kBuiltins[] = {
     {"parallax",
 #include "fx/parallax.inc"
     },
+    {"scroll",
+#include "fx/scroll.inc"
+    },
     {"waves",
 #include "fx/waves.inc"
     },

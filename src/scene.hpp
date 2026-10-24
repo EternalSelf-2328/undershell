@@ -9,6 +9,7 @@
 // frame. Like the wallpaper widget it covers the screen under the others.
 #pragma once
 
+#include "effectchain.hpp"
 #include "gl.hpp"
 #include "video.hpp"
 #include "wallstore.hpp"
@@ -32,8 +33,12 @@ public:
   [[nodiscard]] bool fullscreen() const override { return true; }
   [[nodiscard]] bool keepsResolution() const override { return true; }
   [[nodiscard]] bool animating(const TickContext& ctx) const override;
+  [[nodiscard]] bool usesAudio() const override { return m_audio; }
   [[nodiscard]] double nextWakeup(double now) const override;
   [[nodiscard]] int fps() const override { return 30; }
+  // the person's own effects (used by layers too) change: read again
+  [[nodiscard]] std::vector<std::string> watchedFiles() const override { return m_fx.empty() ? std::vector<std::string>{} : std::vector<std::string>{userEffectsDir() + "/"}; }
+  void filesChanged() override;
   // what it shows, for the status and the inspector
   [[nodiscard]] std::string state() const;
 
@@ -57,7 +62,17 @@ private:
     std::string error;
     WeProject project;
     WeScene scene;
-    std::map<std::string, Pixels> pixels;  // texture path -> pixels, waiting for upload
+    std::map<std::string, Pixels> pixels;  // texture key -> pixels, waiting for upload
+    std::vector<std::string> layerTex;     // per layer: its texture key ("" none)
+    std::vector<std::string> layerMasks;   // per layer: its effect masks' key ("" none)
+    std::vector<toml::table> layerFx;      // per layer: its effects' options, masks filled in
+  };
+  // a layer drawn through undershell's effects: into its own texture first
+  struct LayerFx {
+    EffectChain chain;
+    GLuint fbo = 0, tex = 0;
+    int w = 0, h = 0;
+    ~LayerFx();
   };
   void start();
   void drawCover(GLuint tex, float texW, float texH, const DrawContext& ctx, float alpha);
@@ -69,6 +84,10 @@ private:
   WeProject m_project;
   WeScene m_model;
   std::map<std::string, std::pair<GLuint, std::array<int, 2>>> m_tex;  // uploaded
+  std::vector<std::string> m_layerTex, m_layerMasks;
+  std::map<size_t, std::unique_ptr<LayerFx>> m_fx;  // by layer index
+  NoctaliaState m_noct;
+  bool m_moving = false, m_audio = false;
   VideoSource m_video;
   WallpaperFade m_preview;
   Program m_prog;

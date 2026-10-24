@@ -369,6 +369,9 @@ The same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, an
 | | `fx_parallax_speed` | 0.05 – 2 | `0.4` | Speed |
 | | `fx_parallax_focus` | 0 – 1 | `0.5` | Still plane |
 | | `fx_parallax_beat` | `true` / `false` | `false` | Bounce on beat |
+| `fx_scroll` | | `true` / `false` | `false` | Scroll |
+| | `fx_scroll_speed_x` | -2 – 2 | `0.02` | Across |
+| | `fx_scroll_speed_y` | -2 – 2 | `0` | Down |
 | `fx_waves` | | `true` / `false` | `false` | Water waves |
 | | `fx_waves_speed` | 0 – 3 | `1` | Speed |
 | | `fx_waves_size` | 0.2 – 4 | `1` | Wave size |

@@ -2,6 +2,9 @@
 // A Wallpaper Engine wallpaper drawn by undershell (see scene.hpp).
 #include "scene.hpp"
 
+#include "effects.hpp"
+#include "perf.hpp"
+
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 #ifdef US_HAVE_LZ4
@@ -45,12 +48,60 @@ out vec4 fragColor;
 uniform sampler2D u_tex;
 uniform vec4 u_tint;   // rgb (colour x brightness), alpha
 uniform int u_solid;   // the clear colour: no texture
+uniform int u_premul;  // the texture is premultiplied (a layer through effects)
 void main() {
     vec4 t = u_solid == 1 ? vec4(1.0) : texture(u_tex, v_uv);
+    if (u_premul == 1) {
+        fragColor = vec4(t.rgb * u_tint.rgb, t.a) * u_tint.a;
+        return;
+    }
     float a = t.a * u_tint.a;
     fragColor = vec4(t.rgb * u_tint.rgb * a, a);
 }
 )";
+
+// a layer through undershell's effects (effectchain.hpp): its texture
+// (straight alpha, rows top down) in, premultiplied out
+const char* kFxHead = R"(#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+uniform sampler2D u_lights;
+uniform int u_hasLights;
+)";
+
+const char* kFxBody = R"(
+void main() {
+    screenPx = v_uv * u_screen;
+    vec2 uv = v_uv;
+//@WARPS
+    vec4 t = any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))) ? vec4(0.0) : texture(u_tex, uv);
+    vec3 c = t.rgb;
+//@COLOURS
+    if (u_hasLights == 1) {
+        vec4 L = texture(u_lights, vec2(v_uv.x, 1.0 - v_uv.y));
+        c = c * (1.0 - L.a) + L.rgb;
+    }
+    fragColor = vec4(clamp(c, 0.0, 1.0) * t.a, t.a);
+}
+)";
+
+const char* kFxLights = R"(
+void main() {
+    screenPx = v_uv * u_screen;
+    vec2 uv = v_uv;
+    vec4 L = vec4(0.0);
+//@LIGHTS
+    fragColor = L;
+}
+)";
+
+// a mask texture's red at a point of another picture of size (w, h)
+float sampleMask(const SceneWidget::Pixels& m, int x, int y, int w, int h) {
+  if (m.w <= 0 || m.h <= 0) return 1;
+  const int mx = std::clamp(x * m.w / std::max(1, w), 0, m.w - 1), my = std::clamp(y * m.h / std::max(1, h), 0, m.h - 1);
+  return m.rgba[(static_cast<size_t>(my) * m.w + mx) * 4] / 255.0F;
+}
 
 bool executable(const std::string& p) { return !p.empty() && access(p.c_str(), X_OK) == 0; }
 
@@ -146,14 +197,24 @@ SceneWidget::~SceneWidget() {
   for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
 }
 
+SceneWidget::LayerFx::~LayerFx() {
+  if (tex) glDeleteTextures(1, &tex);
+  if (fbo) glDeleteFramebuffers(1, &fbo);
+}
+
+void SceneWidget::filesChanged() {
+  effectLibrary().refresh();
+}
+
 void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
-  (void)noct;
+  m_noct = noct;
   m_speed = std::clamp(cfg.options["speed"].value_or(1.0), 0.1, 4.0);
   const std::string scene = cfg.options["scene"].value_or(std::string());
   if (scene == m_scene) return;
   m_scene = scene;
   for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
   m_tex.clear();
+  m_fx.clear();
   m_ready = false;
   m_video.close();
   m_model = {};
@@ -215,18 +276,99 @@ void SceneWidget::start() {
       args.insert(args.end(), scene.needs.begin(), scene.needs.end());
       runHelper(args, said);
     }
-    std::map<std::string, Pixels> pixels;
-    for (const WeLayer& l : scene.layers) {
-      if (l.texture.empty() || pixels.contains(l.texture)) continue;
+    // decoded once each, wherever several layers share one
+    std::map<std::string, Pixels> decoded;
+    auto texture = [&](const std::string& rel) -> const Pixels* {
+      if (rel.empty()) return nullptr;
+      if (auto it = decoded.find(rel); it != decoded.end()) return it->second.w > 0 ? &it->second : nullptr;
       Pixels p;
-      if (loadTexture((out / (l.texture + ".tex")).string(), p) || loadTexture((assets / (l.texture + ".tex")).string(), p))
-        pixels[l.texture] = std::move(p);
-      else
-        US_WARN("scene {}: texture {} could not be read", id, l.texture);
+      if (!loadTexture((out / (rel + ".tex")).string(), p) && !loadTexture((assets / (rel + ".tex")).string(), p)) {
+        US_WARN("scene {}: texture {} could not be read", id, rel);
+        p = {};
+      }
+      auto& slot = decoded[rel] = std::move(p);
+      return slot.w > 0 ? &slot : nullptr;
+    };
+    std::map<std::string, Pixels> pixels;
+    const size_t n = scene.layers.size();
+    std::vector<std::string> layerTex(n), layerMasks(n);
+    std::vector<toml::table> layerFx(n);
+    for (size_t i = 0; i < n; ++i) {
+      const WeLayer& l = scene.layers[i];
+      if (l.texture.empty() || l.compose) continue;
+      const Pixels* base = texture(l.texture);
+      if (!base) continue;
+      const int w = base->w, h = base->h;
+      // what never moves (Wallpaper Engine's opacity and tint) baked in once
+      if (l.opacity < 1 || !l.opacityMask.empty() || l.tintAmount > 0) {
+        Pixels baked = *base;
+        const Pixels* om = texture(l.opacityMask);
+        const Pixels* tm = texture(l.tintMask);
+        for (int y = 0; y < h; ++y)
+          for (int x = 0; x < w; ++x) {
+            uint8_t* px = &baked.rgba[(static_cast<size_t>(y) * w + x) * 4];
+            const float a = l.opacity * (om ? sampleMask(*om, x, y, w, h) : 1);
+            px[3] = static_cast<uint8_t>(px[3] * a);
+            if (l.tintAmount > 0) {
+              const float k = l.tintAmount * (tm ? sampleMask(*tm, x, y, w, h) : 1);
+              const float tc[3] = {l.tint.r, l.tint.g, l.tint.b};
+              for (int c = 0; c < 3; ++c) px[c] = static_cast<uint8_t>(std::lround(px[c] + (tc[c] * 255 - px[c]) * k));
+            }
+          }
+        layerTex[i] = "layer:" + std::to_string(i);
+        pixels[layerTex[i]] = std::move(baked);
+      } else {
+        layerTex[i] = l.texture;
+        if (!pixels.contains(l.texture)) pixels[l.texture] = *base;
+      }
+      if (l.fx.empty()) continue;
+      // what moves: undershell's effects, each limited by its Wallpaper
+      // Engine mask, packed four to a texture (paint1..paint4)
+      Pixels masks;
+      masks.w = w, masks.h = h;
+      masks.rgba.assign(static_cast<size_t>(w) * h * 4, 0);
+      toml::table opts;
+      for (size_t k = 0; k < l.fx.size(); ++k) {
+        toml::table fx = l.fx[k].options;
+        const Pixels* m = k < 4 ? texture(l.fx[k].mask) : nullptr;
+        if (m) {
+          double dx = 0, dy = 0;
+          for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x) {
+              float v = sampleMask(*m, x, y, w, h);
+              if (l.fx[k].flowMap) {  // red and green: the direction, 0.5 still; how far from still: how much
+                const int mx = std::clamp(x * m->w / w, 0, m->w - 1), my = std::clamp(y * m->h / h, 0, m->h - 1);
+                const uint8_t* fp = &m->rgba[(static_cast<size_t>(my) * m->w + mx) * 4];
+                const float fx2 = fp[0] / 255.0F - 0.5F, fy2 = fp[1] / 255.0F - 0.5F;
+                v = std::min(1.0F, std::hypot(fx2, fy2) * 2.5F);
+                dx += fx2, dy += fy2;
+              }
+              masks.rgba[(static_cast<size_t>(y) * w + x) * 4 + k] = static_cast<uint8_t>(v * 255);
+            }
+          if (l.fx[k].flowMap && (dx != 0 || dy != 0))
+            for (auto&& [key, val] : fx)
+              if (key.str().starts_with("fx_flow")) {
+                fx.insert_or_assign("fx_flow_direction", std::atan2(dy, dx) * 57.29578);
+                break;
+              }
+          for (auto&& [key, val] : fx)
+            if (key.str().find('_', 3) == std::string::npos) {  // the switch itself: fx_<id>
+              fx.insert_or_assign(std::string(key.str()) + "_mask", "paint" + std::to_string(k + 1));
+              break;
+            }
+        }
+        for (auto&& [key, val] : fx) opts.insert_or_assign(key, val);
+      }
+      layerFx[i] = std::move(opts);
+      layerMasks[i] = "mask:" + std::to_string(i);
+      pixels[layerMasks[i]] = std::move(masks);
     }
     std::lock_guard g(load->m);
     load->scene = std::move(scene);
     load->pixels = std::move(pixels);
+    load->layerTex = std::move(layerTex);
+    load->layerMasks = std::move(layerMasks);
+    load->layerFx = std::move(layerFx);
     load->done = true;
 #endif
   }).detach();
@@ -235,9 +377,15 @@ void SceneWidget::start() {
 void SceneWidget::tick(const TickContext& ctx) {
   m_dt = m_lastTick < 0 ? 0 : std::clamp(ctx.now - m_lastTick, 0.0, 0.25);
   m_lastTick = ctx.now;
+  m_moving = m_audio = false;
+  for (auto& [i, f] : m_fx) {
+    f->chain.tick(ctx);
+    m_moving |= f->chain.moving();
+    m_audio |= f->chain.audio();
+  }
 }
 
-bool SceneWidget::animating(const TickContext&) const { return m_ready && m_video.isOpen() && !m_video.still(); }
+bool SceneWidget::animating(const TickContext&) const { return m_ready && ((m_video.isOpen() && !m_video.still()) || m_moving); }
 
 double SceneWidget::nextWakeup(double now) const {
   if (m_uploading) return now + 0.016;  // the next texture, next frame
@@ -251,7 +399,8 @@ std::string SceneWidget::state() const {
   if (!m_load->error.empty()) return "error: " + m_load->error;
   if (!m_load->done) return "loading";
   if (m_project.type == "video") return "video " + m_project.title;
-  return std::format("scene {} ({} layers, {} not drawn yet)", m_project.title, m_model.layers.size(), m_model.skipped);
+  return std::format("scene {} ({} layers, {} not drawn yet; effects {} of {} drawn)", m_project.title, m_model.layers.size(), m_model.skipped,
+                     m_model.mapped, m_model.effects);
 }
 
 void SceneWidget::drawCover(GLuint tex, float texW, float texH, const DrawContext& ctx, float alpha) {
@@ -287,6 +436,14 @@ void SceneWidget::draw(const DrawContext& ctx) {
       m_project = m_load->project;
       if (m_load->error.empty()) {
         m_model = std::move(m_load->scene);
+        m_layerTex = m_load->layerTex;
+        m_layerMasks = m_load->layerMasks;
+        for (size_t i = 0; i < m_load->layerFx.size(); ++i) {
+          if (m_load->layerFx[i].empty()) continue;
+          auto f = std::make_unique<LayerFx>();
+          f->chain.configure(m_load->layerFx[i], m_noct);
+          if (!f->chain.empty()) m_fx[i] = std::move(f);
+        }
         m_ready = true;
       } else {
         US_WARN("scene {}: {}", m_scene, m_load->error);
@@ -363,14 +520,87 @@ void SceneWidget::draw(const DrawContext& ctx) {
     glDrawArrays(GL_TRIANGLES, 0, 6);
   }
   glUniform1i(m_prog.uniform("u_solid"), 0);
-  for (const WeLayer& l : m_model.layers) {
-    if (!l.visible || l.compose || l.texture.empty() || l.alpha <= 0) continue;
-    const auto t = m_tex.find(l.texture);
+  glUniform1i(m_prog.uniform("u_premul"), 0);
+  static constexpr std::array<float, 12> kUvFlipped = {0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0};
+  for (size_t li = 0; li < m_model.layers.size(); ++li) {
+    const WeLayer& l = m_model.layers[li];
+    if (!l.visible || l.compose || li >= m_layerTex.size() || m_layerTex[li].empty() || l.alpha <= 0) continue;
+    const auto t = m_tex.find(m_layerTex[li]);
     if (t == m_tex.end()) continue;
+    GLuint tex = t->second.first;
+    bool premul = false;
+    // through undershell's effects first, into the layer's own texture
+    if (auto f = m_fx.find(li); f != m_fx.end()) {
+      LayerFx& L = *f->second;
+      const int tw = t->second.second[0], th = t->second.second[1];
+      // at the size it shows on screen (device px), never above its own: a
+      // 4K layer shown on 1366 px needs no more, and the cost goes with the area
+      const auto q0 = weLayerQuad(m_model, l, static_cast<float>(tw), static_cast<float>(th));
+      const auto qa = toSurface(q0[0], q0[1]), qb = toSurface(q0[2], q0[3]), qc = toSurface(q0[4], q0[5]);
+      // (on the lower performance levels, at their render scale: waves and glows are soft)
+      const float level = std::clamp(perfKnobs().renderScale, 0.25F, 1.0F);
+      const float shownW = std::hypot(qb[0] - qa[0], qb[1] - qa[1]) * ctx.scale * level;
+      const float shownH = std::hypot(qc[0] - qa[0], qc[1] - qa[1]) * ctx.scale * level;
+      const int fw = std::clamp(static_cast<int>(std::ceil(std::min(shownW, static_cast<float>(tw)))), 1, 4096);
+      const int fh = std::clamp(static_cast<int>(std::ceil(std::min(shownH, static_cast<float>(th)))), 1, 4096);
+      // where the scene draws, kept before anything else is bound
+      GLint fbo = 0, vp[4] = {};
+      glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
+      glGetIntegerv(GL_VIEWPORT, vp);
+      if (!L.fbo || L.w != fw || L.h != fh) {
+        if (!L.tex) glGenTextures(1, &L.tex);
+        glBindTexture(GL_TEXTURE_2D, L.tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fw, fh, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        if (!L.fbo) glGenFramebuffers(1, &L.fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, L.fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, L.tex, 0);
+        L.w = fw, L.h = fh;
+      }
+      glBindFramebuffer(GL_FRAMEBUFFER, L.fbo);
+      glViewport(0, 0, fw, fh);
+      glClearColor(0, 0, 0, 0);
+      glClear(GL_COLOR_BUFFER_BIT);
+      DrawContext lc;
+      lc.w = static_cast<float>(fw), lc.h = static_cast<float>(fh), lc.now = ctx.now, lc.fillMode = 1;
+      if (li < m_layerMasks.size())
+        if (auto mt = m_tex.find(m_layerMasks[li]); mt != m_tex.end()) lc.effectMasks = mt->second.first;
+      L.chain.build(kFxHead, "", kFxBody, kFxLights);
+      auto picture = [&](const Program& p) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, t->second.first);
+        glUniform1f(p.uniform("u_aspect"), static_cast<float>(tw) / static_cast<float>(th));
+      };
+      L.chain.drawLights(lc, false, picture);
+      L.chain.use(0, lc, false);
+      glUniform2f(L.chain.program().uniform("u_screen"), static_cast<float>(fw), static_cast<float>(fh));
+      picture(L.chain.program());
+      glDisable(GL_BLEND);
+      drawUnitQuad();
+      glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(fbo));
+      glViewport(vp[0], vp[1], vp[2], vp[3]);
+      // the scene's own drawing again
+      glEnable(GL_BLEND);
+      glUseProgram(m_prog.id());
+      glUniform2f(m_prog.uniform("u_size"), ctx.w, ctx.h);
+      glUniform1i(m_prog.uniform("u_tex"), 0);
+      glUniform1i(m_prog.uniform("u_solid"), 0);
+      glActiveTexture(GL_TEXTURE0);
+      glBindBuffer(GL_ARRAY_BUFFER, 0);
+      glEnableVertexAttribArray(0);
+      glEnableVertexAttribArray(1);
+      tex = L.tex;
+      premul = true;
+    }
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, premul ? kUvFlipped.data() : kUv.data());
+    glUniform1i(m_prog.uniform("u_premul"), premul ? 1 : 0);
     const auto q = weLayerQuad(m_model, l, static_cast<float>(t->second.second[0]), static_cast<float>(t->second.second[1]));
     const auto a = toSurface(q[0], q[1]), b = toSurface(q[2], q[3]), c = toSurface(q[4], q[5]), d = toSurface(q[6], q[7]);
     const std::array<float, 12> pos = {a[0], a[1], b[0], b[1], c[0], c[1], c[0], c[1], b[0], b[1], d[0], d[1]};
-    glBindTexture(GL_TEXTURE_2D, t->second.first);
+    glBindTexture(GL_TEXTURE_2D, tex);
     glUniform4f(m_prog.uniform("u_tint"), l.color.r * l.brightness, l.color.g * l.brightness, l.color.b * l.brightness, l.alpha);
     if (l.additive) glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ZERO, GL_ONE);
     else glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);

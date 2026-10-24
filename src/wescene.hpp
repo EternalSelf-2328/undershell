@@ -10,6 +10,8 @@
 
 #include "common.hpp"
 
+#include <toml++/toml.hpp>
+
 #include <array>
 #include <map>
 #include <string>
@@ -48,6 +50,21 @@ struct WeLayer {
   bool additive = false;
   std::string texture;           // "materials/foo" (no extension): in the scene, else in the assets
   bool compose = false;          // an effect-only layer (Wallpaper Engine's compose layers): nothing of its own to draw
+  // Wallpaper Engine's effects on it, in undershell's terms:
+  // what never moves is baked into its pixels when it loads…
+  float opacity = 1;             // "opacity": alpha times its mask
+  std::string opacityMask;
+  Color tint{1, 1, 1, 1};        // "tint": towards a colour where its mask says
+  float tintAmount = 0;
+  std::string tintMask;
+  // …and what moves runs through undershell's own effects (effects.hpp)
+  struct Fx {
+    toml::table options;  // fx_<id> = true and its options (the mask filled in when drawn)
+    std::string mask;     // the Wallpaper Engine mask texture ("materials/…"), or ""
+    bool flowMap = false; // the mask is a flow map: direction and amount come from it
+  };
+  std::vector<Fx> fx;
+  int unmapped = 0;              // effects with no counterpart yet
 };
 
 struct WeScene {
@@ -57,6 +74,7 @@ struct WeScene {
   // files the scene refers to that are not in its folder (asked from the assets)
   std::vector<std::string> needs;
   int skipped = 0;                    // objects not drawn yet (text, models, sounds, particles)
+  int effects = 0, mapped = 0;        // Wallpaper Engine effects met, and drawn with undershell's
 };
 
 // Reads an unpacked scene. `assets` is where files missing from the scene

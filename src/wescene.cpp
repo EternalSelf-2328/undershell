@@ -247,6 +247,82 @@ bool readWeScene(const std::string& unpacked, const std::string& assets, const W
     } else {
       l.compose = true;
     }
+    // its effects
+    for (const json& e : o.value("effects", json::array())) {
+      if (!e.is_object()) continue;
+      if (const json v = valueOf(e.value("visible", json(true)), project); v.is_boolean() && !v.get<bool>()) continue;
+      ++out.effects;
+      const std::string file = e.value("file", std::string());
+      const std::string name = file.rfind("effects/", 0) == 0 ? file.substr(8, file.find('/', 8) - 8) : std::string();
+      const json pass = e.contains("passes") && e["passes"].is_array() && !e["passes"].empty() ? e["passes"][0] : json::object();
+      const json csv = pass.is_object() ? pass.value("constantshadervalues", json::object()) : json::object();
+      const json texs = pass.is_object() ? pass.value("textures", json::array()) : json::array();
+      auto num = [&](const char* key, float def) {
+        const auto f = csv.is_object() && csv.contains(key) ? floats(valueOf(csv[key], project)) : std::vector<float>();
+        return f.empty() ? def : f[0];
+      };
+      auto vec = [&](const char* key) {
+        return csv.is_object() && csv.contains(key) ? floats(valueOf(csv[key], project)) : std::vector<float>();
+      };
+      auto slot = [&](size_t i) -> std::string {  // a mask the effect brings, found or asked for
+        if (!texs.is_array() || i >= texs.size() || !texs[i].is_string() || texs[i].get<std::string>().empty()) return {};
+        const std::string t = "materials/" + texs[i].get<std::string>();
+        if (t.find("/util/") != std::string::npos) return {};  // a stock placeholder, not a painted mask
+        if (!texFile(t + ".tex") && std::ranges::find(out.needs, t + ".tex") == out.needs.end()) out.needs.push_back(t + ".tex");
+        return t;
+      };
+      auto deg = [](float rad) { return static_cast<double>(rad * 57.29578F); };
+      WeLayer::Fx f;
+      auto put = [&](const char* id, std::initializer_list<std::pair<const char*, double>> opts, std::string mask, bool flow = false) {
+        f.options.insert_or_assign(std::string("fx_") + id, true);
+        for (const auto& [k, v] : opts) f.options.insert_or_assign(std::string("fx_") + id + "_" + k, v);
+        f.mask = std::move(mask);
+        f.flowMap = flow;
+        l.fx.push_back(std::move(f));
+        ++out.mapped;
+      };
+      // the numbers are scaled so Wallpaper Engine's defaults land on undershell's
+      if (name == "opacity") {
+        l.opacity *= std::clamp(num("alpha", 1), 0.0F, 1.0F);
+        if (l.opacityMask.empty()) l.opacityMask = slot(1);
+        ++out.mapped;
+      } else if (name == "tint") {
+        if (const auto c = vec("color"); c.size() >= 3) l.tint = Color{c[0], c[1], c[2], 1};
+        l.tintAmount = std::clamp(num("alpha", 1), 0.0F, 1.0F);
+        l.tintMask = slot(1);
+        ++out.mapped;
+      } else if (name == "waterwaves") {
+        put("waves", {{"speed", num("speed", 5) / 5}, {"size", 200 / std::max(1.0F, num("scale", 200))}, {"strength", num("strength", 0.1F) / 0.1},
+                      {"direction", deg(num("direction", 0))}}, slot(1));
+      } else if (name == "waterripple") {
+        put("ripple", {{"speed", num("animationspeed", 0.15F) / 0.15}, {"size", 1 / std::max(0.1F, num("scale", 1))},
+                       {"strength", num("ripplestrength", 0.1F) / 0.1}}, slot(1));
+      } else if (name == "foliagesway") {
+        put("sway", {{"speed", num("speeduv", 5) / 5}, {"size", 0.05 / std::max(0.005F, num("scale", 0.05F))}, {"strength", num("strength", 0.4F) / 0.4},
+                     {"gusts", 0.3}}, slot(1));
+      } else if (name == "shake") {
+        put("sway", {{"speed", num("speed", 1)}, {"size", 1.5}, {"strength", num("strength", 0.1F) / 0.1}, {"gusts", 0}}, slot(1));
+      } else if (name == "waterflow") {
+        put("flow", {{"speed", num("speed", 1)}, {"strength", num("strength", 1)}, {"size", 1}}, slot(1), true);
+      } else if (name == "pulse") {
+        put("pulse", {{"strength", num("amount", 1)}}, slot(1));
+      } else if (name == "shine") {
+        put("shine", {{"angle", deg(num("direction", 0))}, {"width", std::clamp(num("raylength", 0.1F), 0.02F, 0.6F)},
+                      {"strength", num("rayintensity", 1)}}, slot(1));
+      } else if (name == "godrays" || name == "lightshafts") {
+        const auto c = vec("center");
+        put("godrays", {{"x", c.size() >= 2 ? c[0] : 0.5}, {"y", c.size() >= 2 ? c[1] : 0.1}, {"reach", std::clamp(num("raylength", 0.5F), 0.1F, 1.0F)},
+                        {"threshold", std::clamp(num("raythreshold", 0.5F), 0.0F, 0.95F)}, {"strength", num("rayintensity", 1)}}, slot(1));
+      } else if (name == "filmgrain") {
+        put("grain", {{"amount", std::clamp(num("strength", 0.5F), 0.0F, 1.0F)}}, slot(1));
+      } else if (name == "vhs") {
+        put("vhs", {{"snow", std::clamp(num("strength", 0.5F), 0.0F, 1.0F)}}, slot(1));
+      } else if (name == "scroll") {
+        put("scroll", {{"speed_x", num("speedx", 0.2F)}, {"speed_y", -num("speedy", 0.2F)}}, std::string());
+      } else {
+        ++l.unmapped;
+      }
+    }
     out.layers.push_back(std::move(l));
   }
   return true;

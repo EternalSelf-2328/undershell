@@ -38,7 +38,7 @@ int main() {
 
   // the built-ins: all well formed, warps first
   EffectLibrary& lib = effectLibrary();
-  CHECK(lib.all().size() == 13);
+  CHECK(lib.all().size() == 14);
   std::set<std::string> ids;
   int stage = 0;
   bool ordered = true;
@@ -98,7 +98,7 @@ int main() {
   CHECK(lib.find("tilt") && lib.find("tilt")->nameEs == "Inclinar" && !lib.find("tilt")->file.empty());
   CHECK(lib.find("grain") && lib.find("grain")->nameEn == "My grain" && !lib.find("grain")->file.empty());
   CHECK(lib.find("broken") && !lib.find("broken")->error.empty());
-  CHECK(lib.all().size() == 15);
+  CHECK(lib.all().size() == 16);
   CHECK(!lib.refresh());  // nothing changed since
 
   // only effects that are on and work

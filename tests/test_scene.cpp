@@ -191,6 +191,40 @@ int main() {
     }
   }
 
+  // Wallpaper Engine's effects: an opacity mask baked in (the left half
+  // gone), waves run through undershell's own (the picture moves)
+  {
+    using namespace undershell;
+    fs::create_directories(dir / "fx");
+    std::ofstream(dir / "fx/project.json") << R"({"type": "scene", "title": "fx"})";
+    std::string stripes;  // 4x4: red and white columns, so a wave shows
+    for (int y = 0; y < 4; ++y)
+      for (int x = 0; x < 4; ++x) stripes += x % 2 ? std::string("\xff\xff\xff\xff", 4) : std::string("\xff\x00\x00\xff", 4);
+    const std::string half = std::string("\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff\xff\x00\x00\xff\xff", 16);  // R8: right half on
+    std::ofstream(dir / "fx/scene.pkg", std::ios::binary)
+        << pkg({{"scene.json", R"({"general": {"orthogonalprojection": {"width": 100, "height": 50}, "clearcolor": "0 0 1"},
+                   "objects": [{"id": 1, "image": "models/m.json", "origin": "50 25 0", "size": "100 50",
+                     "effects": [{"file": "effects/opacity/effect.json", "passes": [{"constantshadervalues": {"alpha": 1}, "textures": [null, "masks/half"]}]},
+                                 {"file": "effects/waterwaves/effect.json", "passes": [{"constantshadervalues": {"speed": 25, "scale": 400, "strength": 0.3}}]},
+                                 {"file": "effects/workshop/123/custom/effect.json"}]}]})"},
+                {"models/m.json", R"({"material": "materials/m.json"})"},
+                {"materials/m.json", R"({"passes": [{"textures": ["stripes"]}]})"},
+                {"materials/stripes.tex", tex(0, 4, 4, stripes, false)},
+                {"materials/masks/half.tex", tex(9, 4, 4, half, false)}});
+    WeProject proj;
+    std::string why;
+    CHECK(readWeProject((dir / "fx").string(), proj, why));
+    Headless gl;
+    if (gl.ok()) {
+      toml::table o;
+      o.insert_or_assign("scene", (dir / "fx").string());
+      const Image a = renderWidget("scene", o, 200, 100, testPalette(), 1000, 1, 5.0);
+      auto px = [](const Image& im, int x, int y) { return &im.rgba[(static_cast<size_t>(y) * im.w + x) * 4]; };
+      CHECK(a.w == 200 && px(a, 30, 50)[2] > 200 && px(a, 30, 50)[0] < 60);  // left: masked out, the clear colour shows
+      CHECK(px(a, 150, 50)[0] > 200);                                        // right: the layer (red or white)
+    }
+  }
+
   fs::remove_all(dir);
   return TEST_RESULT();
 }

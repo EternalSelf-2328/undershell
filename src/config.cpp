@@ -698,7 +698,7 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
     b += std::format("style = \"{}\"             # warm cool noir vintage dream night vivid faded duotone custom\n", look.empty() ? "warm" : look);
     b += "depth = false              # true: only the background, behind the wallpaper's subject\n"
          "layer = -999               # under every other widget\n"
-         "# animated effects: fx_waves fx_ripple fx_flow fx_sway fx_parallax fx_godrays fx_shine fx_twinkle\n"
+         "# animated effects: fx_waves fx_ripple fx_flow fx_sway fx_scroll fx_parallax fx_godrays fx_shine fx_twinkle\n"
          "# fx_pulse fx_mist fx_grain fx_vhs fx_chroma = true (options: docs/OPTIONS.md, your own: docs/EFFECTS.md)\n"
          "# particles: pt_snow pt_rain pt_petals pt_fireflies pt_dust pt_embers pt_bubbles pt_sparks = true (docs/PARTICLES.md)\n";
   } else if (type == "weather") {
