@@ -52,6 +52,15 @@ summary({'videos (FFmpeg)' : have_video}, section : 'Features')
 onnx_dep = dependency('libonnxruntime', required : get_option('depth_model'))
 summary({'depth model (ONNX Runtime)' : onnx_dep.found()}, section : 'Features')
 libexecdir = get_option('prefix') / get_option('libexecdir')
+# Wallpaper Engine scenes: undershell-scene unpacks them (binary parsing of
+# content from strangers, in its own confined process); undershell reads
+# its LZ4-packed textures
+lz4_dep = dependency('liblz4', required : get_option('scenes'))
+if lz4_dep.found()
+  deps += lz4_dep
+  add_project_arguments('-DUS_HAVE_LZ4=1', language : 'cpp')
+endif
+summary({'Wallpaper Engine scenes (LZ4)' : lz4_dep.found()}, section : 'Features')
 wayland_protos = dependency('wayland-protocols')
 
 datadir = get_option('prefix') / get_option('datadir') / 'undershell'
@@ -168,6 +177,9 @@ if onnx_dep.found()
   executable('undershell-depth', 'src/depthhelper.cpp', dependencies : [onnx_dep, dependency('gdk-pixbuf-2.0')],
              install : true, install_dir : libexecdir)
 endif
+if lz4_dep.found()
+  executable('undershell-scene', 'src/scenehelper.cpp', dependencies : [lz4_dep], install : true, install_dir : libexecdir)
+endif
 install_subdir('data/fonts', install_dir : datadir)
 # GNOME has no layer-shell: its extension starts undershell and places the widgets
 if get_option('gnome_extension')
@@ -195,3 +207,7 @@ foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep, cpp_args : test_args),
        env : ['UNDERSHELL_DATA_DIR=' + meson.project_source_root() / 'data'])
 endforeach
+if lz4_dep.found()
+  test('scene', executable('test_scene', 'tests/test_scene.cpp', dependencies : core_dep, cpp_args : test_args),
+       env : ['UNDERSHELL_SCENE_HELPER=' + meson.current_build_dir() / 'undershell-scene'])
+endif

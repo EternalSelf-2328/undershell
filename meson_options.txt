@@ -6,3 +6,4 @@ option('video', type : 'feature', value : 'auto', description : 'Videos on the T
 option('depth_model', type : 'feature', value : 'auto', description : 'Depth without Noctalia: builds undershell-depth, which runs Depth Anything V2 Small with ONNX Runtime (libonnxruntime)')
 option('gnome_extension', type : 'boolean', value : true, description : 'Install the GNOME Shell extension that puts the widgets on the GNOME desktop (GNOME has no layer-shell)')
 option('evolution', type : 'feature', value : 'auto', description : 'Events of online calendars kept by Evolution / GNOME Calendar (links SQLite to read its cache); local ones need nothing')
+option('scenes', type : 'feature', value : 'auto', description : 'Wallpaper Engine scenes: builds undershell-scene, which unpacks them in a confined process, and reads its output (links liblz4)')
