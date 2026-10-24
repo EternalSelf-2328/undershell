@@ -19,6 +19,16 @@
 
 namespace undershell {
 
+// The music as four slow numbers 0..1: bass, mids, treble (fast up, slower
+// down) and the beat (the analyser's kick, fading). Effects and particles
+// read it.
+struct MusicLevels {
+  std::array<float, 4> v{};
+  bool live = false;  // sounding, or still fading out
+  void tick(const TickContext& ctx);
+  void clear() { v = {}, live = false; }
+};
+
 class EffectChain {
 public:
   EffectChain() = default;
@@ -71,7 +81,7 @@ private:
   int m_lightW = 0, m_lightH = 0;
   int m_fps = 30;
   bool m_time = false, m_audio = false, m_depth = false, m_moving = false;
-  std::array<float, 4> m_level{};  // bass, mids, treble, beat
+  MusicLevels m_level;
   double m_start = -1;
 };
 

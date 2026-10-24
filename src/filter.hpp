@@ -18,6 +18,7 @@
 #pragma once
 
 #include "effectchain.hpp"
+#include "particles.hpp"
 #include "gl.hpp"
 #include "wallstore.hpp"
 #include "widget.hpp"
@@ -48,17 +49,24 @@ struct FilterConfig {
 class FilterWidget final : public WidgetImpl {
 public:
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
-  void tick(const TickContext& ctx) override { m_fx.tick(ctx); }
+  void tick(const TickContext& ctx) override {
+    m_fx.tick(ctx);
+    m_pt.tick(ctx);
+  }
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool fullscreen() const override { return true; }
-  [[nodiscard]] bool animating(const TickContext&) const override { return m_fade.animating() || m_fx.moving(); }
-  [[nodiscard]] int fps() const override { return m_fx.empty() ? 60 : m_fx.fps(); }
-  [[nodiscard]] bool usesAudio() const override { return m_fx.audio(); }
-  [[nodiscard]] bool wantsDepth() const override { return m_fx.depth(); }
+  [[nodiscard]] bool animating(const TickContext&) const override { return m_fade.animating() || m_fx.moving() || !m_pt.empty(); }
+  [[nodiscard]] int fps() const override { return m_fx.empty() && m_pt.empty() ? 60 : m_fx.fps(); }
+  [[nodiscard]] bool usesAudio() const override { return m_fx.audio() || m_pt.audio(); }
+  [[nodiscard]] bool wantsDepth() const override { return m_fx.depth() || m_pt.depth(); }
   [[nodiscard]] bool keepsResolution() const override { return true; }
-  // the person's own effects: a new or changed file applies at once
-  [[nodiscard]] std::vector<std::string> watchedFiles() const override { return {userEffectsDir() + "/"}; }
-  void filesChanged() override { m_fx.refresh(); }
+  // the person's own effects and particles: a new or changed file applies at once
+  [[nodiscard]] std::vector<std::string> watchedFiles() const override { return {userEffectsDir() + "/", userParticlesDir() + "/"}; }
+  void filesChanged() override {
+    m_fx.refresh();
+    m_pt.refresh();
+  }
+  [[nodiscard]] size_t particles() const { return m_pt.count(); }
   // a picture still decoding: look again soon
   [[nodiscard]] double nextWakeup(double now) const override { return m_fade.waiting() ? now + 0.05 : 1e18; }
   [[nodiscard]] Color accent() const override { return m_tintC; }
@@ -72,6 +80,7 @@ private:
   FilterConfig m_cfg;
   Color m_tintC, m_darkC, m_lightC;
   EffectChain m_fx;
+  ParticleField m_pt;
   WallpaperFade m_fade;
 };
 

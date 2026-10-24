@@ -133,6 +133,7 @@ core = static_library('undershell-core',
   'src/colorpick.cpp',
   'src/offscreen.cpp',
   'src/overlay.cpp',
+  'src/particles.cpp',
   'src/perf.cpp',
   'src/profiles.cpp',
   'src/rain.cpp',
@@ -187,10 +188,10 @@ unit_conf.set('BINDIR', prefix / get_option('bindir'))
 unit_conf.set('DOCDIR', docdir)
 configure_file(input : 'data/undershell.service.in', output : 'undershell.service',
   configuration : unit_conf, install : true, install_dir : unitdir)
-install_data('README.md', 'NOTICE.md', 'docs/OPTIONS.md', 'docs/EFFECTS.md', install_dir : docdir)
+install_data('README.md', 'NOTICE.md', 'docs/OPTIONS.md', 'docs/EFFECTS.md', 'docs/PARTICLES.md', install_dir : docdir)
 install_data('LICENSE', install_dir : prefix / get_option('datadir') / 'licenses/undershell')
 
-foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'motion', 'perf', 'render', 'wallset']
+foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles', 'motion', 'perf', 'render', 'wallset']
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep, cpp_args : test_args),
        env : ['UNDERSHELL_DATA_DIR=' + meson.project_source_root() / 'data'])
 endforeach

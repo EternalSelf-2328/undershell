@@ -2,6 +2,7 @@
 #include "docgen.hpp"
 
 #include "effects.hpp"
+#include "particles.hpp"
 #include "schema.hpp"
 
 #include <format>
@@ -144,6 +145,12 @@ std::string optionsMarkdown() {
       md += std::format("| | `{}` | {} | {} | {} |\n", effectKey(e.id, p.key), valuesOf(r), defaultOf(r), p.labelEn);
     }
   }
+  md += "\n### Particles\n\nOver the wallpaper: `pt_<system> = true` turns one on; each has `pt_<system>_amount` (0.1 – 3), "
+        "`_speed` (0.1 – 3), `_size` (0.25 – 3), `_wind` (-1 – 1), `_tint` (a colour that multiplies its own), `_react` (0 – 1, "
+        "with the music), `_behind` (`true`: the wallpaper's subject hides those beyond it) and `_mask` (`all`, `above`, `below`, "
+        "`paint1` … `paint4`, with `_split` for the line). Your own systems: `~/.config/undershell/particles/<name>.json` "
+        "(see [PARTICLES.md](PARTICLES.md)).\n\n| System | |\n|---|---|\n";
+  for (const ParticleDef& d : builtinParticles()) md += std::format("| `pt_{}` | {} |\n", d.id, d.nameEn);
   return md;
 }
 

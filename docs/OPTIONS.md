@@ -407,3 +407,18 @@ The same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, an
 | `fx_grain` | | `true` / `false` | `false` | Film |
 | | `fx_grain_amount` | 0 – 1 | `0.5` | Grain |
 | | `fx_grain_flicker` | 0 – 1 | `0.3` | Flicker |
+
+### Particles
+
+Over the wallpaper: `pt_<system> = true` turns one on; each has `pt_<system>_amount` (0.1 – 3), `_speed` (0.1 – 3), `_size` (0.25 – 3), `_wind` (-1 – 1), `_tint` (a colour that multiplies its own), `_react` (0 – 1, with the music), `_behind` (`true`: the wallpaper's subject hides those beyond it) and `_mask` (`all`, `above`, `below`, `paint1` … `paint4`, with `_split` for the line). Your own systems: `~/.config/undershell/particles/<name>.json` (see [PARTICLES.md](PARTICLES.md)).
+
+| System | |
+|---|---|
+| `pt_snow` | Snow |
+| `pt_rain` | Rain |
+| `pt_petals` | Petals |
+| `pt_fireflies` | Fireflies |
+| `pt_dust` | Floating dust |
+| `pt_embers` | Embers |
+| `pt_bubbles` | Bubbles |
+| `pt_sparks` | Sparks to the beat |

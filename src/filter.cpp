@@ -210,7 +210,9 @@ void FilterWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct)
   m_darkC = noct.color(m_cfg.dark, Color::fromHex("#1b1530"));
   m_lightC = noct.color(m_cfg.light, Color::fromHex("#ffd9a8"));
   effectLibrary().refresh();  // a file added while undershell was not watching
+  particleLibrary().refresh();
   m_fx.configure(cfg.options, noct);
+  m_pt.configure(cfg.options, noct);
 }
 
 void FilterWidget::draw(const DrawContext& ctx) {
@@ -248,6 +250,8 @@ void FilterWidget::draw(const DrawContext& ctx) {
     picture(prog, cur);
     drawPicture(cur, ctx, opacity);
   }
+  // the particles over it, in front of or behind the subject
+  m_pt.draw(ctx, static_cast<float>(cur.imgW), static_cast<float>(cur.imgH));
 }
 
 void FilterWidget::drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity) {

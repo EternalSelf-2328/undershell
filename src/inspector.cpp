@@ -7,6 +7,7 @@
 #include "schema.hpp"
 #include "effects.hpp"
 #include "filter.hpp"
+#include "particles.hpp"
 #include "notes.hpp"
 #include "textwidget.hpp"
 
@@ -653,6 +654,8 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
     // the animated effects, last: built from each effect's own header
     const std::vector<PropSpec> fx = effectRows(w.cfg.options, expanded == "*");
     s.insert(s.end(), fx.begin(), fx.end());
+    const std::vector<PropSpec> pt = particleRows(w.cfg.options, expanded == "*");
+    s.insert(s.end(), pt.begin(), pt.end());
     return s;
   }
   if (w.cfg.type != "clock") return s;
@@ -2341,7 +2344,7 @@ bool App::uiPress(int index, double x) {
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
         // an effect's painted mask: the brush, open on that mask
         const PropSpec& p = m_inspSchema[static_cast<size_t>(c.prop)];
-        if (p.key.starts_with("fx_") && p.key.ends_with("_paint") && p.defText.starts_with("paint") && !m_motion) {
+        if ((p.key.starts_with("fx_") || p.key.starts_with("pt_")) && p.key.ends_with("_paint") && p.defText.starts_with("paint") && !m_motion) {
           m_paintTarget = std::clamp(std::atoi(p.defText.c_str() + 5), 1, 4);
           setPaintMode(true);
           for (auto& ww : m_widgets) ww->needsRender = true;

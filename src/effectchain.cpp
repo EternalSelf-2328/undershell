@@ -72,14 +72,7 @@ void EffectChain::configure(const toml::table& opts, const NoctaliaState& noct) 
   m_moving = m_time;
 }
 
-void EffectChain::tick(const TickContext& ctx) {
-  if (!m_audio) {
-    m_level = {};
-    m_moving = m_time;
-    return;
-  }
-  // the music as four slow numbers: bass, mids, treble (fast up, slower
-  // down) and the beat (the analyser's kick, fading)
+void MusicLevels::tick(const TickContext& ctx) {
   std::array<float, 3> want{};
   if (const auto* b = ctx.audio.bands; b && !b->empty() && !ctx.audio.silent) {
     const size_t n = b->size(), lo = std::max<size_t>(1, n * 15 / 100), mid = std::max(lo + 1, n / 2);
@@ -92,13 +85,22 @@ void EffectChain::tick(const TickContext& ctx) {
   }
   const float dt = static_cast<float>(std::clamp(ctx.dt, 0.0, 0.25));
   for (int i = 0; i < 3; ++i) {
-    const float k = want[i] > m_level[i] ? 1 - std::exp(-dt * 30) : 1 - std::exp(-dt * 5);
-    m_level[i] += (std::clamp(want[i] * 1.6F, 0.0F, 1.0F) - m_level[i]) * k;
+    const float k = want[i] > v[i] ? 1 - std::exp(-dt * 30) : 1 - std::exp(-dt * 5);
+    v[i] += (std::clamp(want[i] * 1.6F, 0.0F, 1.0F) - v[i]) * k;
   }
-  m_level[3] = ctx.audio.onsets ? static_cast<float>(std::clamp(ctx.audio.kickStrength, 0.0, 1.0) * std::exp(-ctx.audio.kickAge * 5))
-                                : std::max(0.0F, m_level[0] - 0.35F) * 1.5F;
-  const float sum = m_level[0] + m_level[1] + m_level[2] + m_level[3];
-  m_moving = m_time || !ctx.audio.silent || sum > 0.004F;
+  v[3] = ctx.audio.onsets ? static_cast<float>(std::clamp(ctx.audio.kickStrength, 0.0, 1.0) * std::exp(-ctx.audio.kickAge * 5))
+                          : std::max(0.0F, v[0] - 0.35F) * 1.5F;
+  live = !ctx.audio.silent || v[0] + v[1] + v[2] + v[3] > 0.004F;
+}
+
+void EffectChain::tick(const TickContext& ctx) {
+  if (!m_audio) {
+    m_level.clear();
+    m_moving = m_time;
+    return;
+  }
+  m_level.tick(ctx);
+  m_moving = m_time || m_level.live;
 }
 
 // an effect whose GLSL does not compile is found, left out and named in the
@@ -200,7 +202,7 @@ void EffectChain::use(int which, const DrawContext& ctx, bool flipY) {
   glActiveTexture(GL_TEXTURE0);
   glUseProgram(prog.id());
   glUniform1f(prog.uniform("u_time"), static_cast<float>(std::fmod(ctx.now - m_start, 20000.0)));
-  glUniform4f(prog.uniform("u_audio"), m_level[0], m_level[1], m_level[2], m_level[3]);
+  glUniform4f(prog.uniform("u_audio"), m_level.v[0], m_level.v[1], m_level.v[2], m_level.v[3]);
   glUniform1i(prog.uniform("u_quality"), perfKnobs().quality);
   glUniform1i(prog.uniform("u_wrap"), ctx.fillMode == 4 && !flipY ? 1 : 0);
   glUniform1i(prog.uniform("u_flipY"), flipY ? 1 : 0);

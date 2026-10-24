@@ -695,7 +695,8 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
     b += "depth = false              # true: only the background, behind the wallpaper's subject\n"
          "layer = -999               # under every other widget\n"
          "# animated effects: fx_waves fx_ripple fx_flow fx_sway fx_parallax fx_godrays fx_shine fx_twinkle\n"
-         "# fx_pulse fx_mist fx_grain fx_vhs fx_chroma = true (options: docs/OPTIONS.md, your own: docs/EFFECTS.md)\n";
+         "# fx_pulse fx_mist fx_grain fx_vhs fx_chroma = true (options: docs/OPTIONS.md, your own: docs/EFFECTS.md)\n"
+         "# particles: pt_snow pt_rain pt_petals pt_fireflies pt_dust pt_embers pt_bubbles pt_sparks = true (docs/PARTICLES.md)\n";
   } else if (type == "weather") {
     b += std::format("layout = \"{}\"           # now card week hours\n", look.empty() ? "now" : look);
     b += "location = \"\"            # your city (\"Quito, Ecuador\") or \"lat, lon\": only Open-Meteo sees it\n"

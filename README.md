@@ -423,6 +423,20 @@ that GPU at 30 fps. It stays at full resolution (a softer copy of the
 wallpaper would show at once); under load the governor lowers the effects'
 quality and the lights pass's resolution instead.
 
+### Particles
+
+The wallpaper widget also lays **particles** over the wallpaper: **snow**,
+**rain**, **petals**, **fireflies**, **floating dust**, **embers**,
+**bubbles** and **sparks to the beat**. Each has its amount, speed, size,
+wind, tint and how much it follows the music, and two things a plain overlay
+cannot do: **behind the subject** (each particle lives on a depth plane, so
+snow falls behind the person in the picture and in front of the mountains)
+and **where** (above or below a line, or a mask you paint). The simulation
+runs on the CPU at a fixed step (30 or 60 Hz by the performance level), the
+counts follow the level too, and each system is one instanced draw: 700
+snowflakes take 0.02 ms of CPU per frame on the HD 520. Your own systems are
+JSON files in `~/.config/undershell/particles/` ([docs/PARTICLES.md](docs/PARTICLES.md)).
+
 The same effects work on **every other widget** too (a clock in the wind, a
 picture under water, a title with a shine): the "Animated effects" section
 at the end of any widget's inspector, or `fx_<effect> = true` in its block.
@@ -1283,6 +1297,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/weather.*`, `src/weatherfeed.*` | the weather widget and its Open-Meteo feed (geocoding, forecast, disk cache) |
 | `src/net.*` | HTTPS fetches (http/https only, size-limited) and the cache folder |
 | `src/filter.*` | the wallpaper widget: the wallpaper drawn again through colour adjustments and the animated effects (one pass, plus a smaller one for the lights) |
+| `src/particles.*`, `src/pt/*.inc` | particles over the wallpaper: the JSON format, the built-in systems, your own folder, the fixed-step simulation and the instanced sprites |
 | `src/effectchain.*`, `src/fxwidget.*` | the effects of one widget ready to draw (options, music, programs, lights pass), and the wrapper that gives them to every widget type |
 | `src/effects.*`, `src/fx/*.inc` | animated effects: the annotated format, the built-in effects, your own folder, joining them into one shader, their inspector rows |
 | `src/shape.*` | the shape widget (one distance shader) |
