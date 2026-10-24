@@ -9,6 +9,7 @@
 #pragma once
 
 #include "common.hpp"
+#include "particles.hpp"
 
 #include <toml++/toml.hpp>
 
@@ -65,6 +66,7 @@ struct WeLayer {
   };
   std::vector<Fx> fx;
   int unmapped = 0;              // effects with no counterpart yet
+  int particle = -1;             // a particle system's object: its index in WeScene::particles
 };
 
 struct WeScene {
@@ -75,6 +77,9 @@ struct WeScene {
   std::vector<std::string> needs;
   int skipped = 0;                    // objects not drawn yet (text, models, sounds, particles)
   int effects = 0, mapped = 0;        // Wallpaper Engine effects met, and drawn with undershell's
+  // particle systems, in undershell's terms (particles.hpp): units of a
+  // 1080-high scene, y down; Texture sprites keyed by their texture path
+  std::vector<ParticleDef> particles;
 };
 
 // Reads an unpacked scene. `assets` is where files missing from the scene

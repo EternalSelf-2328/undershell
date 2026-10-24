@@ -360,10 +360,13 @@ void ParticleSystem::spawn(float aspect) {
   if (m_n >= m_cap) return;
   const size_t i = m_n++;
   const float W = 1080 * aspect, H = 1080;
+  float away = 0, awayX = 0, awayY = 0;  // the direction from the emitter's centre
   if (m_def.sphere) {
-    const float a = rnd() * kTau, r = std::sqrt(rnd()) * m_def.radius * H;
+    const float a = rnd() * kTau, lo = std::min(m_def.radiusMin, m_def.radius);
+    const float r = (lo + (m_def.radius - lo) * std::sqrt(rnd())) * H;
     m_x[i] = m_def.ox * W + std::cos(a) * r;
     m_y[i] = m_def.oy * H + std::sin(a) * r;
+    awayX = std::cos(a), awayY = std::sin(a), away = 1;
   } else {
     m_x[i] = (m_def.ox + (rnd() - 0.5F) * m_def.sx) * W;
     m_y[i] = (m_def.oy + (rnd() - 0.5F) * m_def.sy) * H;
@@ -371,9 +374,22 @@ void ParticleSystem::spawn(float aspect) {
   m_px[i] = m_x[i], m_py[i] = m_y[i];
   m_depth[i] = range(m_def.depth);
   const float near = 0.55F + 0.9F * m_depth[i];  // nearer: bigger and faster
-  const float dir = range(m_def.dir) * kTau / 360, sp = range(m_def.speed) * near * m_set.speed;
-  m_vx[i] = std::cos(dir) * sp;
-  m_vy[i] = std::sin(dir) * sp;
+  if (m_def.velBox) {
+    m_vx[i] = (m_def.vel[0] + (m_def.vel[2] - m_def.vel[0]) * rnd()) * near * m_set.speed;
+    m_vy[i] = (m_def.vel[1] + (m_def.vel[3] - m_def.vel[1]) * rnd()) * near * m_set.speed;
+  } else {
+    const float dir = range(m_def.dir) * kTau / 360, sp = range(m_def.speed) * near * m_set.speed;
+    m_vx[i] = std::cos(dir) * sp;
+    m_vy[i] = std::sin(dir) * sp;
+  }
+  if (m_def.radial[1] > 0 && away > 0) {
+    const float sp = range(m_def.radial) * near * m_set.speed;
+    m_vx[i] += awayX * sp, m_vy[i] += awayY * sp;
+  }
+  if (m_def.jitter[1] > 0) {
+    const float a = rnd() * kTau, sp = range(m_def.jitter) * near * m_set.speed;
+    m_vx[i] += std::cos(a) * sp, m_vy[i] += std::sin(a) * sp;
+  }
   m_size[i] = range(m_def.size) * near * m_set.size;
   m_life[i] = range(m_def.life);
   m_age[i] = 0;
@@ -507,6 +523,8 @@ size_t ParticleSystem::fill(std::vector<float>& out, float aspect, const MusicLe
     o[0] = x, o[1] = y, o[2] = size, o[3] = m_rot[i];
     o[4] = c[0] * m_set.tint.r * a, o[5] = c[1] * m_set.tint.g * a, o[6] = c[2] * m_set.tint.b * a, o[7] = a;
     o[8] = m_vx[i] + m_set.wind * 90 * near, o[9] = m_vy[i], o[10] = m_depth[i], o[11] = m_seed[i];
+    if (m_def.frames > 1)  // a sprite sheet: the frame due at its age
+      o[11] = static_cast<float>(static_cast<int>(m_age[i] / std::max(0.01F, m_def.sheetTime) * m_def.frames) % m_def.frames);
     ++n;
   }
   out.resize(n * kFloats);
@@ -525,14 +543,16 @@ layout(location = 2) in vec4 i_col;  // premultiplied
 layout(location = 3) in vec4 i_b;    // vx, vy, depth, seed
 uniform vec2 u_size;     // the surface, logical px
 uniform float u_unit;    // logical px per unit
+uniform vec2 u_offset;   // where unit 0 lands
 uniform float u_streak;  // stretched by this many seconds of travel
 out vec2 v_q;
 out vec4 v_col;
 out vec2 v_p;
 out float v_depth;
+out float v_frame;
 void main() {
     vec2 q = a_pos * 2.0 - 1.0;
-    vec2 c = i_a.xy * u_unit;
+    vec2 c = i_a.xy * u_unit + u_offset;
     float hw = i_a.z * 0.5 * u_unit;
     vec2 ax, ay;
     if (u_streak > 0.0) {
@@ -551,6 +571,7 @@ void main() {
     v_col = i_col;
     v_p = p;
     v_depth = i_b.z;
+    v_frame = i_b.w;
     gl_Position = vec4(p.x / u_size.x * 2.0 - 1.0, 1.0 - p.y / u_size.y * 2.0, 0.0, 1.0);
 }
 )";
@@ -561,7 +582,11 @@ in vec2 v_q;
 in vec4 v_col;
 in vec2 v_p;
 in float v_depth;
+in float v_frame;
 out vec4 fragColor;
+uniform sampler2D u_spriteTex;  // sprite 8: a picture
+uniform vec2 u_cells;           // its sprite sheet's columns and rows
+uniform int u_alphaRed;         // its red is the coverage
 uniform vec2 u_size;
 uniform vec2 u_img;
 uniform int u_fill;
@@ -620,7 +645,17 @@ float sprite(vec2 q) {
 }
 
 void main() {
-    float a = sprite(v_q);
+    vec3 rgb = vec3(1.0);
+    float a;
+    if (u_sprite == 8) {
+        vec2 cell = vec2(mod(v_frame, u_cells.x), floor(v_frame / u_cells.x));
+        vec4 t = texture(u_spriteTex, (cell + v_q * 0.5 + 0.5) / u_cells);
+        if (u_alphaRed == 1) t = vec4(1.0, 1.0, 1.0, t.r);
+        rgb = t.rgb;
+        a = t.a;
+    } else {
+        a = sprite(v_q);
+    }
     if (a <= 0.003) discard;
     vec2 uv;
     bool on = wallUv(v_p, uv);
@@ -634,7 +669,7 @@ void main() {
         a *= u_fxmasksOn > 0.5 && on ? texture(u_fxmasks, uv)[u_mask - 5] : 0.0;
     }
     if (a <= 0.003) discard;
-    fragColor = v_col * a;
+    fragColor = vec4(v_col.rgb * rgb, v_col.a) * a;
 }
 )";
 
@@ -681,6 +716,23 @@ void ParticleField::configure(const toml::table& opts, const NoctaliaState& noct
   m_sys = std::move(next);
 }
 
+void ParticleField::configureDefs(const std::vector<ParticleDef>& defs) {
+  std::vector<std::unique_ptr<ParticleSystem>> next;
+  for (size_t i = 0; i < defs.size(); ++i) {
+    const ParticleDef& d = defs[i];
+    // the same system, still running, stays as it is
+    auto same = std::ranges::find_if(m_sys, [&](const auto& p) { return p && p->def().id == d.id && p->def().hash == d.hash; });
+    if (same != m_sys.end()) next.push_back(std::move(*same));
+    else next.push_back(std::make_unique<ParticleSystem>(d, ParticleSettings{}, fnv(d.id) ^ (0x9e3779b97f4a7c15ULL * (i + 1))));
+  }
+  m_sys = std::move(next);
+}
+
+void ParticleField::setPlacement(float unit, float offX, float offY, float aspect) {
+  m_placed = true;
+  m_unit = unit, m_offX = offX, m_offY = offY, m_aspect = aspect;
+}
+
 bool ParticleField::refresh() {
   if (!particleLibrary().refresh()) return false;
   configure(m_opts, m_noct);
@@ -712,13 +764,15 @@ void ParticleField::tick(const TickContext& ctx) {
   for (auto& s : m_sys) s->advance(dt, m_aspect, m_music);
 }
 
-void ParticleField::draw(const DrawContext& ctx, float imgW, float imgH) {
+void ParticleField::draw(const DrawContext& ctx, float imgW, float imgH, int only) {
   if (m_sys.empty() || ctx.w <= 0 || ctx.h <= 0) return;
-  m_aspect = ctx.w / ctx.h;
+  if (!m_placed) m_aspect = ctx.w / ctx.h;
   if (!m_prog.valid()) m_prog.create(kVert, kFrag, "particles");
   glUseProgram(m_prog.id());
   glUniform2f(m_prog.uniform("u_size"), ctx.w, ctx.h);
-  glUniform1f(m_prog.uniform("u_unit"), ctx.h / 1080.0F);
+  glUniform1f(m_prog.uniform("u_unit"), m_placed ? m_unit : ctx.h / 1080.0F);
+  glUniform2f(m_prog.uniform("u_offset"), m_placed ? m_offX : 0.0F, m_placed ? m_offY : 0.0F);
+  glUniform1i(m_prog.uniform("u_spriteTex"), 5);
   glUniform2f(m_prog.uniform("u_img"), imgW, imgH);
   glUniform1i(m_prog.uniform("u_fill"), ctx.fillMode);
   glUniform1i(m_prog.uniform("u_depth"), 1);
@@ -734,10 +788,23 @@ void ParticleField::draw(const DrawContext& ctx, float imgW, float imgH) {
   if (!m_vbo) glGenBuffers(1, &m_vbo);
   static constexpr std::array<GLfloat, 12> kQuad = {0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1};
   glEnable(GL_BLEND);
-  for (const auto& s : m_sys) {
+  for (size_t si = 0; si < m_sys.size(); ++si) {
+    if (only >= 0 && static_cast<size_t>(only) != si) continue;
+    const auto& s = m_sys[si];
+    const ParticleDef& d = s->def();
+    GLuint picture = 0;
+    bool red = false;
+    if (d.sprite == ParticleDef::Texture) {
+      if (m_textures) std::tie(picture, red) = m_textures(d.texture);
+      if (!picture) continue;  // not loaded (yet)
+      glActiveTexture(GL_TEXTURE5);
+      glBindTexture(GL_TEXTURE_2D, picture);
+      glActiveTexture(GL_TEXTURE0);
+      glUniform2f(m_prog.uniform("u_cells"), static_cast<float>(std::max(1, d.cols)), static_cast<float>(std::max(1, d.rows)));
+      glUniform1i(m_prog.uniform("u_alphaRed"), red ? 1 : 0);
+    }
     const size_t n = s->fill(m_buf, m_aspect, m_music);
     if (n == 0) continue;
-    const ParticleDef& d = s->def();
     glUniform1i(m_prog.uniform("u_sprite"), static_cast<int>(d.sprite));
     glUniform1f(m_prog.uniform("u_streak"), d.streak);
     glUniform1f(m_prog.uniform("u_behind"), s->settings().behind ? 1.0F : 0.0F);

@@ -87,7 +87,189 @@ float floatOf(const json& v, float def) {
   return f.empty() ? def : f[0];
 }
 
+// a point of an object (its parents' transforms applied), scene units, y up
+std::array<float, 2> worldPoint(const WeScene& scene, int parent, float x, float y) {
+  for (int depth = 0; parent >= 0 && depth < 32; ++depth) {
+    const WeLayer* p = nullptr;
+    for (const WeLayer& l : scene.layers)
+      if (l.id == parent) p = &l;
+    if (!p) break;
+    const float c = std::cos(p->angle), s = std::sin(p->angle), sx = x * p->sx, sy = y * p->sy;
+    x = p->ox + sx * c - sy * s, y = p->oy + sx * s + sy * c;
+    parent = p->parent;
+  }
+  return {x, y};
+}
+
 }  // namespace
+
+// One particle object of a scene, into undershell's particle terms: units of
+// a 1080-high scene with y down (k = 1080 / height). The field names were
+// read from the scenes' own files.
+template <typename Locate, typename TexFile>
+bool weParticle(const json& o, const WeProject& project, WeScene& out, Locate& locate, TexFile& texFile, ParticleDef& d) {
+  const json p = readJson(locate(o["particle"].get<std::string>()));
+  if (!p.is_object()) return false;
+  const float H = out.height, W = out.width, k = 1080 / H, aspect = W / H;
+  json io = o.value("instanceoverride", json::object());
+  if (!io.is_object()) io = json::object();
+  auto over = [&](const char* key) {
+    const auto f = io.is_object() && io.contains(key) ? floats(valueOf(io[key], project)) : std::vector<float>();
+    return f.empty() ? 1.0F : f[0];
+  };
+  float sc = 1;
+  if (const auto s = floats(valueOf(o.value("scale", json()), project)); !s.empty()) sc = std::max(0.01F, std::abs(s[0]));
+  const float ks = k * sc;  // distances and sizes follow the object's scale
+  std::array<float, 2> origin{0, 0};
+  if (const auto v = floats(valueOf(o.value("origin", json()), project)); v.size() >= 2) origin = {v[0], v[1]};
+  origin = worldPoint(out, o.value("parent", -1), origin[0], origin[1]);
+  d.id = "we" + std::to_string(o.value("id", 0));
+  d.nameEn = d.nameEs = o.value("name", d.id);
+  d.hash = std::hash<std::string>{}(p.dump() + io.dump());
+  d.max = static_cast<int>(std::clamp(p.value("maxcount", 100.0F) * over("count"), 1.0F, 5000.0F));
+  d.prewarm = std::clamp(p.value("starttime", 0.0F), 0.0F, 30.0F);
+  // what it is drawn with: the material's texture, and its blending
+  const json mat = readJson(locate(p.value("material", std::string())));
+  const json pass = mat.is_object() && mat.contains("passes") && mat["passes"].is_array() && !mat["passes"].empty() ? mat["passes"][0] : json();
+  if (!pass.is_object()) return false;
+  // a refracting system bends what is behind it through a normal map: not a sprite to draw
+  if (const json combos = pass.value("combos", json::object()); combos.is_object() && combos.value("REFRACT", 0) != 0) return false;
+  d.additive = pass.value("blending", std::string()) == "additive";
+  const json texs = pass.value("textures", json::array());
+  if (!texs.is_array() || texs.empty() || !texs[0].is_string()) return false;
+  d.sprite = ParticleDef::Texture;
+  d.texture = "materials/" + texs[0].get<std::string>();
+  if (!texFile(d.texture + ".tex") && std::ranges::find(out.needs, d.texture + ".tex") == out.needs.end()) out.needs.push_back(d.texture + ".tex");
+  // a sprite sheet: its frames, from the texture's description
+  if (const json tj = readJson(locate(d.texture + ".tex-json")); tj.is_object() && tj.contains("spritesheetsequences")) {
+    const json& seq = tj["spritesheetsequences"];
+    if (seq.is_array() && !seq.empty() && seq[0].is_object()) {
+      d.frames = std::clamp(seq[0].value("frames", 1), 1, 1024);
+      d.sheetTime = std::max(0.05F, seq[0].value("duration", 1.0F));
+      // the grid comes from the cell size against the picture's (read when loaded); a square guess until then
+      d.cols = std::max(1, static_cast<int>(std::ceil(std::sqrt(static_cast<float>(d.frames)))));
+      d.rows = (d.frames + d.cols - 1) / d.cols;
+      d.cellW = seq[0].value("width", 0), d.cellH = seq[0].value("height", 0);
+    }
+  }
+  // the emitter
+  json em = p.contains("emitter") && p["emitter"].is_array() && !p["emitter"].empty() ? p["emitter"][0] : json::object();
+  if (!em.is_object()) em = json::object();
+  const std::string emitter = em.value("name", std::string("sphererandom"));
+  std::array<float, 2> eo{0, 0};
+  if (const auto v = floats(em.value("origin", json())); v.size() >= 2) eo = {v[0] * sc, v[1] * sc};
+  const float ex = (origin[0] + eo[0]) * k, ey = (H - origin[1] - eo[1]) * k;
+  d.ox = ex / (1080 * aspect), d.oy = ey / 1080;
+  d.rate = std::clamp(em.value("rate", 5.0F) * over("rate"), 0.0F, 5000.0F);
+  const auto dist = floats(em.value("distancemax", json(0.0)));
+  if (emitter == "boxrandom") {
+    d.sphere = false;
+    const float bx = dist.empty() ? 0 : dist[0], by = dist.size() > 1 ? dist[1] : bx;
+    d.sx = 2 * bx * ks / (1080 * aspect), d.sy = 2 * by * ks / 1080;
+  } else {
+    d.sphere = true;
+    d.radius = (dist.empty() ? 0 : dist[0]) * ks / 1080;
+    d.radiusMin = floatOf(em.value("distancemin", json(0.0)), 0) * ks / 1080;
+    const float lo = em.value("speedmin", 0.0F), hi = em.value("speedmax", lo);
+    d.radial = {lo * ks, hi * ks};
+  }
+  // where each starts from
+  const float speed = over("speed"), size = over("size"), life = over("lifetime"), alpha = over("alpha");
+  for (const json& in : p.value("initializer", json::array())) {
+    if (!in.is_object()) continue;
+    const std::string n = in.value("name", std::string());
+    auto lohi = [&](float defLo, float defHi) {
+      return std::array<float, 2>{floatOf(in.value("min", json(defLo)), defLo), floatOf(in.value("max", json(defHi)), defHi)};
+    };
+    if (n == "lifetimerandom") d.life = {lohi(1, 1)[0] * life, lohi(1, 1)[1] * life};
+    else if (n == "sizerandom") d.size = {lohi(20, 20)[0] * ks * size, lohi(20, 20)[1] * ks * size};
+    else if (n == "alpharandom") d.alpha = {std::clamp(lohi(1, 1)[0] * alpha, 0.0F, 1.0F), std::clamp(lohi(1, 1)[1] * alpha, 0.0F, 1.0F)};
+    else if (n == "colorrandom") {
+      auto col = [](const json& j) {
+        auto f = floats(j);
+        while (f.size() < 3) f.push_back(255);
+        const float div = std::max({f[0], f[1], f[2]}) > 1.001F ? 255.0F : 1.0F;
+        return Color{f[0] / div, f[1] / div, f[2] / div, 1};
+      };
+      d.c0 = col(in.value("min", json("255 255 255")));
+      d.c1 = col(in.value("max", json("255 255 255")));
+    } else if (n == "velocityrandom") {
+      const auto lo = floats(in.value("min", json("0 0 0"))), hi = floats(in.value("max", json("0 0 0")));
+      if (lo.size() >= 2 && hi.size() >= 2) {
+        d.velBox = true;  // y flips: up in the scene is down here
+        d.vel = {lo[0] * ks * speed, -hi[1] * ks * speed, hi[0] * ks * speed, -lo[1] * ks * speed};
+      }
+    } else if (n == "rotationrandom") {
+      const auto lo = floats(in.value("min", json(0.0))), hi = floats(in.value("max", json(0.0)));
+      const float a = lo.empty() ? 0 : lo.back(), b = hi.empty() ? 0 : hi.back();
+      d.rot = {a * 57.29578F, b * 57.29578F};
+    } else if (n == "angularvelocityrandom") {
+      const auto lo = floats(in.value("min", json(0.0))), hi = floats(in.value("max", json(0.0)));
+      d.spin = {(lo.empty() ? 0 : -lo.back()) * 57.29578F, (hi.empty() ? 0 : -hi.back()) * 57.29578F};
+    } else if (n == "turbulentvelocityrandom") {
+      d.jitter = {in.value("speedmin", 0.0F) * ks * speed, in.value("speedmax", 0.0F) * ks * speed};
+    }
+  }
+  if (const auto c = floats(valueOf(io.value("colorn", json()), project)); c.size() >= 3)
+    for (Color* col : {&d.c0, &d.c1}) col->r *= c[0], col->g *= c[1], col->b *= c[2];
+  // what changes as they live
+  for (const json& op : p.value("operator", json::array())) {
+    if (!op.is_object()) continue;
+    const std::string n = op.value("name", std::string());
+    ParticleOp x;
+    if (n == "movement") {
+      if (const auto g = floats(op.value("gravity", json("0 0 0"))); g.size() >= 2 && (g[0] != 0 || g[1] != 0)) {
+        x.type = ParticleOp::Gravity;
+        x.v = {g[0] * ks, -g[1] * ks};
+        d.ops.push_back(x);
+      }
+      if (const float drag = op.value("drag", 0.0F); drag > 0) {
+        x = {};
+        x.type = ParticleOp::Drag;
+        x.v[0] = drag;
+        d.ops.push_back(x);
+      }
+    } else if (n == "alphafade") {
+      x.type = ParticleOp::Fade;
+      x.v = {std::clamp(op.value("fadeintime", 0.0F), 0.0F, 1.0F), std::clamp(op.value("fadeouttime", 0.0F), 0.0F, 1.0F)};
+      d.ops.push_back(x);
+    } else if (n == "sizechange") {
+      x.type = ParticleOp::SizeChange;
+      const float a = floatOf(op.value("startvalue", json(1.0)), 1), b = floatOf(op.value("endvalue", json(1.0)), 1);
+      x.v[0] = a > 0.001F ? b / a : b;
+      d.ops.push_back(x);
+    } else if (n == "colorchange") {
+      x.type = ParticleOp::ColorChange;
+      auto f = floats(op.value("endvalue", json("1 1 1")));
+      while (f.size() < 3) f.push_back(1);
+      const float div = std::max({f[0], f[1], f[2]}) > 1.001F ? 255.0F : 1.0F;
+      x.color = Color{f[0] / div, f[1] / div, f[2] / div, 1};
+      d.ops.push_back(x);
+    } else if (n == "oscillatealpha" || n == "oscillateposition") {
+      x.type = n == "oscillatealpha" ? ParticleOp::OscAlpha : ParticleOp::OscPosition;
+      const float amount = op.value("scalemax", n == "oscillatealpha" ? 0.5F : 10.0F);
+      x.v = {op.value("frequencymin", 0.5F), op.value("frequencymax", 1.0F),
+             n == "oscillatealpha" ? std::clamp(amount, 0.0F, 1.0F) : amount * ks};
+      d.ops.push_back(x);
+    } else if (n == "turbulence") {
+      x.type = ParticleOp::Turbulence;
+      x.v = {std::max(0.0001F, op.value("scale", 0.005F) / ks), op.value("timescale", 1.0F), op.value("speedmax", 50.0F) * ks};
+      d.ops.push_back(x);
+    } else if (n == "vortex") {
+      x.type = ParticleOp::Vortex;
+      x.v = {d.ox, d.oy, op.value("speedouter", 50.0F) * ks};
+      d.ops.push_back(x);
+    }
+  }
+  // drawn as sprites, or stretched along their travel
+  for (const json& r : p.value("renderer", json::array())) {
+    if (!r.is_object()) continue;
+    const std::string n = r.value("name", std::string());
+    if (n == "spritetrail") d.streak = std::clamp(r.value("length", 0.05F), 0.0F, 0.5F);
+    else if (n == "ropetrail") d.streak = 0.08F;
+  }
+  return true;
+}
 
 std::vector<std::string> weWorkshopDirs() {
   std::vector<std::string> dirs;
@@ -184,7 +366,8 @@ bool readWeScene(const std::string& unpacked, const std::string& assets, const W
     }
     return false;
   };
-  const json general = scene.value("general", json::object());
+  json general = scene.value("general", json::object());
+  if (!general.is_object()) general = json::object();
   if (general.contains("orthogonalprojection") && general["orthogonalprojection"].is_object()) {
     const json& op = general["orthogonalprojection"];
     out.width = std::clamp(op.value("width", 1920.0F), 16.0F, 16384.0F);
@@ -193,6 +376,25 @@ bool readWeScene(const std::string& unpacked, const std::string& assets, const W
   if (const auto c = floats(valueOf(general.value("clearcolor", json()), project)); c.size() >= 3) out.clear = Color{c[0], c[1], c[2], 1};
   for (const json& o : scene.value("objects", json::array())) {
     if (!o.is_object()) continue;
+    if (o.contains("particle") && o["particle"].is_string()) {
+      WeLayer node;
+      node.id = o.value("id", -1);
+      node.parent = o.value("parent", -1);
+      node.visible = false;
+      node.compose = true;
+      const json v = valueOf(o.value("visible", json(true)), project);
+      ParticleDef def;
+      std::string why;
+      if ((!v.is_boolean() || v.get<bool>()) && weParticle(o, project, out, locate, texFile, def)) {
+        node.particle = static_cast<int>(out.particles.size());
+        out.particles.push_back(std::move(def));
+      } else {
+        ++out.skipped;
+      }
+      if (const auto p = floats(valueOf(o.value("origin", json()), project)); p.size() >= 2) node.ox = p[0], node.oy = p[1];
+      out.layers.push_back(node);
+      continue;
+    }
     if (!o.contains("image") || !o["image"].is_string()) {
       ++out.skipped;
       // a parent that is not drawn still places its children

@@ -24,6 +24,7 @@
 #include <toml++/toml.hpp>
 
 #include <array>
+#include <functional>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -44,7 +45,7 @@ struct ParticleDef {
   int max = 200;          // at "high", amount 1
   float rate = 20;        // per second
   float prewarm = 0;      // seconds simulated before the first frame
-  enum Sprite { Dot, Glow, Flake, Streak, Petal, Bubble, Spark, Leaf } sprite = Dot;
+  enum Sprite { Dot, Glow, Flake, Streak, Petal, Bubble, Spark, Leaf, Texture } sprite = Dot;
   bool additive = false;
   float streak = 0;       // stretched along the velocity by this many seconds of travel
   float react = 0;        // default response to music
@@ -54,6 +55,16 @@ struct ParticleDef {
   std::array<float, 2> life{4, 8}, size{3, 6}, speed{20, 60}, dir{90, 90}, alpha{1, 1}, rot{0, 0}, spin{0, 0}, depth{0.5F, 0.5F};
   Color c0, c1;
   std::vector<ParticleOp> ops;
+  // read from other formats (a Wallpaper Engine scene's particles):
+  std::string texture;        // Texture: the picture's key for the drawer
+  int frames = 1, cols = 1, rows = 1;  // a sprite sheet: frames in a grid
+  int cellW = 0, cellH = 0;            // its cell size, when known (the grid follows from the picture)
+  float sheetTime = 1;        // seconds for the whole sequence
+  bool velBox = false;        // velocity drawn from a box (min x, min y, max x, max y; y down)
+  std::array<float, 4> vel{};
+  std::array<float, 2> radial{0, 0};  // speed away from the emitter's centre
+  std::array<float, 2> jitter{0, 0};  // speed in a random direction, added
+  float radiusMin = 0;        // a disc emitter's inner edge (fraction of the height)
 };
 
 [[nodiscard]] ParticleDef parseParticles(const std::string& id, const std::string& text);
@@ -134,6 +145,16 @@ public:
   ParticleField& operator=(const ParticleField&) = delete;
   ~ParticleField();
   void configure(const toml::table& opts, const NoctaliaState& noct);
+  // systems given directly (a scene's own) instead of pt_<id> options
+  void configureDefs(const std::vector<ParticleDef>& defs);
+  // where their units land on the surface: px = pos * unit + offset, in a
+  // space of this width / height (else the surface's 1080-high units)
+  void setPlacement(float unit, float offX, float offY, float aspect);
+  // a Texture sprite's picture by its key: the GL texture, and whether its
+  // red is the coverage (a one-channel picture)
+  using TextureLookup = std::function<std::pair<GLuint, bool>(const std::string&)>;
+  void setTextures(TextureLookup lookup) { m_textures = std::move(lookup); }
+  [[nodiscard]] size_t systems() const { return m_sys.size(); }
   bool refresh();
   [[nodiscard]] bool empty() const { return m_sys.empty(); }
   [[nodiscard]] bool audio() const;
@@ -141,7 +162,7 @@ public:
   void tick(const TickContext& ctx);
   // over what is drawn, in the surface's logical px; `img` and `fill` place
   // the picture (for the depth field and the masks)
-  void draw(const DrawContext& ctx, float imgW, float imgH);
+  void draw(const DrawContext& ctx, float imgW, float imgH, int only = -1);  // only: one system by index
   [[nodiscard]] size_t count() const;
 
 private:
@@ -150,6 +171,9 @@ private:
   std::vector<std::unique_ptr<ParticleSystem>> m_sys;
   MusicLevels m_music;
   float m_aspect = 16.0F / 9;
+  bool m_placed = false;
+  float m_unit = 1, m_offX = 0, m_offY = 0;
+  TextureLookup m_textures;
   double m_last = -1;
   Program m_prog;
   GLuint m_vbo = 0;

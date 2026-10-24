@@ -10,12 +10,14 @@
 #pragma once
 
 #include "effectchain.hpp"
+#include "particles.hpp"
 #include "gl.hpp"
 #include "video.hpp"
 #include "wallstore.hpp"
 #include "wescene.hpp"
 #include "widget.hpp"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -50,6 +52,7 @@ public:
   struct Pixels {
     int w = 0, h = 0;
     std::vector<uint8_t> rgba;  // straight alpha
+    int format = -1;            // the .tex format (9: one channel, its red the coverage)
   };
   // Reads what the helper wrote for one texture (`base` without extension):
   // .usimg (LZ4) or .png/.jpg. False when none is there or it is broken.
@@ -75,6 +78,7 @@ private:
     ~LayerFx();
   };
   void start();
+  static void loadScene(const std::shared_ptr<Load>& load, const std::string& id, const std::function<void(std::string)>& fail);
   void drawCover(GLuint tex, float texW, float texH, const DrawContext& ctx, float alpha);
 
   std::string m_scene, m_speedText;
@@ -87,6 +91,8 @@ private:
   std::vector<std::string> m_layerTex, m_layerMasks;
   std::map<size_t, std::unique_ptr<LayerFx>> m_fx;  // by layer index
   NoctaliaState m_noct;
+  ParticleField m_pt;  // the scene's particle systems
+  std::map<std::string, int> m_formats;  // texture key -> .tex format
   bool m_moving = false, m_audio = false;
   VideoSource m_video;
   WallpaperFade m_preview;

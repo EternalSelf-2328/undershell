@@ -117,7 +117,7 @@ bool safeName(const std::string& n) {
 }
 
 bool textLike(const std::string& n) {
-  static const char* kExt[] = {".json", ".frag", ".vert", ".glsl", ".h", ".txt"};
+  static const char* kExt[] = {".json", ".tex-json", ".frag", ".vert", ".glsl", ".h", ".txt"};
   return std::ranges::any_of(kExt, [&](const char* e) { return n.ends_with(e); });
 }
 

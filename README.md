@@ -460,8 +460,18 @@ confined with Landlock to the scene's folder and its output, into
 `~/.cache/undershell/scenes` (the twelve most recent stay); then they are
 drawn layer by layer, with their nesting, alignment, colour and blending,
 in 0.1 to 0.5 s here. While one loads, its preview picture stands in.
-Wallpaper Engine's own effects, particles, text and puppet animations are
-not drawn yet: that is the next step.
+
+Their **effects** run through undershell's own (written from scratch):
+what never moves (opacity masks, tints) is baked into the layer once; water
+waves, ripples, flowing water, wind and shaking, pulses, shines, light rays,
+film grain, VHS and scrolling move through the effects of the section above,
+each kept inside its own mask. Their **particles** run on undershell's
+particle engine, with their textures and sprite sheets, in the order they
+stand among the layers. Here that draws 2016 of the 2831 effects and 485
+particle systems of 126 scenes; the rest is authors' own shaders, scripts
+(SceneScript), text and puppet animations, not drawn yet. A layer with
+effects is processed at the size it shows on screen, so a typical scene
+costs 1 to 7 ms of GPU per frame at 1366×768 on an HD 520.
 
 Nothing of Wallpaper Engine ships with undershell, and undershell is not
 affiliated with it: it only reads, at run time, what you installed.

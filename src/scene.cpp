@@ -151,6 +151,10 @@ std::string SceneWidget::helperPath() {
 
 bool SceneWidget::loadTexture(const std::string& base, Pixels& out) {
   std::error_code ec;
+  if (const std::string info = readFile(base + ".info"); !info.empty()) {  // "w h imageW imageH format"
+    int v[5] = {};
+    if (std::sscanf(info.c_str(), "%d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5) out.format = v[4];
+  }
 #ifdef US_HAVE_LZ4
   if (fs::exists(base + ".usimg", ec)) {
     const std::string d = readFile(base + ".usimg");
@@ -215,6 +219,7 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
   for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
   m_tex.clear();
   m_fx.clear();
+  m_pt.configureDefs({});
   m_ready = false;
   m_video.close();
   m_model = {};
@@ -232,6 +237,17 @@ void SceneWidget::start() {
       load->error = std::move(why);
       load->done = true;
     };
+    // a stranger's scene can hold anything: whatever it makes throw is its error, not undershell's
+    try {
+      loadScene(load, id, fail);
+    } catch (const std::exception& ex) {
+      fail(std::string("could not be read: ") + ex.what());
+    }
+  }).detach();
+}
+
+void SceneWidget::loadScene(const std::shared_ptr<Load>& load, const std::string& id, const std::function<void(std::string)>& fail) {
+  {
     if (id.empty()) return fail("no scene chosen");
     const std::string dir = weWallpaperDir(id);
     if (dir.empty()) return fail("not found: " + id);
@@ -363,6 +379,17 @@ void SceneWidget::start() {
       layerMasks[i] = "mask:" + std::to_string(i);
       pixels[layerMasks[i]] = std::move(masks);
     }
+    // the particles' pictures, and their sprite sheets' grids from the real size
+    for (ParticleDef& d : scene.particles) {
+      const Pixels* p = texture(d.texture);
+      if (!p) continue;
+      if (!pixels.contains(d.texture)) pixels[d.texture] = *p;
+      if (d.cellW > 0 && d.cellH > 0) {
+        d.cols = std::max(1, p->w / d.cellW);
+        d.rows = std::max(1, p->h / d.cellH);
+        d.frames = std::min(d.frames, d.cols * d.rows);
+      }
+    }
     std::lock_guard g(load->m);
     load->scene = std::move(scene);
     load->pixels = std::move(pixels);
@@ -371,13 +398,17 @@ void SceneWidget::start() {
     load->layerFx = std::move(layerFx);
     load->done = true;
 #endif
-  }).detach();
+  }
 }
 
 void SceneWidget::tick(const TickContext& ctx) {
   m_dt = m_lastTick < 0 ? 0 : std::clamp(ctx.now - m_lastTick, 0.0, 0.25);
   m_lastTick = ctx.now;
   m_moving = m_audio = false;
+  if (m_ready && m_pt.systems() > 0) {
+    m_pt.tick(ctx);
+    m_moving = true;
+  }
   for (auto& [i, f] : m_fx) {
     f->chain.tick(ctx);
     m_moving |= f->chain.moving();
@@ -399,8 +430,8 @@ std::string SceneWidget::state() const {
   if (!m_load->error.empty()) return "error: " + m_load->error;
   if (!m_load->done) return "loading";
   if (m_project.type == "video") return "video " + m_project.title;
-  return std::format("scene {} ({} layers, {} not drawn yet; effects {} of {} drawn)", m_project.title, m_model.layers.size(), m_model.skipped,
-                     m_model.mapped, m_model.effects);
+  return std::format("scene {} ({} layers, {} particle systems, {} not drawn yet; effects {} of {} drawn)", m_project.title, m_model.layers.size(),
+                     m_model.particles.size(), m_model.skipped, m_model.mapped, m_model.effects);
 }
 
 void SceneWidget::drawCover(GLuint tex, float texW, float texH, const DrawContext& ctx, float alpha) {
@@ -444,6 +475,13 @@ void SceneWidget::draw(const DrawContext& ctx) {
           f->chain.configure(m_load->layerFx[i], m_noct);
           if (!f->chain.empty()) m_fx[i] = std::move(f);
         }
+        m_pt.configureDefs(m_model.particles);
+        m_pt.setTextures([this](const std::string& key) -> std::pair<GLuint, bool> {
+          const auto t = m_tex.find(key);
+          if (t == m_tex.end()) return {0, false};
+          const auto f = m_formats.find(key);
+          return {t->second.first, f != m_formats.end() && f->second == 9};
+        });
         m_ready = true;
       } else {
         US_WARN("scene {}: {}", m_scene, m_load->error);
@@ -493,6 +531,7 @@ void SceneWidget::draw(const DrawContext& ctx) {
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
       m_tex[it->first] = {tex, {it->second.w, it->second.h}};
+      m_formats[it->first] = it->second.format;
       m_load->pixels.erase(it);
     }
     m_uploading = !m_load->pixels.empty();
@@ -522,8 +561,27 @@ void SceneWidget::draw(const DrawContext& ctx) {
   glUniform1i(m_prog.uniform("u_solid"), 0);
   glUniform1i(m_prog.uniform("u_premul"), 0);
   static constexpr std::array<float, 12> kUvFlipped = {0, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 0};
+  // the particles' units (a 1080-high scene, y down) onto the surface
+  m_pt.setPlacement(s * m_model.height / 1080, ctx.w / 2 - m_model.width / 2 * s, ctx.h / 2 - m_model.height / 2 * s,
+                    m_model.width / m_model.height);
+  auto sceneState = [&] {  // the scene's own drawing again, after a pass of something else
+    glEnable(GL_BLEND);
+    glUseProgram(m_prog.id());
+    glUniform2f(m_prog.uniform("u_size"), ctx.w, ctx.h);
+    glUniform1i(m_prog.uniform("u_tex"), 0);
+    glUniform1i(m_prog.uniform("u_solid"), 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+  };
   for (size_t li = 0; li < m_model.layers.size(); ++li) {
     const WeLayer& l = m_model.layers[li];
+    if (l.particle >= 0) {  // a particle system, where its object stands among the layers
+      m_pt.draw(ctx, 0, 0, l.particle);
+      sceneState();
+      continue;
+    }
     if (!l.visible || l.compose || li >= m_layerTex.size() || m_layerTex[li].empty() || l.alpha <= 0) continue;
     const auto t = m_tex.find(m_layerTex[li]);
     if (t == m_tex.end()) continue;
@@ -582,16 +640,7 @@ void SceneWidget::draw(const DrawContext& ctx) {
       drawUnitQuad();
       glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(fbo));
       glViewport(vp[0], vp[1], vp[2], vp[3]);
-      // the scene's own drawing again
-      glEnable(GL_BLEND);
-      glUseProgram(m_prog.id());
-      glUniform2f(m_prog.uniform("u_size"), ctx.w, ctx.h);
-      glUniform1i(m_prog.uniform("u_tex"), 0);
-      glUniform1i(m_prog.uniform("u_solid"), 0);
-      glActiveTexture(GL_TEXTURE0);
-      glBindBuffer(GL_ARRAY_BUFFER, 0);
-      glEnableVertexAttribArray(0);
-      glEnableVertexAttribArray(1);
+      sceneState();
       tex = L.tex;
       premul = true;
     }

@@ -225,6 +225,49 @@ int main() {
     }
   }
 
+  // Wallpaper Engine particles, into undershell's: units of a 1080-high scene with y down
+  {
+    using namespace undershell;
+    const fs::path u = dir / "pt";
+    fs::create_directories(u / "particles");
+    fs::create_directories(u / "materials");
+    std::ofstream(u / "scene.json") << R"({"general": {"orthogonalprojection": {"width": 1920, "height": 1080}},
+      "objects": [{"id": 5, "particle": "particles/p.json", "origin": "960 540 0", "instanceoverride": {"rate": 2, "size": 0.5}},
+                  {"id": 6, "particle": "particles/r.json", "origin": "0 0 0"}]})";
+    std::ofstream(u / "particles/p.json") << R"({"maxcount": 300, "material": "materials/pm.json",
+      "emitter": [{"name": "sphererandom", "rate": 10, "distancemax": 108, "distancemin": 0, "origin": "0 54 0"}],
+      "initializer": [{"name": "lifetimerandom", "min": 2, "max": 4}, {"name": "sizerandom", "min": 20, "max": 40},
+                      {"name": "velocityrandom", "min": "-10 50 0", "max": "10 100 0"}, {"name": "colorrandom", "min": "255 0 0", "max": "255 255 0"}],
+      "operator": [{"name": "movement", "gravity": "0 -50 0"}, {"name": "alphafade", "fadeintime": 0.2, "fadeouttime": 0.5}],
+      "renderer": [{"name": "sprite"}]})";
+    std::ofstream(u / "materials/pm.json") << R"({"passes": [{"blending": "additive", "textures": ["dot"]}]})";
+    std::ofstream(u / "materials/dot.tex-json") << R"({"spritesheetsequences": [{"frames": 4, "width": 2, "height": 2, "duration": 2}]})";
+    std::ofstream(u / "particles/r.json") << R"({"material": "materials/rm.json", "emitter": [{"name": "boxrandom"}]})";
+    std::ofstream(u / "materials/rm.json") << R"({"passes": [{"combos": {"REFRACT": 1}, "textures": ["dot"]}]})";
+    WeProject proj;
+    WeScene sc;
+    std::string why;
+    CHECK(readWeScene(u.string(), "", proj, sc, why));
+    CHECK(sc.particles.size() == 1);  // the refracting one is left out
+    if (!sc.particles.empty()) {
+      const ParticleDef& d = sc.particles[0];
+      CHECK(d.sprite == ParticleDef::Texture && d.texture == "materials/dot" && d.additive);
+      CHECK(d.rate == 20 && d.max == 300 && d.frames == 4);
+      CHECK(std::abs(d.ox - 0.5F) < 1e-3 && std::abs(d.oy - (540 - 54) / 1080.0F) < 1e-3);  // the centre, 54 up
+      CHECK(std::abs(d.radius - 0.1F) < 1e-3);
+      CHECK(d.size[0] == 10 && d.size[1] == 20);                         // halved by the override
+      CHECK(d.velBox && d.vel[1] == -100 && d.vel[3] == -50);            // rising in the scene: up here too (y down)
+      CHECK(d.c0.r == 1 && d.c0.g == 0 && d.c1.g == 1);
+      bool gravity = false, fade = false;
+      for (const auto& op : d.ops) {
+        if (op.type == ParticleOp::Gravity) gravity = op.v[1] == 50;     // falling: down
+        if (op.type == ParticleOp::Fade) fade = op.v[0] == 0.2F && op.v[1] == 0.5F;
+      }
+      CHECK(gravity && fade);
+    }
+    CHECK(std::ranges::find(sc.needs, "materials/dot.tex") != sc.needs.end());
+  }
+
   fs::remove_all(dir);
   return TEST_RESULT();
 }
