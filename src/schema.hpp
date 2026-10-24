@@ -5,6 +5,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace undershell {
@@ -27,6 +28,9 @@ struct PropSpec {
   bool integer = false;
   bool indent = false;  // an element's own option, under its row
   std::string face;     // Element: the structure it belongs to
+  // Enum: each option's name (en, es) when the shared optionLabel() does not
+  // know it (an effect's own choices)
+  std::vector<std::pair<std::string, std::string>> optionNames;
 };
 
 // Whether an option does anything for a widget as it is configured now (its

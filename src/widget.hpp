@@ -60,6 +60,11 @@ struct DrawContext {
   std::string wallpaper;
   int fillMode = 1;              // center crop fit stretch repeat span
   bool movingWallpaper = false;  // a video or a scene: no still picture to work with
+  // the wallpaper's depth field on this output, for widgets that ask
+  // (wantsDepth): a GL texture over the picture (0 = none yet), and the
+  // default plane that splits subject from background
+  unsigned depthField = 0;
+  float depthLevel = 0.5F, depthFeather = 0.1F;
 };
 
 class WidgetImpl {
@@ -88,6 +93,11 @@ public:
   [[nodiscard]] virtual int fps() const { return 60; }
   [[nodiscard]] virtual bool fullscreen() const { return false; }
   [[nodiscard]] virtual bool usesAudio() const { return false; }
+  // DrawContext::depthField is filled in (wallpaper effects)
+  [[nodiscard]] virtual bool wantsDepth() const { return false; }
+  // drawn at full resolution even when costly: the wallpaper itself, where
+  // a softer copy would show at once (the governor lowers its frame rate instead)
+  [[nodiscard]] virtual bool keepsResolution() const { return false; }
   [[nodiscard]] virtual Color accent() const { return Color::fromHex("#e2342a"); }
   virtual void rest() {}
   // nothing is playing (after a grace period) and this widget should hide:

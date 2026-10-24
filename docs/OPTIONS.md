@@ -346,3 +346,64 @@ A colour filter over the wallpaper: it draws the wallpaper again (fitted as the 
 | `depth` | `true` / `false` | `false` | Background only |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+
+### Animated effects
+
+The same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, and its options are `fx_<effect>_<option>`. All effects that are on are drawn in one pass at `fx_fps` frames a second (10 – 60, default 30). Every effect also has `fx_<effect>_strength` (0 – 2, default 1), `fx_<effect>_mask` (`all`, `background`, `subject`, `above`, `below`: the last two split the picture at `fx_<effect>_split`, 0 – 1 from the top) — `background` and `subject` follow the wallpaper's depth. Your own effects go in `~/.config/undershell/effects/<name>.glsl` (see [EFFECTS.md](EFFECTS.md)).
+
+| Effect | Option | Values | Default | |
+|---|---|---|---|---|
+| `fx_parallax` | | `true` / `false` | `false` | 2.5D camera |
+| | `fx_parallax_motion` | `orbit`, `sway`, `zoom` | `"orbit"` | Camera |
+| | `fx_parallax_speed` | 0.05 – 2 | `0.4` | Speed |
+| | `fx_parallax_focus` | 0 – 1 | `0.5` | Still plane |
+| | `fx_parallax_beat` | `true` / `false` | `false` | Bounce on beat |
+| `fx_waves` | | `true` / `false` | `false` | Water waves |
+| | `fx_waves_speed` | 0 – 3 | `1` | Speed |
+| | `fx_waves_size` | 0.2 – 4 | `1` | Wave size |
+| | `fx_waves_direction` | -180 – 180 | `90` | Direction ° |
+| `fx_ripple` | | `true` / `false` | `false` | Rippling water |
+| | `fx_ripple_speed` | 0 – 3 | `1` | Speed |
+| | `fx_ripple_size` | 0.2 – 4 | `1` | Ripple size |
+| `fx_flow` | | `true` / `false` | `false` | Flowing water |
+| | `fx_flow_speed` | 0 – 3 | `1` | Speed |
+| | `fx_flow_size` | 0.2 – 4 | `1` | Streak size |
+| | `fx_flow_direction` | -180 – 180 | `90` | Direction ° |
+| `fx_sway` | | `true` / `false` | `false` | Wind |
+| | `fx_sway_speed` | 0 – 3 | `1` | Speed |
+| | `fx_sway_gusts` | 0 – 1 | `0.5` | Gusts |
+| | `fx_sway_size` | 0.2 – 4 | `1` | Leaf size |
+| `fx_chroma` | | `true` / `false` | `false` | Lens fringe |
+| | `fx_chroma_beat` | `true` / `false` | `false` | On the beat |
+| `fx_vhs` | | `true` / `false` | `false` | VHS tape |
+| | `fx_vhs_snow` | 0 – 1 | `0.5` | Tape noise |
+| `fx_godrays` | | `true` / `false` | `false` | Light rays |
+| | `fx_godrays_x` | 0 – 1 | `0.5` | Light across |
+| | `fx_godrays_y` | -0.5 – 1 | `0.1` | Light down |
+| | `fx_godrays_reach` | 0.1 – 1 | `0.6` | Length |
+| | `fx_godrays_threshold` | 0 – 0.95 | `0.55` | From brightness |
+| | `fx_godrays_flicker` | 0 – 2 | `0.5` | Shimmer |
+| | `fx_godrays_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#fff1d6"` | Colour |
+| `fx_shine` | | `true` / `false` | `false` | Shine |
+| | `fx_shine_every` | 1 – 30 | `6` | Every (s) |
+| | `fx_shine_width` | 0.02 – 0.6 | `0.12` | Width |
+| | `fx_shine_angle` | -90 – 90 | `30` | Angle ° |
+| | `fx_shine_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#ffffff"` | Colour |
+| `fx_twinkle` | | `true` / `false` | `false` | Twinkle |
+| | `fx_twinkle_amount` | 0.2 – 3 | `1` | Density |
+| | `fx_twinkle_speed` | 0 – 3 | `1` | Speed |
+| | `fx_twinkle_threshold` | 0 – 0.95 | `0.6` | From brightness |
+| | `fx_twinkle_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#ffffff"` | Colour |
+| `fx_pulse` | | `true` / `false` | `false` | Beat pulse |
+| | `fx_pulse_source` | `bass`, `mid`, `treble`, `beat` | `"bass"` | Follows |
+| | `fx_pulse_mode` | `brighten`, `glow` | `"glow"` | Does |
+| | `fx_pulse_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Glow colour |
+| `fx_mist` | | `true` / `false` | `false` | Drifting mist |
+| | `fx_mist_look` | `fog`, `shadows` | `"fog"` | Kind |
+| | `fx_mist_speed` | 0 – 3 | `0.5` | Speed |
+| | `fx_mist_size` | 0.2 – 4 | `1` | Size |
+| | `fx_mist_density` | 0 – 1 | `0.5` | Density |
+| | `fx_mist_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#dfe6ee"` | Colour |
+| `fx_grain` | | `true` / `false` | `false` | Film |
+| | `fx_grain_amount` | 0 – 1 | `0.5` | Grain |
+| | `fx_grain_flicker` | 0 – 1 | `0.3` | Flicker |

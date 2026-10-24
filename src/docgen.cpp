@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "docgen.hpp"
 
+#include "effects.hpp"
 #include "schema.hpp"
 
 #include <format>
@@ -122,6 +123,25 @@ std::string optionsMarkdown() {
         "subject is filtered. Nothing for a video or scene wallpaper. A `style` sets the options after it; the defaults below "
         "are the `custom` style's (nothing changed).\n\n";
   table(md, "filter");
+  md += "\n### Animated effects\n\nThe same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, and its options are "
+        "`fx_<effect>_<option>`. All effects that are on are drawn in one pass at `fx_fps` frames a second (10 – 60, default 30). "
+        "Every effect also has `fx_<effect>_strength` (0 – 2, default 1), `fx_<effect>_mask` (`all`, `background`, `subject`, "
+        "`above`, `below`: the last two split the picture at `fx_<effect>_split`, 0 – 1 from the top) — `background` and "
+        "`subject` follow the wallpaper's depth. Your own effects go in `~/.config/undershell/effects/<name>.glsl` "
+        "(see [EFFECTS.md](EFFECTS.md)).\n\n";
+  md += "| Effect | Option | Values | Default | |\n|---|---|---|---|---|\n";
+  for (const EffectSpec& e : builtinEffects()) {
+    md += std::format("| `fx_{}` | | `true` / `false` | `false` | {} |\n", e.id, e.nameEn);
+    for (const EffectParam& p : e.params) {
+      PropSpec r;
+      r.kind = p.kind == EffectParam::Number ? PropSpec::Number
+               : p.kind == EffectParam::Bool ? PropSpec::Bool
+               : p.kind == EffectParam::Choice ? PropSpec::Enum
+                                               : PropSpec::Color;
+      r.min = p.min, r.max = p.max, r.def = p.def, r.integer = p.integer, r.defText = p.defText, r.options = p.options;
+      md += std::format("| | `{}` | {} | {} | {} |\n", effectKey(e.id, p.key), valuesOf(r), defaultOf(r), p.labelEn);
+    }
+  }
   return md;
 }
 

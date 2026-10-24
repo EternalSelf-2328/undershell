@@ -5,6 +5,7 @@
 // same time so a change shows on the very next frame.
 #include "app.hpp"
 #include "schema.hpp"
+#include "effects.hpp"
 #include "filter.hpp"
 #include "notes.hpp"
 #include "textwidget.hpp"
@@ -635,6 +636,12 @@ std::vector<PropSpec> inspectorRows(const Widget& w, const std::string& expanded
   }
   // a look's own rows go in after the shared ones were sifted: sift them too
   if (expanded != "*") std::erase_if(s, [&w](const PropSpec& p) { return !optionApplies(w.cfg, p.key); });
+  if (w.cfg.type == "filter") {
+    // the animated effects, last: built from each effect's own header
+    const std::vector<PropSpec> fx = effectRows(w.cfg.options, expanded == "*");
+    s.insert(s.end(), fx.begin(), fx.end());
+    return s;
+  }
   if (w.cfg.type != "clock") return s;
   const std::string face = w.cfg.options["face"].value_or(std::string("digital"));
   const ClockStructure* cs = clockStructure(face);
@@ -762,6 +769,24 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     out.insert(out.end(), part.begin(), part.end());
   }
   out.insert(out.end(), rows.begin() + static_cast<long>(split), rows.end());
+  if (w.cfg.type == "filter") {
+    // what this widget is mostly for, the effects, right under its style;
+    // the colour sliders after them, under a title of their own
+    auto fx = std::ranges::find_if(out, [](const PropSpec& p) { return p.key == "_effects"; });
+    auto style = std::ranges::find_if(out, [](const PropSpec& p) { return p.key == "style"; });
+    if (fx != out.end() && style != out.end() && style < fx) {
+      std::vector<PropSpec> moved(fx, out.end());
+      out.erase(fx, out.end());
+      PropSpec colour;
+      colour.kind = PropSpec::Header;
+      colour.key = "_colour_filter";
+      colour.labelEn = "Colour filter";
+      colour.labelEs = "Filtro de color";
+      moved.push_back(colour);
+      style = std::ranges::find_if(out, [](const PropSpec& p) { return p.key == "style"; });
+      out.insert(style + 1, moved.begin(), moved.end());
+    }
+  }
   return out;
 }
 
@@ -776,7 +801,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "calendar") return es ? "Calendario" : "Calendar";
   if (type == "notes") return es ? "Notas" : "Notes";
   if (type == "weather") return es ? "Clima" : "Weather";
-  if (type == "filter") return es ? "Filtro del fondo" : "Wallpaper filter";
+  if (type == "filter") return es ? "Fondo y efectos" : "Wallpaper & effects";
   return "Widget";
 }
 }  // namespace
@@ -3052,7 +3077,10 @@ void App::drawUi(EditSurface& e) {
             cv.roundRect(cx, y + 3, cw, 24, 12, raised, 1, line);
             cv.triangle(cx + 12, y + 15, cx + 17, y + 11, cx + 17, y + 19, dim);
             cv.triangle(cx + cw - 12, y + 15, cx + cw - 17, y + 11, cx + cw - 17, y + 19, dim);
-            fitCentered(optionLabel(v, es), label, cx + 22, y + 15, cw - 44, accent);
+            std::string shown = optionLabel(v, es);
+            for (size_t k = 0; k < p.optionNames.size() && k < p.options.size(); ++k)
+              if (p.options[k] == v) shown = es ? p.optionNames[k].second : p.optionNames[k].first;
+            fitCentered(shown, label, cx + 22, y + 15, cw - 44, accent);
           } else if (p.kind == PropSpec::Bool) {
             const bool on = v == "true";
             const float tx = cx + cw - 38;
@@ -3185,7 +3213,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "calendar" ? (es ? "Mes · semana · día · agenda" : "Month · week · day · agenda")
                        : c.value == "notes"   ? (es ? "Markdown · tareas" : "Markdown · tasks")
                        : c.value == "weather" ? (es ? "Ahora · horas · semana" : "Now · hours · week")
-                       : c.value == "filter"  ? (es ? "Color · viñeta · grano" : "Colour · vignette · grain")
+                       : c.value == "filter"  ? (es ? "Color · agua · rayos de luz" : "Colour · water · light rays")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     fitText(desc, label, c.r.x + 56, c.r.y + 34, c.r.w - 64, dim);  // a long translation ends in "…"

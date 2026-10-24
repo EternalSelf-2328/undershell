@@ -1200,7 +1200,7 @@ void App::updatePerf(double now) {
   for (auto& w : m_widgets) {
     if (w->gpuMs > 1.2) w->heavy = true;
     else if (w->gpuMs < 0.8) w->heavy = false;
-    const float want = w->heavy ? scale : 1.0F;
+    const float want = w->heavy && !(w->impl && w->impl->keepsResolution()) ? scale : 1.0F;
     if (w->viewport && w->eglWindow && std::abs(want - w->renderScale) > 1e-3F) {
       w->renderScale = want;
       sizeBuffer(*w, w->w, w->h);
@@ -1309,6 +1309,12 @@ void App::render(Widget& w) {
     if (w.output) dctx.wallpaper = m_noctalia.state().wallpaperFor(w.output->name);
     dctx.fillMode = m_noctalia.state().fillMode;
     dctx.movingWallpaper = m_motion;
+    if (w.impl->wantsDepth() && w.output && !m_motion)
+      if (const DepthMask* m = m_depth.get(w.output->name)) {
+        dctx.depthField = m->field;
+        dctx.depthLevel = static_cast<float>(depthThreshold());
+        dctx.depthFeather = static_cast<float>(depthFeather());
+      }
     m_media.uploadPending();
     try {
       w.impl->draw(dctx);

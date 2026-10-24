@@ -378,7 +378,7 @@ flickers at 12 fps, and only moving letters draw at 60.
   <img src="docs/media/text.webp" alt="The ten text styles: plain, neon, retro, comic, outline, sticker, chrome, glitch, rainbow and typewriter" width="600">
 </p>
 
-## Wallpaper filter
+## Wallpaper filter and effects
 
 The **filter** widget changes how the wallpaper looks: brightness,
 contrast, saturation, hue, warmth, a tint or a two-tone in any colours, a
@@ -396,6 +396,34 @@ wallpaper has no still picture, and then the filter draws nothing.
 <p align="center">
   <img src="docs/media/filters.webp" alt="One landscape: unchanged, warm, cool, noir, vintage, dream, night, vivid, faded and duotone" width="760">
 </p>
+
+### Animated effects
+
+The same widget can **move** the wallpaper, whatever program sets it:
+**water waves**, **rippling water**, **flowing water** (a river, a waterfall),
+**wind** in leaves and grass, a **2.5D camera** that drifts through the
+picture using its depth, a **lens fringe** and a **VHS tape**, a **shine** that
+sweeps across, **twinkles** on the bright spots, a **pulse** with the music,
+**light rays** from a point you place, **drifting mist** or cloud shadows, and
+moving **film** grain. Turn them on in the inspector (each switch opens its
+options), with `undershell msg set <id> fx_waves true`, or in the config
+(`fx_<effect> = true`, options in [docs/OPTIONS.md](docs/OPTIONS.md)). Each one
+has a strength and a **where**: everywhere, only the background or only the
+subject (from the wallpaper's depth), or above or below a line (sky, water).
+
+All effects that are on are joined into **one shader**: one full-screen pass,
+plus a pass at a quarter to half the resolution for the soft ones (light
+rays, mist), at their own frame rate (`fx_fps`, 30 by default) and quality
+(the performance level). On an Intel HD 520 at 1366×768 the wallpaper with
+one effect costs about 1 ms of GPU per frame and with six 2.5 ms: about 7 % of
+that GPU at 30 fps. It stays at full resolution (a softer copy of the
+wallpaper would show at once); under load the governor lowers the effects'
+quality and the lights pass's resolution instead.
+
+You can write your own: a small GLSL function with a JSON header that
+declares its options, saved as `~/.config/undershell/effects/<name>.glsl`. It
+shows up in the inspector with its own rows as soon as it is saved (format
+and an example in [docs/EFFECTS.md](docs/EFFECTS.md)).
 
 ## Shapes
 
@@ -1245,7 +1273,8 @@ makes it fail (for development); if you change a look on purpose:
 | `src/notes.*` | the notes widget: Markdown, tasks, typing on it, its watched file |
 | `src/weather.*`, `src/weatherfeed.*` | the weather widget and its Open-Meteo feed (geocoding, forecast, disk cache) |
 | `src/net.*` | HTTPS fetches (http/https only, size-limited) and the cache folder |
-| `src/filter.*` | the wallpaper filter: the wallpaper drawn again through colour adjustments |
+| `src/filter.*` | the wallpaper widget: the wallpaper drawn again through colour adjustments and the animated effects (one pass, plus a smaller one for the lights) |
+| `src/effects.*`, `src/fx/*.inc` | animated effects: the annotated format, the built-in effects, your own folder, joining them into one shader, their inspector rows |
 | `src/shape.*` | the shape widget (one distance shader) |
 | `src/image.*`, `src/video.*` | the image widget; decoding stills, GIFs and videos (FFmpeg, gdk-pixbuf) |
 | `src/layers.cpp` | the Layers panel's model: order, groups, hiding, locking, moving several widgets |
