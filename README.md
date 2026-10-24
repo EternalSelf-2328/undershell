@@ -448,6 +448,17 @@ declares its options, saved as `~/.config/undershell/effects/<name>.glsl`. It
 shows up in the inspector with its own rows as soon as it is saved (format
 and an example in [docs/EFFECTS.md](docs/EFFECTS.md)).
 
+## Wallpaper gallery
+
+The editor's toolbar has a **wallpapers** button: a card with your pictures
+(from `[general] wallpaper_dirs`, or the current wallpaper's folder and a
+Wallpapers folder in your pictures) and, if you have Wallpaper Engine, its
+Workshop scenes and videos, as thumbnails (made on a thread and kept in
+`~/.cache/undershell/thumbs`). Pick a picture and it is set through whatever
+program draws your wallpaper (the same `wallpaper-set` as below), on that
+screen; pick a Workshop wallpaper and a scene widget plays it there. So
+nobody needs a separate wallpaper picker to use undershell.
+
 ## Wallpaper Engine scenes and videos
 
 If you own Wallpaper Engine on Steam, the **scene** widget plays the

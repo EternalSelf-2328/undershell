@@ -5,9 +5,11 @@
 #include "noctalia.hpp"
 #include "offscreen.hpp"
 #include "wescene.hpp"
+#include "wallgallery.hpp"
 
 #include <lz4.h>
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -273,6 +275,37 @@ int main() {
         if (!still) usleep(10000);
       }
       CHECK(still);
+    }
+  }
+
+  // the gallery: pictures listed newest first, other files left out, thumbnails made off the frame
+  {
+    using namespace undershell;
+    const fs::path pics = dir / "pics";
+    fs::create_directories(pics);
+    Image im;
+    im.w = 64, im.h = 32;
+    im.rgba.assign(64 * 32 * 4, 200);
+    CHECK(writePng(im, (pics / "old.png").string(), false));
+    CHECK(writePng(im, (pics / "new.png").string(), false));
+    std::ofstream(pics / "notes.txt") << "x";
+    fs::last_write_time(pics / "old.png", fs::file_time_type::clock::now() - std::chrono::hours(2));
+    const auto dirs = galleryDirs({pics.string()}, "");
+    CHECK(dirs.size() == 1);
+    const auto list = galleryPictures(dirs);
+    CHECK(list.size() == 2 && list[0].label == "new.png" && list[1].label == "old.png");
+    CHECK(galleryDirs({}, (pics / "new.png").string()).front() == fs::canonical(pics).string());  // the current one's folder
+    Headless gl;
+    if (gl.ok()) {
+      ThumbCache thumbs;
+      int size[2] = {0, 0};
+      GLuint tex = 0;
+      for (int i = 0; i < 300 && !tex; ++i) {
+        thumbs.upload(4);
+        tex = thumbs.get(list[0].path, size);
+        if (!tex) usleep(10000);
+      }
+      CHECK(tex != 0 && size[0] <= ThumbCache::kW && size[1] <= ThumbCache::kH && size[0] > 0);
     }
   }
 

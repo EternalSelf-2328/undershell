@@ -17,6 +17,7 @@
 #include "noctalia.hpp"
 #include "overlay.hpp"
 #include "perf.hpp"
+#include "wallgallery.hpp"
 #include "schema.hpp"
 #include "canvas.hpp"
 #include "text.hpp"
@@ -286,7 +287,7 @@ public:
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
                 Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
-                PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset, PaintTarget,
+                PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset, PaintTarget, Walls, WallTab, WallItem,
                 ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Perf, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,
                 LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown } type = Panel;
@@ -500,6 +501,16 @@ private:
   bool m_galleryOpen = false;
   bool m_helpOpen = false;
   bool m_savesOpen = false;
+  // the wallpaper gallery (wallgallery.hpp)
+  bool m_wallsOpen = false;
+  int m_wallsTab = 0;      // 0 pictures, 1 Workshop
+  int m_wallsScroll = 0;   // first row shown
+  int m_wallRows = 3;      // rows that fit
+  std::vector<GalleryItem> m_wallPics, m_wallWork;
+  std::string m_wallsNote; // what the last pick did
+  std::unique_ptr<ThumbCache> m_thumbs;
+  void openWalls();
+  void pickWall(size_t index);
   std::vector<SavedLayout> m_saves;
   std::string m_saveCurrent;              // the save that matches the screen
   std::string m_renaming, m_renameText;   // save whose name is being typed

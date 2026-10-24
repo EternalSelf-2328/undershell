@@ -15,6 +15,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | `performance` | `auto`, `eco`, `balanced`, `high`, `ultra` | `"auto"` | how much undershell may spend: frame rate cap, resolution of costly widgets, particle counts, effect quality. `auto` starts at `high` and steps down while the widgets' measured GPU or CPU time goes over a fifth of the time (back up when there is room). Also in the editor's help card and `undershell msg perf <level>` |
 | `on_battery` | `lower`, `eco`, `keep` | `"lower"` | on battery: one step down, straight to `eco`, or no change |
 | `language` | `system`, `en`, `es` | `"system"` | editor language; `system` follows the locale (Spanish under `es_*`, else English). Also switchable in the editor's help card |
+| `wallpaper_dirs` | list of folders | `[]` | the editor's wallpaper gallery shows the pictures in these; empty: the current wallpaper's folder and Wallpapers under your pictures folder |
 | `wallpaper` | path | `""` | the wallpaper, when neither Noctalia nor KDE Plasma says which it is (or to override them): depth and per-wallpaper layouts follow it |
 | `wallpaper_fill` | `center`, `crop`, `fit`, `stretch`, `repeat` | the source's, else `crop` | how that wallpaper is fitted to the screen |
 | `depth_model` | `true` / `false` | `true` | compute each wallpaper's depth with undershell's model (Depth Anything V2), once it has been downloaded (the inspector's button or `undershell msg depth-model`; a copy Noctalia's `wallpaper_depth` already has is used); `false` turns depth off |

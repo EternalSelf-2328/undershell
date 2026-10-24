@@ -112,6 +112,9 @@ Config Config::load(const std::string& path) {
     cfg.performance = get<std::string>(*g, "performance", "auto");
     if (cfg.performance != "auto" && !parsePerfLevel(cfg.performance)) cfg.performance = "auto";
     cfg.onBattery = get<std::string>(*g, "on_battery", "lower");
+    if (auto* dirs = (*g)["wallpaper_dirs"].as_array())
+      for (auto& d : *dirs)
+        if (auto s = d.value<std::string>()) cfg.wallpaperDirs.push_back(*s);
     if (cfg.onBattery != "eco" && cfg.onBattery != "keep") cfg.onBattery = "lower";
   }
   if (auto* arr = root["widget"].as_array()) {

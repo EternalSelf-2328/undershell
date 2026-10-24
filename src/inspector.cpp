@@ -867,6 +867,57 @@ const char* typeName(const std::string& type, bool es) {
 
 // ── widget lifecycle (gallery, duplicate, delete) ───────────────────────────
 
+void App::openWalls() {
+  m_wallsOpen = true;
+  m_savesOpen = m_galleryOpen = m_helpOpen = false;
+  m_wallsNote.clear();
+  if (!m_thumbs) m_thumbs = std::make_unique<ThumbCache>();
+  const std::string current = m_uiOutput ? m_noctalia.state().wallpaperFor(m_uiOutput->name) : std::string();
+  m_wallPics = galleryPictures(galleryDirs(m_config.wallpaperDirs, current));
+  m_wallWork = galleryWorkshop();
+  // the current one in view
+  for (size_t i = 0; i < m_wallPics.size(); ++i)
+    if (m_wallPics[i].path == current) m_wallsScroll = static_cast<int>(i / 3);
+}
+
+// a picture: set through the program that draws the wallpaper (a scene on
+// this screen makes way); a Workshop wallpaper: a scene widget plays it
+void App::pickWall(size_t index) {
+  const bool es = spanishUi();
+  const Output* o = m_uiOutput;
+  Widget* scene = nullptr;
+  for (auto& w : m_widgets)
+    if (w->cfg.type == "scene" && w->output == o) scene = w.get();
+  if (m_wallsTab == 0) {
+    if (index >= m_wallPics.size()) return;
+    m_wallsNote = setWallpaper(m_wallPics[index].path + (o ? " " + o->name : std::string()));
+    if (es && m_wallsNote.rfind("wallpaper set through ", 0) == 0) {
+      std::string rest = m_wallsNote.substr(22);
+      if (const auto p = rest.find(" (it has one wallpaper for every screen)"); p != std::string::npos)
+        rest = rest.substr(0, p) + " (un solo fondo para todas las pantallas)";
+      m_wallsNote = "Puesto con " + rest;
+    }
+    if (scene && m_wallsNote.rfind("error", 0) != 0) {
+      removeWidget(*scene);  // the picture shows now, not the scene over it
+      m_wallsNote += es ? " · la escena se quitó (Ctrl+Z la devuelve)" : " · the scene was taken away (Ctrl+Z brings it back)";
+    }
+    return;
+  }
+  if (index >= m_wallWork.size()) return;
+  const GalleryItem& it = m_wallWork[index];
+  const std::string value = "\"" + it.workshop + "\"";
+  if (scene) {
+    setProp(*scene, "scene", value);
+  } else {
+    const std::string id = addWidget("scene", "", INT_MIN, INT_MIN, true);
+    if (id.empty() || !Config::setKey(m_configPath, id, "scene", value)) {
+      m_wallsNote = es ? "error: no se pudo escribir la configuración" : "error: could not write the config";
+      return;
+    }
+  }
+  m_wallsNote = (es ? "Cargando " : "Loading ") + it.label;
+}
+
 std::string App::addWidget(const std::string& type, const std::string& look, int x, int y, bool record) {
   const Output* o = m_outputs.empty() ? nullptr : m_outputs.front().get();
   if (m_pointerEdit) o = m_pointerEdit->output;
@@ -1354,6 +1405,7 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Help: return es ? "Atajos de teclado" : "Keyboard shortcuts";
     case T::Collapse: return es ? "Minimizar / expandir" : "Fold / unfold";
     case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
+    case T::Walls: return es ? "Fondos: tus imágenes y el Workshop de Wallpaper Engine" : "Wallpapers: your pictures and Wallpaper Engine's Workshop";
     case T::Layers: return es ? "Capas: orden, grupos, ocultar y bloquear" : "Layers: order, groups, hide and lock";
     case T::LayerEye: return es ? "Mostrar / ocultar (oculto no gasta nada)" : "Show / hide (hidden costs nothing)";
     case T::LayerLock: return es ? "Bloquear: no se toma ni se mueve en el escritorio" : "Lock: not picked or moved on the desktop";
@@ -1402,7 +1454,7 @@ void App::layoutUi(const EditSurface& e) {
                              {UiControl::Undo, kBtn, ""},   {UiControl::Redo, kBtn, ""},
                              {UiControl::Panel, kSep, "sep"}, {UiControl::Magnet, kBtn, ""},
                              {UiControl::Grid, kBtn, ""},   {UiControl::Panel, kSep, "sep"},
-                             {UiControl::Saves, kBtn, ""},  {UiControl::Layers, kBtn, ""},
+                             {UiControl::Saves, kBtn, ""},  {UiControl::Walls, kBtn, ""},  {UiControl::Layers, kBtn, ""},
                              {UiControl::Paint, kBtn, ""},  {UiControl::Panel, kSep, "sep"}};
   // a chip per widget while they fit on a row (the Layers panel lists them all)
   std::vector<Item> chips;
@@ -1769,6 +1821,37 @@ void App::layoutUi(const EditSurface& e) {
     addScrollBar("saves", {sx + kSavesW - 9, sy + kSavesHead + 48, 5, shown * kSavePitch - 6}, static_cast<float>(n),
                  static_cast<float>(kSaveRows), static_cast<float>(m_saveScroll));
   }
+  // ── the wallpaper gallery ──
+  if (m_wallsOpen) {
+    constexpr float kCardW = 640, kHead = 108, kCellW = 196, kCellH = 128, kGap = 10;
+    constexpr int kCols = 3;
+    Rect wallsRect{};
+    for (const UiControl& c : m_ui)
+      if (c.type == UiControl::Walls) wallsRect = c.r;
+    const auto& items = m_wallsTab == 0 ? m_wallPics : m_wallWork;
+    const int n = static_cast<int>(items.size()), rowsAll = (n + kCols - 1) / kCols;
+    m_wallRows = std::clamp(static_cast<int>((m_areaBottom - m_areaTop - kHead - 60) / (kCellH + kGap)), 1, 4);
+    m_wallsScroll = std::clamp(m_wallsScroll, 0, std::max(0, rowsAll - m_wallRows));
+    const int shownRows = std::max(1, std::min(m_wallRows, rowsAll - m_wallsScroll));
+    const float ch = kHead + shownRows * (kCellH + kGap) + 34;
+    float cx = std::clamp(wallsRect.x + wallsRect.w / 2 - kCardW / 2, 12.0F, W - kCardW - 12);
+    float cy = barBelow ? m_barY - 10 - ch : m_barY + kBarH + 10;
+    if (vertical) {
+      cx = side < 0 ? m_barRect.x + m_barRect.w + 10 : m_barRect.x - 10 - kCardW;
+      cy = std::clamp(wallsRect.y - 8, 12.0F, std::max(12.0F, H - ch - 12));
+    }
+    m_ui.push_back({UiControl::Panel, {cx, cy, kCardW, ch}, -1, "walls"});
+    m_ui.push_back({UiControl::WallTab, {cx + 16, cy + 58, 150, 32}, -1, "0"});
+    m_ui.push_back({UiControl::WallTab, {cx + 172, cy + 58, 150, 32}, -1, "1"});
+    for (int r = 0; r < shownRows; ++r)
+      for (int k = 0; k < kCols; ++k) {
+        const int i = (m_wallsScroll + r) * kCols + k;
+        if (i >= n) break;
+        m_ui.push_back({UiControl::WallItem, {cx + 16 + k * (kCellW + kGap), cy + kHead + r * (kCellH + kGap), kCellW, kCellH}, -1, std::to_string(i)});
+      }
+    addScrollBar("walls", {cx + kCardW - 9, cy + kHead, 5, shownRows * (kCellH + kGap) - kGap}, static_cast<float>(rowsAll),
+                 static_cast<float>(m_wallRows), static_cast<float>(m_wallsScroll));
+  }
   if (!m_fontPickFor.empty() && m_selected) {
     Rect insp;
     for (const UiControl& c : m_ui)
@@ -2086,6 +2169,7 @@ void App::scrollDragTo(double y) {
   else if (m_scrollDrag == "fonts") m_fontScroll = row;
   else if (m_scrollDrag == "layers") m_layersScroll = row;
   else if (m_scrollDrag == "saves") m_saveScroll = row;
+  else if (m_scrollDrag == "walls") m_wallsScroll = row;
   markEditDirty();
 }
 
@@ -2283,8 +2367,24 @@ bool App::uiPress(int index, double x) {
     case UiControl::LayerDown:
       raiseSelection((c.type == UiControl::LayerUp ? 1 : -1) * (modActive(XKB_MOD_NAME_SHIFT) ? 2 : 1));
       return true;
+    case UiControl::Walls:
+      if (m_wallsOpen) m_wallsOpen = false;
+      else openWalls();
+      markEditDirty();
+      return true;
+    case UiControl::WallTab:
+      m_wallsTab = std::clamp(std::atoi(c.value.c_str()), 0, 1);
+      m_wallsScroll = 0;
+      m_wallsNote.clear();
+      markEditDirty();
+      return true;
+    case UiControl::WallItem:
+      pickWall(static_cast<size_t>(std::atoi(c.value.c_str())));
+      markEditDirty();
+      return true;
     case UiControl::Saves:
       m_savesOpen = !m_savesOpen;
+      m_wallsOpen = false;
       m_galleryOpen = m_helpOpen = false;
       if (m_savesOpen) refreshSaves();
       markEditDirty();
@@ -2601,6 +2701,12 @@ bool App::uiScroll(double x, double y, int step) {
     const int before = m_layersScroll;
     m_layersScroll = std::max(0, m_layersScroll + step);  // clamped when laid out
     if (m_layersScroll != before) markEditDirty();
+    return true;
+  }
+  if (c.value == "walls" || c.type == UiControl::WallItem || c.type == UiControl::WallTab) {
+    const int before = m_wallsScroll;
+    m_wallsScroll = std::max(0, m_wallsScroll + step);  // clamped when laid out
+    if (m_wallsScroll != before) markEditDirty();
     return true;
   }
   if (c.value == "saves" || isSaveControl(c.type)) {
@@ -3038,9 +3144,11 @@ void App::drawUi(EditSurface& e) {
       case UiControl::Grid:
       case UiControl::Help:
       case UiControl::Saves:
+      case UiControl::Walls:
       case UiControl::Layers:
       case UiControl::Paint: {
-        const bool on = c.type == UiControl::Magnet ? m_snapOn
+        const bool on = c.type == UiControl::Walls ? m_wallsOpen
+                        : c.type == UiControl::Magnet ? m_snapOn
                         : c.type == UiControl::Grid ? m_gridOn
                         : c.type == UiControl::Help ? m_helpOpen
                         : c.type == UiControl::Saves ? m_savesOpen
@@ -3054,6 +3162,7 @@ void App::drawUi(EditSurface& e) {
              : c.type == UiControl::Grid ? "grid"
              : c.type == UiControl::Help ? "help"
              : c.type == UiControl::Saves ? "save"
+             : c.type == UiControl::Walls ? "image"
              : c.type == UiControl::Layers ? "layers"
                                           : "brush",
              cx, cy, off ? withAlphaC(ink, 0.3F) : on ? accent : ink);
@@ -3455,6 +3564,65 @@ void App::drawUi(EditSurface& e) {
       }
     }
   }
+
+  // ── the wallpaper gallery ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "walls") continue;
+    const Rect P = c.r;
+    plateAt(P, 16);
+    cv.roundRect(P.x + 16, P.y + 16, 24, 24, 8, withAlphaC(accent, 0.22F));
+    icon(cv, "image", P.x + 28, P.y + 28, accent);
+    cv.text(es ? "Fondos de pantalla" : "Wallpapers", head, P.x + 50, P.y + 18, ink);
+    const std::string sub = m_wallsTab == 0
+                                ? (es ? "Se pone con " : "Set through ") + wallpaperSetter() + (es ? " en esta pantalla" : " on this screen")
+                                : (es ? "Se reproduce en un widget de escena en esta pantalla" : "Played by a scene widget on this screen");
+    fitText(sub, label, P.x + 220, P.y + 22, P.w - 236, dim);
+    const auto& items = m_wallsTab == 0 ? m_wallPics : m_wallWork;
+    if (items.empty())
+      fitText(m_wallsTab == 0 ? (es ? "No hay imágenes en las carpetas de fondos ([general] wallpaper_dirs)." : "No pictures in the wallpaper folders ([general] wallpaper_dirs).")
+                              : (es ? "No hay escenas ni videos del Workshop de Wallpaper Engine." : "No Wallpaper Engine scenes or videos from the Workshop."),
+              label, P.x + 18, P.y + 118, P.w - 36, dim);
+    const std::string note = !m_wallsNote.empty() ? m_wallsNote
+                                                   : std::format("{} {}", items.size(), es ? (m_wallsTab == 0 ? "imágenes · rueda para ver más" : "fondos · rueda para ver más")
+                                                                                               : (m_wallsTab == 0 ? "pictures · scroll for more" : "wallpapers · scroll for more"));
+    fitText(note, label, P.x + 18, P.y + P.h - 26, P.w - 36, m_wallsNote.rfind("error", 0) == 0 ? Color{1, 0.62F, 0.57F, 1} : dim);
+  }
+  bool thumbsPending = false;
+  const std::string currentWall = m_uiOutput ? m_noctalia.state().wallpaperFor(m_uiOutput->name) : std::string();
+  std::string currentScene;
+  for (auto& w : m_widgets)
+    if (w->cfg.type == "scene" && w->output == m_uiOutput && !w->cfg.hidden) currentScene = w->cfg.options["scene"].value_or(std::string());
+  for (const UiControl& c : m_ui) {
+    const bool hot = hovered(c);
+    if (c.type == UiControl::WallTab) {
+      const int t = std::atoi(c.value.c_str());
+      const bool on = t == m_wallsTab;
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 12, on ? withAlphaC(accent, 0.28F) : (hot ? withAlphaC(ink, 0.12F) : raised), 1,
+                   on ? withAlphaC(accent, 0.75F) : line);
+      const std::string name = t == 0 ? (es ? "Tus imágenes" : "Your pictures") : "Workshop";
+      auto [tw, th] = measure(name, label);
+      cv.text(name, label, c.r.x + (c.r.w - tw) / 2, c.r.y + (c.r.h - th) / 2, on ? ink : dim);
+    } else if (c.type == UiControl::WallItem) {
+      const auto& items = m_wallsTab == 0 ? m_wallPics : m_wallWork;
+      const size_t i = static_cast<size_t>(std::atoi(c.value.c_str()));
+      if (i >= items.size() || !m_thumbs) continue;
+      const GalleryItem& it = items[i];
+      int size[2] = {0, 0};
+      const GLuint tex = m_thumbs->get(it.path, size);
+      const float ih = c.r.h - 22;
+      if (tex) cv.image(tex, size[0], size[1], c.r.x, c.r.y, c.r.w, ih, 8);
+      else {
+        cv.roundRect(c.r.x, c.r.y, c.r.w, ih, 8, withAlphaC(ink, 0.08F));
+        thumbsPending = true;
+      }
+      const bool current = m_wallsTab == 0 ? it.path == currentWall : it.workshop == currentScene;
+      if (current || hot) cv.roundRect(c.r.x, c.r.y, c.r.w, ih, 8, Color{0, 0, 0, 0}, current ? 2.5F : 1.5F, current ? accent : withAlphaC(ink, 0.6F));
+      std::string name = it.label;
+      if (m_wallsTab == 1 && it.kind == "video") name = (es ? "video · " : "video · ") + name;
+      fitText(name, label, c.r.x + 2, c.r.y + ih + 3, c.r.w - 4, current ? ink : dim);
+    }
+  }
+  if (m_thumbs && (m_thumbs->upload(6) || thumbsPending)) markEditDirty();  // more thumbnails on the way
 
   // ── saved profiles ──
   for (const UiControl& c : m_ui) {

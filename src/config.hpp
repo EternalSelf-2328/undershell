@@ -101,6 +101,7 @@ struct Config {
   // what running on battery does to it: lower (one step) | eco | keep
   std::string performance = "auto";
   std::string onBattery = "lower";
+  std::vector<std::string> wallpaperDirs;  // the gallery's picture folders (empty: guessed)
 
   static std::string defaultPath();
   static Config load(const std::string& path);
