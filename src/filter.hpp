@@ -17,7 +17,7 @@
 // effects' own frame rate (fx_fps, 30 by default).
 #pragma once
 
-#include "effects.hpp"
+#include "effectchain.hpp"
 #include "gl.hpp"
 #include "wallstore.hpp"
 #include "widget.hpp"
@@ -47,19 +47,18 @@ struct FilterConfig {
 
 class FilterWidget final : public WidgetImpl {
 public:
-  ~FilterWidget() override;
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
-  void tick(const TickContext& ctx) override;
+  void tick(const TickContext& ctx) override { m_fx.tick(ctx); }
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool fullscreen() const override { return true; }
-  [[nodiscard]] bool animating(const TickContext&) const override { return m_fade.animating() || m_moving; }
-  [[nodiscard]] int fps() const override { return m_fx.empty() ? 60 : m_fps; }
-  [[nodiscard]] bool usesAudio() const override { return m_audio; }
-  [[nodiscard]] bool wantsDepth() const override { return m_depth; }
+  [[nodiscard]] bool animating(const TickContext&) const override { return m_fade.animating() || m_fx.moving(); }
+  [[nodiscard]] int fps() const override { return m_fx.empty() ? 60 : m_fx.fps(); }
+  [[nodiscard]] bool usesAudio() const override { return m_fx.audio(); }
+  [[nodiscard]] bool wantsDepth() const override { return m_fx.depth(); }
   [[nodiscard]] bool keepsResolution() const override { return true; }
   // the person's own effects: a new or changed file applies at once
-  [[nodiscard]] std::vector<std::string> watchedFiles() const override;
-  void filesChanged() override;
+  [[nodiscard]] std::vector<std::string> watchedFiles() const override { return {userEffectsDir() + "/"}; }
+  void filesChanged() override { m_fx.refresh(); }
   // a picture still decoding: look again soon
   [[nodiscard]] double nextWakeup(double now) const override { return m_fade.waiting() ? now + 0.05 : 1e18; }
   [[nodiscard]] Color accent() const override { return m_tintC; }
@@ -68,36 +67,12 @@ public:
   static const std::map<std::string, std::string>& preset(const std::string& style);
 
 private:
-  // one effect that is on: its id, source and the values of its options
-  struct Fx {
-    std::string id;
-    uint64_t hash = 0;
-    std::vector<std::array<float, 3>> values;  // per option (a colour uses all three)
-    float strength = 1, split = 0.5F;
-    int mask = 0;  // all background subject above below
-    std::vector<GLint> loc[2];  // per option, then strength, mask, split; main and lights program
-  };
-  void applyEffects();
-  void build();
-  void shared(const Program& prog, int which, const DrawContext& ctx);
-  void drawLights(const WallPic& pic, const DrawContext& ctx);
   void drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity);
 
   FilterConfig m_cfg;
-  toml::table m_opts;
-  NoctaliaState m_noct;
   Color m_tintC, m_darkC, m_lightC;
-  Program m_prog, m_lightProg;
-  std::string m_built;  // the effects the program was built for
-  std::vector<Fx> m_fx;
+  EffectChain m_fx;
   WallpaperFade m_fade;
-  GLuint m_noise = 0;
-  GLuint m_lightTex = 0, m_lightFbo = 0;  // the lights pass
-  int m_lightW = 0, m_lightH = 0;
-  int m_fps = 30;
-  bool m_time = false, m_audio = false, m_depth = false, m_moving = false;
-  std::array<float, 4> m_level{};  // bass, mids, treble, beat
-  double m_start = -1;
 };
 
 }  // namespace undershell

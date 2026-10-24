@@ -32,13 +32,15 @@ uniform float u_aspect;       // the picture's width / height
 uniform vec2 u_screen;        // the surface, px
 uniform float u_depthOn, u_depthLevel, u_depthFeather;
 uniform int u_wrap;           // the picture repeats (tiled)
+uniform int u_flipY;          // the picture is an off-screen render: rows bottom up
 uniform sampler2D u_fxmasks;  // the four painted effect masks (RGBA over the picture)
 uniform float u_fxmasksOn;
 vec2 screenPx;                // this pixel on the surface, px
 
 vec2 edgeSafe(vec2 uv) { return u_wrap == 1 ? uv : clamp(uv, 0.0005, 0.9995); }
-vec3 wall(vec2 uv) { return texture(u_tex, edgeSafe(uv)).rgb; }
-vec3 wallLod(vec2 uv, float lod) { return textureLod(u_tex, edgeSafe(uv), lod).rgb; }
+vec2 texUv(vec2 uv) { uv = edgeSafe(uv); return u_flipY == 1 ? vec2(uv.x, 1.0 - uv.y) : uv; }
+vec3 wall(vec2 uv) { return texture(u_tex, texUv(uv)).rgb; }
+vec3 wallLod(vec2 uv, float lod) { return textureLod(u_tex, texUv(uv), lod).rgb; }
 float depth(vec2 uv) { return u_depthOn > 0.5 ? textureLod(u_depth, clamp(uv, 0.0, 1.0), 0.0).r : 0.0; }
 float subject(vec2 uv) {
     if (u_depthOn < 0.5) return 0.0;
@@ -150,7 +152,7 @@ uint64_t fnv(const std::string& s) {
 bool reservedName(const std::string& k) {
   static const std::set<std::string> kWords = {
       "strength", "mask", "split", "paint", "uv", "c", "L", "warp", "color", "light", "wall", "wallLod", "depth", "subject", "luma", "hash", "noise",
-      "noise4", "flow", "fbm", "pictureOffset", "edgeSafe", "fxMask", "screenPx", "float", "int", "uint", "bool", "vec2", "vec3",
+      "noise4", "flow", "fbm", "pictureOffset", "edgeSafe", "texUv", "fxMask", "screenPx", "float", "int", "uint", "bool", "vec2", "vec3",
       "vec4", "ivec2", "ivec3", "ivec4", "bvec2", "bvec3", "bvec4", "mat2", "mat3", "mat4", "void", "true", "false", "if", "else",
       "for", "while", "do", "return", "break", "continue", "discard", "const", "in", "out", "inout", "uniform", "struct",
       "precision", "highp", "mediump", "lowp", "sampler2D", "length", "distance", "dot", "cross", "normalize", "mix", "step",

@@ -219,6 +219,26 @@ int main() {
       CHECK(imageDiff(unpainted, base) < 0.05);  // nothing painted: nowhere
       glDeleteTextures(1, &masks);
     }
+    // a light (drawn on its own smaller surface) lands where its mask says: mist above the line
+    {
+      toml::table fog = plain;
+      fog.insert_or_assign("fx_mist", true);
+      fog.insert_or_assign("fx_mist_density", 1.0);
+      fog.insert_or_assign("fx_mist_mask", "above");
+      fog.insert_or_assign("fx_mist_split", 0.5);
+      const Image img = renderWidget("filter", fog, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
+      double up = 0, down = 0;
+      for (int y = 0; y < 90; ++y)
+        for (int x = 0; x < 160; ++x)
+          for (int k = 0; k < 3; ++k) {
+            const size_t i = (static_cast<size_t>(y) * 160 + x) * 4 + k;
+            const int d = std::abs(img.rgba[i] - base.rgba[i]);
+            if (y < 35) up += d;
+            if (y > 55) down += d;
+          }
+      if (!(up > 50 && down < 1)) std::fprintf(stderr, "mist above: up %.0f down %.0f\n", up, down);
+      CHECK(up > 50 && down < 1);
+    }
     // all together in one pass
     const Image every = renderWidget("filter", all, 160, 90, pal, 1000, 30, 3.0, nullptr, png);
     CHECK(every.w == 160 && every.rgba[(45 * 160 + 80) * 4 + 3] == 255);
