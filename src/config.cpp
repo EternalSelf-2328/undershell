@@ -690,6 +690,10 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "scene") {
+    b += "scene = \"\"                 # a Wallpaper Engine wallpaper: its Workshop id or folder (scenes and videos)\n"
+         "depth = false\n"
+         "layer = -999               # under every other widget\n";
   } else if (type == "filter") {
     b += std::format("style = \"{}\"             # warm cool noir vintage dream night vivid faded duotone custom\n", look.empty() ? "warm" : look);
     b += "depth = false              # true: only the background, behind the wallpaper's subject\n"

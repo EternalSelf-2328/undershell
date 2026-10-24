@@ -448,6 +448,24 @@ declares its options, saved as `~/.config/undershell/effects/<name>.glsl`. It
 shows up in the inspector with its own rows as soon as it is saved (format
 and an example in [docs/EFFECTS.md](docs/EFFECTS.md)).
 
+## Wallpaper Engine scenes and videos
+
+If you own Wallpaper Engine on Steam, the **scene** widget plays the
+wallpapers you downloaded from its Workshop, from your own install: give it
+a Workshop id (or a folder with a `project.json`) in its inspector row or
+with `undershell msg set <id> scene 1234567890`. Videos play through FFmpeg.
+Scenes are unpacked first by `undershell-scene`, a small helper that does
+all the reading of the package and its textures in its own process,
+confined with Landlock to the scene's folder and its output, into
+`~/.cache/undershell/scenes` (the twelve most recent stay); then they are
+drawn layer by layer, with their nesting, alignment, colour and blending,
+in 0.1 to 0.5 s here. While one loads, its preview picture stands in.
+Wallpaper Engine's own effects, particles, text and puppet animations are
+not drawn yet: that is the next step.
+
+Nothing of Wallpaper Engine ships with undershell, and undershell is not
+affiliated with it: it only reads, at run time, what you installed.
+
 ## Shapes
 
 Geometric shapes to build compositions out of layers (see **Layers** and
@@ -1297,6 +1315,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/weather.*`, `src/weatherfeed.*` | the weather widget and its Open-Meteo feed (geocoding, forecast, disk cache) |
 | `src/net.*` | HTTPS fetches (http/https only, size-limited) and the cache folder |
 | `src/filter.*` | the wallpaper widget: the wallpaper drawn again through colour adjustments and the animated effects (one pass, plus a smaller one for the lights) |
+| `src/scene.*`, `src/wescene.*`, `src/scenehelper.cpp` | the scene widget (Wallpaper Engine scenes and videos), reading an unpacked scene, and `undershell-scene`, the confined helper that unpacks them |
 | `src/particles.*`, `src/pt/*.inc` | particles over the wallpaper: the JSON format, the built-in systems, your own folder, the fixed-step simulation and the instanced sprites |
 | `src/effectchain.*`, `src/fxwidget.*` | the effects of one widget ready to draw (options, music, programs, lights pass), and the wrapper that gives them to every widget type |
 | `src/effects.*`, `src/fx/*.inc` | animated effects: the annotated format, the built-in effects, your own folder, joining them into one shader, their inspector rows |

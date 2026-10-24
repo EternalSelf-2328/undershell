@@ -6,6 +6,7 @@
 #include "filter.hpp"
 #include "fxwidget.hpp"
 #include "notes.hpp"
+#include "scene.hpp"
 #include "nowplaying.hpp"
 #include "image.hpp"
 #include "lyricswidget.hpp"
@@ -28,6 +29,7 @@ std::unique_ptr<WidgetImpl> plainWidget(const std::string& type) {
   if (type == "notes") return std::make_unique<NotesWidget>();
   if (type == "weather") return std::make_unique<WeatherWidget>();
   if (type == "image") return std::make_unique<ImageWidget>();
+  if (type == "scene") return std::make_unique<SceneWidget>();
   return nullptr;
 }
 }  // namespace
@@ -39,6 +41,6 @@ std::unique_ptr<WidgetImpl> createWidget(const std::string& type) {
   return nullptr;
 }
 
-std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "filter"}; }
+std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "filter", "scene"}; }
 
 }  // namespace undershell

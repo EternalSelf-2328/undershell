@@ -272,6 +272,12 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  static const std::vector<PropSpec> scene = {
+      {K::Text, "scene", "Workshop id or folder", "Id del Workshop o carpeta", {}, 0, 0, 0, 0, ""},
+      {K::Number, "speed", "Video speed", "Velocidad del video", {}, 0.25, 2, 0.05, 1},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 0},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, -999, "", true},
+  };
   static const std::vector<PropSpec> image = {
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
       {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
@@ -293,6 +299,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   static const std::vector<PropSpec> none;
   if (type == "shape") return shape;
   if (type == "image") return image;
+  if (type == "scene") return scene;
   if (type == "text") return text;
   if (type == "lyrics") return lyrics;
   if (type == "calendar") return calendar;

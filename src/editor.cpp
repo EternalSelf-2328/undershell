@@ -91,6 +91,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "notes") return w.cfg.options["plate"].value_or(std::string("paper"));
   if (w.cfg.type == "weather") return w.cfg.options["layout"].value_or(std::string("now"));
   if (w.cfg.type == "filter") return w.cfg.options["style"].value_or(std::string("warm"));
+  if (w.cfg.type == "scene") return w.cfg.options["scene"].value_or(std::string());
   return w.cfg.options["style"].value_or(std::string("bars"));
 }
 }  // namespace

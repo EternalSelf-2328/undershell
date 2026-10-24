@@ -119,6 +119,11 @@ std::string optionsMarkdown() {
         "(sent once to Open-Meteo's geocoding) or `\"lat, lon\"`. Only coordinates rounded to 0.01° are sent after that, every "
         "half hour; answers are cached in `~/.cache/undershell/weather`.\n\n";
   table(md, "weather");
+  md += "\n## `type = \"scene\"`\n\nA Wallpaper Engine wallpaper from your own Steam install: `scene` is its Workshop id (or a "
+        "folder with a `project.json`). Videos play through FFmpeg; scenes are unpacked by `undershell-scene`, a confined helper, "
+        "into `~/.cache/undershell/scenes` and drawn layer by layer (Wallpaper Engine's own effects, particles, text and puppets are "
+        "not drawn yet). Nothing of Wallpaper Engine ships with undershell.\n\n";
+  table(md, "scene");
   md += "\n## `type = \"filter\"`\n\nA colour filter over the wallpaper: it draws the wallpaper again (fitted as the shell fits it) "
         "through the options below, under every other widget. With `depth = true` only the background behind the wallpaper's "
         "subject is filtered. Nothing for a video or scene wallpaper. A `style` sets the options after it; the defaults below "

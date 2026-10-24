@@ -2060,6 +2060,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                : w->cfg.type == "notes"    ? w->cfg.options["plate"].value_or(std::string("paper"))
                                : w->cfg.type == "weather"  ? w->cfg.options["layout"].value_or(std::string("now"))
                                : w->cfg.type == "filter"   ? w->cfg.options["style"].value_or(std::string("warm"))
+                               : w->cfg.type == "scene"    ? w->cfg.options["scene"].value_or(std::string())
                                                            : w->cfg.type;
       s += std::format("{}{{\"id\":{},\"type\":{},\"look\":{},\"output\":{},\"x\":{},\"y\":{},\"width\":{},\"height\":{},"
                        "\"rotation\":{:.1f},\"depth\":{},\"depth_level\":{:.0f},\"fps\":{:.0f},\"name\":{},\"group\":{},"

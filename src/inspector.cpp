@@ -818,6 +818,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "notes") return es ? "Notas" : "Notes";
   if (type == "weather") return es ? "Clima" : "Weather";
   if (type == "filter") return es ? "Fondo y efectos" : "Wallpaper & effects";
+  if (type == "scene") return es ? "Escena de Wallpaper Engine" : "Wallpaper Engine scene";
   return "Widget";
 }
 }  // namespace
@@ -1296,6 +1297,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "notes") return "notes";
   if (type == "weather") return "weather";
   if (type == "filter") return "filter";
+  if (type == "scene") return "scene";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -1674,7 +1676,7 @@ void App::layoutUi(const EditSurface& e) {
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
     const char* types[] = {"visualizer", "clock",  "calendar", "weather", "notes",  "now_playing",
-                           "lyrics",     "text",   "shape",    "image",   "filter"};
+                           "lyrics",     "text",   "shape",    "image",   "filter", "scene"};
     // two columns when one would not fit the screen's height
     const int n = static_cast<int>(std::size(types));
     const int cols = gy0Fits(n, vertical ? H - 24 + 106 - 12 : m_areaBottom - m_areaTop + 106) ? 1 : 2, rows = (n + cols - 1) / cols;
@@ -2726,6 +2728,10 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "scene") {  // a frame with layers stacked in it
+    c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.segment(cx - 4, cy - 1, cx + 4, cy - 1, 1.5F, col);
+    c.segment(cx - 4, cy + 2.5F, cx + 4, cy + 2.5F, 1.5F, col);
   } else if (name == "filter") {  // a frame half in colour
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.triangle(cx - 6, cy + 5, cx + 6, cy - 5, cx + 6, cy + 5, col);
@@ -3261,6 +3267,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "notes"   ? (es ? "Markdown · tareas" : "Markdown · tasks")
                        : c.value == "weather" ? (es ? "Ahora · horas · semana" : "Now · hours · week")
                        : c.value == "filter"  ? (es ? "Color · agua · rayos de luz" : "Colour · water · light rays")
+                       : c.value == "scene"   ? (es ? "Escenas y videos del Workshop" : "Workshop scenes and videos")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
     fitText(desc, label, c.r.x + 56, c.r.y + 34, c.r.w - 64, dim);  // a long translation ends in "…"

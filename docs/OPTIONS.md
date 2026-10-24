@@ -320,6 +320,17 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
 
+## `type = "scene"`
+
+A Wallpaper Engine wallpaper from your own Steam install: `scene` is its Workshop id (or a folder with a `project.json`). Videos play through FFmpeg; scenes are unpacked by `undershell-scene`, a confined helper, into `~/.cache/undershell/scenes` and drawn layer by layer (Wallpaper Engine's own effects, particles, text and puppets are not drawn yet). Nothing of Wallpaper Engine ships with undershell.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `scene` | text | `""` | Workshop id or folder |
+| `speed` | 0.25 – 2 | `1` | Video speed |
+| `depth` | `true` / `false` | `false` | Depth |
+| `layer` | -999 – 999 | `-999` | Layer |
+
 ## `type = "filter"`
 
 A colour filter over the wallpaper: it draws the wallpaper again (fitted as the shell fits it) through the options below, under every other widget. With `depth = true` only the background behind the wallpaper's subject is filtered. Nothing for a video or scene wallpaper. A `style` sets the options after it; the defaults below are the `custom` style's (nothing changed).

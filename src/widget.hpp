@@ -143,7 +143,7 @@ protected:
   bool m_editable = false;  // its text can be typed on in the editor
 };
 
-// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "filter". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "filter", "scene". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 

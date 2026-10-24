@@ -2,6 +2,9 @@
 // package and textures made here (no Workshop content in the tests), what
 // it writes, what it refuses, and its confinement.
 #include "check.hpp"
+#include "noctalia.hpp"
+#include "offscreen.hpp"
+#include "wescene.hpp"
 
 #include <lz4.h>
 
@@ -135,6 +138,58 @@ int main() {
     CHECK(!fs::exists(dir / "assets-out/materials/key.json"));
   else
     std::fputs("no Landlock on this kernel: confinement not checked\n", stderr);
+
+  // the model: a parent and a child placed in it, an aligned layer, y up
+  {
+    using namespace undershell;
+    WeScene sc;
+    sc.width = 200, sc.height = 100;
+    WeLayer parent;
+    parent.id = 1, parent.ox = 100, parent.oy = 50, parent.sx = 2, parent.sy = 2;
+    WeLayer child;
+    child.id = 2, child.parent = 1, child.ox = 10, child.oy = 0, child.w = 10, child.h = 10;
+    WeLayer floor;
+    floor.id = 3, floor.ox = 100, floor.oy = 0, floor.w = 200, floor.h = 20, floor.align = "bottom";
+    sc.layers = {parent, child, floor};
+    const auto q = weLayerQuad(sc, sc.layers[1], 0, 0);
+    // the child: 10 to the right of the parent, scaled by it: 20 wide, centred at (120, 50)
+    CHECK(std::abs(q[0] - 110) < 1e-3 && std::abs(q[1] - 60) < 1e-3 && std::abs(q[6] - 130) < 1e-3 && std::abs(q[7] - 40) < 1e-3);
+    const auto f = weLayerQuad(sc, sc.layers[2], 0, 0);  // bottom-aligned: from y 0 up to 20
+    CHECK(std::abs(f[1] - 20) < 1e-3 && std::abs(f[7] - 0) < 1e-3 && std::abs(f[0] - 0) < 1e-3);
+    const auto t = weLayerQuad(sc, sc.layers[0], 4, 6);  // no size: the texture's
+    CHECK(std::abs(t[0] - 96) < 1e-3 && std::abs(t[1] - 56) < 1e-3);
+  }
+
+  // end to end: a package unpacked, read and drawn; the layer lands where the scene says
+  {
+    using namespace undershell;
+    setenv("XDG_CACHE_HOME", (dir / "cache").c_str(), 1);
+    setenv("UNDERSHELL_SCENE_HELPER", helper, 1);
+    fs::create_directories(dir / "scene");
+    std::ofstream(dir / "scene/project.json") << R"({"type": "Scene", "title": "test", "file": "scene.json"})";
+    std::string red;
+    for (int i = 0; i < 4; ++i) red += std::string("\xff\x00\x00\xff", 4);
+    std::ofstream(dir / "scene/scene.pkg", std::ios::binary)
+        << pkg({{"scene.json", R"({"general": {"orthogonalprojection": {"width": 100, "height": 50}, "clearcolor": "0 0 1"},
+                   "objects": [{"id": 1, "image": "models/m.json", "origin": "25 37.5 0", "size": "50 25"},
+                               {"id": 2, "text": "not drawn yet", "origin": "0 0 0"}]})"},
+                {"models/m.json", R"({"material": "materials/m.json"})"},
+                {"materials/m.json", R"({"passes": [{"blending": "translucent", "textures": ["red"]}]})"},
+                {"materials/red.tex", tex(0, 2, 2, red, true)}});
+    WeProject proj;
+    std::string why;
+    CHECK(readWeProject((dir / "scene").string(), proj, why) && proj.type == "scene");
+    Headless gl;
+    if (gl.ok()) {
+      toml::table o;
+      o.insert_or_assign("scene", (dir / "scene").string());
+      const Image img = renderWidget("scene", o, 200, 100, testPalette(), 1000, 1, 5.0);
+      auto px = [&](int x, int y) { return &img.rgba[(static_cast<size_t>(y) * img.w + x) * 4]; };
+      CHECK(img.w == 200);
+      CHECK(px(50, 25)[0] > 200 && px(50, 25)[2] < 50);   // top left: the red layer (y up in the scene)
+      CHECK(px(150, 75)[2] > 200 && px(150, 75)[0] < 50);  // bottom right: the clear colour
+    }
+  }
 
   fs::remove_all(dir);
   return TEST_RESULT();
