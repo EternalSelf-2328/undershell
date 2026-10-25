@@ -233,6 +233,18 @@ bool wallDaemonAnswers() {
   return ok;
 }
 
+bool scenesGoToWallDaemon() {
+  static const bool self = std::getenv("UNDERSHELL_SCENE_SELF") != nullptr;
+  return !self && wallDaemonAnswers();
+}
+
+Argv wallDaemonApplyScene(const std::string& scene, const std::string& output) {
+  const bool id = !scene.empty() && std::ranges::all_of(scene, [](unsigned char c) { return std::isdigit(c); });
+  Argv argv{findProgram("undershell-wallctl"), "apply", id ? "we:" + scene : scene};
+  if (!output.empty()) argv.insert(argv.end(), {"-o", output});
+  return argv;
+}
+
 bool programRunning(const std::string& name) {
   std::error_code ec;
   const uid_t me = getuid();

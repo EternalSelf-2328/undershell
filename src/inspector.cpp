@@ -8,6 +8,7 @@
 #include "effects.hpp"
 #include "filter.hpp"
 #include "particles.hpp"
+#include "wallset.hpp"
 #include "wescene.hpp"
 #include "notes.hpp"
 #include "textwidget.hpp"
@@ -881,7 +882,8 @@ void App::openWalls() {
 }
 
 // a picture: set through the program that draws the wallpaper (a scene on
-// this screen makes way); a Workshop wallpaper: a scene widget plays it
+// this screen makes way); a Workshop wallpaper: undershell-wall's wallpaper
+// when it runs, else a scene widget plays it
 void App::pickWall(size_t index) {
   const bool es = spanishUi();
   const Output* o = m_uiOutput;
@@ -905,6 +907,18 @@ void App::pickWall(size_t index) {
   }
   if (index >= m_wallWork.size()) return;
   const GalleryItem& it = m_wallWork[index];
+  // undershell-wall makes it the wallpaper, like a picture: no widget plays it on top
+  if (scenesGoToWallDaemon()) {
+    spawnArgv(wallDaemonApplyScene(it.workshop, o ? o->name : std::string()));
+    US_INFO("wallpaper set through undershell-wall: {}{}", it.workshop, o ? " on " + o->name : std::string());
+    m_refreshNoctAt = nowSeconds() + 0.6;
+    m_wallsNote = (es ? "Puesto con undershell-wall: " : "Set through undershell-wall: ") + it.label;
+    if (scene) {
+      removeWidget(*scene);
+      m_wallsNote += es ? " · el widget de escena se quitó (Ctrl+Z lo devuelve)" : " · the scene widget was taken away (Ctrl+Z brings it back)";
+    }
+    return;
+  }
   const std::string value = "\"" + it.workshop + "\"";
   if (scene) {
     setProp(*scene, "scene", value);

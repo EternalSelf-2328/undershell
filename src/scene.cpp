@@ -226,18 +226,14 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
   m_camera = cfg.options["camera"].value_or(true);
   const std::string scene = cfg.options["scene"].value_or(std::string());
   // undershell-wall (the fork of skwd) draws Wallpaper Engine scenes in full and
-  // fitted to the GPU, on the background layer: while its daemon answers, the
-  // scene goes to it and this widget draws nothing. Its own renderer is the fallback.
-  // UNDERSHELL_SCENE_SELF=1 keeps it here (the tests, a comparison).
-  static const bool self = std::getenv("UNDERSHELL_SCENE_SELF") != nullptr;
-  if (!scene.empty() && !self && wallDaemonAnswers()) {
+  // fitted to the GPU as the wallpaper itself; the gallery hands them to it. While
+  // its daemon answers, a scene widget left in a layout draws nothing and applies
+  // nothing: it comes back with every layout and would win over the wallpaper
+  // chosen after it. Its own renderer is the fallback.
+  if (!scene.empty() && scenesGoToWallDaemon()) {
     if (scene != m_delegated) {
       m_delegated = scene;
-      const bool id = std::ranges::all_of(scene, [](unsigned char c) { return std::isdigit(c); });
-      Argv argv{findProgram("undershell-wallctl"), "apply", id ? "we:" + scene : scene};
-      if (!cfg.output.empty()) argv.insert(argv.end(), {"-o", cfg.output});
-      spawnArgv(argv);
-      US_INFO("scene {}: shown by undershell-wall", scene);
+      US_INFO("scene {}: left to undershell-wall, this widget stays idle", scene);
     }
     if (!m_scene.empty()) {  // drop what this widget had drawn itself
       for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);

@@ -54,5 +54,10 @@ void spawnArgv(const Argv& argv);
 // undershell-wall's daemon answers on its socket ($XDG_RUNTIME_DIR/undershell-wall/wall.sock),
 // the one undershell-wallctl will use from this environment.
 [[nodiscard]] bool wallDaemonAnswers();
+// Workshop wallpapers go to undershell-wall as the wallpaper itself while it
+// answers; UNDERSHELL_SCENE_SELF=1 keeps them in undershell's scene widget (tests).
+[[nodiscard]] bool scenesGoToWallDaemon();
+// undershell-wallctl's argv to apply a Workshop id or folder, on `output` or on every screen.
+[[nodiscard]] Argv wallDaemonApplyScene(const std::string& scene, const std::string& output);
 
 }  // namespace undershell
