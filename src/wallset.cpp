@@ -7,6 +7,7 @@
 #include <cctype>
 #include <filesystem>
 #include <format>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -40,7 +41,7 @@ std::string plasmaFill(int fill) { return fill == 2 ? "preserveAspectFit" : fill
 }  // namespace
 
 bool wallpaperSetSupported(const std::string& source) {
-  static const char* kNames[] = {"noctalia", "skwd", "caelestia", "dms", "ii", "ambxst", "hyprpanel", "awww", "swww",
+  static const char* kNames[] = {"noctalia", "undershell-wall", "skwd", "caelestia", "dms", "ii", "ambxst", "hyprpanel", "awww", "swww",
                                  "hyprpaper", "wpaperd", "swaybg", "waypaper", "plasma", "gnome"};
   return std::ranges::any_of(kNames, [&](const char* n) { return source == n; });
 }
@@ -60,6 +61,10 @@ WallSet wallpaperSetCommands(const std::string& source, const std::string& path,
       return s;
     }
     s.commands.push_back(one ? Argv{"noctalia", "msg", "wallpaper-set", output, path} : Argv{"noctalia", "msg", "wallpaper-set", path});
+  } else if (source == "undershell-wall") {
+    // undershell-wall (a fork of skwd-deck): the same apply verb
+    const std::string ctl = findProgram("undershell-wallctl");
+    s.commands.push_back(one ? Argv{ctl, "apply", path, "-o", output} : Argv{ctl, "apply", path});
   } else if (source == "skwd") {
     // skwd-deck crates/skwd-helm/src/commands.rs:170-197; output "*" by default
     s.commands.push_back(one ? Argv{"skwd-helm", "apply", path, "-o", output} : Argv{"skwd-helm", "apply", path});
@@ -192,6 +197,38 @@ void spawnArgv(const Argv& argv) {
     _exit(0);
   }
   if (pid > 0) waitpid(pid, nullptr, 0);  // the go-between exits at once: no zombie left behind
+}
+
+std::string findProgram(const std::string& name) {
+  std::error_code ec;
+  const char* path = std::getenv("PATH");
+  std::string dirs = path ? path : "";
+  dirs += ":" + expandHome("~/.local/bin");
+  size_t start = 0;
+  while (start <= dirs.size()) {
+    const size_t end = std::min(dirs.find(':', start), dirs.size());
+    const fs::path dir = dirs.substr(start, end - start);
+    start = end + 1;
+    if (dir.empty()) continue;
+    const fs::path candidate = dir / name;
+    if (fs::is_regular_file(candidate, ec) && access(candidate.c_str(), X_OK) == 0) return candidate.string();
+  }
+  return name;
+}
+
+bool programRunning(const std::string& name) {
+  std::error_code ec;
+  const uid_t me = getuid();
+  for (const auto& e : fs::directory_iterator("/proc", ec)) {
+    const std::string pid = e.path().filename().string();
+    if (pid.empty() || !std::isdigit(static_cast<unsigned char>(pid[0]))) continue;
+    struct stat st{};
+    if (::stat(e.path().c_str(), &st) != 0 || st.st_uid != me) continue;
+    const std::string cmdline = readFile((e.path() / "cmdline").string());
+    const std::string argv0 = cmdline.substr(0, cmdline.find('\0'));
+    if (!argv0.empty() && fs::path(argv0).filename() == name) return true;
+  }
+  return false;
 }
 
 }  // namespace undershell

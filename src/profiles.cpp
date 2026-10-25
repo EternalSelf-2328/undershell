@@ -7,6 +7,7 @@
 // has one; a wallpaper seen for the first time keeps the current layout.
 // Only the [[widget]] blocks move: [general] stays shared.
 #include "app.hpp"
+#include "wallset.hpp"
 #include "wallkind.hpp"
 
 #include <algorithm>
@@ -108,14 +109,17 @@ void App::checkWallpaperKind() {
   std::vector<std::string> outs = outputNames();
   bool videoPath = false;
   for (const auto& o : outs) videoPath = videoPath || isVideoPath(m_noctalia.state().wallpaperFor(o));
-  const bool haveSkwd = fs::exists("/usr/bin/skwd-helm") || fs::exists("/usr/local/bin/skwd-helm");
-  if (!haveSkwd) {
+  // undershell-wall (skwd's fork) answers like skwd-helm when its daemon runs
+  std::string ctl;
+  if (programRunning("undershell-walld")) ctl = findProgram("undershell-wallctl");
+  else if (fs::exists("/usr/bin/skwd-helm") || fs::exists("/usr/local/bin/skwd-helm")) ctl = "skwd-helm";
+  if (ctl.empty()) {
     setMotion(videoPath);
     return;
   }
   m_motionCheckBusy = true;
-  m_jobs.run([this, outs, videoPath]() -> Jobs::Done {
-    const std::string json = runCommand("skwd-helm current --json", 4);
+  m_jobs.run([this, outs, videoPath, ctl]() -> Jobs::Done {
+    const std::string json = runCommand("'" + ctl + "' current --json", 4);
     const bool motion = videoPath || skwdShowsMotion(json, outs);
     return [this, motion] {
       m_motionCheckBusy = false;

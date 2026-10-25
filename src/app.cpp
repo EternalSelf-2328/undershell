@@ -1701,7 +1701,8 @@ std::vector<pid_t> processesNamed(const std::string& name) {
 }  // namespace
 
 std::string App::wallpaperSetter() const {
-  // skwd draws (or hands the picture on to the shell): its own daemon
+  // skwd or its fork draws (or hands the picture on to the shell): their daemon
+  if (programRunning("undershell-walld")) return "undershell-wall";
   if (!processesNamed("skwd-walld").empty()) return "skwd";
   return m_noctalia.state().source;
 }

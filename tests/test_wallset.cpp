@@ -20,6 +20,15 @@ int main() {
   CHECK((only(wallpaperSetCommands("noctalia", pic, "DP-1", ctx)) == Argv{"noctalia", "msg", "wallpaper-set", "DP-1", pic}));
   CHECK(!wallpaperSetCommands("noctalia", "/a  b.png", "", ctx).error.empty());  // it joins words with one space
   CHECK((only(wallpaperSetCommands("skwd", pic, "DP-1", ctx)) == Argv{"skwd-helm", "apply", pic, "-o", "DP-1"}));
+  {
+    // its fork: undershell-wallctl, found in PATH or ~/.local/bin
+    const Argv fork = only(wallpaperSetCommands("undershell-wall", pic, "DP-1", ctx));
+    CHECK(fork.size() == 5 && fork[0].ends_with("undershell-wallctl") && (Argv(fork.begin() + 1, fork.end()) == Argv{"apply", pic, "-o", "DP-1"}));
+    CHECK(wallpaperSetSupported("undershell-wall"));
+    CHECK(findProgram("sh").starts_with("/"));
+    CHECK(findProgram("no-such-program-here") == "no-such-program-here");
+    CHECK(!programRunning("no-such-program-here"));
+  }
   const WallSet cael = wallpaperSetCommands("caelestia", pic, "DP-1", ctx);
   CHECK((only(cael) == Argv{"caelestia", "wallpaper", "--file=" + pic}) && cael.allOutputs);
   CHECK((only(wallpaperSetCommands("dms", pic, "", ctx)) == Argv{"dms", "ipc", "call", "wallpaper", "set", pic}));

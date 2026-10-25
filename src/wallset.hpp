@@ -31,7 +31,7 @@ struct WallSetContext {
 };
 
 // The commands that set `path` (absolute, from checkedWallpaperPath) on
-// `output` ("" = every screen) through `source`: noctalia, skwd, caelestia,
+// `output` ("" = every screen) through `source`: noctalia, undershell-wall, skwd, caelestia,
 // dms, ii, ambxst, hyprpanel, awww, swww, hyprpaper, wpaperd, swaybg,
 // waypaper, plasma, gnome. cosmic and mpvpaper give an error.
 [[nodiscard]] WallSet wallpaperSetCommands(const std::string& source, const std::string& path, const std::string& output,
@@ -44,5 +44,12 @@ struct WallSetContext {
 
 // Runs argv detached (double fork, its own session, execvp: no shell).
 void spawnArgv(const Argv& argv);
+
+// `name` in PATH or in ~/.local/bin (user installs, which a systemd user
+// service's PATH leaves out); `name` itself when neither has it.
+[[nodiscard]] std::string findProgram(const std::string& name);
+// A process of this user started as `name` (the basename of its argv[0]):
+// /proc's comm is cut at 15 characters, too short for undershell-walld.
+[[nodiscard]] bool programRunning(const std::string& name);
 
 }  // namespace undershell
