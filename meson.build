@@ -218,10 +218,11 @@ install_data('LICENSE', install_dir : prefix / get_option('datadir') / 'licenses
 
 foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles', 'motion', 'perf', 'render', 'wallset']
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep, cpp_args : test_args),
-       env : ['UNDERSHELL_DATA_DIR=' + meson.project_source_root() / 'data'])
+       env : ['UNDERSHELL_DATA_DIR=' + meson.project_source_root() / 'data', 'UNDERSHELL_SCENE_SELF=1'])
 endforeach
 if lz4_dep.found()
   test('scene', executable('test_scene', 'tests/test_scene.cpp', dependencies : core_dep, cpp_args : test_args),
        env : ['UNDERSHELL_SCENE_HELPER=' + meson.current_build_dir() / 'undershell-scene',
-              'UNDERSHELL_SCRIPT_HELPER=' + meson.current_build_dir() / 'undershell-script'])
+              'UNDERSHELL_SCRIPT_HELPER=' + meson.current_build_dir() / 'undershell-script',
+              'UNDERSHELL_SCENE_SELF=1'])  # never hand a test scene to a running undershell-wall
 endif

@@ -51,5 +51,8 @@ void spawnArgv(const Argv& argv);
 // A process of this user started as `name` (the basename of its argv[0]):
 // /proc's comm is cut at 15 characters, too short for undershell-walld.
 [[nodiscard]] bool programRunning(const std::string& name);
+// undershell-wall's daemon answers on its socket ($XDG_RUNTIME_DIR/undershell-wall/wall.sock),
+// the one undershell-wallctl will use from this environment.
+[[nodiscard]] bool wallDaemonAnswers();
 
 }  // namespace undershell

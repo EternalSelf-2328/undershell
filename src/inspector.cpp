@@ -860,7 +860,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "notes") return es ? "Notas" : "Notes";
   if (type == "weather") return es ? "Clima" : "Weather";
   if (type == "filter") return es ? "Fondo y efectos" : "Wallpaper & effects";
-  if (type == "scene") return es ? "Escena de Wallpaper Engine" : "Wallpaper Engine scene";
+  if (type == "scene") return "Wallpaper Engine";  // the same in both languages, and it fits a gallery card
   return "Widget";
 }
 }  // namespace
@@ -2432,8 +2432,14 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     case UiControl::GalleryItem:
-      addWidget(c.value, "", INT_MIN, INT_MIN, true);
-      m_galleryOpen = false;
+      if (c.value == "scene") {  // an empty scene shows nothing: choose one from the Workshop first
+        openWalls();
+        m_wallsTab = 1;
+        m_wallsScroll = 0;
+      } else {
+        addWidget(c.value, "", INT_MIN, INT_MIN, true);
+        m_galleryOpen = false;
+      }
       markEditDirty();
       return true;
     case UiControl::Undo: undo(); return true;
@@ -3420,7 +3426,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "filter"  ? (es ? "Color · agua · rayos de luz" : "Colour · water · light rays")
                        : c.value == "scene"   ? (es ? "Escenas y videos del Workshop" : "Workshop scenes and videos")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
-    cv.text(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, ink);
+    fitText(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, c.r.w - 64, ink);
     fitText(desc, label, c.r.x + 56, c.r.y + 34, c.r.w - 64, dim);  // a long translation ends in "…"
   }
 

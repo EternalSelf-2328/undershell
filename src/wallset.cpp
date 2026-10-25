@@ -7,7 +7,9 @@
 #include <cctype>
 #include <filesystem>
 #include <format>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -214,6 +216,21 @@ std::string findProgram(const std::string& name) {
     if (fs::is_regular_file(candidate, ec) && access(candidate.c_str(), X_OK) == 0) return candidate.string();
   }
   return name;
+}
+
+bool wallDaemonAnswers() {
+  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+  if (!runtime || !*runtime) return false;
+  const std::string path = std::string(runtime) + "/undershell-wall/wall.sock";
+  sockaddr_un addr{};
+  if (path.size() >= sizeof addr.sun_path) return false;
+  addr.sun_family = AF_UNIX;
+  std::copy(path.begin(), path.end(), addr.sun_path);
+  const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (fd < 0) return false;
+  const bool ok = connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) == 0;
+  close(fd);
+  return ok;
 }
 
 bool programRunning(const std::string& name) {

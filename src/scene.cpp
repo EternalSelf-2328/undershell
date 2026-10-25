@@ -6,6 +6,7 @@
 #include "offscreen.hpp"
 #include "perf.hpp"
 #include "text.hpp"
+#include "wallset.hpp"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
@@ -14,6 +15,7 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 #include <format>
@@ -223,6 +225,35 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
   m_speed = std::clamp(cfg.options["speed"].value_or(1.0), 0.1, 4.0);
   m_camera = cfg.options["camera"].value_or(true);
   const std::string scene = cfg.options["scene"].value_or(std::string());
+  // undershell-wall (the fork of skwd) draws Wallpaper Engine scenes in full and
+  // fitted to the GPU, on the background layer: while its daemon answers, the
+  // scene goes to it and this widget draws nothing. Its own renderer is the fallback.
+  // UNDERSHELL_SCENE_SELF=1 keeps it here (the tests, a comparison).
+  static const bool self = std::getenv("UNDERSHELL_SCENE_SELF") != nullptr;
+  if (!scene.empty() && !self && wallDaemonAnswers()) {
+    if (scene != m_delegated) {
+      m_delegated = scene;
+      const bool id = std::ranges::all_of(scene, [](unsigned char c) { return std::isdigit(c); });
+      Argv argv{findProgram("undershell-wallctl"), "apply", id ? "we:" + scene : scene};
+      if (!cfg.output.empty()) argv.insert(argv.end(), {"-o", cfg.output});
+      spawnArgv(argv);
+      US_INFO("scene {}: shown by undershell-wall", scene);
+    }
+    if (!m_scene.empty()) {  // drop what this widget had drawn itself
+      for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
+      m_tex.clear();
+      m_fx.clear();
+      m_pt.configureDefs({});
+      m_scripts.reset();
+      m_texts.clear();
+      m_video.close();
+      m_model = {};
+      m_ready = false;
+      m_scene.clear();
+    }
+    return;
+  }
+  m_delegated.clear();
   // the author's properties as set in the inspector (colours through the palette)
   std::map<std::string, std::string> overrides;
   if (const WeProject* p = scene.empty() ? nullptr : weProjectCached(scene))
@@ -978,6 +1009,6 @@ void SceneWidget::captureStill(const DrawContext& ctx) {
   }).detach();
 }
 
-std::string SceneWidget::stillWallpaper() const { return m_still->load() ? m_stillPath : std::string(); }
+std::string SceneWidget::stillWallpaper() const { return m_delegated.empty() && m_still->load() ? m_stillPath : std::string(); }
 
 }  // namespace undershell

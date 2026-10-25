@@ -35,6 +35,8 @@ public:
   void tick(const TickContext& ctx) override;
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool fullscreen() const override { return true; }
+  // nothing to draw while undershell-wall shows the scene
+  [[nodiscard]] bool visible() const override { return m_delegated.empty(); }
   [[nodiscard]] bool keepsResolution() const override { return true; }
   [[nodiscard]] bool animating(const TickContext& ctx) const override;
   [[nodiscard]] bool usesAudio() const override { return m_audio; }
@@ -89,6 +91,7 @@ private:
   void captureStill(const DrawContext& ctx);
 
   std::string m_scene, m_speedText;
+  std::string m_delegated;  // the scene handed to undershell-wall ("" when drawn here)
   double m_speed = 1;
   std::shared_ptr<Load> m_load, m_next;
   std::map<std::string, std::string> m_overrides;  // property -> value from the config
