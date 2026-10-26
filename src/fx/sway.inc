@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Wind", "es": "Viento"},
+  "category": "motion",
   "stage": "warp",
   "uses": ["time"],
   "params": [

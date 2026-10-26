@@ -118,10 +118,16 @@ int main() {
   toml::table opts;
   opts.insert_or_assign("pt_snow", true);
   const auto rows = particleRows(opts, false);
-  CHECK(rows[0].kind == PropSpec::Header && hasRow(rows, "pt_rain") && hasRow(rows, "pt_snow_amount") && hasRow(rows, "pt_snow_behind"));
+  CHECK(rows[0].kind == PropSpec::Header && hasRow(rows, removeKey("pt_snow")) && hasRow(rows, "pt_snow_amount") &&
+        hasRow(rows, "pt_snow_behind"));
+  CHECK(!hasRow(rows, "pt_rain") && !hasRow(rows, removeKey("pt_rain")) && rows.back().key == "_pt_add");
   CHECK(!hasRow(rows, "pt_rain_amount") && !hasRow(rows, "pt_snow_split") && !hasRow(rows, "pt_snow_paint"));
-  for (const auto& r : rows)
+  CHECK(hasRow(particleRows(toml::table{}, true), "pt_rain"));  // every switch, for lookups
+  for (const auto& r : particleRows(opts, true))
     if (r.key == "pt_oops") CHECK(r.labelEn.find("(error)") != std::string::npos);
+  // every built-in kind is in one of the picker's groups
+  for (const ParticleDef& d : particleLibrary().all())
+    if (d.file.empty()) CHECK(std::ranges::any_of(kParticleGroups, [&](const PickerGroup& g) { return *g.id && d.category == g.id; }));
   opts.insert_or_assign("pt_snow_mask", "paint2");
   CHECK(hasRow(particleRows(opts, false), "pt_snow_paint"));
 

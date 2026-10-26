@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Rippling water", "es": "Agua rizada"},
+  "category": "water",
   "stage": "warp",
   "uses": ["time"],
   "params": [

@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Beat pulse", "es": "Pulso"},
+  "category": "motion",
   "stage": "colour",
   "uses": ["audio"],
   "params": [

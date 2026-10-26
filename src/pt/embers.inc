@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 R"PT({
   "name": {"en": "Embers", "es": "Brasas"},
+  "category": "fire",
   "max": 220, "rate": 26, "prewarm": 6, "sprite": "glow", "blend": "add",
   "emitter": {"shape": "box", "origin": [0.5, 1.03], "size": [1.1, 0.04]},
   "init": {"lifetime": [4, 8], "size": [7, 15], "speed": [40, 110], "direction": [255, 285],

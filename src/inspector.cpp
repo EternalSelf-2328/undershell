@@ -1392,10 +1392,26 @@ bool isSaveControl(App::UiControl::Type t) {
          t == T::SaveRow;
 }
 
-// the gallery's rows fit under the toolbar in one column
-bool gy0Fits(int n, float screenH) { return 106 + n * 70.0F + 10 <= screenH - 12; }
+// the gallery, by kind: what each title gathers. "filter:fx" and "filter:pt"
+// open the wallpaper's widget on its effects or particles
+struct GalleryGroup {
+  const char *en, *es;
+  std::vector<std::string> items;
+};
+const std::vector<GalleryGroup>& galleryGroups() {
+  static const std::vector<GalleryGroup> groups = {
+      {"Music", "Música", {"visualizer", "lyrics", "now_playing"}},
+      {"Time & info", "Hora e información", {"clock", "calendar", "weather", "notes"}},
+      {"Decoration", "Decoración", {"text", "shape", "image"}},
+      {"Wallpaper", "Fondo de pantalla", {"filter", "filter:fx", "filter:pt", "scene"}},
+  };
+  return groups;
+}
+constexpr float kGalleryHead = 26;  // a group's title in the gallery and the picker
 
 const char* chipIcon(const std::string& type) {
+  if (type == "filter:fx") return "sparkle";
+  if (type == "filter:pt") return "particles";
   if (type == "shape") return "shape";
   if (type == "image") return "image";
   if (type == "text") return "text";
@@ -1657,6 +1673,10 @@ void App::layoutUi(const EditSurface& e) {
           Rect f{cx, y + 3, cw, 24};
           if (visible(f)) m_ui.push_back({UiControl::TextField, f, idx});
           y += kRowH;
+        } else if (p.kind == PropSpec::Action && p.key.starts_with("_remove:")) {
+          Rect r{px + kPanelW - 16 - 76, y + 3, 76, 24};  // the name, then "Remove" at the end
+          if (visible(r)) m_ui.push_back({UiControl::Action, r, idx});
+          y += kRowH;
         } else if (p.kind == PropSpec::Action) {
           Rect r{px + 16, y + 3, kPanelW - 32, 24};
           if (visible(r)) {
@@ -1783,22 +1803,88 @@ void App::layoutUi(const EditSurface& e) {
 
   // ── popovers last: drawn on top, hit first ──
   if (m_galleryOpen) {
-    const char* types[] = {"visualizer", "clock",  "calendar", "weather", "notes",  "now_playing",
-                           "lyrics",     "text",   "shape",    "image",   "filter", "scene"};
-    // two columns when one would not fit the screen's height
-    const int n = static_cast<int>(std::size(types));
-    const int cols = gy0Fits(n, vertical ? H - 24 + 106 - 12 : m_areaBottom - m_areaTop + 106) ? 1 : 2, rows = (n + cols - 1) / cols;
+    // by kind, each under its title: two columns, or three or four when two
+    // would not fit the screen's height
+    const auto& groups = galleryGroups();
+    auto heightFor = [&](int cols) {
+      float h = 10;
+      for (const GalleryGroup& g : groups) h += kGalleryHead + ((static_cast<int>(g.items.size()) + cols - 1) / cols) * 70.0F;
+      return h;
+    };
+    const float room = vertical ? H - 24 : m_areaBottom - m_areaTop;
+    int cols = 2;
+    while (cols < 4 && heightFor(cols) > room) ++cols;
     const float pw = cols * 262.0F + 8;
-    const float ph = rows * 70.0F + 10;
+    const float ph = heightFor(cols);
     float gx = std::clamp(addRect.x - 10, 12.0F, W - pw - 12);
     float gy = barBelow ? m_barY - 10 - ph : m_barY + kBarH + 10;
     if (vertical) {  // beside the column, level with the button
       gx = side < 0 ? m_barRect.x + m_barRect.w + 10 : m_barRect.x - 10 - pw;
       gy = std::clamp(addRect.y - 8, 12.0F, std::max(12.0F, H - ph - 12));
     }
-    m_ui.push_back({UiControl::Panel, {gx, gy, pw, rows * 70.0F + 10}, -1, "gallery"});
-    for (int i = 0; i < n; ++i)
-      m_ui.push_back({UiControl::GalleryItem, {gx + 8 + (i / rows) * 262.0F, gy + 8 + (i % rows) * 70.0F, 254, 62}, -1, types[i]});
+    m_ui.push_back({UiControl::Panel, {gx, gy, pw, ph}, -1, "gallery"});
+    float y = gy + 8;
+    for (size_t g = 0; g < groups.size(); ++g) {
+      m_ui.push_back({UiControl::Panel, {gx + 8, y, pw - 16, kGalleryHead}, static_cast<int>(g), "gallery-head"});
+      y += kGalleryHead;
+      const auto& items = groups[g].items;
+      for (size_t i = 0; i < items.size(); ++i)
+        m_ui.push_back({UiControl::GalleryItem, {gx + 8 + (i % cols) * 262.0F, y + (i / cols) * 70.0F, 254, 62}, -1, items[i]});
+      y += ((items.size() + cols - 1) / cols) * 70.0F;
+    }
+  }
+  // the effect / particle picker, beside the inspector it was opened from
+  if (!m_addPicker.empty() && !(m_selected && m_selected->cfg.id == m_addPickerFor) && m_pendingSelect != m_addPickerFor)
+    m_addPicker.clear();  // the widget it was for is no longer the one in the inspector
+  if (!m_addPicker.empty() && m_selected) {
+    Rect insp{};
+    for (const UiControl& c : m_ui)
+      if (c.type == UiControl::Panel && c.value == "inspector") insp = c.r;
+    const bool fx = m_addPicker == "fx";
+    struct Pick {
+      std::string key, category;
+    };
+    std::vector<Pick> picks;
+    if (fx) {
+      for (const EffectSpec& e : effectLibrary().all())
+        if (effectLibrary().brokenWhy(e).empty() && !m_selected->cfg.options[effectKey(e.id)].value_or(false))
+          picks.push_back({effectKey(e.id), e.category});
+    } else {
+      for (const ParticleDef& d : particleLibrary().all())
+        if (d.error.empty() && !m_selected->cfg.options[particleKey(d.id)].value_or(false))
+          picks.push_back({particleKey(d.id), d.category});
+    }
+    const std::span<const PickerGroup> groups = fx ? std::span<const PickerGroup>(kEffectGroups) : std::span<const PickerGroup>(kParticleGroups);
+    auto groupOf = [&](const std::string& category) {
+      for (size_t g = 0; g + 1 < groups.size(); ++g)
+        if (category == groups[g].id) return g;
+      return groups.size() - 1;  // the person's own, and any kind undershell does not know
+    };
+    constexpr float kPickW = 300, kChipW = 134, kChipH = 30, kChipPitch = 36;
+    float ph = 48 + 10;
+    for (size_t g = 0; g < groups.size(); ++g) {
+      const auto n = std::ranges::count_if(picks, [&](const Pick& p) { return groupOf(p.category) == g; });
+      if (n > 0) ph += kGalleryHead + ((n + 1) / 2) * kChipPitch;
+    }
+    if (picks.empty()) ph += 30;
+    float px = insp.w > 0 ? insp.x - kPickW - 10 : W - kPickW - 24;
+    if (px < 12) px = insp.x + insp.w + 10;
+    const float py = std::clamp(insp.w > 0 ? insp.y : m_areaTop, 12.0F, std::max(12.0F, H - ph - 12));
+    m_ui.push_back({UiControl::Panel, {px, py, kPickW, ph}, -1, "addpicker"});
+    float y = py + 48;
+    for (size_t g = 0; g < groups.size(); ++g) {
+      int k = 0;
+      for (const Pick& p : picks) {
+        if (groupOf(p.category) != g) continue;
+        if (k == 0) {
+          m_ui.push_back({UiControl::Panel, {px + 12, y, kPickW - 24, kGalleryHead}, static_cast<int>(g), "addpicker-head"});
+          y += kGalleryHead;
+        }
+        m_ui.push_back({UiControl::AddPick, {px + 12 + (k % 2) * (kChipW + 8), y + (k / 2) * kChipPitch, kChipW, kChipH}, -1, p.key});
+        ++k;
+      }
+      if (k > 0) y += ((k + 1) / 2) * kChipPitch;
+    }
   }
   if (m_savesOpen) {
     const int n = static_cast<int>(m_saves.size());
@@ -2450,10 +2536,33 @@ bool App::uiPress(int index, double x) {
         openWalls();
         m_wallsTab = 1;
         m_wallsScroll = 0;
+      } else if (c.value.starts_with("filter")) {
+        // the colour filter, the effects and the particles all live in the
+        // wallpaper's widget: the one on this screen, or a new one (which
+        // leaves the colours alone when it comes for effects or particles)
+        const Output* o = m_pointerEdit ? m_pointerEdit->output : m_uiOutput;
+        Widget* f = nullptr;
+        for (auto& ww : m_widgets)
+          if (ww->cfg.type == "filter" && (!o || ww->output == o)) f = ww.get();
+        std::string id;
+        if (f) {
+          id = f->cfg.id;
+          selectIds({id});
+        } else {
+          id = addWidget("filter", c.value == "filter" ? "" : "custom", INT_MIN, INT_MIN, true);
+        }
+        m_addPicker = c.value == "filter:fx" ? "fx" : c.value == "filter:pt" ? "pt" : "";
+        m_addPickerFor = id;
+        m_galleryOpen = false;
       } else {
         addWidget(c.value, "", INT_MIN, INT_MIN, true);
         m_galleryOpen = false;
       }
+      markEditDirty();
+      return true;
+    case UiControl::AddPick:
+      if (w && !c.value.empty()) setProp(*w, c.value, "true");
+      m_addPicker.clear();
       markEditDirty();
       return true;
     case UiControl::Undo: undo(); return true;
@@ -2478,6 +2587,22 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     case UiControl::Action:
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
+        const std::string& key = m_inspSchema[static_cast<size_t>(c.prop)].key;
+        if (key.starts_with("_remove:")) {
+          setProp(*w, key.substr(8), "false");
+          markEditDirty();
+          return true;
+        }
+        if (key == "_fx_add" || key == "_pt_add") {  // the picker beside the inspector, or closed again
+          const std::string kind = key.substr(1, 2);
+          const bool same = m_addPicker == kind && m_addPickerFor == w->cfg.id;
+          m_addPicker = same ? std::string() : kind;
+          m_addPickerFor = w->cfg.id;
+          markEditDirty();
+          return true;
+        }
+      }
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "mesh_reset") {
         m_lastOpKind.clear();
         setProp(*w, "mesh_preset", "\"flat\"");  // laid flat again on its corners (one undo step)
@@ -2900,6 +3025,18 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.segment(cx - 4, cy - 1, cx + 4, cy - 1, 1.5F, col);
     c.segment(cx - 4, cy + 2.5F, cx + 4, cy + 2.5F, 1.5F, col);
+  } else if (name == "sparkle") {  // a four-pointed star and a small one
+    c.triangle(cx - 2, cy - 1, cx + 2, cy - 1, cx, cy - 8, col);
+    c.triangle(cx - 2, cy - 1, cx + 2, cy - 1, cx, cy + 6, col);
+    c.triangle(cx - 1, cy - 3, cx - 1, cy + 1, cx - 7, cy - 1, col);
+    c.triangle(cx + 1, cy - 3, cx + 1, cy + 1, cx + 7, cy - 1, col);
+    c.circle(cx + 5, cy + 5, 1.6F, col);
+  } else if (name == "particles") {  // a few dots drifting down
+    c.circle(cx - 4, cy - 4, 1.8F, col);
+    c.circle(cx + 3, cy - 5, 1.4F, col);
+    c.circle(cx + 0.5F, cy, 2.0F, col);
+    c.circle(cx - 5, cy + 4, 1.4F, col);
+    c.circle(cx + 5, cy + 4.5F, 1.8F, col);
   } else if (name == "filter") {  // a frame half in colour
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.triangle(cx - 6, cy + 5, cx + 6, cy - 5, cx + 6, cy + 5, col);
@@ -3319,6 +3456,18 @@ void App::drawUi(EditSurface& e) {
             // a depth plane of 0 means "[general] depth_threshold"
           const bool autoPlane = std::string_view(p.key) == "depth_level" && numberOf(w->cfg.options, p) == 0;
           cv.text(autoPlane ? std::string("auto") : v, mono, cx + sw + 10, y + 7, autoPlane ? dim : ink);
+          } else if (p.kind == PropSpec::Action && p.key.starts_with("_remove:")) {
+            // an effect (or particles) that is on: its name, and a button that takes it away
+            const int idx = static_cast<int>(&p - &schema[0]);
+            bool hot = false;
+            for (const UiControl& c : m_ui)
+              if (c.type == UiControl::Action && c.prop == idx) hot = hovered(c);
+            const float bx = P.x + kPanelW - 16 - 76;
+            fitText(es ? p.labelEs : p.labelEn, strong, P.x + 16, y + 6, bx - P.x - 24, ink);
+            cv.roundRect(bx, y + 3, 76, 24, 8, hot ? Color{0.9F, 0.25F, 0.2F, 0.3F} : raised, 1, line);
+            const std::string t = es ? "Quitar" : "Remove";
+            auto [tw, th] = measure(t, label);
+            cv.text(t, label, bx + (76 - tw) / 2, y + 15 - th / 2, hot ? Color{1, 0.62F, 0.57F, 1} : dim);
           } else if (p.kind == PropSpec::Action) {
             // a button across the row, or two side by side
             const int idx = static_cast<int>(&p - &schema[0]);
@@ -3422,6 +3571,11 @@ void App::drawUi(EditSurface& e) {
   // ── gallery ──
   for (const UiControl& c : m_ui)
     if (c.type == UiControl::Panel && c.value == "gallery") plateAt(c.r, 16);
+  for (const UiControl& c : m_ui)
+    if (c.type == UiControl::Panel && c.value == "gallery-head" && c.prop >= 0) {
+      const GalleryGroup& g = galleryGroups()[static_cast<size_t>(c.prop)];
+      cv.text(es ? g.es : g.en, keyS, c.r.x + 6, c.r.y + 8, withAlphaC(dim, 0.9F));
+    }
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::GalleryItem) continue;
     const bool hot = hovered(c);
@@ -3437,11 +3591,48 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "calendar" ? (es ? "Mes · semana · día · agenda" : "Month · week · day · agenda")
                        : c.value == "notes"   ? (es ? "Markdown · tareas" : "Markdown · tasks")
                        : c.value == "weather" ? (es ? "Ahora · horas · semana" : "Now · hours · week")
-                       : c.value == "filter"  ? (es ? "Color · agua · rayos de luz" : "Colour · water · light rays")
-                       : c.value == "scene"   ? (es ? "Escenas y videos del Workshop" : "Workshop scenes and videos")
+                       : c.value == "filter"  ? (es ? "Estilos · duotono · viñeta" : "Looks · two-tone · vignette")
+                       : c.value == "filter:fx" ? (es ? "Agua · luz · movimiento · retro" : "Water · light · motion · retro")
+                       : c.value == "filter:pt" ? (es ? "Nieve · lluvia · pétalos · chispas" : "Snow · rain · petals · sparks")
+                       : c.value == "scene"   ? (es ? "Escenas y videos de Steam" : "Steam scenes and videos")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
-    fitText(typeName(c.value, es), head, c.r.x + 56, c.r.y + 11, c.r.w - 64, ink);
+    const std::string title = c.value == "filter"      ? (es ? "Filtro de color" : "Colour filter")
+                              : c.value == "filter:fx" ? (es ? "Efectos animados" : "Animated effects")
+                              : c.value == "filter:pt" ? (es ? "Partículas" : "Particles")
+                                                       : typeName(c.value, es);
+    fitText(title, head, c.r.x + 56, c.r.y + 11, c.r.w - 64, ink);
     fitText(desc, label, c.r.x + 56, c.r.y + 34, c.r.w - 64, dim);  // a long translation ends in "…"
+  }
+
+  // ── the effect / particle picker ──
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "addpicker") continue;
+    plateAt(c.r, 16);
+    const bool fx = m_addPicker == "fx";
+    cv.text(fx ? (es ? "Añadir efecto" : "Add an effect") : (es ? "Añadir partículas" : "Add particles"), head, c.r.x + 16, c.r.y + 15, ink);
+    const bool none = std::ranges::none_of(m_ui, [](const UiControl& u) { return u.type == UiControl::AddPick; });
+    if (none)
+      fitText(fx ? (es ? "Ya están todos puestos." : "They are all on already.") : (es ? "Ya están todas puestas." : "They are all on already."),
+              label, c.r.x + 16, c.r.y + 52, c.r.w - 32, dim);
+  }
+  for (const UiControl& c : m_ui) {
+    if (c.type == UiControl::Panel && c.value == "addpicker-head" && c.prop >= 0) {
+      const auto& g = m_addPicker == "fx" ? kEffectGroups[c.prop] : kParticleGroups[c.prop];
+      cv.text(es ? g.es : g.en, keyS, c.r.x + 4, c.r.y + 8, withAlphaC(dim, 0.9F));
+      continue;
+    }
+    if (c.type != UiControl::AddPick) continue;
+    std::string name = c.value;
+    if (m_addPicker == "fx") {
+      for (const EffectSpec& e : effectLibrary().all())
+        if (effectKey(e.id) == c.value) name = es ? e.nameEs : e.nameEn;
+    } else {
+      for (const ParticleDef& d : particleLibrary().all())
+        if (particleKey(d.id) == c.value) name = es ? d.nameEs : d.nameEn;
+    }
+    const bool hot = hovered(c);
+    cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, hot ? withAlphaC(accent, 0.2F) : raised, 1, hot ? withAlphaC(accent, 0.6F) : line);
+    fitCentered(name, label, c.r.x + 8, c.r.y + c.r.h / 2, c.r.w - 16, hot ? ink : withAlphaC(ink, 0.88F));
   }
 
   // ── depth brush ──

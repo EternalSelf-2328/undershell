@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Light rays", "es": "Rayos de luz"},
+  "category": "light",
   "stage": "light",
   "uses": ["time"],
   "params": [

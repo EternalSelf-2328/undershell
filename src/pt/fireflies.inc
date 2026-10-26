@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 R"PT({
   "name": {"en": "Fireflies", "es": "Luciérnagas"},
+  "category": "nature",
   "max": 70, "rate": 7, "prewarm": 10, "sprite": "glow", "blend": "add",
   "emitter": {"shape": "box", "origin": [0.5, 0.65], "size": [1.0, 0.6]},
   "init": {"lifetime": [6, 12], "size": [16, 30], "speed": [4, 16], "direction": [0, 360],

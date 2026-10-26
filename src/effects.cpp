@@ -321,6 +321,7 @@ EffectSpec parseEffect(const std::string& id, const std::string& text) {
     return e;
   }
   std::tie(e.nameEn, e.nameEs) = labels(h.value("name", json()), id);
+  e.category = h.value("category", std::string());
   const std::string stage = h.value("stage", std::string());
   if (stage == "warp") e.stage = EffectSpec::Warp;
   else if (stage == "colour" || stage == "color") e.stage = EffectSpec::Colour;
@@ -556,10 +557,12 @@ std::vector<PropSpec> effectRows(const toml::table& opts, bool all, bool box) {
   for (const EffectSpec& e : lib.all()) {
     const std::string key = effectKey(e.id);
     const bool on = opts[key].value_or(false);
-    PropSpec sw{K::Bool, key, e.nameEn, e.nameEs, {}, 0, 1, 1, 0};
+    // the inspector lists only the effects that are on, each under its name
+    // with a button that takes it away; "+ Add effect" picks the others
+    PropSpec sw{all ? K::Bool : K::Action, all ? key : removeKey(key), e.nameEn, e.nameEs, {}, 0, 1, 1, 0};
     if (!lib.brokenWhy(e).empty()) sw.labelEn += " (error)", sw.labelEs += " (error)";
-    rows.push_back(sw);
     if (!on && !all) continue;
+    rows.push_back(sw);
     any = true;
     auto row = [](PropSpec p) {
       p.indent = true;
@@ -614,6 +617,7 @@ std::vector<PropSpec> effectRows(const toml::table& opts, bool all, bool box) {
     }
   }
   if (any) rows.push_back({K::Number, "fx_fps", "Effects FPS", "FPS de efectos", {}, 10, 60, 5, 30, "", true});
+  if (!all) rows.push_back({K::Action, "_fx_add", "+ Add effect", "+ Añadir efecto"});
   return rows;
 }
 

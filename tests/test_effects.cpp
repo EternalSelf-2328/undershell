@@ -109,13 +109,20 @@ int main() {
   const auto on = enabledEffects(opts);
   CHECK(on.size() == 1 && on[0]->id == "waves");
 
-  // the rows: a switch per effect; the options of those that are on
+  // the rows: only the effects that are on, each with its options and a
+  // button that takes it away; "+ Add effect" for the others
   std::vector<PropSpec> rows = effectRows(opts, false);
   CHECK(!rows.empty() && rows[0].kind == PropSpec::Header);
-  CHECK(hasRow(rows, "fx_mist") && hasRow(rows, "fx_waves_speed") && hasRow(rows, "fx_waves_strength") && hasRow(rows, "fx_waves_mask"));
+  CHECK(hasRow(rows, removeKey("fx_waves")) && hasRow(rows, "fx_waves_speed") && hasRow(rows, "fx_waves_strength") &&
+        hasRow(rows, "fx_waves_mask"));
+  CHECK(!hasRow(rows, "fx_mist") && !hasRow(rows, removeKey("fx_mist")) && !hasRow(rows, "fx_waves"));
   CHECK(!hasRow(rows, "fx_mist_speed") && !hasRow(rows, "fx_waves_split") && hasRow(rows, "fx_fps"));
+  CHECK(rows.back().key == "_fx_add" && rows.back().kind == PropSpec::Action);
   for (const auto& r : rows)
-    if (r.key == "fx_broken") CHECK(r.labelEn.find("(error)") != std::string::npos);
+    if (r.key == removeKey("fx_broken")) CHECK(r.labelEn.find("(error)") != std::string::npos);
+  // every built-in effect is in one of the picker's groups
+  for (const EffectSpec& e : builtinEffects())
+    CHECK(std::ranges::any_of(kEffectGroups, [&](const PickerGroup& g) { return *g.id && e.category == g.id; }));
   opts.insert_or_assign("fx_waves_mask", "below");
   CHECK(hasRow(effectRows(opts, false), "fx_waves_split"));
   CHECK(!hasRow(effectRows(toml::table{}, false), "fx_fps"));

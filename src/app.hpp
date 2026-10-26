@@ -290,7 +290,7 @@ public:
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset, PaintTarget, Walls, WallTab, WallItem,
                 ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Perf, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,
-                LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown } type = Panel;
+                LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown, AddPick } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
     std::string value;  // swatch colour / gallery type
@@ -499,6 +499,9 @@ private:
   std::vector<UiControl> m_ui;
   const Output* m_uiOutput = nullptr;
   bool m_galleryOpen = false;
+  // "+ Add effect" / "+ Add particles": "fx" or "pt", a picker beside the
+  // inspector of m_addPickerFor (a widget id), grouped by kind
+  std::string m_addPicker, m_addPickerFor;
   bool m_helpOpen = false;
   bool m_savesOpen = false;
   // the wallpaper gallery (wallgallery.hpp)

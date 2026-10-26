@@ -466,6 +466,11 @@ bool App::keyAction(uint32_t key) {
   if (!m_noteFor.empty()) return noteKey(key);
   if (!m_colorPickFor.empty()) return colorKey(key);
   if (!m_fontPickFor.empty()) return fontKey(key);
+  if (!m_addPicker.empty() && key == KEY_ESC) {  // the effect / particle picker first
+    m_addPicker.clear();
+    markEditDirty();
+    return false;
+  }
   if (m_paintMode) {
     const bool ctrlHeld = modActive(XKB_MOD_NAME_CTRL);
     const Output* o = m_pointerEdit ? m_pointerEdit->output : m_uiOutput;

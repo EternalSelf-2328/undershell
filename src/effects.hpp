@@ -37,6 +37,7 @@ struct EffectParam {
 struct EffectSpec {
   std::string id;  // the file's name: [a-z0-9_]{1,24}
   std::string nameEn, nameEs;
+  std::string category;  // water light motion retro ("" = the person's own); the picker's groups
   // warp: bends where the picture is read; colour: changes what was read;
   // light: something soft laid over it (rays, fog), drawn at a fraction of
   // the resolution in a pass of its own and stretched over the sharp picture
@@ -102,6 +103,22 @@ struct EffectCode {
 // It declares u_tex (the wallpaper) and the other inputs; the host sets them
 // (EffectInputs below) and assigns `screenPx` at the top of main().
 extern const char* kEffectApi;
+
+// An inspector row that switches `key` off: its button reads "Remove".
+inline std::string removeKey(const std::string& key) { return "_remove:" + key; }
+
+// The picker's groups, in order, with their names (en, es).
+struct PickerGroup {
+  const char* id;
+  const char *en, *es;
+};
+inline constexpr PickerGroup kEffectGroups[] = {{"water", "Water", "Agua"},
+                                                {"light", "Light & air", "Luz y ambiente"},
+                                                {"motion", "Motion", "Movimiento"},
+                                                {"retro", "Retro", "Retro"},
+                                                {"", "Your own", "Tuyos"}};
+inline constexpr PickerGroup kParticleGroups[] = {
+    {"weather", "Weather", "Clima"}, {"nature", "Nature", "Naturaleza"}, {"fire", "Fire", "Fuego"}, {"", "Your own", "Tuyas"}};
 
 // The option keys of one effect in a widget table.
 inline std::string effectKey(const std::string& id) { return "fx_" + id; }

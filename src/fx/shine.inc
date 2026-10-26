@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Shine", "es": "Brillo que pasa"},
+  "category": "light",
   "stage": "colour",
   "uses": ["time"],
   "params": [

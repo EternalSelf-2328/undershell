@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Drifting mist", "es": "Niebla"},
+  "category": "light",
   "stage": "light",
   "uses": ["time"],
   "params": [

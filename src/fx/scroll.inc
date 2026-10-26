@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Scroll", "es": "Desplazar"},
+  "category": "motion",
   "stage": "warp",
   "uses": ["time"],
   "params": [

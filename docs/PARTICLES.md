@@ -35,6 +35,7 @@ speeds in those pixels per second; angles in degrees, 0 pointing right and 90 do
 | Field | Meaning |
 |---|---|
 | `name` | `{"en": …, "es": …}` or one string |
+| `category` | Optional. The group it is listed under in the editor's **+ Add particles**: `"weather"`, `"nature"` or `"fire"`. Without it it goes under "Your own" |
 | `max` | how many at most (at the "high" performance level and amount 1) |
 | `rate` | how many are born per second |
 | `prewarm` | seconds simulated before the first frame, so snow is already falling |

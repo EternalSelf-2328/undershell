@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Film", "es": "Película"},
+  "category": "retro",
   "stage": "colour",
   "uses": ["time"],
   "params": [

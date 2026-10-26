@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 R"PT({
   "name": {"en": "Floating dust", "es": "Polvo en el aire"},
+  "category": "nature",
   "max": 160, "rate": 12, "prewarm": 12, "sprite": "dot", "blend": "add",
   "emitter": {"shape": "box", "origin": [0.5, 0.5], "size": [1.0, 1.0]},
   "init": {"lifetime": [8, 14], "size": [4, 8], "speed": [2, 9], "direction": [0, 360],

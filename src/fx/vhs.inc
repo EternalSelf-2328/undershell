@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "VHS tape", "es": "Cinta VHS"},
+  "category": "retro",
   "stage": "colour",
   "uses": ["time"],
   "params": [

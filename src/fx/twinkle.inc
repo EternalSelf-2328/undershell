@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Twinkle", "es": "Destellos"},
+  "category": "light",
   "stage": "colour",
   "uses": ["time"],
   "params": [

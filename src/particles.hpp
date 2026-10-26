@@ -41,6 +41,7 @@ struct ParticleOp {
 
 struct ParticleDef {
   std::string id, nameEn, nameEs, file, error;
+  std::string category;  // weather nature fire ("" = the person's own); the picker's groups
   uint64_t hash = 0;
   int max = 200;          // at "high", amount 1
   float rate = 20;        // per second

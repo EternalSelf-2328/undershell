@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 R"PT({
   "name": {"en": "Petals", "es": "Pétalos"},
+  "category": "nature",
   "max": 160, "rate": 14, "prewarm": 14, "sprite": "petal",
   "emitter": {"shape": "box", "origin": [0.6, -0.05], "size": [1.4, 0.02]},
   "init": {"lifetime": [11, 18], "size": [9, 16], "speed": [35, 70], "direction": [70, 100],

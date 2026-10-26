@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Water waves", "es": "Olas"},
+  "category": "water",
   "stage": "warp",
   "uses": ["time"],
   "params": [

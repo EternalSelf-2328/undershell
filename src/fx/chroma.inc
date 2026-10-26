@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Lens fringe", "es": "Aberración"},
+  "category": "retro",
   "stage": "colour",
   "uses": ["audio"],
   "audio_when": "beat",

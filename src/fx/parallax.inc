@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "2.5D camera", "es": "Cámara 2.5D"},
+  "category": "motion",
   "stage": "warp",
   "uses": ["time", "depth", "audio"],
   "audio_when": "beat",

@@ -32,7 +32,9 @@ vec2 warp(vec2 uv) {
 }
 ```
 
-Turn it on with `fx_heat = true` in the widget's block, or with the switch in the editor.
+Turn it on with `fx_heat = true` in the widget's block, or in the editor with **+ Add effect**
+(it lists the effects that are off, grouped by `category`; an effect that is on shows its
+options and a **Remove** button).
 Effects also work on any other widget (a clock, a picture, text): there `uv` covers the
 widget's own box, `wall()` reads the widget's own picture, and "where" is everywhere or
 above / below a line (the depth and the painted masks belong to the wallpaper).
@@ -41,7 +43,8 @@ above / below a line (the depth and the painted masks belong to the wallpaper).
 
 | Field | Meaning |
 |---|---|
-| `name` | `{"en": …, "es": …}` or one string: the switch's label |
+| `name` | `{"en": …, "es": …}` or one string: the effect's name in the editor |
+| `category` | Optional. The group it is listed under in **+ Add effect**: `"water"`, `"light"` (light & air), `"motion"` or `"retro"`. Without it (or with another word) it goes under "Your own" |
 | `stage` | `"warp"`: the effect bends **where** the picture is read, with `vec2 warp(vec2 uv)`. `"colour"` (or `"color"`): it changes **what** was read, with `vec3 color(vec3 c, vec2 uv)`. `"light"`: something soft laid **over** the picture (rays, fog, cloud shadows), with `vec4 light(vec2 uv)`: the colour to add (already multiplied by how much it covers) and how much it covers what is under it (0 adds light, 1 hides the picture). Lights are drawn on a surface a quarter to a half of the size and stretched over the sharp picture, so they can take many samples cheaply |
 | `uses` | any of `"time"` (it moves by itself, so frames keep coming), `"audio"` (it follows the music), `"depth"` (it reads the wallpaper's depth) |
 | `audio_when` | the key of one of its `bool` options: it listens to the music only while that option is on |

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 R"PT({
   "name": {"en": "Snow", "es": "Nieve"},
+  "category": "weather",
   "max": 700, "rate": 70, "prewarm": 14, "sprite": "flake",
   "emitter": {"shape": "box", "origin": [0.5, -0.04], "size": [1.3, 0.02]},
   "init": {"lifetime": [12, 20], "size": [4, 11], "speed": [35, 80], "direction": [82, 98],

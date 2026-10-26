@@ -117,6 +117,7 @@ ParticleDef parseParticles(const std::string& id, const std::string& text) {
     return d;
   }
   std::tie(d.nameEn, d.nameEs) = labels(j.value("name", json()), id);
+  d.category = j.value("category", std::string());
   d.max = static_cast<int>(number(j, "max", 200, 1, 5000));
   d.rate = number(j, "rate", 20, 0, 5000);
   d.prewarm = number(j, "prewarm", 0, 0, 30);
@@ -299,10 +300,11 @@ std::vector<PropSpec> particleRows(const toml::table& opts, bool all) {
   };
   for (const ParticleDef& d : particleLibrary().all()) {
     const std::string key = particleKey(d.id);
-    PropSpec sw{K::Bool, key, d.nameEn, d.nameEs, {}, 0, 1, 1, 0};
+    // only those that are on, with a button that takes them away (as the effects)
+    PropSpec sw{all ? K::Bool : K::Action, all ? key : removeKey(key), d.nameEn, d.nameEs, {}, 0, 1, 1, 0};
     if (!d.error.empty()) sw.labelEn += " (error)", sw.labelEs += " (error)";
-    rows.push_back(sw);
     if (!all && !opts[key].value_or(false)) continue;
+    rows.push_back(sw);
     rows.push_back(row({K::Number, particleKey(d.id, "amount"), "Amount", "Cantidad", {}, 0.1, 3, 0.05, 1}));
     rows.push_back(row({K::Number, particleKey(d.id, "speed"), "Speed", "Velocidad", {}, 0.1, 3, 0.05, 1}));
     rows.push_back(row({K::Number, particleKey(d.id, "size"), "Size", "Tamaño", {}, 0.25, 3, 0.05, 1}));
@@ -325,6 +327,7 @@ std::vector<PropSpec> particleRows(const toml::table& opts, bool all) {
       rows.push_back(row(paint));
     }
   }
+  if (!all) rows.push_back({K::Action, "_pt_add", "+ Add particles", "+ Añadir partículas"});
   return rows;
 }
 

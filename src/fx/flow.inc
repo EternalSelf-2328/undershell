@@ -2,6 +2,7 @@
 R"FX(/* undershell-effect
 {
   "name": {"en": "Flowing water", "es": "Corriente"},
+  "category": "water",
   "stage": "warp",
   "uses": ["time"],
   "params": [

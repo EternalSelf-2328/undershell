@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 R"PT({
   "name": {"en": "Bubbles", "es": "Burbujas"},
+  "category": "nature",
   "max": 90, "rate": 7, "prewarm": 8, "sprite": "bubble",
   "emitter": {"shape": "box", "origin": [0.5, 1.04], "size": [1.0, 0.03]},
   "init": {"lifetime": [8, 14], "size": [8, 26], "speed": [40, 90], "direction": [262, 278],
