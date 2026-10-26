@@ -907,15 +907,22 @@ void App::pickWall(size_t index) {
   }
   if (index >= m_wallWork.size()) return;
   const GalleryItem& it = m_wallWork[index];
-  // undershell-wall makes it the wallpaper, like a picture: no widget plays it on top
+  // undershell-wall makes it the wallpaper, like a picture. The scene widget
+  // stays (or comes) only to hold its properties in the inspector: it never
+  // applies the scene itself
   if (scenesGoToWallDaemon()) {
     spawnArgv(wallDaemonApplyScene(it.workshop, o ? o->name : std::string()));
     US_INFO("wallpaper set through undershell-wall: {}{}", it.workshop, o ? " on " + o->name : std::string());
     m_refreshNoctAt = nowSeconds() + 0.6;
-    m_wallsNote = (es ? "Puesto con undershell-wall: " : "Set through undershell-wall: ") + it.label;
+    m_wallsNote = (es ? "Puesto con undershell-wall: " : "Set through undershell-wall: ") + it.label +
+                  (es ? " · sus opciones, en el inspector" : " · its options are in the inspector");
+    const std::string value = "\"" + it.workshop + "\"";
     if (scene) {
-      removeWidget(*scene);
-      m_wallsNote += es ? " · el widget de escena se quitó (Ctrl+Z lo devuelve)" : " · the scene widget was taken away (Ctrl+Z brings it back)";
+      setProp(*scene, "scene", value);
+      selectIds({scene->cfg.id});
+    } else {
+      const std::string id = addWidget("scene", "", INT_MIN, INT_MIN, true);  // selected once it is in
+      if (!id.empty()) Config::setKey(m_configPath, id, "scene", value);
     }
     return;
   }

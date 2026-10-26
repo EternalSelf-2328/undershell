@@ -23,6 +23,9 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -92,6 +95,14 @@ private:
 
   std::string m_scene, m_speedText;
   std::string m_delegated;  // the scene handed to undershell-wall ("" when drawn here)
+  // its properties on their way to undershell-wall (sent from a short-lived thread)
+  struct PropertyPush {
+    std::mutex mu;
+    std::map<std::string, std::string> want, sent;
+    uint64_t gen = 0;
+  };
+  std::shared_ptr<PropertyPush> m_push = std::make_shared<PropertyPush>();
+  void pushProperties(const std::string& scene, const std::map<std::string, std::string>& overrides);
   double m_speed = 1;
   std::shared_ptr<Load> m_load, m_next;
   std::map<std::string, std::string> m_overrides;  // property -> value from the config

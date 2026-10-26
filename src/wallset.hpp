@@ -59,5 +59,12 @@ void spawnArgv(const Argv& argv);
 [[nodiscard]] bool scenesGoToWallDaemon();
 // undershell-wallctl's argv to apply a Workshop id or folder, on `output` or on every screen.
 [[nodiscard]] Argv wallDaemonApplyScene(const std::string& scene, const std::string& output);
+// One request to undershell-wall's daemon over its socket: the reply line
+// ({"id", "result"} or {"id", "error"}), "" when it does not answer in time.
+// It blocks: call it off the main loop.
+[[nodiscard]] std::string wallDaemonRequest(const std::string& method, const std::string& paramsJson, int timeoutMs = 3000);
+// A WE property's value as the daemon stores it: true/false, a number, or the
+// text as it is (a colour "r g b", a combo's value).
+[[nodiscard]] std::string wallPropertyJson(const std::string& value);
 
 }  // namespace undershell

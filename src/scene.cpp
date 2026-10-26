@@ -220,20 +220,71 @@ void SceneWidget::filesChanged() {
   effectLibrary().refresh();
 }
 
+// The properties changed in the inspector, to undershell-wall: after 0.4 s
+// without another change (a slider's drag is one write, one reload at most),
+// only what differs from what was sent, null for those back at their default.
+void SceneWidget::pushProperties(const std::string& scene, const std::map<std::string, std::string>& overrides) {
+  if (!std::ranges::all_of(scene, [](unsigned char c) { return std::isdigit(c); })) return;  // a folder: no Workshop id
+  uint64_t gen = 0;
+  {
+    const std::lock_guard lock(m_push->mu);
+    if (overrides == m_push->want) return;
+    m_push->want = overrides;
+    gen = ++m_push->gen;
+  }
+  std::thread([push = m_push, scene, gen] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    std::string values;
+    {
+      const std::lock_guard lock(push->mu);
+      if (push->gen != gen) return;  // a newer change is waiting its turn
+      auto add = [&](const std::string& name, const std::string& json) {
+        values += std::format("{}{}:{}", values.empty() ? "" : ",", wallPropertyJson(name), json);
+      };
+      for (const auto& [name, v] : push->want)
+        if (auto it = push->sent.find(name); it == push->sent.end() || it->second != v) add(name, wallPropertyJson(v));
+      for (const auto& [name, v] : push->sent)
+        if (!push->want.contains(name)) add(name, "null");
+      push->sent = push->want;
+    }
+    if (values.empty()) return;
+    const std::string reply = wallDaemonRequest("wall.set_we_property", std::format(R"({{"we_id":"{}","values":{{{}}}}})", scene, values));
+    if (reply.empty() || reply.find("\"error\"") != std::string::npos)
+      US_WARN("scene {}: undershell-wall did not take the properties: {}", scene, reply.empty() ? "no answer" : reply);
+  }).detach();
+}
+
 void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   m_noct = noct;
   m_speed = std::clamp(cfg.options["speed"].value_or(1.0), 0.1, 4.0);
   m_camera = cfg.options["camera"].value_or(true);
   const std::string scene = cfg.options["scene"].value_or(std::string());
+  // the author's properties as set in the inspector (colours through the palette)
+  std::map<std::string, std::string> overrides;
+  if (const WeProject* p = scene.empty() ? nullptr : weProjectCached(scene))
+    for (const WeProperty& wp : p->props) {
+      std::string v = weOverride(wp, cfg.options);
+      if (wp.type == "color" && !v.empty() && v.find(' ') == std::string::npos) {
+        const Color c = noct.color(v, Color{1, 1, 1, 1});
+        v = std::format("{:.4f} {:.4f} {:.4f}", c.r, c.g, c.b);
+      }
+      if (!v.empty()) overrides[wp.name] = v;
+    }
   // undershell-wall (the fork of skwd) draws Wallpaper Engine scenes in full and
   // fitted to the GPU as the wallpaper itself; the gallery hands them to it. While
-  // its daemon answers, a scene widget left in a layout draws nothing and applies
-  // nothing: it comes back with every layout and would win over the wallpaper
-  // chosen after it. Its own renderer is the fallback.
+  // its daemon answers, this widget draws nothing and never applies the scene (it
+  // comes back with every layout and would win over the wallpaper chosen after
+  // it): it is where the scene's properties are set, and those go to the daemon,
+  // which keeps them for that wallpaper. Its own renderer is the fallback.
   if (!scene.empty() && scenesGoToWallDaemon()) {
     if (scene != m_delegated) {
       m_delegated = scene;
-      US_INFO("scene {}: left to undershell-wall, this widget stays idle", scene);
+      const std::lock_guard lock(m_push->mu);
+      m_push->want = m_push->sent = overrides;  // as they were: nothing to send
+      ++m_push->gen;
+      US_INFO("scene {}: drawn by undershell-wall, this widget holds its properties", scene);
+    } else {
+      pushProperties(scene, overrides);
     }
     if (!m_scene.empty()) {  // drop what this widget had drawn itself
       for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
@@ -250,17 +301,6 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
     return;
   }
   m_delegated.clear();
-  // the author's properties as set in the inspector (colours through the palette)
-  std::map<std::string, std::string> overrides;
-  if (const WeProject* p = scene.empty() ? nullptr : weProjectCached(scene))
-    for (const WeProperty& wp : p->props) {
-      std::string v = weOverride(wp, cfg.options);
-      if (wp.type == "color" && !v.empty() && v.find(' ') == std::string::npos) {
-        const Color c = noct.color(v, Color{1, 1, 1, 1});
-        v = std::format("{:.4f} {:.4f} {:.4f}", c.r, c.g, c.b);
-      }
-      if (!v.empty()) overrides[wp.name] = v;
-    }
   if (scene == m_scene) {
     if (overrides != m_overrides) {  // the same scene with other properties: read again, swap when ready
       m_overrides = std::move(overrides);

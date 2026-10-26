@@ -5,8 +5,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -231,6 +233,62 @@ bool wallDaemonAnswers() {
   const bool ok = connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) == 0;
   close(fd);
   return ok;
+}
+
+std::string wallDaemonRequest(const std::string& method, const std::string& paramsJson, int timeoutMs) {
+  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+  if (!runtime || !*runtime) return {};
+  const std::string path = std::string(runtime) + "/undershell-wall/wall.sock";
+  sockaddr_un addr{};
+  if (path.size() >= sizeof addr.sun_path) return {};
+  addr.sun_family = AF_UNIX;
+  std::copy(path.begin(), path.end(), addr.sun_path);
+  const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  if (fd < 0) return {};
+  std::string reply;
+  if (connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) == 0) {
+    const std::string line = std::format(R"({{"method":"{}","params":{},"id":1}})", method, paramsJson) + "\n";
+    size_t sent = 0;
+    while (sent < line.size()) {
+      const ssize_t n = ::send(fd, line.data() + sent, line.size() - sent, MSG_NOSIGNAL);
+      if (n <= 0) break;
+      sent += static_cast<size_t>(n);
+    }
+    // one line back; the daemon may also push events: skip lines without our id
+    pollfd p{fd, POLLIN, 0};
+    char buf[4096];
+    std::string got;
+    while (sent == line.size() && ::poll(&p, 1, timeoutMs) > 0) {
+      const ssize_t n = ::recv(fd, buf, sizeof buf, 0);
+      if (n <= 0) break;
+      got.append(buf, static_cast<size_t>(n));
+      size_t nl;
+      while ((nl = got.find('\n')) != std::string::npos) {
+        std::string one = got.substr(0, nl);
+        got.erase(0, nl + 1);
+        if (one.find("\"id\"") != std::string::npos && one.find("\"event\"") == std::string::npos) {
+          reply = std::move(one);
+          break;
+        }
+      }
+      if (!reply.empty()) break;
+    }
+  }
+  close(fd);
+  return reply;
+}
+
+std::string wallPropertyJson(const std::string& value) {
+  if (value == "true" || value == "false") return value;
+  char* end = nullptr;
+  std::strtod(value.c_str(), &end);
+  if (!value.empty() && end && *end == '\0') return value;  // a number
+  std::string q = "\"";
+  for (const char c : value) {
+    if (c == '"' || c == '\\') q += '\\';
+    if (static_cast<unsigned char>(c) >= 0x20) q += c;
+  }
+  return q + "\"";
 }
 
 bool scenesGoToWallDaemon() {
