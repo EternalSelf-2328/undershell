@@ -176,7 +176,7 @@ int main() {
     std::ofstream(dir / "scene/scene.pkg", std::ios::binary)
         << pkg({{"scene.json", R"({"general": {"orthogonalprojection": {"width": 100, "height": 50}, "clearcolor": "0 0 1"},
                    "objects": [{"id": 1, "image": "models/m.json", "origin": "25 37.5 0", "size": "50 25"},
-                               {"id": 2, "text": "not drawn yet", "origin": "0 0 0"}]})"},
+                               {"id": 2, "text": "not drawn yet", "visible": false, "origin": "0 0 0"}]})"},
                 {"models/m.json", R"({"material": "materials/m.json"})"},
                 {"materials/m.json", R"({"passes": [{"blending": "translucent", "textures": ["red"]}]})"},
                 {"materials/red.tex", tex(0, 2, 2, red, true)}});
