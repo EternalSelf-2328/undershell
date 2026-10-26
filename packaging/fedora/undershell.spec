@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.4.0
+Version:        1.5.0
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -84,6 +84,16 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Sun Oct 25 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.5.0-1
+- Performance profiles: eco, balanced, high, ultra and auto (follows load and battery)
+- Wallpaper: one shared picture with a crossfade on change; `msg wallpaper-set` sets it through whichever program draws it
+- Animated wallpaper effects (water, wind, light rays, a 2.5D camera…), your own effects folder, painted masks, and effects on every widget
+- Particles over the wallpaper: snow, rain, petals, fireflies, embers and more
+- Wallpaper Engine scenes and videos, and a wallpaper gallery in the editor; with undershell-wall running, scenes are handed to it and their properties are set from the inspector
+- Editor: the gallery grouped by kind; effects and particles added from a picker
+- Music card: a GIF or a video of your own as the cover
+- A wallpaper filter that changes nothing no longer draws over the wallpaper
+
 * Sun Oct 18 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.4.0-1
 - Water-wave, aura and stars visualizers (28 looks)
 - Music card: a cyberpunk "cyber" layout (CRT plate, neon corners, data-stream spectrum)

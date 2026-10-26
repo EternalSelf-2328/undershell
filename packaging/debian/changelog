@@ -1,3 +1,24 @@
+undershell (1.5.0) unstable; urgency=medium
+
+  * Performance profiles: eco, balanced, high, ultra and auto (follows load
+    and battery).
+  * Wallpaper: one shared picture with a crossfade on change; `msg
+    wallpaper-set` sets it through whichever program draws it.
+  * Animated wallpaper effects (water, wind, light rays, a 2.5D camera…),
+    your own effects folder, painted masks, and effects on every widget.
+  * Particles over the wallpaper: snow, rain, petals, fireflies, embers and
+    more.
+  * Wallpaper Engine scenes and videos, and a wallpaper gallery in the
+    editor; with undershell-wall running, scenes are handed to it and their
+    properties are set from the inspector.
+  * Editor: the gallery grouped by kind; effects and particles added from a
+    picker.
+  * Music card: a GIF or a video of your own as the cover.
+  * A wallpaper filter that changes nothing no longer draws over the
+    wallpaper.
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Sun, 25 Oct 2026 23:45:00 -0500
+
 undershell (1.4.0) unstable; urgency=medium
 
   * Water-wave, aura and stars visualizers (28 looks).
