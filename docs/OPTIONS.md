@@ -108,6 +108,8 @@ Ryoku's now-playing card.
 | `show_viz` | `true` / `false` | `true` | Spectrum |
 | `viz` | `bars`, `wave` | `"bars"` | Spectrum look |
 | `show_cover` | `true` / `false` | `true` | Sleeve |
+| `cover_file_use` | `always`, `missing` | `"always"` | Own cover |
+| `cover_file_motion` | `playing`, `always` | `"playing"` | It moves |
 | `show_artist` | `true` / `false` | `true` | Artist |
 | `title_size` | 0.4 – 2.5 | `1` | Title size × |
 | `title_font` |  | `"Fraunces 144pt"` | Title font |
@@ -129,6 +131,8 @@ Ryoku's now-playing card.
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+
+A cover of one's own: `cover_file` (path, `~/` allowed; a GIF, a video or a picture, chosen with the inspector's button) takes the song's artwork's place, always or only when the song brings none (`cover_file_use`). It is decoded on its own thread at the size the sleeve is drawn, and it moves only while the music plays unless `cover_file_motion = "always"`: paused, it costs no frames.
 | `music_app` | shell command | `"spotify"` | opened by the corner button (not in the inspector) |
 
 ## `type = "shape"`

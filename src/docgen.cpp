@@ -88,6 +88,10 @@ std::string optionsMarkdown() {
   table(md, "clock");
   md += "\n## `type = \"now_playing\"`\n\nRyoku's now-playing card.\n\n";
   table(md, "now_playing");
+  md += "\nA cover of one's own: `cover_file` (path, `~/` allowed; a GIF, a video or a picture, chosen with the inspector's "
+        "button) takes the song's artwork's place, always or only when the song brings none (`cover_file_use`). It is "
+        "decoded on its own thread at the size the sleeve is drawn, and it moves only while the music plays unless "
+        "`cover_file_motion = \"always\"`: paused, it costs no frames.\n";
   md += "| `music_app` | shell command | `\"spotify\"` | opened by the corner button (not in the inspector) |\n";
   md += "\n## `type = \"shape\"`\n\nA geometric shape, to build compositions out of layers.\n\n";
   table(md, "shape");

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "canvas.hpp"
+#include "video.hpp"
 #include "widget.hpp"
 
 #include <string>
@@ -25,6 +26,10 @@ struct NowPlayingConfig {
   bool showCover = true, showArtist = true, showTime = true, showRail = true;
   bool showTransport = true, showOpen = true, showPulse = true, showViz = true;
   std::string viz = "bars";      // bars wave (when there are no lyrics)
+  // a cover of one's own: a GIF, a video or a picture, instead of the song's
+  // artwork ("always") or only when the song brings none ("missing"); it moves
+  // only while the music plays ("playing") or all the time ("always")
+  std::string coverFile, coverFileUse = "always", coverFileMotion = "playing";
   std::string musicApp = "spotify";
   std::string accentSource = "album";  // album theme
   std::string ink = "on_surface";
@@ -145,6 +150,19 @@ private:
   std::string m_shapeTrack, m_shapeName;
   void setCoverShape(const std::string& name, bool animate);
   double m_spin = 0;  // the record's turn, radians
+  // the cover of one's own (cover_file), decoded on its own thread at the
+  // size the sleeve is drawn, and the artwork this frame draws with
+  std::unique_ptr<VideoSource> m_coverSrc;
+  std::string m_coverPath;
+  double m_coverLast = -1;
+  struct Art {
+    GLuint tex = 0;
+    int w = 0, h = 0;
+  };
+  Art m_art;
+  Art artFor(const MediaState& s, const Places& p, float scale);
+  [[nodiscard]] bool coverMoves() const;
+  [[nodiscard]] double nextWakeup(double now) const override;
 };
 
 }  // namespace undershell

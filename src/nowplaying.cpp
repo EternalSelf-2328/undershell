@@ -9,6 +9,9 @@
 #include "media.hpp"
 #include "motion.hpp"
 
+#include "common.hpp"
+
+#include <EGL/egl.h>
 #include <cmath>
 #include <linux/input-event-codes.h>
 #include <numbers>
@@ -67,6 +70,9 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   c.plate = t["plate"].value_or(c.plate);
   c.showLyrics = t["show_lyrics"].value_or(c.showLyrics);
   c.showCover = t["show_cover"].value_or(c.showCover);
+  c.coverFile = t["cover_file"].value_or(c.coverFile);
+  c.coverFileUse = t["cover_file_use"].value_or(c.coverFileUse);
+  c.coverFileMotion = t["cover_file_motion"].value_or(c.coverFileMotion);
   c.showArtist = t["show_artist"].value_or(c.showArtist);
   c.showTime = t["show_time"].value_or(c.showTime);
   c.showRail = t["show_rail"].value_or(c.showRail);
@@ -110,6 +116,55 @@ void NowPlayingWidget::configure(const NowPlayingConfig& cfg, const NoctaliaStat
   if (m_viz.empty()) m_viz.assign(40, 0.0F);
   if (cfg.coverShape != "rounded" && cfg.coverShape != "cycle") setCoverShape(cfg.coverShape, !m_shapeNow.empty());
   m_shapeTrack.clear();  // "cycle" picks again
+  if (expandHome(cfg.coverFile) != m_coverPath && m_coverSrc) {  // another file: decoded again at the next draw
+    if (eglGetCurrentContext() != EGL_NO_CONTEXT) m_coverSrc->releaseGl();
+    m_coverSrc.reset();
+    m_coverPath.clear();
+  }
+}
+
+// the cover of one's own moves now: while the song plays, or always
+bool NowPlayingWidget::coverMoves() const {
+  if (!m_coverSrc || m_cfg.coverFile.empty()) return false;
+  if (m_cfg.coverFileMotion == "always") return true;
+  return m_media && m_media->state().present && m_media->state().playing;
+}
+
+double NowPlayingWidget::nextWakeup(double now) const {
+  if (m_cfg.coverFile.empty()) return 1e18;
+  if (!m_coverSrc) return now + 0.05;  // opened at the next draw
+  if (!coverMoves()) return 1e18;      // paused with the music: no frames, no wake-ups
+  const double in = m_coverSrc->nextFrameIn(1);
+  return in > 1e8 ? 1e18 : now + std::max(0.004, in);
+}
+
+// The artwork to draw: the song's, or the cover of one's own (opened at the
+// size the sleeve -- or the card, when the artwork is the card -- is drawn)
+NowPlayingWidget::Art NowPlayingWidget::artFor(const MediaState& s, const Places& p, float scale) {
+  const bool songArt = s.cover && s.coverW > 0;
+  if (m_cfg.coverFile.empty() || (m_cfg.coverFileUse == "missing" && songArt)) {
+    if (m_coverSrc && m_cfg.coverFile.empty()) {
+      if (eglGetCurrentContext() != EGL_NO_CONTEXT) m_coverSrc->releaseGl();
+      m_coverSrc.reset();
+      m_coverPath.clear();
+    }
+    return songArt ? Art{s.cover, s.coverW, s.coverH} : Art{};
+  }
+  const Rect& r = p.coverPlate || p.cover.w <= 0 ? p.plate : p.cover;
+  const int devW = std::max(16, static_cast<int>(std::lround(r.w * m_k * scale)));
+  const int devH = std::max(16, static_cast<int>(std::lround(r.h * m_k * scale)));
+  const std::string path = expandHome(m_cfg.coverFile);
+  if (!m_coverSrc || (m_coverSrc->still() && (devW > m_coverSrc->wantWidth() * 1.4 || devH > m_coverSrc->wantHeight() * 1.4))) {
+    if (m_coverSrc && eglGetCurrentContext() != EGL_NO_CONTEXT) m_coverSrc->releaseGl();
+    m_coverSrc = std::make_unique<VideoSource>();
+    if (!m_coverSrc->open(path, devW, devH, true)) US_WARN("now_playing: cannot open the cover {}", path);
+    m_coverPath = path;
+    m_coverLast = -1;
+    m_coverSrc->advance(0, 1);
+  }
+  if (!m_coverSrc->texture() || m_coverSrc->width() <= 0)  // still decoding its first frame
+    return songArt ? Art{s.cover, s.coverW, s.coverH} : Art{};
+  return {m_coverSrc->texture(), m_coverSrc->width(), m_coverSrc->height()};
 }
 
 // Starts a morph from the shape on screen to `name` (or jumps there).
@@ -145,6 +200,12 @@ void NowPlayingWidget::tick(const TickContext& ctx) {
   // lyric glide toward the sung line (Theme.slow)
   const float kg = static_cast<float>(1 - std::exp(-dt / 0.12));
   m_glide += (0 - m_glide) * kg;
+  // the cover of one's own, on its own clock (a slow GIF wakes once a frame)
+  if (m_coverSrc) {
+    const double cdt = m_coverLast < 0 ? 0 : std::clamp(ctx.now - m_coverLast, 0.0, 2.0);
+    m_coverLast = ctx.now;
+    if (coverMoves()) m_coverSrc->advance(cdt, 1);
+  }
   // the record turns while the song plays
   if (m_media && m_media->state().playing) m_spin = std::fmod(m_spin + dt * 1.1, 6.283185307179586);
   // "cycle": each song gets its own shape (the same song, the same shape)
@@ -534,7 +595,7 @@ void NowPlayingWidget::drawRecord(Canvas& c, const MediaState& s, const Places& 
     c.segment(cx + s0 * (label + 5), cy - c0 * (label + 5), cx + s0 * (R - 4), cy - c0 * (R - 4), 1.2F,
               tint(m_paint.ink, 0.10F));
   }
-  if (s.cover && s.coverW > 0) c.image(s.cover, s.coverW, s.coverH, p.cover.x, p.cover.y, p.cover.w, p.cover.h, label, m_paint.op);
+  if (m_art.tex) c.image(m_art.tex, m_art.w, m_art.h, p.cover.x, p.cover.y, p.cover.w, p.cover.h, label, m_paint.op);
   else c.circle(cx, cy, label, tint(m_noct.color("surface_variant", m_paint.surface)));
   c.circle(cx, cy, 4, tint(m_paint.surface, 0.9F));  // the spindle hole
 }
@@ -547,14 +608,14 @@ void NowPlayingWidget::drawSleeve(Canvas& c, const MediaState& s, const Places& 
   if (p.cover.w <= 0) return;
   const Rect& r = p.cover;
   const bool shaped = m_cfg.coverShape != "rounded" && m_shapeNow.size() == 128;
-  if (s.cover && s.coverW > 0)
-    c.image(s.cover, s.coverW, s.coverH, r.x, r.y, r.w, r.h, p.coverRadius, m_paint.op, 0, shaped ? m_shapeNow.data() : nullptr);
+  if (m_art.tex)
+    c.image(m_art.tex, m_art.w, m_art.h, r.x, r.y, r.w, r.h, p.coverRadius, m_paint.op, 0, shaped ? m_shapeNow.data() : nullptr);
   else {
     c.roundRect(r.x, r.y, r.w, r.h, p.coverRadius, tint(m_noct.color("surface_variant", m_paint.surface)));
     noteGlyph(c, r.x + r.w / 2, r.y + r.h / 2, std::min(40.0F, r.w * 0.24F), tint(m_paint.dim));
   }
   // cyber: tick brackets bridging the sleeve's corners, cyan apposing magenta
-  if (m_cfg.layout == "cyber" && s.cover) {
+  if (m_cfg.layout == "cyber" && m_art.tex) {
     c.segment(r.x, r.y + 13, r.x, r.y, 2, tint(kCyan), false);
     c.segment(r.x, r.y, r.x + 13, r.y, 2, tint(kCyan), false);
     c.segment(r.x + r.w, r.y + r.h - 13, r.x + r.w, r.y + r.h, 2, tint(kMag), false);
@@ -946,6 +1007,7 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
   m_k = std::min(ctx.w / p.w, ctx.h / p.h);
   m_ox = (ctx.w - p.w * m_k) / 2;
   m_oy = (ctx.h - p.h * m_k) / 2;
+  m_art = artFor(s, p, ctx.scale);
   Canvas& c = m_canvas;
   c.begin(ctx.w, ctx.h, ctx.scale, ctx.text);
   c.setTransform(m_k, m_ox, m_oy);
@@ -955,8 +1017,8 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
     drawCyberChrome(c, p, s);  // the console's own chrome: plate, scanlines, neon
   else if (p.coverPlate) {
     // the artwork is the card; a veil at its foot keeps the track readable
-    if (s.present && s.cover && s.coverW > 0) {
-      c.image(s.cover, s.coverW, s.coverH, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, m_paint.op);
+    if (s.present && m_art.tex) {
+      c.image(m_art.tex, m_art.w, m_art.h, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, m_paint.op);
     } else {
       c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, tint(m_paint.surface.mix(m_accent, 0.10F), 0.85F));
       // with no artwork the card is all plate, so it says so where the
@@ -978,8 +1040,8 @@ void NowPlayingWidget::draw(const DrawContext& ctx) {
                 tint(m_paint.ink, m_hover.empty() ? 0.08F : 0.16F));
   } else if (m_cfg.plate == "cover") {
     // the sleeve, blurred, under a near-opaque plate tinted a tenth toward it
-    if (s.present && s.cover && s.coverW > 0)
-      c.image(s.cover, s.coverW, s.coverH, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, 0.55F * m_paint.op, 28);
+    if (s.present && m_art.tex)
+      c.image(m_art.tex, m_art.w, m_art.h, p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, 0.55F * m_paint.op, 28);
     const Color plate = m_paint.surface.mix(m_accent, 0.10F);
     c.roundRect(p.plate.x, p.plate.y, p.plate.w, p.plate.h, p.radius, tint(plate, 0.80F),
                 1, tint(m_paint.ink, m_hover.empty() ? 0.08F : 0.16F));
