@@ -25,7 +25,8 @@ Build-Depends: debhelper-compat (= 13),
                libavformat-dev,
                libavcodec-dev,
                libswscale-dev,
-               libavutil-dev
+               libavutil-dev,
+               liblz4-dev
 Standards-Version: 4.7.0
 Homepage: https://github.com/EternalSelf-2328/undershell
 Rules-Requires-Root: no

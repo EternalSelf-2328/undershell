@@ -15,6 +15,9 @@ with `undershell msg edit`.
 - The Ubuntu package is built without `undershell-depth` (Ubuntu has no ONNX
   Runtime package): depth behind the wallpaper's subject then needs Noctalia's
   `wallpaper_depth` plugin.
+- Wallpaper Engine scenes work in every package; their scripts (clocks and dates
+  on a scene's text layers) only in the Arch one: the other systems do not
+  package quickjs-ng.
 - `SHA256SUMS` lists every file's checksum: `sha256sum -c SHA256SUMS --ignore-missing`.
 - Packages are x86_64 only. Anything else: build it from source (see Install in
   the README); `./update.sh` keeps a source build up to date.

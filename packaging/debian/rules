@@ -4,7 +4,8 @@
 	dh $@ --buildsystem=meson
 
 override_dh_auto_configure:
-	dh_auto_configure -- -Ddev_paths=false -Dvideo=enabled
+	# scenes yes; their scripts need quickjs-ng, which Debian and Ubuntu do not package
+	dh_auto_configure -- -Ddev_paths=false -Dvideo=enabled -Dscenes=enabled -Dscripts=disabled
 
 # the user service is installed, not enabled for every user
 override_dh_installsystemduser:

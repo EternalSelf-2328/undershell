@@ -43,6 +43,9 @@ BuildRequires:  pkgconfig(libswscale)
 BuildRequires:  pkgconfig(libavutil)
 # depth without Noctalia: undershell-depth runs the depth model with ONNX Runtime
 BuildRequires:  onnxruntime-devel
+# Wallpaper Engine scenes (their LZ4-packed textures); their scripts need
+# quickjs-ng, which Fedora does not package
+BuildRequires:  pkgconfig(liblz4)
 Recommends:     pipewire
 Recommends:     (xdg-desktop-portal or zenity)
 
@@ -58,7 +61,7 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %autosetup
 
 %build
-%meson -Ddev_paths=false -Dvideo=enabled -Ddepth_model=enabled
+%meson -Ddev_paths=false -Dvideo=enabled -Ddepth_model=enabled -Dscenes=enabled -Dscripts=disabled
 %meson_build
 
 %install
