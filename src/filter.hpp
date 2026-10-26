@@ -43,6 +43,9 @@ struct FilterConfig {
   double pixelate = 0;
   double opacity = 1;
 
+  // nothing would change on screen: the picture as it is (custom style at
+  // its defaults, or every stage at zero)
+  [[nodiscard]] bool neutral() const;
   static FilterConfig fromTable(const toml::table& t);
 };
 
@@ -55,7 +58,14 @@ public:
   }
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool fullscreen() const override { return true; }
-  [[nodiscard]] bool animating(const TickContext&) const override { return m_fade.animating() || m_fx.moving() || !m_pt.empty(); }
+  [[nodiscard]] bool animating(const TickContext&) const override {
+    return !idle() && (m_fade.animating() || m_fx.moving() || !m_pt.empty());
+  }
+  // a filter that changes nothing and has no effects nor particles draws
+  // nothing: the wallpaper shows as its program draws it, with no copy over
+  // it (a copy that follows a wallpaper change late, and costs a full-screen
+  // draw)
+  [[nodiscard]] bool visible() const override { return !idle(); }
   [[nodiscard]] int fps() const override { return m_fx.empty() && m_pt.empty() ? 60 : m_fx.fps(); }
   [[nodiscard]] bool usesAudio() const override { return m_fx.audio() || m_pt.audio(); }
   [[nodiscard]] bool wantsDepth() const override { return m_fx.depth() || m_pt.depth(); }
@@ -68,13 +78,14 @@ public:
   }
   [[nodiscard]] size_t particles() const { return m_pt.count(); }
   // a picture still decoding: look again soon
-  [[nodiscard]] double nextWakeup(double now) const override { return m_fade.waiting() ? now + 0.05 : 1e18; }
+  [[nodiscard]] double nextWakeup(double now) const override { return !idle() && m_fade.waiting() ? now + 0.05 : 1e18; }
   [[nodiscard]] Color accent() const override { return m_tintC; }
 
   static const std::vector<std::string>& styles();
   static const std::map<std::string, std::string>& preset(const std::string& style);
 
 private:
+  [[nodiscard]] bool idle() const { return m_cfg.neutral() && m_fx.empty() && m_pt.empty(); }
   void drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity);
 
   FilterConfig m_cfg;

@@ -170,6 +170,12 @@ int main() {
     const NoctaliaState pal = testPalette();
     toml::table plain;
     plain.insert_or_assign("style", "custom");
+    // neutral and with no effects it draws nothing; one effect on, and it does
+    CHECK(renderWidget("filter", plain, 160, 90, pal, 1000, 1, 3.0, nullptr, png).rgba[3] == 0);
+    toml::table waves = plain;
+    waves.insert_or_assign("fx_waves", true);
+    CHECK(renderWidget("filter", waves, 160, 90, pal, 1000, 1, 3.0, nullptr, png).rgba[3] == 255);
+    plain.insert_or_assign("brightness", 0.001);  // the picture, as good as untouched
     const Image base = renderWidget("filter", plain, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
     CHECK(base.w == 160 && base.rgba[3] == 255);
     toml::table all = plain;

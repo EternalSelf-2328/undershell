@@ -204,6 +204,11 @@ FilterConfig FilterConfig::fromTable(const toml::table& given) {
   return c;
 }
 
+bool FilterConfig::neutral() const {
+  return brightness == 0 && contrast == 1 && saturation == 1 && hue == 0 && temperature == 0 && tintAmount <= 0 && !duotone &&
+         vignette <= 0 && blur <= 0 && grain <= 0 && posterize <= 1 && pixelate <= 1;
+}
+
 void FilterWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   m_cfg = FilterConfig::fromTable(cfg.options);
   m_tintC = noct.color(m_cfg.tint, Color::fromHex("#e2342a"));
@@ -216,7 +221,7 @@ void FilterWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct)
 }
 
 void FilterWidget::draw(const DrawContext& ctx) {
-  if (ctx.movingWallpaper || ctx.wallpaper.empty() || ctx.wallpaper.rfind("color:", 0) == 0) return;  // nothing still to filter
+  if (idle() || ctx.movingWallpaper || ctx.wallpaper.empty() || ctx.wallpaper.rfind("color:", 0) == 0) return;  // nothing to change, or nothing still to filter
   const int maxSide = static_cast<int>(std::ceil(std::max(ctx.outputW, ctx.outputH) * std::max(1.0F, ctx.scale)));
   if (!m_fade.update(ctx.wallpaper, maxSide, ctx.now)) return;  // the old picture stays until the new one is in
   m_fx.build(kHead, kFit, kBody, kLights);

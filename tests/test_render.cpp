@@ -1329,8 +1329,11 @@ int main(int argc, char** argv) {
     CHECK(writePng(wall, png, false));
     toml::table o;
     o.insert_or_assign("style", "custom");
-    const Image same = renderWidget("filter", o, 200, 100, pal, 1000, 1, 3.0, nullptr, png);
     auto px = [](const Image& im, int x, int y) { return &im.rgba[(static_cast<size_t>(y) * im.w + x) * 4]; };
+    // a filter that changes nothing draws nothing: the wallpaper's own program shows it
+    CHECK(px(renderWidget("filter", o, 200, 100, pal, 1000, 1, 3.0, nullptr, png), 40, 50)[3] == 0);
+    o.insert_or_assign("brightness", 0.001);  // the picture, as good as untouched
+    const Image same = renderWidget("filter", o, 200, 100, pal, 1000, 1, 3.0, nullptr, png);
     CHECK(px(same, 40, 50)[0] > 200 && px(same, 40, 50)[2] < 50 && px(same, 160, 50)[2] > 200 && px(same, 160, 50)[3] == 255);
     o.insert_or_assign("style", "noir");
     o.insert_or_assign("grain", 0.0);

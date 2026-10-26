@@ -143,6 +143,7 @@ int main() {
     const NoctaliaState pal = testPalette();
     toml::table o;
     o.insert_or_assign("style", "custom");
+    o.insert_or_assign("brightness", 0.001);  // the picture, as good as untouched (a neutral filter draws nothing)
     const Image base = renderWidget("filter", o, 320, 180, pal, 1000, 1, 3.0, nullptr, png);
     for (const auto& d : builtinParticles()) {
       toml::table one = o;
