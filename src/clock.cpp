@@ -3,6 +3,7 @@
 // (GPL-3.0): sizes, weights, spacing and colours are Ryoku's at clockScale 1.
 #include "clock.hpp"
 #include "i18n.hpp"
+#include "media.hpp"
 
 #include "clockparts.hpp"
 
@@ -235,6 +236,7 @@ const std::vector<std::string>& ClockWidget::faces() {
 }
 
 void ClockWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
+  m_wall = noct.wallpaperFor(cfg.output);
   configure(ClockConfig::fromTable(cfg.options), noct);
   m_opts = cfg.options;
 }
@@ -247,6 +249,12 @@ void ClockWidget::configure(const ClockConfig& cfg, const NoctaliaState& noct) {
   if (cfg.accent == "brand") m_accent = Color::fromHex("#e2342a");
   else if (cfg.accent == "mono") m_accent = m_ink;
   else if (cfg.accent == "custom") m_accent = noct.color(cfg.accentColor);
+  else if (cfg.accent == "auto") {  // the wallpaper's own accent: the theme's when the wallpaper made it, ours over the picture
+    m_accent = noct.color("primary", Color::fromHex("#e2342a"));
+    Color wall;
+    const bool dark = noct.themeMode != "light";
+    if (wallpaperAccent(m_wall, wall, noct.themeScheme, dark)) m_accent = wall;
+  }
   else m_accent = noct.color(cfg.accent);
   m_measures.clear();
 }

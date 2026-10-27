@@ -60,6 +60,10 @@ std::string artPath(const std::string& url);
 std::string artKey(const std::string& url);
 // Ryoku's ArtColor.accentOf over RGBA pixels (w x h); false = no vivid colour
 bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out);
+// The accent of a wallpaper (Noctalia/Matugen M3 accent, falling back to
+// Ryoku's ArtColor.accentOf over a 48 px decode): false = no vivid colour in
+// it. One decode per path, cached.
+bool wallpaperAccent(const std::string& path, Color& out, const std::string& scheme = "", bool dark = true);
 
 class MediaService {
 public:

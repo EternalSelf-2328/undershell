@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "noctalia.hpp"
+#include "media.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -308,6 +309,13 @@ void Noctalia::refreshPalette(NoctaliaState& s) {
     }
     pal[snake] = Color::fromHex((*it)[2].str());
     ++found;
+  }
+  Color autoAccent;
+  if (wallpaperAccent(s.defaultWallpaper, autoAccent, s.themeScheme, dark)) {
+    pal["auto"] = autoAccent;
+  } else {
+    auto it = pal.find("primary");
+    if (it != pal.end()) pal["auto"] = it->second;
   }
   US_INFO("palette: source={} roles={} primary=({:.2f},{:.2f},{:.2f})", s.themeSource.empty() ? s.source : s.themeSource, found, pal["primary"].r,
           pal["primary"].g, pal["primary"].b);

@@ -13,6 +13,8 @@
 #include <sstream>
 #include <systemd/sd-bus.h>
 
+#include <mutex>
+
 namespace undershell {
 
 namespace fs = std::filesystem;
@@ -353,6 +355,73 @@ bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out) {
   if (!pb) return false;
   const bool ok = accentOf(pb, out);
   g_object_unref(pb);
+  return ok;
+}
+
+// the wallpaper accent: Noctalia's Matugen-faithful C++ generator, or the
+// matugen CLI if installed, falling back to Ryoku's ArtColor algorithm over a
+// 48 px decode; cached per path, scheme and mode so widgets that reconfigure
+// on a wallpaper change share the one decode
+bool wallpaperAccent(const std::string& path, Color& out, const std::string& scheme, bool dark) {
+  static std::mutex m;
+  static std::map<std::string, std::pair<bool, Color>> cache;  // false = its picture has no vivid colour either
+  std::lock_guard g(m);
+  const std::string cacheKey = path + "|" + scheme + (dark ? "|d" : "|l");
+  const auto it = cache.find(cacheKey);
+  if (it != cache.end()) {
+    if (it->second.first) out = it->second.second;
+    return it->second.first;
+  }
+  Color found{0, 0, 0, 0};
+  bool ok = false;
+  if (!path.empty() && path.starts_with('/')) {  // anything the shell names, and a scene's still
+    // 1. Noctalia theme generator (faithful to Matugen M3)
+    if (gchar* p = g_find_program_in_path("noctalia"); p) {
+      g_free(p);
+      gchar* quoted = g_shell_quote(path.c_str());
+      std::string cmd = std::format("noctalia theme {} {}", quoted, dark ? "--dark" : "--light");
+      if (!scheme.empty()) {
+        gchar* qScheme = g_shell_quote(scheme.c_str());
+        cmd += std::format(" --scheme {}", qScheme);
+        g_free(qScheme);
+      }
+      g_free(quoted);
+      const std::string json = runCommand(cmd, 4);
+      static const std::regex kPrim(R"re("primary"\s*:\s*"(#[0-9a-fA-F]{6})")re");
+      std::smatch sm;
+      if (std::regex_search(json, sm, kPrim)) {
+        found = Color::fromHex(sm[1].str());
+        ok = true;
+      }
+    }
+    // 2. matugen CLI fallback if Noctalia is not installed
+    if (!ok) {
+      if (gchar* p = g_find_program_in_path("matugen"); p) {
+        g_free(p);
+        gchar* quoted = g_shell_quote(path.c_str());
+        const std::string json = runCommand(std::format("matugen image {} --json hex", quoted), 4);
+        g_free(quoted);
+        static const std::regex kPrim(R"re("primary"\s*:\s*"(#[0-9a-fA-F]{6})")re");
+        std::smatch sm;
+        if (std::regex_search(json, sm, kPrim)) {
+          found = Color::fromHex(sm[1].str());
+          ok = true;
+        }
+      }
+    }
+    // 3. Fallback: decode 48 px and lift the most vibrant colour
+    if (!ok) {
+      GError* err = nullptr;
+      GdkPixbuf* pb = gdk_pixbuf_new_from_file_at_scale(path.c_str(), 48, 48, TRUE, &err);
+      if (err) g_error_free(err);
+      if (pb) {
+        ok = accentOf(pb, found);
+        g_object_unref(pb);
+      }
+    }
+  }
+  cache[cacheKey] = {ok, found};
+  if (ok) out = found;
   return ok;
 }
 

@@ -76,7 +76,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Enum, "date", "Date", "Fecha", {"none", "inline", "badge", "stacked"}, 0, 0, 0, 0, "inline"},
       {K::Bool, "clock_24h", "24-hour", "24 horas", {}, 0, 1, 1, 1},
       {K::Bool, "seconds", "Seconds", "Segundos", {}, 0, 1, 1, 0},
-      {K::Enum, "accent", "Accent", "Acento", {"primary", "secondary", "tertiary", "brand", "mono", "custom"}, 0, 0, 0, 0, "primary"},
+      {K::Enum, "accent", "Accent", "Acento", {"auto", "primary", "secondary", "tertiary", "brand", "mono", "custom"}, 0, 0, 0, 0, "primary"},
       {K::Color, "accent_color", "Custom accent", "Acento propio", {}, 0, 0, 0, 0, "#e2342a"},
       {K::Color, "ink", "Ink", "Tinta", {}, 0, 0, 0, 0, "on_surface"},
       {K::Enum, "language", "Language", "Idioma", {"system", "en", "es"}, 0, 0, 0, 0, "system"},

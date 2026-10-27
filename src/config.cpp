@@ -687,7 +687,7 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
                      look.empty() ? "digital" : look);
     b += "date = \"inline\"          # none inline badge stacked\n"
          "clock_24h = true\nseconds = false\n"
-         "accent = \"primary\"        # primary secondary tertiary brand mono custom\n"
+         "accent = \"primary\"        # auto primary secondary tertiary brand mono custom\n"
          "accent_color = \"#e2342a\"\nink = \"on_surface\"\n"
          "language = \"system\"      # system en es\nweather = true            # metal face\nfahrenheit = false\n";
   } else if (type == "visualizer") {

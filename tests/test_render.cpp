@@ -901,6 +901,30 @@ int main(int argc, char** argv) {
     }
   }
 
+  // clock with auto accent resolves the output's wallpaper accent
+  {
+    ClockWidget cw;
+    WidgetConfig wc;
+    wc.type = "clock";
+    wc.options.insert_or_assign("face", "digital");
+    wc.options.insert_or_assign("accent", "auto");
+    wc.output = "HDMI-A-1";
+    NoctaliaState ns;
+    ns.wallpaperByOutput["HDMI-A-1"] = std::string(US_SOURCE_DIR) + "/tests/golden/shape-star.png";
+    ns.palette["primary"] = Color::fromHex("#123456");
+    cw.configure(wc, ns);
+    CHECK(cw.accent().r != Color::fromHex("#123456").r || cw.accent().g != Color::fromHex("#123456").g);
+
+    // with an empty wallpaper path, it falls back to the theme's primary
+    WidgetConfig wcEmpty = wc;
+    wcEmpty.output = "eDP-1";
+    ClockWidget cwEmpty;
+    cwEmpty.configure(wcEmpty, ns);
+    CHECK(std::abs(cwEmpty.accent().r - Color::fromHex("#123456").r) < 1e-4 &&
+          std::abs(cwEmpty.accent().g - Color::fromHex("#123456").g) < 1e-4 &&
+          std::abs(cwEmpty.accent().b - Color::fromHex("#123456").b) < 1e-4);
+  }
+
   // perspective: no warp reproduces the picture; a tilt and a skew match their golden
   {
     const Image src = renderLook("bars", 480, 160, pal);

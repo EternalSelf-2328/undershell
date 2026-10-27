@@ -79,7 +79,7 @@ Ryoku's clock faces and date strips.
 | `date` | `none`, `inline`, `badge`, `stacked` | `"inline"` | Date |
 | `clock_24h` | `true` / `false` | `true` | 24-hour |
 | `seconds` | `true` / `false` | `false` | Seconds |
-| `accent` | `primary`, `secondary`, `tertiary`, `brand`, `mono`, `custom` | `"primary"` | Accent |
+| `accent` | `auto`, `primary`, `secondary`, `tertiary`, `brand`, `mono`, `custom` | `"primary"` | Accent |
 | `accent_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#e2342a"` | Custom accent |
 | `ink` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Ink |
 | `language` | `system`, `en`, `es` | `"system"` | Language |

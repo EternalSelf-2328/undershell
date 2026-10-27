@@ -79,5 +79,14 @@ int main() {
   CHECK(std::abs(s.positionSec(200) - 12.0) < 1e-6);     // clamped to the length
   s.playing = false;
   CHECK(std::abs(s.positionSec(200) - 10.0) < 1e-6);     // frozen when paused
+
+  // wallpaper accent: empty path returns false, real image extracts and caches
+  Color wallCol;
+  CHECK(!wallpaperAccent("", wallCol));
+  const std::string starPng = std::string(US_SOURCE_DIR) + "/tests/golden/shape-star.png";
+  CHECK(wallpaperAccent(starPng, wallCol));
+  Color wallCol2;
+  CHECK(wallpaperAccent(starPng, wallCol2));
+  CHECK(std::abs(wallCol.r - wallCol2.r) < 1e-4 && std::abs(wallCol.g - wallCol2.g) < 1e-4 && std::abs(wallCol.b - wallCol2.b) < 1e-4);
   return TEST_RESULT();
 }

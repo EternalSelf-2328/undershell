@@ -19,7 +19,7 @@ struct ClockConfig {
   std::string date = "inline";   // none inline badge stacked
   bool clock24 = true;
   bool seconds = false;
-  std::string accent = "primary";  // primary secondary tertiary brand mono custom
+  std::string accent = "primary";  // auto primary secondary tertiary brand mono custom
   std::string accentColor = "#e2342a";
   std::string ink = "on_surface";
   std::string language = "system";  // system en es
@@ -67,6 +67,7 @@ private:
 
   ClockConfig m_cfg;
   toml::table m_opts;  // the widget's table: element overrides of editable structures
+  std::string m_wall;  // this output's wallpaper, when the accent is "auto"
   NoctaliaState m_noct;
   Color m_ink, m_accent;
   Canvas m_canvas;
