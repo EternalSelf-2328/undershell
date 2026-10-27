@@ -1,5 +1,5 @@
 project('undershell', 'cpp', 'c',
-  version : '1.5.0',
+  version : '1.5.1',
   license : 'GPL-3.0-or-later',
   default_options : ['cpp_std=c++20', 'warning_level=2', 'buildtype=release', 'b_ndebug=if-release'])
 

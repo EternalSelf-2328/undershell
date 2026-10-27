@@ -1,3 +1,15 @@
+undershell (1.5.1) unstable; urgency=medium
+
+  * Clock: automatic Matugen M3 accent from the wallpaper (`accent = "auto"`).
+  * Clock: fix m_wall initialization order so the wallpaper accent loads
+    immediately on startup and wallpaper change.
+  * Noctalia: populate `pal["auto"]` with the wallpaper accent for all widgets.
+  * Fedora packages: package undershell-scene in /usr/libexec.
+  * Tests: make scene e2e test font-independent for packaging on minimal
+    distributions.
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Mon, 26 Oct 2026 22:18:00 -0500
+
 undershell (1.5.0) unstable; urgency=medium
 
   * Performance profiles: eco, balanced, high, ultra and auto (follows load

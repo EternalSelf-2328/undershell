@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.5.0
+Version:        1.5.1
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -88,6 +88,13 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Mon Oct 26 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.5.1-1
+- Clock: automatic Matugen M3 accent from the wallpaper (`accent = "auto"`)
+- Clock: fix m_wall initialization order so the wallpaper accent loads immediately
+- Noctalia: populate pal["auto"] with the wallpaper accent for all widgets
+- Fedora: package undershell-scene in /usr/libexec
+- Tests: font-independent scene e2e test for minimal packaging environments
+
 * Sun Oct 25 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.5.0-1
 - Performance profiles: eco, balanced, high, ultra and auto (follows load and battery)
 - Wallpaper: one shared picture with a crossfade on change; `msg wallpaper-set` sets it through whichever program draws it
