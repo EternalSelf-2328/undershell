@@ -326,20 +326,31 @@ void App::watchLogicalSize(Output* o) {
 void App::onGlobalRemove(uint32_t name) {
   for (auto it = m_outputs.begin(); it != m_outputs.end(); ++it) {
     if ((*it)->global != name) continue;
+    const Output* gone = it->get();
+    // every pointer into this Output has to go before it does: a widget that
+    // keeps it is read every frame (and `if (w->output)` does not help, the
+    // pointer is not null, it is dead)
     for (auto& w : m_widgets)
-      if (w->output == it->get()) destroySurface(*w);
+      if (w->output == gone) {
+        destroySurface(*w);
+        w->output = nullptr;
+      }
     for (auto e = m_editSurfaces.begin(); e != m_editSurfaces.end();) {
-      if ((*e)->output == it->get()) {
+      if ((*e)->output == gone) {
+        if (m_pointerEdit == e->get()) m_pointerEdit = nullptr;
         destroyEditSurface(**e);
         e = m_editSurfaces.erase(e);
       } else {
         ++e;
       }
     }
+    if (m_uiOutput == gone) m_uiOutput = nullptr;
     if ((*it)->xdg) zxdg_output_v1_destroy((*it)->xdg);
     wl_output_destroy((*it)->wl);
     m_outputs.erase(it);
     syncScreens();
+    // the widgets that lost their screen go to one that is still there
+    if (m_eglContext != EGL_NO_CONTEXT) syncWidgets();
     return;
   }
 }
