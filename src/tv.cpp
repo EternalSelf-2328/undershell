@@ -409,6 +409,11 @@ public:
     return transition || animated || m_live;
   }
 
+  ~Tv() override {
+    if (m_tex) glDeleteTextures(1, &m_tex);
+    if (m_fbo) glDeleteFramebuffers(1, &m_fbo);
+  }
+
 private:
   double m_glitchAmount = 0.6, m_speedAmount = 0.5, m_zap = 0.5, m_staticAmount = 0.06, m_preview = -1;
   bool m_vhs = false, m_powerOff = true, m_cover = true, m_live = false;

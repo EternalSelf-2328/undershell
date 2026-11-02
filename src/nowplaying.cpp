@@ -102,6 +102,12 @@ NowPlayingConfig NowPlayingConfig::fromTable(const toml::table& t) {
   return c;
 }
 
+// the cover of one's own keeps GL textures: WidgetImpl has no release hook,
+// so they go here, like ImageWidget's
+NowPlayingWidget::~NowPlayingWidget() {
+  if (m_coverSrc && eglGetCurrentContext() != EGL_NO_CONTEXT) m_coverSrc->releaseGl();
+}
+
 void NowPlayingWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   configure(NowPlayingConfig::fromTable(cfg.options), noct);
 }

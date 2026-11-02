@@ -57,6 +57,7 @@ void nowPlayingDesignSize(const toml::table& options, float& w, float& h);
 
 class NowPlayingWidget final : public WidgetImpl {
 public:
+  ~NowPlayingWidget() override;
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
   void configure(const NowPlayingConfig& cfg, const NoctaliaState& noct);
   void tick(const TickContext& ctx) override;
