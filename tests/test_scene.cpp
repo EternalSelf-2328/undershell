@@ -394,5 +394,24 @@ int main() {
   }
 
   fs::remove_all(dir);
+
+  // a project.json with null where a string is expected must not throw
+  {
+    using namespace undershell;  // this file's blocks declare it locally
+    const fs::path bad = fs::temp_directory_path() / "undershell-test-badproject";
+    fs::create_directories(bad);
+    std::ofstream(bad / "project.json") << R"({"type":"scene","title":null,"file":0,"preview":null})";
+    WeProject p;
+    std::string why;
+    bool threw = false;
+    try {
+      readWeProject(bad.string(), p, why);
+    } catch (...) {
+      threw = true;
+    }
+    CHECK(!threw);
+    fs::remove_all(bad);
+  }
+
   return TEST_RESULT();
 }

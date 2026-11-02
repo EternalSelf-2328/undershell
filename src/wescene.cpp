@@ -335,7 +335,7 @@ std::string weWallpaperDir(const std::string& idOrPath) {
   return fs::is_directory(p, ec) && fs::exists(p / "project.json", ec) ? fs::canonical(p, ec).string() : std::string();
 }
 
-bool readWeProject(const std::string& folder, WeProject& out, std::string& why) {
+static bool readWeProjectInner(const std::string& folder, WeProject& out, std::string& why) {
   const json j = readJson(fs::path(folder) / "project.json");
   if (!j.is_object()) {
     why = "no readable project.json";
@@ -409,6 +409,18 @@ bool readWeProject(const std::string& folder, WeProject& out, std::string& why) 
     }
   std::ranges::sort(out.props, [](const WeProperty& a, const WeProperty& b) { return a.order < b.order; });
   return true;
+}
+
+// project.json comes from strangers: a null or a number where a string is
+// expected makes json::value throw, and this runs on the main thread
+bool readWeProject(const std::string& folder, WeProject& out, std::string& why) {
+  try {
+    return readWeProjectInner(folder, out, why);
+  } catch (const std::exception& e) {
+    out = {};
+    why = std::string("bad project.json: ") + e.what();
+    return false;
+  }
 }
 
 bool readWeScene(const std::string& unpacked, const std::string& assets, const WeProject& project, WeScene& out, std::string& why) {

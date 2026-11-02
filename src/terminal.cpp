@@ -371,14 +371,20 @@ private:
 
   // ── code ──
   std::string fill(std::string s) {
+    // the song's text comes from the player: start each search after what was
+    // just written, or a title containing "@SONG@" would loop forever
     auto replace = [&s](const std::string& key, const std::string& by) {
-      for (size_t at; (at = s.find(key)) != std::string::npos;) s.replace(at, key.size(), by);
+      for (size_t at = 0; (at = s.find(key, at)) != std::string::npos; at += by.size()) s.replace(at, key.size(), by);
     };
     replace("@SONG@", m_track && !m_title.empty() ? (m_artist.empty() ? m_title : m_artist + " - " + m_title)
                                                   : std::string("No players found"));
     replace("@TIME@", m_preview >= 0 ? std::string("21:42:07") : clockText());
     replace("@UP@", m_preview >= 0 ? std::string("3:12") : uptimeText());
-    while (s.find("@MS@") != std::string::npos) s.replace(s.find("@MS@"), 4, std::format("{:.1f}", 11 + 4 * m_rng.next()));
+    for (size_t at = 0; (at = s.find("@MS@", at)) != std::string::npos;) {
+      const std::string by = std::format("{:.1f}", 11 + 4 * m_rng.next());
+      s.replace(at, 4, by);
+      at += by.size();
+    }
     return s;
   }
   void push(std::string text, float bright) {

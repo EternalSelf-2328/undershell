@@ -79,8 +79,15 @@ void storeOption(toml::table& t, const std::string& key, const std::string& toml
   }
   if (tomlValue.size() >= 2 && tomlValue.front() == '"') t.insert_or_assign(key, tomlValue.substr(1, tomlValue.size() - 2));
   else if (tomlValue == "true" || tomlValue == "false") t.insert_or_assign(key, tomlValue == "true");
-  else if (tomlValue.find_first_of(".eE") != std::string::npos) t.insert_or_assign(key, std::stod(tomlValue));
-  else if (!tomlValue.empty()) t.insert_or_assign(key, static_cast<int64_t>(std::stoll(tomlValue)));
+  else if (!tomlValue.empty()) {
+    // inf, nan and out-of-range numbers are valid TOML: this runs inside a
+    // libwayland callback, where an escaping exception ends the process
+    try {
+      if (tomlValue.find_first_of(".eE") != std::string::npos) t.insert_or_assign(key, std::stod(tomlValue));
+      else t.insert_or_assign(key, static_cast<int64_t>(std::stoll(tomlValue)));
+    } catch (const std::exception&) {
+    }
+  }
 }
 
 std::string formatNumber(const PropSpec& p, double v) {

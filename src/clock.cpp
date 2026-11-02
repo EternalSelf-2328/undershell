@@ -180,9 +180,15 @@ std::string weatherClause(bool es, bool fahrenheit) {
   std::smatch m;
   double temp = 0;
   int code = -1;
-  if (std::regex_search(tail, m, std::regex(R"re("temperature_c"\s*:\s*(-?[\d.]+))re"))) temp = std::stod(m[1]);
-  else return cached;
-  if (std::regex_search(tail, m, std::regex(R"re("weather_code"\s*:\s*(\d+))re"))) code = std::stoi(m[1]);
+  // the file is written by another program: a half-written number must not
+  // throw out of the clock's draw()
+  try {
+    if (std::regex_search(tail, m, std::regex(R"re("temperature_c"\s*:\s*(-?[\d.]+))re"))) temp = std::stod(m[1]);
+    else return cached;
+    if (std::regex_search(tail, m, std::regex(R"re("weather_code"\s*:\s*(\d+))re"))) code = std::stoi(m[1]);
+  } catch (const std::exception&) {
+    return cached;
+  }
   auto name = [&](int c) -> std::string {
     struct N {
       int code;
