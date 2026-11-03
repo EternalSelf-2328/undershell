@@ -564,6 +564,7 @@ void SceneWidget::drawCover(GLuint tex, float texW, float texH, const DrawContex
   glUniform2f(m_prog.uniform("u_size"), ctx.w, ctx.h);
   glUniform4f(m_prog.uniform("u_tint"), 1, 1, 1, alpha);
   glUniform1i(m_prog.uniform("u_solid"), 0);
+  glUniform1i(m_prog.uniform("u_premul"), 0);  // a plain picture: the layers leave this at 1 or 2
   glUniform1i(m_prog.uniform("u_tex"), 0);
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, tex);
