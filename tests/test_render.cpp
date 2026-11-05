@@ -421,6 +421,38 @@ int main(int argc, char** argv) {
       CHECK(quarters == 4);
       if (std::string(mode) == "field") golden1(img, "stars");
     }
+
+    // the pixel field: the music rises from the bottom in columns, so the
+    // bottom is fuller with it than without; a word fills the middle band, which is
+    // empty without one; the theme's colours change it; the word's matches its
+    // golden (its font is bundled)
+    {
+      auto painted = [](const Image& img, int y0, int y1, int x0, int x1) {
+        size_t n = 0;
+        for (int y = y0; y < y1; ++y)
+          for (int x = x0; x < x1; ++x) n += img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3] > 0;
+        return static_cast<double>(n) / ((y1 - y0) * (x1 - x0));
+      };
+      toml::table px;
+      px.insert_or_assign("pixels_preview", 3.0);
+      px.insert_or_assign("pixels_stamps", false);
+      const double bottom = painted(renderLook("pixels", 400, 240, pal, &px), 204, 240, 0, 400);
+      px.insert_or_assign("pixels_spectrum", false);
+      const double still = painted(renderLook("pixels", 400, 240, pal, &px), 204, 240, 0, 400);  // without the columns
+      if (!(bottom > still + 0.08)) std::fprintf(stderr, "pixels: bottom %.2f with the music, %.2f without\n", bottom, still);
+      CHECK(bottom > still + 0.08);
+      px.insert_or_assign("pixels_spectrum", true);
+      px.insert_or_assign("pixels_spot", false);
+      const double middle = painted(renderLook("pixels", 400, 240, pal, &px), 96, 120, 80, 320);
+      px.insert_or_assign("pixels_text", "UNDERSHELL");
+      const Image word = renderLook("pixels", 400, 240, pal, &px);
+      const double withWord = painted(word, 96, 120, 80, 320);
+      if (!(middle < 0.05 && withWord > 0.25)) std::fprintf(stderr, "pixels: middle %.2f, with the word %.2f\n", middle, withWord);
+      CHECK(middle < 0.05 && withWord > 0.25);
+      golden1(word, "pixels");
+      px.insert_or_assign("pixels_colors", "theme");
+      CHECK(imageDiff(renderLook("pixels", 400, 240, pal, &px), word) > 1);
+    }
   }
 
   // the neon sign: its words lit in its colour round the box's middle, a shape

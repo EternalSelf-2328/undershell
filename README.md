@@ -230,13 +230,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 28 looks
+## Visualizer: 29 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`). Plus sixteen of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `terminal` and `tv` (see below).
+and Ryoku's motion (`Motion.qml`). Plus seventeen of its own: `halo` (a glowing
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `pixels`, `terminal` and `tv` (see below).
 
 <p align="center">
   <img src="docs/media/looks.webp" alt="The same visualizer box in the editor switching through looks: vortex, fire, smoke, a comic KRAKOOM, rain, a neon LIVE sign, a terminal, bars, TV static, split bars, dots and a filled wave" width="800"><br>
@@ -908,6 +908,26 @@ strokes of light, so only the pixels near a star cost anything.
 <p align="center">
   <img src="docs/media/water-aura-stars.webp" alt="Six boxes over simulated music: a water wave spreading as a ring and as a line, a blue aura round an orb and a golden one rising, a starry sky with a shooting star and stars rushing past at light speed" width="760"><br>
   <sub><code>pond</code> ring and line · <code>aura</code> orb and rise · <code>stars</code> field and warp</sub>
+</p>
+
+## Pixels
+
+The `pixels` look is a field of square pixels, after the hero of
+[omarchy.org](https://omarchy.org/). Slow noise and a twinkle set each
+pixel's brightness and an ordered dither turns it on or off, so the field
+thins out toward an empty middle (Empty middle, Density). The music rises
+from the bottom in columns, bass at the sides (Music columns), a light
+wanders over it (Wandering light) and a strong kick opens a square that
+grows and fades (Beat squares). A Word can stand in the middle in big
+pixels, shaded top to bottom: any text, `@TIME@` for the time or `@SONG@`
+for the song, in any font (JetBrains Mono by default). Colours: `frost` or
+`theme`; Pixel size sets the grain. The pixels are worked out on the CPU:
+about 8 % of one core at 60 fps on a full 1366×768 screen (an Intel HD 520
+laptop), half that at 30.
+
+<p align="center">
+  <img src="docs/media/pixels.webp" alt="A dark field of square blue pixels, sparse in the middle and dense at the bottom corners, with the word UNDERSHELL in big pixels shaded from pale at the top to dark below, and a square outline opening near it" width="760"><br>
+  <sub><code>pixels</code> with <code>pixels_text = "UNDERSHELL"</code></sub>
 </p>
 
 ## Terminal

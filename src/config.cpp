@@ -45,7 +45,7 @@ y = 760                   # on any other screen the widget keeps its place on th
 width = 1000
 height = 280
 space = [1920, 1080]
-# bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars
+# bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars pixels
 style = "bars"
 bars = 64
 thickness = 0.58
@@ -693,7 +693,7 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
          "accent_color = \"#e2342a\"\nink = \"on_surface\"\n"
          "language = \"system\"      # system en es\nweather = true            # metal face\nfahrenheit = false\n";
   } else if (type == "visualizer") {
-    b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars\n",
+    b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars pixels\n",
                      look.empty() ? "bars" : look);
   } else if (type == "scene") {
     b += "scene = \"\"                 # a Wallpaper Engine wallpaper: its Workshop id or folder (scenes and videos)\n"

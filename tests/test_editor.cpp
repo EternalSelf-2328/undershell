@@ -224,11 +224,15 @@ int main() {
     const char* themedBolt = "style = 'electric'\nelectric_colors = 'theme'\ncolor_mode = 'gradient'";
     CHECK(shows("visualizer", themedBolt, "color") && !shows("visualizer", themedBolt, "color2"));
     // the new looks bring their colours; their rows where they do something
-    for (const char* look : {"style = 'pond'", "style = 'aura'", "style = 'stars'"})
+    for (const char* look : {"style = 'pond'", "style = 'aura'", "style = 'stars'", "style = 'pixels'"})
       CHECK(!shows("visualizer", look, "color_mode") && !shows("visualizer", look, "bars"));
     CHECK(shows("visualizer", "style = 'pond'", "pond_flatten") && !shows("visualizer", "style = 'pond'\npond_form = 'line'", "pond_flatten"));
     CHECK(shows("visualizer", "style = 'stars'", "stars_shooting") && !shows("visualizer", "style = 'stars'\nstars_mode = 'warp'", "stars_shooting"));
     CHECK(!shows("visualizer", "style = 'stars'", "stars_speed") && shows("visualizer", "style = 'stars'\nstars_mode = 'warp'", "stars_speed"));
+    // the pixels: their own colours, the word's size and font once there is a word
+    CHECK(shows("visualizer", "style = 'pixels'", "pixels_text") && !shows("visualizer", "style = 'pixels'", "bars"));
+    CHECK(!shows("visualizer", "style = 'pixels'", "pixels_text_size") && shows("visualizer", "style = 'pixels'\npixels_text = 'HI'", "pixels_text_size"));
+    CHECK(!shows("visualizer", "style = 'pixels'", "pixels_font") && shows("visualizer", "style = 'pixels'\npixels_text = 'HI'", "pixels_font"));
     // snow over a picture, not over the snow
     CHECK(!shows("visualizer", "style = 'tv'", "tv_static") && shows("visualizer", "style = 'tv'\ntv_mode = 'media'", "tv_static"));
     // clocks: seconds where they are drawn, 12/24 h wherever the hour is digits
