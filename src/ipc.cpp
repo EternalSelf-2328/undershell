@@ -90,11 +90,12 @@ void IpcServer::dispatch() {
   while (!cmd.empty() && (cmd.back() == '\r' || cmd.back() == ' ')) cmd.pop_back();
   std::string reply = m_handler ? m_handler(cmd) : "error";
   reply += "\n";
-  // written as the reader takes it, for a second at most
+  // written as the reader takes it, for a second at most; a reader that gave
+  // up (`msg` waits 2 s) must not end the daemon: no SIGPIPE, an error
   size_t done = 0;
   pollfd w{c, POLLOUT, 0};
   while (done < reply.size() && poll(&w, 1, static_cast<int>(std::max(0.0, until + 1.0 - nowSeconds()) * 1000)) > 0) {
-    const ssize_t n = write(c, reply.data() + done, reply.size() - done);
+    const ssize_t n = send(c, reply.data() + done, reply.size() - done, MSG_NOSIGNAL);
     if (n <= 0) break;
     done += static_cast<size_t>(n);
   }
@@ -112,7 +113,7 @@ int ipcSend(const std::string& command) {
     return 2;
   }
   std::string line = command + "\n";
-  (void)!write(fd, line.data(), line.size());
+  (void)!send(fd, line.data(), line.size(), MSG_NOSIGNAL);
   std::string reply;
   char buf[512];
   pollfd p{fd, POLLIN, 0};
