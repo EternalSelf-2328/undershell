@@ -62,8 +62,18 @@ std::string artKey(const std::string& url);
 bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out);
 // The accent of a wallpaper (Noctalia/Matugen M3 accent, falling back to
 // Ryoku's ArtColor.accentOf over a 48 px decode): false = no vivid colour in
-// it. One decode per path, cached.
+// it. One decode per path, cached. It runs `noctalia theme` (or matugen):
+// never on the main loop, which uses cachedWallpaperAccent.
 bool wallpaperAccent(const std::string& path, Color& out, const std::string& scheme = "", bool dark = true);
+// What wallpaperAccent already worked out, without running anything. When it
+// has not been worked out yet, `known` is false and the request is kept for
+// takeWantedAccents(), so the main loop can have it computed off its thread.
+bool cachedWallpaperAccent(const std::string& path, Color& out, bool& known, const std::string& scheme = "", bool dark = true);
+struct AccentRequest {
+  std::string path, scheme;
+  bool dark = true;
+};
+std::vector<AccentRequest> takeWantedAccents();
 
 class MediaService {
 public:

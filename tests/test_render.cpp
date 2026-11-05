@@ -901,7 +901,9 @@ int main(int argc, char** argv) {
     }
   }
 
-  // clock with auto accent resolves the output's wallpaper accent
+  // clock with auto accent resolves the output's wallpaper accent, without
+  // working it out itself (configure runs on the main loop): the theme's
+  // primary until the accent asked for is in the cache, then the accent
   {
     ClockWidget cw;
     WidgetConfig wc;
@@ -910,10 +912,19 @@ int main(int argc, char** argv) {
     wc.options.insert_or_assign("accent", "auto");
     wc.output = "HDMI-A-1";
     NoctaliaState ns;
-    ns.wallpaperByOutput["HDMI-A-1"] = std::string(US_SOURCE_DIR) + "/tests/golden/shape-star.png";
+    const std::string star = std::string(US_SOURCE_DIR) + "/tests/golden/shape-star.png";
+    ns.wallpaperByOutput["HDMI-A-1"] = star;
     ns.palette["primary"] = Color::fromHex("#123456");
+    (void)takeWantedAccents();
+    cw.configure(wc, ns);
+    CHECK(std::abs(cw.accent().r - Color::fromHex("#123456").r) < 1e-4);  // nothing ran
+    const std::vector<AccentRequest> want = takeWantedAccents();
+    CHECK(want.size() == 1 && want[0].path == star);
+    Color c;
+    for (const AccentRequest& r : want) wallpaperAccent(r.path, c, r.scheme, r.dark);  // what App::requestAccents does, off the loop
     cw.configure(wc, ns);
     CHECK(cw.accent().r != Color::fromHex("#123456").r || cw.accent().g != Color::fromHex("#123456").g);
+    CHECK(takeWantedAccents().empty());
 
     // with an empty wallpaper path, it falls back to the theme's primary
     WidgetConfig wcEmpty = wc;

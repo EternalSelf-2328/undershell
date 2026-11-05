@@ -363,15 +363,46 @@ bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out) {
 // matugen CLI if installed, falling back to Ryoku's ArtColor algorithm over a
 // 48 px decode; cached per path, scheme and mode so widgets that reconfigure
 // on a wallpaper change share the one decode
+namespace {
+// the accents worked out so far (false = its picture has no vivid colour
+// either), and the ones asked for that are not; the lock is never held while
+// a command runs, or the main loop would wait on it
+std::mutex g_accentMutex;
+std::map<std::string, std::pair<bool, Color>> g_accents;
+std::map<std::string, AccentRequest> g_wantedAccents;
+std::string accentKey(const std::string& path, const std::string& scheme, bool dark) { return path + "|" + scheme + (dark ? "|d" : "|l"); }
+}  // namespace
+
+bool cachedWallpaperAccent(const std::string& path, Color& out, bool& known, const std::string& scheme, bool dark) {
+  std::lock_guard g(g_accentMutex);
+  const std::string key = accentKey(path, scheme, dark);
+  const auto it = g_accents.find(key);
+  known = it != g_accents.end();
+  if (!known) {
+    g_wantedAccents[key] = {path, scheme, dark};
+    return false;
+  }
+  if (it->second.first) out = it->second.second;
+  return it->second.first;
+}
+
+std::vector<AccentRequest> takeWantedAccents() {
+  std::lock_guard g(g_accentMutex);
+  std::vector<AccentRequest> v;
+  for (auto& [key, r] : g_wantedAccents) v.push_back(std::move(r));
+  g_wantedAccents.clear();
+  return v;
+}
+
 bool wallpaperAccent(const std::string& path, Color& out, const std::string& scheme, bool dark) {
-  static std::mutex m;
-  static std::map<std::string, std::pair<bool, Color>> cache;  // false = its picture has no vivid colour either
-  std::lock_guard g(m);
-  const std::string cacheKey = path + "|" + scheme + (dark ? "|d" : "|l");
-  const auto it = cache.find(cacheKey);
-  if (it != cache.end()) {
-    if (it->second.first) out = it->second.second;
-    return it->second.first;
+  const std::string cacheKey = accentKey(path, scheme, dark);
+  {
+    std::lock_guard g(g_accentMutex);
+    const auto it = g_accents.find(cacheKey);
+    if (it != g_accents.end()) {
+      if (it->second.first) out = it->second.second;
+      return it->second.first;
+    }
   }
   Color found{0, 0, 0, 0};
   bool ok = false;
@@ -421,7 +452,11 @@ bool wallpaperAccent(const std::string& path, Color& out, const std::string& sch
       }
     }
   }
-  cache[cacheKey] = {ok, found};
+  {
+    std::lock_guard g(g_accentMutex);
+    g_accents[cacheKey] = {ok, found};
+    g_wantedAccents.erase(cacheKey);
+  }
   if (ok) out = found;
   return ok;
 }

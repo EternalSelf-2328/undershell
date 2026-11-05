@@ -143,7 +143,9 @@ bool writeFileAtomic(const std::string& path, const std::string& content) {
   return false;
 }
 
-// Runs `sh -c cmd`, returns stdout. Kills the child after timeoutSec.
+// Runs `sh -c cmd`, returns stdout. After timeoutSec the child is killed with
+// whatever it started: it leads its own process group, so a program the shell
+// launched does not outlive the deadline (and keep a pipe open).
 std::string runCommand(const std::string& cmd, int timeoutSec) {
   int fds[2];
   if (pipe2(fds, O_CLOEXEC) != 0) return {};
@@ -154,12 +156,14 @@ std::string runCommand(const std::string& cmd, int timeoutSec) {
     return {};
   }
   if (pid == 0) {
+    setpgid(0, 0);
     dup2(fds[1], STDOUT_FILENO);
     int devnull = open("/dev/null", O_WRONLY);
     if (devnull >= 0) dup2(devnull, STDERR_FILENO);
     execl("/bin/sh", "sh", "-c", cmd.c_str(), static_cast<char*>(nullptr));
     _exit(127);
   }
+  setpgid(pid, pid);  // also from this side: the group exists before any kill
   close(fds[1]);
   std::string out;
   auto deadline = Clock::now() + std::chrono::seconds(timeoutSec);
@@ -167,14 +171,14 @@ std::string runCommand(const std::string& cmd, int timeoutSec) {
   while (true) {
     int left = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count());
     if (left <= 0) {
-      kill(pid, SIGKILL);
+      kill(-pid, SIGKILL);
       break;
     }
     pollfd p{fds[0], POLLIN, 0};
     int r = poll(&p, 1, left);
     if (r < 0 && errno == EINTR) continue;
     if (r <= 0) {
-      kill(pid, SIGKILL);
+      kill(-pid, SIGKILL);
       break;
     }
     ssize_t n = read(fds[0], buf.data(), buf.size());

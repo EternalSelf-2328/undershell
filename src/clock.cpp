@@ -258,8 +258,9 @@ void ClockWidget::configure(const ClockConfig& cfg, const NoctaliaState& noct) {
   else if (cfg.accent == "auto") {  // the wallpaper's own accent: the theme's when the wallpaper made it, ours over the picture
     m_accent = noct.color("primary", Color::fromHex("#e2342a"));
     Color wall;
+    bool known = false;  // not worked out yet: the primary until it is (App::requestAccents)
     const bool dark = noct.themeMode != "light";
-    if (wallpaperAccent(m_wall, wall, noct.themeScheme, dark)) m_accent = wall;
+    if (cachedWallpaperAccent(m_wall, wall, known, noct.themeScheme, dark)) m_accent = wall;
   }
   else m_accent = noct.color(cfg.accent);
   m_measures.clear();

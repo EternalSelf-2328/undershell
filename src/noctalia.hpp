@@ -43,6 +43,11 @@ public:
   // Re-reads the effective config and, when the theme inputs changed, the
   // palette. Returns true if anything the widgets use changed.
   bool refresh();
+  // refresh() runs commands (`noctalia config export`, `noctalia theme`), so
+  // the main loop runs it on a copy, off its thread, and takes back what the
+  // source said; what the main loop set meanwhile (the manual wallpaper, the
+  // scenes' stills, the screens) stays its own
+  void adoptSource(Noctalia&& fresh);
   [[nodiscard]] const NoctaliaState& state() const { return m_state; }
   // true once the source has been read (with Noctalia: an export)
   [[nodiscard]] bool ready() const { return m_ready; }

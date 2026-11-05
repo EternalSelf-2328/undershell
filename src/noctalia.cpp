@@ -44,7 +44,7 @@ int fillModeIndex(const std::string& s) {
 }
 
 bool Noctalia::refreshNoctalia(NoctaliaState& out) {
-  std::string exported = runCommand("noctalia config export", 8);
+  std::string exported = runCommand("noctalia config export", 3);
   if (exported.empty()) {
     if (!m_warned) US_WARN("`noctalia config export` returned nothing; retrying (is Noctalia installed?)");
     m_warned = true;
@@ -212,6 +212,20 @@ bool Noctalia::refresh() {
   return true;
 }
 
+void Noctalia::adoptSource(Noctalia&& fresh) {
+  m_base = std::move(fresh.m_base);
+  m_paletteKey = std::move(fresh.m_paletteKey);
+  m_lastExport = std::move(fresh.m_lastExport);
+  m_lastSource = std::move(fresh.m_lastSource);
+  m_shellKey = std::move(fresh.m_shellKey);
+  m_watchDirs = std::move(fresh.m_watchDirs);
+  m_plasma = std::move(fresh.m_plasma);
+  m_gnome = std::move(fresh.m_gnome);
+  m_ready = fresh.m_ready;
+  m_warned = fresh.m_warned;
+  compose();
+}
+
 void Noctalia::compose() {
   NoctaliaState s = m_base;
   if (!m_manual.empty()) {
@@ -286,7 +300,7 @@ void Noctalia::refreshPalette(NoctaliaState& s) {
   if (s.themeSource == "wallpaper" && s.defaultWallpaper.starts_with("/")) {  // a path, never something read as an option
     gchar* quoted = g_shell_quote(s.defaultWallpaper.c_str());
     gchar* scheme = g_shell_quote(s.themeScheme.c_str());
-    json = runCommand(std::format("noctalia theme {} --scheme {} {}", quoted, scheme, dark ? "--dark" : "--light"), 20);
+    json = runCommand(std::format("noctalia theme {} --scheme {} {}", quoted, scheme, dark ? "--dark" : "--light"), 5);
     g_free(quoted);
     g_free(scheme);
   } else if (s.themeSource == "community" && !s.communityPalette.empty()) {

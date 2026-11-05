@@ -467,9 +467,54 @@ void App::syncScreens() {
   if (m_noctalia.setScreens(std::move(screens)) && m_noctalia.state().source == "plasma") m_refreshNoctAt = nowSeconds() + 0.2;
 }
 
+// The source is read on a copy, on m_sourceJobs: `noctalia config export`
+// and `noctalia theme` took ~200 ms of the main loop at every wallpaper change
+// here, and up to their whole deadlines when Noctalia did not answer. A
+// refresh asked for while one runs is done once more after it.
 void App::refreshNoctalia() {
-  if (m_noctalia.refresh()) noctaliaChanged();
-  syncSourceWatches();
+  if (m_sourceBusy) {
+    m_sourceAgain = true;
+    return;
+  }
+  m_sourceBusy = true;
+  auto fresh = std::make_shared<Noctalia>(m_noctalia);
+  m_sourceJobs.run([this, fresh]() -> Jobs::Done {
+    bool changed = false;
+    try {
+      changed = fresh->refresh();
+    } catch (const std::exception& e) {
+      US_WARN("reading the wallpaper source failed: {}", e.what());
+      return [this] { m_sourceBusy = false; };
+    }
+    return [this, fresh, changed] {
+      m_sourceBusy = false;
+      m_noctalia.adoptSource(std::move(*fresh));
+      if (changed) noctaliaChanged();
+      syncSourceWatches();
+      if (m_sourceAgain) {
+        m_sourceAgain = false;
+        refreshNoctalia();
+      }
+    };
+  });
+}
+
+void App::requestAccents() {
+  std::vector<AccentRequest> want = takeWantedAccents();
+  if (want.empty()) return;
+  m_sourceJobs.run([this, want = std::move(want)]() -> Jobs::Done {
+    for (const AccentRequest& r : want) {
+      Color c;
+      wallpaperAccent(r.path, c, r.scheme, r.dark);
+    }
+    return [this] {  // now in the cache: the clocks that asked take it
+      for (auto& w : m_widgets)
+        if (w->impl && w->cfg.type == "clock") {
+          w->impl->configure(w->cfg, m_noctalia.state());
+          w->needsRender = true;
+        }
+    };
+  });
 }
 
 // the files a shell or wallpaper tool keeps its wallpaper in (shells.hpp)
@@ -2277,15 +2322,16 @@ int App::run() {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
     wl_display_flush(m_display);
 
-    pollfd fds[8] = {{wl_display_get_fd(m_display), POLLIN, 0},
+    pollfd fds[9] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
                      {m_inotify, POLLIN, 0},
                      {m_ipc.fd(), POLLIN, 0},
                      {m_media.fd(), POLLIN, 0},
                      {m_jobs.fd(), POLLIN, 0},
                      {m_picker.fd(), POLLIN, 0},
-                     {m_dconf.fd(), POLLIN, 0}};
-    int r = poll(fds, 8, computeTimeout());
+                     {m_dconf.fd(), POLLIN, 0},
+                     {m_sourceJobs.fd(), POLLIN, 0}};
+    int r = poll(fds, 9, computeTimeout());
     if (r < 0 && errno != EINTR) {
       wl_display_cancel_read(m_display);
       break;
@@ -2318,6 +2364,7 @@ int App::run() {
       m_dconf.dispatch();
       if (m_dconf.changed()) m_refreshNoctAt = nowSeconds() + 0.3;
     }
+    if (r > 0 && (fds[8].revents & POLLIN)) m_sourceJobs.dispatch();
 
     const double now = nowSeconds();
     if (m_endPidsAt > 0 && now >= m_endPidsAt) {
@@ -2361,6 +2408,7 @@ int App::run() {
       m_noctRetryAt = now + 3;
       refreshNoctalia();
     }
+    requestAccents();  // clocks configured since the last turn may have asked for one
     if (m_edit && m_depthGen.downloading() && now >= m_depthTick) {
       m_depthTick = now + 0.25;
       markEditDirty();

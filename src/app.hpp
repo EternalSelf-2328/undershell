@@ -186,6 +186,7 @@ private:
   bool initEgl();
   void loadConfig();
   void refreshNoctalia();
+  void requestAccents();  // the wallpaper accents clocks asked for, worked out off the main loop
   void noctaliaChanged();  // the wallpaper, palette or fill moved: retint, re-mask, re-anchor
   void syncScreens();      // tells the wallpaper source the screens' sizes
   void updateDepth();
@@ -401,6 +402,10 @@ private:
   std::vector<std::unique_ptr<Widget>> m_widgets;
   Audio m_audio;
   Jobs m_jobs{2};
+  // the wallpaper source and its palette run commands that can take seconds
+  // (`noctalia theme`): one at a time, on a thread of their own
+  Jobs m_sourceJobs{1};
+  bool m_sourceBusy = false, m_sourceAgain = false;
   MediaService m_media{m_jobs};
   WeatherService m_weather{m_jobs};
   uint64_t m_weatherGen = 0;
