@@ -17,6 +17,7 @@
 #include "plasma.hpp"
 
 #include <filesystem>
+#include <fstream>
 
 using namespace undershell;
 namespace fs = std::filesystem;
@@ -643,5 +644,36 @@ int main() {
     fs::remove_all(root);
   }
 
+  // the screensaver: off unless asked; its widgets, bottom to top
+  {
+    const std::string sp = dir + "/saver.toml";
+    std::filesystem::create_directories(dir);
+    {
+      std::ofstream(sp) << "[general]\n[screensaver]\nidle = 3\nbackground = \"wallpaper\"\noutput = \"HDMI-A-1\"\n"
+                           "[screensaver.clock]\nface = \"flip\"\n";
+    }
+    const Config sc = Config::load(sp);
+    CHECK(Config::load(path).screensaver.idle == 0);   // the default: off
+    CHECK(sc.screensaver.idle == 10);                    // a few seconds would start under one's hands
+    CHECK(sc.screensaver.background == "wallpaper" && sc.screensaver.output == "HDMI-A-1" && !sc.screensaver.whilePlaying);
+    auto ws = screensaverWidgets(sc.screensaver, 1366, 768);
+    CHECK(ws.size() == 3 && ws[0].type == "filter" && ws[1].type == "visualizer" && ws[2].type == "clock");
+    CHECK(ws[0].options["brightness"].value_or(0.0) < 0);                                      // darker
+    CHECK(ws[1].options["style"].value_or(std::string()) == "pixels" &&
+          ws[1].options["pixels_text"].value_or(std::string()) == "@TIME@");                    // the time in pixels
+    CHECK(ws[1].x == 0 && ws[1].y == 0 && ws[1].width == 1366 && ws[1].height == 768 && !ws[1].depth);
+    CHECK(ws[2].options["face"].value_or(std::string()) == "flip");
+    CHECK(ws[2].x > 0 && ws[2].x + ws[2].width < 1366 && ws[2].y > 0 && ws[2].y + ws[2].height < 768);  // in the middle
+    // a black background, no look, no clock: nothing at all to stack
+    ScreensaverConfig bare;
+    bare.look.insert_or_assign("style", "none");
+    CHECK(screensaverWidgets(bare, 800, 600).empty());
+    // a look of one's own keeps its keys; no clock unless a face is named
+    ScreensaverConfig own;
+    own.look.insert_or_assign("style", "stars");
+    own.look.insert_or_assign("color", "#ffffff");
+    ws = screensaverWidgets(own, 800, 600);
+    CHECK(ws.size() == 1 && ws[0].options["style"].value_or(std::string()) == "stars" && !ws[0].options.contains("pixels_text"));
+  }
   return TEST_RESULT();
 }

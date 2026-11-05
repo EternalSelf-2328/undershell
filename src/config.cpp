@@ -37,6 +37,15 @@ on_battery = "lower"      # on battery: lower (one step down) | eco | keep
 # depth_threshold = 30      # depth plane of widgets with depth_level 0 (higher is nearer)
 # depth_feather = 8         # softness of the depth cut
 
+# [screensaver]             # after `idle` seconds without input, until the next one
+# idle = 300                # seconds; 0 (the default): off
+# background = "black"      # black | wallpaper (darkened by dim = 0.6)
+# while_playing = false     # also while music or a video plays
+# [screensaver.look]        # any visualizer keys; style = "none" for no look
+# style = "pixels"
+# pixels_text = "@TIME@"
+# [screensaver.clock]       # any clock keys; face = "digital" (or another) to show one
+
 [[widget]]
 id = "visualizer"
 type = "visualizer"
@@ -117,6 +126,17 @@ Config Config::load(const std::string& path) {
       for (auto& d : *dirs)
         if (auto s = d.value<std::string>()) cfg.wallpaperDirs.push_back(*s);
     if (cfg.onBattery != "eco" && cfg.onBattery != "keep") cfg.onBattery = "lower";
+  }
+  if (auto* s = root["screensaver"].as_table()) {
+    ScreensaverConfig& v = cfg.screensaver;
+    v.idle = std::clamp(get<double>(*s, "idle", 0.0), 0.0, 86400.0);
+    if (v.idle > 0 && v.idle < 10) v.idle = 10;  // a typo should not start it under one's hands
+    v.background = get<std::string>(*s, "background", "black") == "wallpaper" ? "wallpaper" : "black";
+    v.dim = std::clamp(get<double>(*s, "dim", 0.6), 0.0, 1.0);
+    v.whilePlaying = get<bool>(*s, "while_playing", false);
+    v.output = get<std::string>(*s, "output", "");
+    if (auto* t = (*s)["look"].as_table()) v.look = *t;
+    if (auto* t = (*s)["clock"].as_table()) v.clock = *t;
   }
   if (auto* arr = root["widget"].as_array()) {
     int n = 0;
@@ -755,6 +775,52 @@ bool Config::saveGeometry(const std::string& path, const WidgetConfig& w) {
 
 bool Config::setKey(const std::string& path, const std::string& id, const std::string& key, const std::string& tomlValue) {
   return editBlock(path, id, {{key, tomlValue}});
+}
+
+}  // namespace undershell
+
+namespace undershell {
+
+std::vector<WidgetConfig> screensaverWidgets(const ScreensaverConfig& s, int w, int h) {
+  std::vector<WidgetConfig> out;
+  auto base = [&](const char* id, const char* type) {
+    WidgetConfig c;
+    c.id = id;
+    c.type = type;
+    c.x = 0, c.y = 0, c.width = w, c.height = h;
+    c.spaceW = w, c.spaceH = h;
+    c.depth = false;
+    return c;
+  };
+  if (s.background == "wallpaper") {  // the wallpaper, darker and with a vignette
+    WidgetConfig c = base("screensaver-wallpaper", "filter");
+    c.options.insert_or_assign("style", "custom");
+    c.options.insert_or_assign("brightness", -0.6 * s.dim);
+    c.options.insert_or_assign("vignette", 0.5 * s.dim);
+    c.options.insert_or_assign("depth", false);
+    out.push_back(std::move(c));
+  }
+  if (s.look["style"].value_or(std::string("pixels")) != "none") {
+    WidgetConfig c = base("screensaver-look", "visualizer");
+    c.options = s.look;
+    if (!c.options.contains("style")) {  // the omarchy.org-like default: the time in pixels
+      c.options.insert_or_assign("style", "pixels");
+      if (!c.options.contains("pixels_text")) c.options.insert_or_assign("pixels_text", "@TIME@");
+    }
+    c.options.insert_or_assign("depth", false);
+    c.options.insert_or_assign("idle", "show");  // a silent screensaver still moves
+    if (!c.options.contains("fps")) c.options.insert_or_assign("fps", 30);  // half the cost of 60, and a screensaver needs no more
+    out.push_back(std::move(c));
+  }
+  if (const std::string face = s.clock["face"].value_or(std::string("none")); face != "none") {
+    WidgetConfig c = base("screensaver-clock", "clock");
+    c.width = std::max(200, w * 2 / 5), c.height = std::max(90, h / 5);
+    c.x = (w - c.width) / 2, c.y = (h - c.height) / 2;
+    c.options = s.clock;
+    c.options.insert_or_assign("depth", false);
+    out.push_back(std::move(c));
+  }
+  return out;
 }
 
 }  // namespace undershell

@@ -52,6 +52,8 @@ struct zwlr_layer_shell_v1;
 struct zxdg_output_manager_v1;
 struct zxdg_output_v1;
 struct wp_viewporter;
+struct ext_idle_notifier_v1;
+struct ext_idle_notification_v1;
 struct wp_viewport;
 struct wp_fractional_scale_manager_v1;
 struct wp_fractional_scale_v1;
@@ -125,6 +127,10 @@ struct Widget {
   GLuint gpuQuery[3] = {};
   bool gpuPending[3] = {};
   float gpuQueryScale[3] = {1, 1, 1};
+  // a screensaver's surface (screensaver.cpp): on the overlay layer, taking the
+  // pointer everywhere, cleared to `clear` before drawing
+  bool saver = false;
+  Color clear{0, 0, 0, 0};
 };
 
 // The editor's fullscreen input/canvas surface (overlay layer, one per output).
@@ -185,6 +191,12 @@ private:
   bool initWayland();
   bool initEgl();
   void loadConfig();
+  // the screensaver (screensaver.cpp)
+  void updateSaver(double now);   // each turn of the loop: the idle notice, starting and stopping
+  void startSaver(bool manual);
+  void stopSaver();
+  [[nodiscard]] bool saverPointer(PointerEvent::Type type, wl_surface* s);  // true: the event was the screensaver's
+  [[nodiscard]] std::string saverStatus() const;
   void refreshNoctalia();
   void requestAccents();  // the wallpaper accents clocks asked for, worked out off the main loop
   void noctaliaChanged();  // the wallpaper, palette or fill moved: retint, re-mask, re-anchor
@@ -391,6 +403,14 @@ private:
   void watchLogicalSize(Output* o);
   wl_shm* m_shm = nullptr;
   wl_seat* m_seat = nullptr;
+  ext_idle_notifier_v1* m_idleNotifier = nullptr;
+  ext_idle_notification_v1* m_idleNote = nullptr;
+  double m_idleNoteFor = 0;         // the timeout it was made with (s)
+  bool m_userIdle = false;          // the compositor said idle and not yet resumed
+  bool m_saverStop = false;         // input came: take it down at the next turn
+  bool m_saverHover = false;        // the pointer is over one of its surfaces
+  double m_saverSince = 0;
+  std::vector<std::unique_ptr<Widget>> m_saver;  // its widgets on every screen, while it shows
   wl_pointer* m_pointer = nullptr;
   wl_keyboard* m_keyboard = nullptr;
   wl_cursor_theme* m_cursorTheme = nullptr;

@@ -12,6 +12,9 @@
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+#ifdef US_HAVE_IDLE_NOTIFY
+#include "ext-idle-notify-v1-client-protocol.h"
+#endif
 
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
@@ -304,6 +307,10 @@ void App::onGlobal(wl_registry* reg, uint32_t name, const char* iface, uint32_t 
   } else if (i == wl_seat_interface.name && !m_seat) {
     m_seat = static_cast<wl_seat*>(wl_registry_bind(reg, name, &wl_seat_interface, std::min(version, 7u)));
     wl_seat_add_listener(m_seat, &kSeat, this);
+#ifdef US_HAVE_IDLE_NOTIFY
+  } else if (i == ext_idle_notifier_v1_interface.name) {
+    m_idleNotifier = static_cast<ext_idle_notifier_v1*>(wl_registry_bind(reg, name, &ext_idle_notifier_v1_interface, 1));
+#endif
   } else if (i == wp_viewporter_interface.name) {
     m_viewporter = static_cast<wp_viewporter*>(wl_registry_bind(reg, name, &wp_viewporter_interface, 1));
   } else if (i == wp_fractional_scale_manager_v1_interface.name) {
@@ -334,6 +341,7 @@ void App::onGlobalRemove(uint32_t name) {
   for (auto it = m_outputs.begin(); it != m_outputs.end(); ++it) {
     if ((*it)->global != name) continue;
     const Output* gone = it->get();
+    stopSaver();  // its surfaces may be on this output: shown again at the next idle
     // every pointer into this Output has to go before it does: a widget that
     // keeps it is read every frame (and `if (w->output)` does not help, the
     // pointer is not null, it is dead)
@@ -804,7 +812,7 @@ void App::syncWidgets() {
 
 void App::createSurface(Widget& w) {
   if (!w.output || w.cfg.hidden) return;
-  m_mapped.push_back(&w);
+  if (!w.saver) m_mapped.push_back(&w);  // (the screensaver's stack apart, over everything)
   w.surface = wl_compositor_create_surface(m_compositor);
   if (fractional()) {
     // drawn at the output's real pixels and shown 1:1 (a 0.98 scale would
@@ -831,9 +839,10 @@ void App::createSurface(Widget& w) {
     return;
   }
   // Bottom layer, like Noctalia's own desktop widgets: above the wallpaper,
-  // below every window.
+  // below every window. The screensaver: over everything.
   w.layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, w.surface, w.output->wl,
-                                                  ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM, "undershell");
+                                                  w.saver ? ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY : ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
+                                                  w.saver ? "undershell-screensaver" : "undershell");
   auto* ctx = new WidgetCtx{this, &w};
   zwlr_layer_surface_v1_add_listener(w.layer, &kLayer, ctx);
   w.surfaceFullscreen = w.impl->fullscreen();
@@ -945,6 +954,10 @@ void App::destroySurface(Widget& w) {
 
 void App::applyInputRegion(Widget& w) {
   if (!w.surface) return;
+  if (w.saver) {  // the screensaver takes the pointer everywhere: the click that wakes it reaches no window
+    wl_surface_set_input_region(w.surface, nullptr);
+    return;
+  }
   // click-through except where the widget asks for input (buttons, rails)
   wl_region* region = wl_compositor_create_region(m_compositor);
   if (w.impl && !w.impl->fullscreen()) {
@@ -984,6 +997,7 @@ void App::updateInputRegion(Widget& w) {
 
 // Pointer on a widget surface (outside the editor): forwarded to the widget.
 bool App::widgetPointer(PointerEvent::Type type, wl_surface* s, double x, double y, uint32_t button) {
+  if (saverPointer(type, s)) return true;
   if (type == PointerEvent::Enter) m_hoverWidget = widgetBySurface(s);
   Widget* w = m_hoverWidget;
   if (!w || !w->impl) return false;
@@ -1174,6 +1188,8 @@ int App::fpsOf(const Widget& w) const {
 
 bool App::audioWanted(double now) const {
   if (m_edit) return true;
+  for (const auto& w : m_saver)
+    if (w->impl && w->impl->usesAudio() && w->surface) return true;
   for (const auto& w : m_widgets) {
     if (!w->impl || !w->impl->usesAudio() || w->cfg.hidden || !w->surface) continue;
     // a frame asked for and not given for a second: the compositor is not
@@ -1367,7 +1383,7 @@ void App::render(Widget& w) {
   } else {
     glViewport(0, 0, w.bufW, w.bufH);
   }
-  glClearColor(0, 0, 0, 0);
+  glClearColor(w.clear.r * w.clear.a, w.clear.g * w.clear.a, w.clear.b * w.clear.a, w.clear.a);
   glClear(GL_COLOR_BUFFER_BIT);
   const float ow = w.output ? w.output->logicalW() : 1920.0F;
   const float oh = w.output ? w.output->logicalH() : 1080.0F;
@@ -2056,6 +2072,14 @@ std::string App::handleCommand(const std::string& cmd) {
     m_refreshNoctAt = nowSeconds();
     return "reloaded";
   }
+  if (cmd == "screensaver") {  // now, without waiting (a mouse move takes it down)
+    startSaver(true);
+    return m_saver.empty() ? "no screensaver: no screen to show it on" : saverStatus();
+  }
+  if (cmd == "screensaver-stop") {
+    stopSaver();
+    return "screensaver: off";
+  }
   if (cmd == "demo" || cmd == "demo-on" || cmd == "demo-off") {
     m_demo = cmd == "demo" ? !m_demo : cmd == "demo-on";
     for (auto& w : m_widgets) w->needsRender = true;
@@ -2177,6 +2201,7 @@ std::string App::handleCommand(const std::string& cmd) {
                                 m_noctalia.state().manualWallpaper ? "+manual" : "");
     s += profileStatus() + "\n";
     s += "depth: " + depthModelStatus() + "\n";
+    s += saverStatus() + "\n";
     if (m_motion) s += "wallpaper: moving (video or scene) — depth off and locked\n";
     for (auto& w : m_widgets) {
       const DepthMask* m = w->output ? m_depth.get(w->output->name) : nullptr;
@@ -2257,6 +2282,11 @@ int App::computeTimeout() {
     const double due = w->lastRender + 1.0 / fpsOf(*w);
     next = std::min(next, due);
   }
+  for (auto& w : m_saver) {
+    if (!w->configured || !w->impl || w->frameCb) continue;
+    next = std::min(next, w->needsRender ? w->lastRender + 1.0 / fpsOf(*w) : w->wakeAt);
+  }
+  if (m_userIdle && m_saver.empty()) next = std::min(next, now + 1.0);  // waiting for the music to stop
   for (auto& e : m_editSurfaces)
     if (e->needsRender && !e->frameCb) next = now;
   if (m_edit && m_repeatKey) next = std::min(next, m_repeatNext);
@@ -2444,7 +2474,9 @@ int App::run() {
         wantLyrics = wantLyrics || w->impl->wantsLyrics();
         wantPalette = wantPalette || followsCover(*w);
       }
-    m_media.setWanted(wantMedia || wantPalette, wantLyrics);
+    // the screensaver waits for the music to stop: it has to know
+    const bool saverWaits = m_config.screensaver.idle > 0 && !m_config.screensaver.whilePlaying;
+    m_media.setWanted(wantMedia || wantPalette || saverWaits || !m_saver.empty(), wantLyrics);
     m_media.setPaletteWanted(wantPalette, m_noctalia.state().themeMode != "light", m_noctalia.state().themeScheme);
     m_media.poll(now);
     m_media.dispatch();
@@ -2500,6 +2532,13 @@ int App::run() {
       if (w->impl && !w->needsRender && now >= w->wakeAt) w->needsRender = true;
       if (!w->needsRender) continue;
       if (now + 0.0005 < w->lastRender + 1.0 / fpsOf(*w)) continue;
+      render(*w);
+    }
+    updateSaver(now);
+    for (auto& w : m_saver) {
+      if (w->impl && !w->needsRender && now >= w->wakeAt) w->needsRender = true;
+      if (w->impl && w->impl->usesAudio() && m_audioOk && !m_audio.idle()) w->needsRender = true;
+      if (!w->needsRender || now + 0.0005 < w->lastRender + 1.0 / fpsOf(*w)) continue;
       render(*w);
     }
     if (m_edit) editorTick(now);

@@ -85,6 +85,13 @@ protocols = [
   wl_protos_dir / 'staging/fractional-scale/fractional-scale-v1.xml',
   wl_protos_dir / 'stable/viewporter/viewporter.xml',
 ]
+# the screensaver's idle notice (wayland-protocols 1.27+): without it there is no screensaver
+idle_xml = wl_protos_dir / 'staging/ext-idle-notify/ext-idle-notify-v1.xml'
+if import('fs').exists(idle_xml)
+  protocols += idle_xml
+  add_project_arguments('-DUS_HAVE_IDLE_NOTIFY=1', language : 'cpp')
+endif
+summary({'screensaver (ext-idle-notify)' : import('fs').exists(idle_xml)}, section : 'Features')
 proto_src = []
 foreach p : protocols
   name = p.split('/')[-1].replace('.xml', '')
@@ -168,6 +175,7 @@ core = static_library('undershell-core',
   'src/visualizer.cpp',
   'src/weather.cpp',
   'src/sysmon.cpp',
+  'src/screensaver.cpp',
   'src/weatherfeed.cpp',
   'src/wallkind.cpp',
   'src/wallgallery.cpp',

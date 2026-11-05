@@ -585,6 +585,7 @@ undershell msg layer clock up  # restack it: up, down, front, back
 undershell msg pick-files tv   # the TV's file chooser: adds to its tv_files ("folder" for folders); an image's picture
 undershell msg depth-model     # download the depth model (~95 MB)
 undershell msg gallery         # open the editor with the gallery
+undershell msg screensaver     # show the screensaver now (screensaver-stop: take it down)
 undershell msg reload
 undershell msg quit
 undershell --snapshot DIR   # render the looks and clock faces to PNG (no window needed)
@@ -691,6 +692,39 @@ drawing, so it costs nothing) or `demo` (it moves on a demo spectrum). Each
 visualizer's **With no music** option (`idle = "auto" | "show" | "hide" |
 "demo"`) follows the general one on `auto` or overrides it. Music brings
 them back at once; while editing they are always shown.
+
+## Screensaver
+
+After a while without input, undershell can cover every screen with a look
+of its own until you move the mouse: by default the time in pixels (the
+`pixels` look with `@TIME@`) over black, or any visualizer look and a clock
+over the darkened wallpaper. It is off unless you give it a time:
+
+```toml
+[screensaver]
+idle = 300                # seconds without input; 0 (the default): off
+background = "black"      # black | wallpaper (darkened by dim = 0.6)
+while_playing = false     # with music or a video playing it waits for the pause
+# output = "HDMI-A-1"     # only on that screen (default: all)
+
+[screensaver.look]        # any visualizer keys (style = "none": no look)
+style = "pixels"
+pixels_text = "@TIME@"
+
+[screensaver.clock]       # any clock keys; it shows once you name a face
+face = "flip"
+```
+
+It needs a compositor with `ext-idle-notify` (tried on Umbriel; `msg status`
+says so when the compositor lacks it), which also keeps it away while a
+program inhibits idling (a video in full screen). It sits on the overlay
+layer and takes the pointer, so the click that wakes it reaches no window;
+a key also wakes it, but that key still goes to the focused window. Your
+shell's lock screen goes over it. While it shows it costs what its look
+costs at 30 fps (the time in pixels: about 2 % of GPU and 4 % of CPU on an
+HD 520 at 1366×768); while it waits, nothing. `undershell msg screensaver`
+shows it now and `msg screensaver-stop` takes it down; `msg status` says
+whether it is on.
 
 ## Colours from the album
 

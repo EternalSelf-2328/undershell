@@ -81,6 +81,23 @@ struct SavedLayout {
   std::string blocks;
 };
 
+// The screensaver ([screensaver]): after `idle` seconds without input, a
+// look (a visualizer, the whole screen) and optionally a clock over black or
+// the darkened wallpaper, on the overlay layer, until the next input.
+struct ScreensaverConfig {
+  double idle = 0;                   // seconds; 0: off
+  std::string background = "black";  // black | wallpaper
+  double dim = 0.6;                  // how much the wallpaper darkens (0..1)
+  bool whilePlaying = false;         // also while music or a video plays (else it waits for the pause)
+  std::string output;                // "" every screen, or one output's name
+  toml::table look;                  // [screensaver.look]: a visualizer's keys (style = "none": no look)
+  toml::table clock;                 // [screensaver.clock]: a clock's keys (face = "none", the default: no clock)
+};
+
+// The widgets the screensaver shows on a `w` x `h` output, bottom to top:
+// the wallpaper (darkened), the look over the whole screen, the clock in the middle.
+[[nodiscard]] std::vector<WidgetConfig> screensaverWidgets(const ScreensaverConfig& s, int w, int h);
+
 struct Config {
   std::string path;
   std::vector<WidgetConfig> widgets;
@@ -102,6 +119,7 @@ struct Config {
   std::string performance = "auto";
   std::string onBattery = "lower";
   std::vector<std::string> wallpaperDirs;  // the gallery's picture folders (empty: guessed)
+  ScreensaverConfig screensaver;
 
   static std::string defaultPath();
   static Config load(const std::string& path);
