@@ -864,7 +864,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     return false;
   };
   auto section = [&](const std::string& k) {
-    if (in(k, {"color_mode", "color", "color2", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle", "outline_color", "shadow_color", "glow_color", "extrude_color"})) return 1;
+    if (in(k, {"color_mode", "color", "color2", "colors_from", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "fill", "angle", "outline_color", "shadow_color", "glow_color", "extrude_color"})) return 1;
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz", "fallback", "offset", "first_day", "weekends",
                "week_numbers"}))
