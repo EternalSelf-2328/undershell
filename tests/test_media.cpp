@@ -25,6 +25,14 @@ int main() {
     CHECK(png.size() < 16384 && coverDecodes(png, w, h) && w == 64 && h == 48);
     CHECK(!coverDecodes("not a picture at all", w, h));
   }
+  // a cover's colour scheme: from its accent when there is no picture to read
+  {
+    const Color red{0.8F, 0.1F, 0.1F, 1};
+    auto pal = coverScheme("", true, "", true, red);
+    CHECK(pal.size() == 4 && pal["primary"] == red && pal["auto"] == red);
+    CHECK(pal["secondary"].r > red.r && pal["tertiary"].g > pal["secondary"].g);  // lighter steps of it
+    CHECK(coverScheme("", true, "", false, red).empty());                      // no accent, no scheme
+  }
   auto lines = parseLrc("[00:31.84] Se que estas pensando\n[00:12.00]first\n[01:02.5][01:40.25] chorus \nnot a lyric\n[00:40.00]");
   CHECK(lines.size() == 5);
   CHECK(lines[0].ms == 12000 && lines[0].text == "first");  // sorted

@@ -510,7 +510,7 @@ void App::requestAccents() {
     return [this] {  // now in the cache: the clocks that asked take it
       for (auto& w : m_widgets)
         if (w->impl && w->cfg.type == "clock") {
-          w->impl->configure(w->cfg, m_noctalia.state());
+          w->impl->configure(w->cfg, paletteFor(*w));
           w->needsRender = true;
         }
     };
@@ -548,9 +548,21 @@ void App::syncFileWatches() {
   }
 }
 
+bool App::followsCover(const Widget& w) { return w.cfg.options["colors_from"].value_or(std::string("theme")) == "cover"; }
+
+const NoctaliaState& App::paletteFor(const Widget& w) const {
+  return !m_coverPalette.empty() && followsCover(w) ? m_coverState : m_noctalia.state();
+}
+
+void App::rebuildCoverPalette() {
+  m_coverState = m_noctalia.state();
+  for (const auto& [role, c] : m_coverPalette) m_coverState.palette[role] = c;
+}
+
 void App::noctaliaChanged() {
+  rebuildCoverPalette();
   for (auto& w : m_widgets) {
-    if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
+    if (w->impl) w->impl->configure(w->cfg, paletteFor(*w));
     w->needsRender = true;
   }
   updateDepth();
@@ -751,7 +763,7 @@ void App::syncWidgets() {
                              !std::equal(std::begin(wc.mesh), std::end(wc.mesh), std::begin(w->cfg.mesh)) ||
                              !std::equal(std::begin(wc.pin), std::end(wc.pin), std::begin(w->cfg.pin));
     w->cfg = wc;
-    w->impl->configure(w->cfg, m_noctalia.state());
+    w->impl->configure(w->cfg, paletteFor(*w));
     w->needsRender = true;
     // a look that switches between boxed and fullscreen (frame) needs a new
     // surface; compare against how the surface was made, not the previous
@@ -2424,17 +2436,29 @@ int App::run() {
         if (w->impl && w->impl->usesAudio()) w->needsRender = true;
     }
     // the media feed runs only while a widget shows it
-    bool wantMedia = false, wantLyrics = false;
+    bool wantMedia = false, wantLyrics = false, wantPalette = false;
     for (auto& w : m_widgets)
       if (w->impl && !w->cfg.hidden) {
         wantMedia = wantMedia || w->impl->wantsMedia();
         wantLyrics = wantLyrics || w->impl->wantsLyrics();
+        wantPalette = wantPalette || followsCover(*w);
       }
-    m_media.setWanted(wantMedia, wantLyrics);
+    m_media.setWanted(wantMedia || wantPalette, wantLyrics);
+    m_media.setPaletteWanted(wantPalette, m_noctalia.state().themeMode != "light", m_noctalia.state().themeScheme);
     m_media.poll(now);
     m_media.dispatch();
     if (m_media.generation() != m_mediaGen) {
       m_mediaGen = m_media.generation();
+      // another album's colours: the widgets that follow the cover take them
+      if (m_media.state().palette != m_coverPalette) {
+        m_coverPalette = m_media.state().palette;
+        rebuildCoverPalette();
+        for (auto& w : m_widgets)
+          if (w->impl && followsCover(*w)) {
+            w->impl->configure(w->cfg, paletteFor(*w));
+            w->needsRender = true;
+          }
+      }
       for (auto& w : m_widgets)
         if (w->impl && w->impl->wantsMedia()) {
           w->needsRender = true;

@@ -62,6 +62,7 @@ Ryoku's desktop spectrum.
 | `mirror` | `true` / `false` | `false` | Mirror |
 | `idle_wave` | `true` / `false` | `false` | Idle wave |
 | `spin` | 0 – 120 | `0` | Spin °/s |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.1 – 1 | `1` | Opacity |
 | `fps` | 15 – 144 | `60` | FPS |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
@@ -85,6 +86,7 @@ Ryoku's clock faces and date strips.
 | `language` | `system`, `en`, `es` | `"system"` | Language |
 | `weather` | `true` / `false` | `true` | Weather (metal) |
 | `fahrenheit` | `true` / `false` | `false` | Fahrenheit |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.1 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
@@ -157,6 +159,7 @@ A geometric shape, to build compositions out of layers.
 | `shadow` | 0 – 1 | `0` | Shadow |
 | `react` | `none`, `pulse`, `glow` | `"none"` | With the music |
 | `spin` | -120 – 120 | `0` | Spin °/s |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
@@ -214,6 +217,7 @@ Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song 
 | `animation` | `none`, `wave`, `bounce`, `typewriter`, `glitch`, `flicker`, `shake` | `"none"` | Animation |
 | `speed` | 0.1 – 4 | `1` | Speed |
 | `react` | `none`, `pulse`, `letters`, `glow` | `"none"` | With the music |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
@@ -252,6 +256,7 @@ The synced lyrics of the song playing (LRCLIB), with the text widget's styles an
 | `animation` | `none`, `wave`, `bounce`, `typewriter`, `glitch`, `flicker`, `shake` | `"none"` | Animation |
 | `speed` | 0.1 – 4 | `1` | Speed |
 | `react` | `none`, `pulse`, `letters`, `glow` | `"none"` | With the music |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
@@ -277,6 +282,7 @@ The month, the week, today's page or an agenda, today in the accent colour. Even
 | `weekends` | `true` / `false` | `true` | Tint weekends |
 | `week_numbers` | `true` / `false` | `false` | Week numbers |
 | `language` | `system`, `en`, `es` | `"system"` | Language |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
@@ -296,6 +302,7 @@ A note kept in a Markdown file (headings, lists, `- [ ]` tasks ticked with a cli
 | `accent` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Accent |
 | `font` |  | `"Space Grotesk"` | Font |
 | `size` | 8 – 72 | `18` | Text size |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |
@@ -319,6 +326,7 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `accent` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Accent |
 | `ink` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Ink |
 | `language` | `system`, `en`, `es` | `"system"` | Language |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `rotation` | -180 – 180 | `0` | Rotation ° |
 | `depth` | `true` / `false` | `true` | Depth |

@@ -36,6 +36,8 @@ inline double nowSeconds() {
 struct Color {
   float r = 1, g = 1, b = 1, a = 1;
 
+  bool operator==(const Color&) const = default;
+
   static Color fromHex(std::string_view hex) { return fromHex(hex, Color{1, 1, 1, 1}); }
   static Color fromHex(std::string_view hex, Color fallback) {
     if (!hex.empty() && hex[0] == '#') hex.remove_prefix(1);

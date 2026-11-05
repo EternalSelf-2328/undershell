@@ -851,14 +851,58 @@ bool coverDecodes(const std::string& bytes, int& w, int& h) {
   return pb != nullptr;
 }
 
+// A cover's colour scheme: Noctalia's Matugen M3 (`noctalia theme`, ~0.1 s
+// of CPU, the same generator as the theme's own palette), or, without it,
+// one made from the album's accent. Runs on a worker.
+std::map<std::string, Color> coverScheme(const std::string& file, bool dark, const std::string& scheme, bool hasAccent, Color accent) {
+  std::map<std::string, Color> pal;
+  if (!file.empty() && file.starts_with('/')) {
+    if (gchar* p = g_find_program_in_path("noctalia"); p) {
+      g_free(p);
+      gchar* quoted = g_shell_quote(file.c_str());
+      std::string cmd = std::format("noctalia theme {} {}", quoted, dark ? "--dark" : "--light");
+      g_free(quoted);
+      if (!scheme.empty()) {
+        gchar* qs = g_shell_quote(scheme.c_str());
+        cmd += std::format(" --scheme {}", qs);
+        g_free(qs);
+      }
+      const std::string json = runCommand(cmd, 4);
+      static const std::regex kPair(R"re("([a-z_]+)"\s*:\s*"(#[0-9a-fA-F]{6})")re");
+      for (std::sregex_iterator it(json.begin(), json.end(), kPair), end; it != end; ++it)
+        pal[(*it)[1].str()] = Color::fromHex((*it)[2].str());
+    }
+  }
+  if (!pal.contains("primary") && hasAccent) {  // the accent and two lighter steps of it
+    const Color white{1, 1, 1, 1};
+    pal = {{"primary", accent}, {"secondary", accent.mix(white, 0.35F)}, {"tertiary", accent.mix(white, 0.6F)}};
+  }
+  if (const auto it = pal.find("primary"); it != pal.end()) pal["auto"] = it->second;
+  return pal;
+}
+
+void MediaService::setPaletteWanted(bool wanted, bool dark, const std::string& scheme) {
+  if (wanted == m_wantPalette && dark == m_paletteDark && scheme == m_paletteScheme) return;
+  const bool more = wanted && (!m_wantPalette || dark != m_paletteDark || scheme != m_paletteScheme);
+  m_wantPalette = wanted;
+  m_paletteDark = dark;
+  m_paletteScheme = scheme;
+  if (!wanted && !m_state.palette.empty()) {
+    m_state.palette.clear();
+    ++m_generation;
+  }
+  if (more) m_coverFor.clear();  // the song playing now: fetched again, with its scheme
+}
+
 void MediaService::fetchCover(const std::string& url, const std::string& key) {
   m_coverFor = key;
   if (url.empty()) {
     m_state.coverW = m_state.coverH = 0;
     m_state.hasAccent = false;
+    if (!m_state.palette.empty()) m_state.palette.clear();
     return;
   }
-  m_jobs.run([this, url, key]() -> Jobs::Done {
+  m_jobs.run([this, url, key, wantPalette = m_wantPalette, dark = m_paletteDark, scheme = m_paletteScheme]() -> Jobs::Done {
     // nothing came of it: the sleeve goes back to the placeholder instead of
     // keeping the last song's art
     auto giveUp = [this, key]() -> Jobs::Done {
@@ -866,10 +910,11 @@ void MediaService::fetchCover(const std::string& url, const std::string& key) {
         if (m_coverFor != key) return;
         m_state.coverW = m_state.coverH = 0;
         m_state.hasAccent = false;
+        m_state.palette.clear();
         ++m_generation;
       };
     };
-    std::string bytes, cachedFile;
+    std::string bytes, cachedFile, file;  // file: the cover on disk, for its colour scheme
     if (url.rfind("data:", 0) == 0) {
       // some players hand the art over inline (`data:image/jpeg;base64,…`)
       const size_t comma = url.find(',');
@@ -888,12 +933,14 @@ void MediaService::fetchCover(const std::string& url, const std::string& key) {
       }
     } else if (url.rfind("http", 0) == 0) {
       cachedFile = cacheDir("covers") + "/" + hashOf(url);
+      file = cachedFile;
       bytes = readRegularFile(cachedFile);
       if (!bytes.empty()) cachedFile.clear();  // already kept
       // the address came from another program: the internet only, not this machine or its network
       else if (!httpGet(url, bytes, 10, 16u << 20, true)) bytes.clear();
     } else if (const std::string path = artPath(url); !path.empty()) {
       bytes = readRegularFile(path);  // a file, not a device or a pipe; 16 MB at most
+      file = path;
     }
     if (bytes.empty()) return giveUp();
     GdkPixbuf* pb = nullptr;
@@ -911,6 +958,14 @@ void MediaService::fetchCover(const std::string& url, const std::string& key) {
     GdkPixbuf* rgba = gdk_pixbuf_add_alpha(scaled, FALSE, 0, 0, 0);
     Color accent;
     const bool hasAccent = accentOf(pb, accent);
+    std::map<std::string, Color> palette;
+    if (wantPalette) {
+      if (file.empty()) {  // art handed over inline: kept as a file for the generator
+        file = cacheDir("covers") + "/" + hashOf(key);
+        if (!fs::exists(file)) writeFileAtomic(file, bytes);
+      }
+      palette = coverScheme(file, dark, scheme, hasAccent, accent);
+    }
     const int tw = gdk_pixbuf_get_width(rgba), th = gdk_pixbuf_get_height(rgba), stride = gdk_pixbuf_get_rowstride(rgba);
     std::vector<uint8_t> pixels(static_cast<size_t>(tw) * th * 4);
     const guchar* src = gdk_pixbuf_read_pixels(rgba);
@@ -918,8 +973,9 @@ void MediaService::fetchCover(const std::string& url, const std::string& key) {
     g_object_unref(rgba);
     g_object_unref(scaled);
     g_object_unref(loader);
-    return [this, key, pixels = std::move(pixels), tw, th, hasAccent, accent]() mutable {
+    return [this, key, pixels = std::move(pixels), tw, th, hasAccent, accent, palette = std::move(palette)]() mutable {
       if (m_coverFor != key) return;  // the song moved on
+      m_state.palette = std::move(palette);
       m_pendingRgba = std::move(pixels);
       m_pendingW = tw;
       m_pendingH = th;

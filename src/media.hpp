@@ -41,6 +41,10 @@ struct MediaState {
   int coverW = 0, coverH = 0;
   bool hasAccent = false;
   Color accent;
+  // the cover's own colour scheme (the roles Noctalia's palette has: primary,
+  // secondary, tertiary, surface…), for widgets whose colours follow the
+  // album; empty until worked out, and only worked out when one asks
+  std::map<std::string, Color> palette;
 
   enum class Lyrics { None, Searching, Synced, Plain } lyrics = Lyrics::None;
   std::vector<LyricLine> lines;
@@ -61,6 +65,10 @@ std::string artKey(const std::string& url);
 // Whether cover bytes decode the way the service decodes them (a picture in
 // one of the formats a cover comes in, of a sane size), and its size
 bool coverDecodes(const std::string& bytes, int& w, int& h);
+// A cover's colour scheme (palette roles), from the picture at `file`
+// (`noctalia theme`, in `scheme` and dark or light) or else from its accent;
+// empty when neither gives one. Runs commands: a worker's job.
+std::map<std::string, Color> coverScheme(const std::string& file, bool dark, const std::string& scheme, bool hasAccent, Color accent);
 // Ryoku's ArtColor.accentOf over RGBA pixels (w x h); false = no vivid colour
 bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out);
 // The accent of a wallpaper (Noctalia/Matugen M3 accent, falling back to
@@ -91,6 +99,9 @@ public:
   [[nodiscard]] int pollTimeoutMs(double now) const;
 
   void setWanted(bool wanted, bool lyrics);  // no widget → no polling
+  // some widget takes its colours from the cover: work out the cover's scheme
+  // (Matugen M3 through `noctalia theme`, in the theme's scheme and mode)
+  void setPaletteWanted(bool wanted, bool dark, const std::string& scheme);
   [[nodiscard]] const MediaState& state() const { return m_state; }
   [[nodiscard]] uint64_t generation() const { return m_generation; }  // bumps on any change
   void uploadPending();  // GL: turns a decoded cover into a texture
@@ -133,6 +144,8 @@ private:
   MediaState m_state;
   uint64_t m_generation = 0;
   bool m_wanted = false, m_wantLyrics = false;
+  bool m_wantPalette = false, m_paletteDark = true;
+  std::string m_paletteScheme;
   bool m_inFlight = false;
   double m_nextPoll = 0;
   std::string m_coverFor, m_lyricsFor;  // m_coverFor: the cover key, not the url

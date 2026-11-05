@@ -1127,7 +1127,7 @@ void App::setTextStyle(Widget& w, const std::string& style) {
   writeFileAtomic(m_configPath, Config::replaceWidgetBlocks(text, blocks));
   for (const auto& [k, v] : (w.cfg.type == "filter" ? FilterWidget::preset(style) : TextWidget::preset(style))) w.cfg.options.erase(k);
   w.cfg.options.insert_or_assign("style", style);
-  if (w.impl) w.impl->configure(w.cfg, m_noctalia.state());
+  if (w.impl) w.impl->configure(w.cfg, paletteFor(w));
   w.needsRender = true;
   markEditDirty();
 }
@@ -1422,7 +1422,7 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
     } catch (const std::exception&) {
     }
   }
-  if (w.impl) w.impl->configure(w.cfg, m_noctalia.state());
+  if (w.impl) w.impl->configure(w.cfg, paletteFor(w));
   w.needsRender = true;
   w.drewEmpty = false;
   // pins are output points: the file keeps them in the block's own space
@@ -2758,7 +2758,7 @@ bool App::uiPress(int index, double x) {
         Config::setGeneral(m_configPath, "language", "\"" + c.value + "\"");
         for (auto& ww : m_widgets)  // clocks with language = "system" follow it
           if (ww->impl) {
-            ww->impl->configure(ww->cfg, m_noctalia.state());
+            ww->impl->configure(ww->cfg, paletteFor(*ww));
             ww->needsRender = true;
           }
       }
@@ -2829,7 +2829,7 @@ bool App::uiPress(int index, double x) {
       m_fontList.clear();
       m_text.collect(0);  // drop text drawn with the old fallbacks
       for (auto& ww : m_widgets) {
-        if (ww->impl) ww->impl->configure(ww->cfg, m_noctalia.state());
+        if (ww->impl) ww->impl->configure(ww->cfg, paletteFor(*ww));
         ww->needsRender = true;
       }
     }

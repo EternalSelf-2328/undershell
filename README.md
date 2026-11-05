@@ -674,6 +674,19 @@ visualizer's **With no music** option (`idle = "auto" | "show" | "hide" |
 "demo"`) follows the general one on `auto` or overrides it. Music brings
 them back at once; while editing they are always shown.
 
+## Colours from the album
+
+Set **Colours from** to **Cover** (`colors_from = "cover"`) on a
+visualizer, clock, lyrics, text, shape, calendar, notes or weather widget and
+its palette colours (`primary`, `secondary`, `tertiary`, `surface`… and the
+gradients and looks built on them) follow the album that is playing. When a
+new cover arrives, undershell asks `noctalia theme` for the cover's Material 3
+scheme in your theme's scheme and mode (about 0.1 s of CPU, off the main
+thread, once per album); without Noctalia it builds one from the album's
+accent. Colours you set as `#rrggbb` stay as they are; while the music is
+paused the widget keeps the album's colours, and once the player closes it
+goes back to the theme's. The music card has its own `accent_source = "album"`.
+
 ## Performance profiles
 
 `performance` in `[general]` (also in the editor's help card, or

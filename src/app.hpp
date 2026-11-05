@@ -188,6 +188,11 @@ private:
   void refreshNoctalia();
   void requestAccents();  // the wallpaper accents clocks asked for, worked out off the main loop
   void noctaliaChanged();  // the wallpaper, palette or fill moved: retint, re-mask, re-anchor
+  // the palette a widget is drawn with: the theme's, or with colors_from =
+  // "cover" the playing album's scheme over it (once one is worked out)
+  [[nodiscard]] const NoctaliaState& paletteFor(const Widget& w) const;
+  [[nodiscard]] static bool followsCover(const Widget& w);
+  void rebuildCoverPalette();  // the theme or the album's scheme changed
   void syncScreens();      // tells the wallpaper source the screens' sizes
   void updateDepth();
   // moving wallpapers turn depth off (wallkind.hpp)
@@ -410,6 +415,8 @@ private:
   WeatherService m_weather{m_jobs};
   uint64_t m_weatherGen = 0;
   uint64_t m_mediaGen = 0;
+  NoctaliaState m_coverState;                    // the theme with the album's roles laid over it
+  std::map<std::string, Color> m_coverPalette;  // the album's scheme it was made from (empty: none yet)
   Widget* m_hoverWidget = nullptr;  // widget surface under the pointer (not editing)
   bool m_audioOk = false;
   Noctalia m_noctalia;

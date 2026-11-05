@@ -827,7 +827,7 @@ void App::previewField() {
   for (auto& w : m_widgets)
     if (w->cfg.id == m_fieldFor) {
       w->cfg.options.insert_or_assign(m_fieldKey, m_fieldText);
-      if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
+      if (w->impl) w->impl->configure(w->cfg, paletteFor(*w));
       w->needsRender = true;
     }
   markEditDirty();
@@ -844,7 +844,7 @@ void App::commitField(bool keep) {
     if (keep && text != orig) {
       setProp(*w, key, tomlText(text));
     } else {
-      if (w->impl) w->impl->configure(w->cfg, m_noctalia.state());
+      if (w->impl) w->impl->configure(w->cfg, paletteFor(*w));
       w->needsRender = true;
     }
   }

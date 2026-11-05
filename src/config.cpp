@@ -56,6 +56,7 @@ shape = "rounded"         # rounded square
 color_mode = "theme"      # theme | gradient | custom
 color = "primary"         # palette role or #rrggbb
 color2 = "tertiary"
+colors_from = "theme"     # theme | cover (the roles above follow the playing album)
 gain = 1.0
 smoothing = 0.5
 peaks = false

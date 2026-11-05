@@ -209,6 +209,13 @@ int main() {
     CHECK(shows("visualizer", "style = 'dots'", "thickness") && !shows("visualizer", "style = 'dots'", "shape"));
     for (const char* look : {"style = 'wave'", "style = 'ribbon'", "style = 'curtain'", "style = 'line'", "style = 'orb'", "style = 'spiral'"})
       CHECK(!shows("visualizer", look, "thickness") && !shows("visualizer", look, "shape"));
+    // colours from the playing album: wherever palette roles colour a widget
+    auto hasKey = [](const char* type, const char* key) {
+      return std::ranges::any_of(schemaFor(type), [&](const PropSpec& p) { return p.key == key; });
+    };
+    for (const char* t : {"visualizer", "clock", "shape", "text", "lyrics", "calendar", "notes", "weather"})
+      CHECK(hasKey(t, "colors_from"));
+    for (const char* t : {"now_playing", "filter", "image", "scene"}) CHECK(!hasKey(t, "colors_from"));  // the card has accent_source
     // the wallpaper widget's depth plane: when it cuts its picture, or particles
     // hide behind the subject, or an effect keeps to the subject or the background
     CHECK(!shows("filter", "depth = false", "depth_level") && shows("filter", "depth = true", "depth_level"));
