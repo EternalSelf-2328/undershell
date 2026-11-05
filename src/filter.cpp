@@ -260,6 +260,7 @@ void FilterWidget::draw(const DrawContext& ctx) {
 }
 
 void FilterWidget::drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity) {
+  (void)ctx;  // the picture is drawn from its own sizes; ctx is kept for the shared signature
   const Program& prog = m_fx.program();
   const int tw = pic.texW, th = pic.texH;
   glUniform2f(prog.uniform("u_texSize"), static_cast<float>(tw), static_cast<float>(th));

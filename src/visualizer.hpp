@@ -54,9 +54,9 @@ public:
   [[nodiscard]] const VisualizerConfig& config() const { return m_cfg; }
   // the halo's inner signals, for tuning tools
   struct HaloTrace {
-    double energy, bass, flux, threshold, breath, hit, tone;
-    bool kick;
-    double pump;
+    double energy = 0, bass = 0, flux = 0, threshold = 0, breath = 0, hit = 0, tone = 0;
+    bool kick = false;
+    double pump = 0;
   };
   [[nodiscard]] const HaloTrace& haloTrace() const { return m_trace; }
 

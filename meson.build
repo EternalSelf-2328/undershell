@@ -69,11 +69,6 @@ add_project_arguments(
   '-DUS_VERSION="' + meson.project_version() + '"',
   '-DUS_LIBEXEC_DIR="' + libexecdir + '"',
   language : 'cpp')
-# aggregate initialisation `{A, B, C}` leaves the last members out on purpose:
-# the struct tables stay readable, but every member warns. The one leave that
-# is real (a generated wl_pointer_listener) shares the warning, so it is off
-# as a whole rather than fixed per call site
-add_project_arguments('-Wno-missing-field-initializers', language : 'cpp')
 # running straight from the build tree finds the bundled fonts in the source
 # tree; packages turn this off so no build path ends up in the binary
 if get_option('dev_paths')

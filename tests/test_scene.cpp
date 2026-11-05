@@ -403,13 +403,14 @@ int main() {
     std::ofstream(bad / "project.json") << R"({"type":"scene","title":null,"file":0,"preview":null})";
     WeProject p;
     std::string why;
-    bool threw = false;
+    bool threw = false, ok = true;
     try {
-      readWeProject(bad.string(), p, why);
+      ok = readWeProject(bad.string(), p, why);
     } catch (...) {
       threw = true;
     }
     CHECK(!threw);
+    CHECK(!ok && !why.empty());  // refused, and says why
     fs::remove_all(bad);
   }
 

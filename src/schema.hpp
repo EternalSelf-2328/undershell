@@ -19,18 +19,18 @@ struct PropSpec {
   // entry of a list of paths (def = its index), with a button to drop it;
   // Text: words typed in the row (Shift+Enter for a new line)
   enum Kind { Enum, Bool, Number, Color, Header, Element, Font, Action, File, Text } kind = Enum;
-  std::string key;
-  std::string labelEn;
-  std::string labelEs;
-  std::vector<std::string> options;  // Enum; Color: its swatches (empty = the standard ones)
+  std::string key{};
+  std::string labelEn{};
+  std::string labelEs{};
+  std::vector<std::string> options{};  // Enum; Color: its swatches (empty = the standard ones)
   double min = 0, max = 1, step = 0.05, def = 0;  // Number (def also for Bool: 0/1)
-  std::string defText;                             // Enum / Color / Font default
+  std::string defText{};                             // Enum / Color / Font default
   bool integer = false;
   bool indent = false;  // an element's own option, under its row
-  std::string face;     // Element: the structure it belongs to
+  std::string face{};     // Element: the structure it belongs to
   // Enum: each option's name (en, es) when the shared optionLabel() does not
   // know it (an effect's own choices)
-  std::vector<std::pair<std::string, std::string>> optionNames;
+  std::vector<std::pair<std::string, std::string>> optionNames{};
 };
 
 // Whether an option does anything for a widget as it is configured now (its

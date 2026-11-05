@@ -257,12 +257,12 @@ private:
   // editor internals (editor.cpp)
 public:
   struct EditOp {
-    std::string id;
+    std::string id{};
     int x = 0, y = 0, w = 0, h = 0;
-    std::string style;
+    std::string style{};
     std::string kind = "geom";  // geom | prop | add | remove | layout
-    std::string key, value;     // prop: the key and its TOML value before
-    std::string block;          // add/remove: the widget's block text
+    std::string key{}, value{};     // prop: the key and its TOML value before
+    std::string block{};            // add/remove: the widget's block text
   };
   EditOp snapshot(const Widget& w) const;
   void pushUndo(const Widget& w, const char* kind);
@@ -293,7 +293,7 @@ public:
                 LayerLock, LayerFold, LayerGroup, LayerUngroup, LayerUp, LayerDown, AddPick } type = Panel;
     Rect r;       // output coordinates
     int prop = -1;
-    std::string value;  // swatch colour / gallery type
+    std::string value{};  // swatch colour / gallery type
   };
 
 private:

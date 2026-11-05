@@ -220,8 +220,15 @@ static void ptrAxisStop(void*, wl_pointer*, uint32_t, uint32_t) {}
 static void ptrAxisDiscrete(void*, wl_pointer*, uint32_t, int32_t) {}
 static void ptrAxis120(void*, wl_pointer*, uint32_t, int32_t) {}
 static void ptrAxisRel(void*, wl_pointer*, uint32_t, uint32_t) {}
+#ifdef WL_POINTER_WARP_SINCE_VERSION  // libwayland 1.24+; the seat is bound below 11, so it never comes
+static void ptrWarp(void*, wl_pointer*, wl_fixed_t, wl_fixed_t) {}
+#endif
 static const wl_pointer_listener kPointer = {ptrEnter,      ptrLeave,    ptrMotion,       ptrButton,  ptrAxis,   ptrFrame,
-                                             ptrAxisSource, ptrAxisStop, ptrAxisDiscrete, ptrAxis120, ptrAxisRel};
+                                             ptrAxisSource, ptrAxisStop, ptrAxisDiscrete, ptrAxis120, ptrAxisRel,
+#ifdef WL_POINTER_WARP_SINCE_VERSION
+                                              ptrWarp,
+#endif
+};
 
 static void seatCaps(void* d, wl_seat* s, uint32_t caps) { static_cast<App*>(d)->setupSeat(s, caps); }
 static void seatName(void*, wl_seat*, const char*) {}

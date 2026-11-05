@@ -26,7 +26,7 @@ struct TextStyle {
   float maxWidth = 0;        // > 0: wrap (maxLines > 1) or ellipsize at this width
   int maxLines = 1;
   int align = 0;             // 0 left, 1 centre, 2 right (within maxWidth)
-  std::string variations;    // variable-font axes, e.g. "wght=700,wdth=120,ROND=100"
+  std::string variations{};    // variable-font axes, e.g. "wght=700,wdth=120,ROND=100"
   float pad = 0;             // extra room round the glyphs in the texture (logical px), for effects that spill
 };
 
