@@ -69,7 +69,29 @@ inline Homography squareToQuad(const double qx[4], const double qy[4]) {
   }
   const double dx1 = qx[1] - qx[2], dx2 = qx[3] - qx[2], dy1 = qy[1] - qy[2], dy2 = qy[3] - qy[2];
   const double den = dx1 * dy2 - dx2 * dy1;
-  const double g = (sx * dy2 - dx2 * sy) / den, hh = (dx1 * sy - sx * dy1) / den;
+  const bool flat = std::abs(den) < 1e-9;
+  const double g = flat ? 0 : (sx * dy2 - dx2 * sy) / den, hh = flat ? 0 : (dx1 * sy - sx * dy1) / den;
+  // A quad that folds (a corner on or past the line through two others) has
+  // no perspective: w = g*s + hh*t + 1 crosses zero inside the square, apply()
+  // divides by it, and the NaN reaches the mesh points and visualBox's int
+  // casts. It gets the flat map through the three corners that span the most.
+  if (flat || std::min({1 + g, 1 + hh, 1 + g + hh}) < 1e-9) {
+    int drop = 0;
+    double best = -1;
+    for (int k = 0; k < 4; ++k) {  // the triangle left without corner k
+      const int a = (k + 1) % 4, o = (k + 2) % 4, b = (k + 3) % 4;
+      const double area = std::abs((qx[a] - qx[o]) * (qy[b] - qy[o]) - (qx[b] - qx[o]) * (qy[a] - qy[o]));
+      if (area > best) best = area, drop = k;
+    }
+    double px[4], py[4];  // the parallelogram those three make
+    for (int i = 0; i < 4; ++i) px[i] = qx[i], py[i] = qy[i];
+    const int a = (drop + 1) % 4, o = (drop + 2) % 4, b = (drop + 3) % 4;
+    px[drop] = qx[a] + qx[b] - qx[o], py[drop] = qy[a] + qy[b] - qy[o];
+    h.m[0] = px[1] - px[0], h.m[1] = px[2] - px[1], h.m[2] = px[0];
+    h.m[3] = py[1] - py[0], h.m[4] = py[2] - py[1], h.m[5] = py[0];
+    h.m[6] = 0, h.m[7] = 0, h.m[8] = 1;
+    return h;
+  }
   h.m[0] = qx[1] - qx[0] + g * qx[1], h.m[1] = qx[3] - qx[0] + hh * qx[3], h.m[2] = qx[0];
   h.m[3] = qy[1] - qy[0] + g * qy[1], h.m[4] = qy[3] - qy[0] + hh * qy[3], h.m[5] = qy[0];
   h.m[6] = g, h.m[7] = hh, h.m[8] = 1;

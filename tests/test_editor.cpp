@@ -248,5 +248,37 @@ int main() {
     CHECK(!shows("now_playing", "layout = 'tile'\nplate = 'none'\nshow_rail = false\nshow_transport = false", "accent_source"));
   }
 
+  // a quad that folds (three corners in a line, or one past the line of two
+  // others) has no perspective: squareToQuad and the mesh laid on it stay finite
+  {
+    struct Quad { double x[4], y[4]; };
+    const Quad folded[] = {
+        {{0, 100, 200, 0}, {0, 0, 0, 100}},      // 0,1,2 in a line
+        {{0, 100, 100, 100}, {0, 0, 50, 100}},   // 1,2,3
+        {{0, 100, 100, 0}, {0, 0, 100, 0}},      // 0,1,3
+        {{0, 100, 0, 0}, {0, 0, 50, 100}},       // 0,2,3
+        {{0, 0, 100, 200}, {0, 0, 0, 0}},        // all four
+        {{0, 100, 30, 0}, {0, 0, 30, 100}},      // concave: corner 2 inside
+    };
+    for (const Quad& q : folded) {
+      const Homography hg = squareToQuad(q.x, q.y);
+      bool finite = true;
+      for (const double v : hg.m) finite = finite && std::isfinite(v);
+      double mesh[2 * WidgetConfig::kMeshMax * WidgetConfig::kMeshMax];
+      meshShape(q.x, q.y, WidgetConfig::kMeshMax, "flat", 0, mesh);
+      for (const double v : mesh) finite = finite && std::isfinite(v) && std::abs(v) < 1000;
+      CHECK(finite);
+    }
+    // a quad that does not fold keeps its four corners exactly
+    const double qx[4] = {0, 100, 120, -10}, qy[4] = {0, 10, 90, 100};
+    const Homography hg = squareToQuad(qx, qy);
+    const double s[4] = {0, 1, 1, 0}, t[4] = {0, 0, 1, 1};
+    for (int i = 0; i < 4; ++i) {
+      double x = 0, y = 0;
+      hg.apply(s[i], t[i], x, y);
+      CHECK(std::abs(x - qx[i]) < 1e-6 && std::abs(y - qy[i]) < 1e-6);
+    }
+  }
+
   return TEST_RESULT();
 }
