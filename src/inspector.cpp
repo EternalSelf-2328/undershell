@@ -58,6 +58,10 @@ std::string valueText(const toml::table& opts, const PropSpec& p) {
       if (p.integer) return std::to_string(static_cast<long>(std::lround(v)));
   return p.step < 0.095 ? std::format("{:.2f}", v) : std::format("{:.1f}", v);  // as many decimals as a step has
     }
+    case PropSpec::Action:
+    case PropSpec::Element:
+    case PropSpec::File:
+    case PropSpec::Header: return {};
   }
   return {};
 }
@@ -3869,7 +3873,7 @@ void App::drawUi(EditSurface& e) {
       const bool current = m_wallsTab == 0 ? it.path == currentWall : it.workshop == currentScene;
       if (current || hot) cv.roundRect(c.r.x, c.r.y, c.r.w, ih, 8, Color{0, 0, 0, 0}, current ? 2.5F : 1.5F, current ? accent : withAlphaC(ink, 0.6F));
       std::string name = it.label;
-      if (m_wallsTab == 1 && it.kind == "video") name = (es ? "video · " : "video · ") + name;
+      if (m_wallsTab == 1 && it.kind == "video") name = "video · " + name;
       fitText(name, label, c.r.x + 2, c.r.y + ih + 3, c.r.w - 4, current ? ink : dim);
     }
   }

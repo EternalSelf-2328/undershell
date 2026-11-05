@@ -91,7 +91,7 @@ std::string weatherText(int c, bool es) {
   for (const auto& r : rows)
     for (int k : r.codes)
       if (k == c) return es ? r.es : r.en;
-  return es ? "—" : "—";
+  return "—";
 }
 
 Sky skyOf(int c) {

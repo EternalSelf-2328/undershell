@@ -52,7 +52,6 @@ int gripAt(const Widget& w, double x, double y) {
   if (bottom && right) return 3;
   return -1;
 }
-bool inGrip(const Widget& w, double x, double y) { return gripAt(w, x, y) >= 0; }
 const char* gripCursor(int corner) {
   static const char* names[] = {"nw-resize", "ne-resize", "sw-resize", "se-resize"};
   return corner >= 0 && corner < 4 ? names[corner] : "grab";

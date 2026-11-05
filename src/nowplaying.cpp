@@ -435,10 +435,9 @@ NowPlayingWidget::Places NowPlayingWidget::places() const {
   // One line of it, for a narrow gap: everything side by side, and whatever
   // is left out gives its width back to the track.
   if (l == "strip") {
-    const float pad = 10, gap = 14, art = cover ? 56.0F : 0;
+    const float pad = 10, art = cover ? 56.0F : 0;
     p.w = 560;
     const float playR = 15, sideR = 11;
-    const float movesW = moves ? 2 * sideR + 9 + 2 * playR + 9 + 2 * sideR : 0;
     const float railW = rail ? 96.0F : 0;
     p.h = std::max({art, textH, 2 * playR, kRailH}) + 2 * pad + 6;
     p.plate = {0, 0, p.w, p.h};
@@ -588,6 +587,7 @@ Color NowPlayingWidget::tint(Color col, float a) const { return withAlpha(col, a
 // label, and marks that go round while the song plays -- the artwork itself
 // cannot turn, so the grooves say that the disc does.
 void NowPlayingWidget::drawRecord(Canvas& c, const MediaState& s, const Places& p) {
+  (void)s;  // the sleeve says it all: no song properties change the drawing
   const float cx = p.cover.x + p.cover.w / 2, cy = p.cover.y + p.cover.h / 2, R = p.record, label = p.cover.w / 2;
   c.circle(cx, cy, R, tint(Color{0.06F, 0.06F, 0.07F, 1}));
   for (int i = 0; i < 6; ++i) c.circle(cx, cy, label + 7 + i * (R - label - 9) / 5, kClear, 1, tint(m_paint.ink, 0.06F));

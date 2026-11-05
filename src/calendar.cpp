@@ -363,7 +363,7 @@ void CalendarWidget::drawAgenda(Canvas& c, float w, float h, const Day& t) {
   const TextStyle what{.family = m_cfg.font, .size = unit, .weight = 500, .maxWidth = w - 2 * pad - unit * 4.6F, .maxLines = 1};
   const TextStyle where{.family = m_cfg.font, .size = unit * 0.78F, .weight = 500, .maxWidth = w - 2 * pad - unit * 4.6F, .maxLines = 1};
   float y = pad;
-  c.text(m_es ? "Agenda" : "Agenda", title, pad, y, withA(m_ink, op));
+  c.text("Agenda", title, pad, y, withA(m_ink, op));
   y += Canvas::measure("Ag", title).h + unit * 0.5F;
   const auto now = static_cast<int64_t>(std::time(nullptr));
   bool any = false;

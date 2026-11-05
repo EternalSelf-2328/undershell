@@ -577,10 +577,8 @@ bool readWeScene(const std::string& unpacked, const std::string& assets, const W
       } else {
         l.compose = true;
       }
-    } else if (model.is_object() || !matPath.empty()) {
-      l.compose = true;  // no material at hand (yet)
     } else {
-      l.compose = true;
+      l.compose = true;  // no material at hand (yet)
     }
     // its effects
     for (const json& e : o.value("effects", json::array())) {
