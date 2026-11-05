@@ -42,8 +42,17 @@
     "title": "Perfiles guardados"
   },
   "type": {
+    "calendar": "Calendario",
     "clock": "Reloj",
+    "filter": "Fondo y efectos",
+    "image": "Imagen",
+    "lyrics": "Letras",
+    "notes": "Notas",
     "now_playing": "Música",
-    "visualizer": "Visualizador"
+    "scene": "Wallpaper Engine",
+    "shape": "Forma",
+    "text": "Texto",
+    "visualizer": "Visualizador",
+    "weather": "Clima"
   }
 }

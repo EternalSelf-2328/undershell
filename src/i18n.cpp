@@ -76,6 +76,9 @@ std::string optionLabel(const std::string& value, bool es) {
       {"field", "Cielo"}, {"warp", "Velocidad luz"}, {"constellation", "Constelaciones"}, {"gold", "Oro"},
       {"agenda", "Agenda"}, {"month", "Mes"}, {"week", "Semana"}, {"day", "Día"}, {"monday", "Lunes"}, {"sunday", "Domingo"},
       {"lines", "Tres líneas"}, {"karaoke", "Karaoke"}, {"slide", "Deslizar"}, {"fade", "Fundido"}, {"pop", "Salto"}, {"title", "Título"},
+      {"always", "Siempre"}, {"playing", "Mientras suena"}, {"missing", "Si falta"},
+      {"sheet", "Hoja"}, {"vinyl", "Vinilo"}, {"tile", "Mosaico"}, {"strip", "Tira"},
+      {"portrait", "Vertical"}, {"cyber", "Cyber"}, {"upper", "MAYÚSCULAS"}, {"normal", "Normal"},
   };
   static const std::map<std::string_view, const char*> kEn = {
       {"bighour", "Big hour"}, {"goodnight", "Good night"}, {"en", "English"}, {"es", "Spanish"},

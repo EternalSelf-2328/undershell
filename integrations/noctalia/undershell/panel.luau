@@ -62,13 +62,23 @@ local function send(args, keepOpen)
   end)
 end
 
+local kGlyphs = {
+  calendar = "calendar",
+  clock = "clock",
+  filter = "color-filter",
+  image = "photo",
+  lyrics = "microphone",
+  notes = "notes",
+  now_playing = "music",
+  scene = "movie",
+  shape = "shape",
+  text = "typography",
+  visualizer = "chart-bar",
+  weather = "cloud",
+}
+
 local function typeGlyph(t)
-  if t == "clock" then
-    return "clock"
-  elseif t == "now_playing" then
-    return "music"
-  end
-  return "chart-bar"
+  return kGlyphs[t] or "chart-bar"
 end
 
 local function typeName(t)

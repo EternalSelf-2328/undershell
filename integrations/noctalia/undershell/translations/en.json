@@ -42,8 +42,17 @@
     "title": "Saved profiles"
   },
   "type": {
+    "calendar": "Calendar",
     "clock": "Clock",
+    "filter": "Wallpaper & effects",
+    "image": "Image",
+    "lyrics": "Lyrics",
+    "notes": "Notes",
     "now_playing": "Now playing",
-    "visualizer": "Visualizer"
+    "scene": "Wallpaper Engine",
+    "shape": "Shape",
+    "text": "Text",
+    "visualizer": "Visualizer",
+    "weather": "Weather"
   }
 }
