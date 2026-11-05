@@ -43,7 +43,12 @@ struct DepthMask {
   std::vector<std::uint8_t> fxMask;
   GLuint fxMaskTex = 0;
   bool fxMaskUpload = false;  // the whole texture is (re)uploaded on next use
+  int fxMaskUsed = 0;         // bit i: channel i holds some paint
+  bool fxMaskUsedStale = true;
 };
+
+// which of the four RGBA channels of `mask` hold anything (bit i = channel i)
+[[nodiscard]] int paintedChannels(const std::vector<std::uint8_t>& mask);
 
 class Jobs;
 
@@ -60,6 +65,8 @@ public:
   // the painted effect masks of an output's wallpaper as a texture (needs
   // GL; 0 when none is painted), re-uploading a box after a stroke, saving
   GLuint effectMasks(const std::string& output);
+  // which of those masks hold any paint (bit i = channel i); 0 when none
+  int effectMasksUsed(const std::string& output);
   void uploadMaskRect(DepthMask& m, PixelBox box);
   bool saveMasks(DepthMask& m);
   // the depth brush: a mask whose field is loaded, or nullptr

@@ -1376,9 +1376,11 @@ void App::render(Widget& w) {
     if (w.impl->wantsDepth() && w.output && !m_motion)
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         dctx.depthField = m->field;
-        dctx.depthLevel = static_cast<float>(depthThreshold());
+        // its own plane (the inspector's "Depth plane"), as the cut of the widget itself
+        dctx.depthLevel = static_cast<float>(w.cfg.depthLevel > 0 ? w.cfg.depthLevel / 100.0 : depthThreshold());
         dctx.depthFeather = static_cast<float>(depthFeather());
         dctx.effectMasks = m_depth.effectMasks(w.output->name);
+        dctx.effectMasksUsed = dctx.effectMasks ? m_depth.effectMasksUsed(w.output->name) : 0;
       }
     m_media.uploadPending();
     try {

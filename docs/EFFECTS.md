@@ -64,14 +64,16 @@ Each option:
 Every effect also gets three options of its own, without declaring them: `strength` (0–2),
 `mask` (where it applies: everywhere, the background, the subject, above or below a line,
 or one of four masks you paint) and `split` (the line's height, 0 at the top to 1 at the
-bottom). `background` and `subject` follow the wallpaper's depth (undershell's depth model);
-without one, `subject` is empty.
+bottom). `background` and `subject` follow the wallpaper's depth (undershell's depth model),
+split at the widget's depth plane (`depth_level`, or the default plane); without a depth map,
+`subject` is empty.
 
 The painted masks (`paint1` … `paint4`) are painted in the editor with the depth brush:
 choose **1**–**4** under "Paints on" (or press "Paint the mask…" in the effect's rows), then
 the brush, wand or lasso add to the mask or take out of it. Each wallpaper has its own four,
 kept in `~/.config/undershell/effect-masks/<sha256>.usfm`; one mask can serve several
-effects (the water for waves and ripples, the sky for mist).
+effects (the water for waves and ripples, the sky for mist). A mask with nothing painted on
+it yet means everywhere, so choosing one before painting does not make the effect vanish.
 
 ## What your GLSL can use
 

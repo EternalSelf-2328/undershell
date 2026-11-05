@@ -212,7 +212,20 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     const FilterConfig f = FilterConfig::fromTable(o);
     if (key == "tint") return f.tintAmount > 0;
     if (key == "dark" || key == "light") return f.duotone;
-    if (key == "depth_level") return o["depth"].value_or(false);
+    if (key == "depth_level") {  // the plane cuts the picture ("Background only"), and splits subject from background
+      if (o["depth"].value_or(false)) return true;  // for particles behind it and effects on either side
+      for (const auto& [k, v] : o) {
+        const std::string_view key2 = k.str();
+        if (key2.starts_with("pt_") && key2.ends_with("_behind") && v.value_or(false) &&
+            o[key2.substr(0, key2.size() - 7)].value_or(false))
+          return true;
+        if (key2.starts_with("fx_") && key2.ends_with("_mask") && o[key2.substr(0, key2.size() - 5)].value_or(false)) {
+          const std::string m = v.value_or(std::string());
+          if (m == "background" || m == "subject") return true;
+        }
+      }
+      return false;
+    }
     return true;
   }
   if (c.type == "weather") {

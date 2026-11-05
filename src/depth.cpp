@@ -75,6 +75,7 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
       m.fieldStale = m.field != 0;
       m.fxMask.clear();  // the old wallpaper's: the new one's come with its field
       m.fxMaskUpload = true;
+      m.fxMaskUsedStale = true;
       changed = true;
       if (!npy.empty() && m_jobs) {
         const std::string sha = sha256Of(wall);
@@ -126,6 +127,7 @@ bool DepthMasks::update(const NoctaliaState& st, const std::vector<std::string>&
             it->wallStale = it->wallTexture != 0;
             it->fxMask = std::move(masks);
             it->fxMaskUpload = true;
+            it->fxMaskUsedStale = true;
             US_INFO("depth field for {}: {}x{}", out, fw, fh);
             if (m_fieldReady) m_fieldReady();
           };
@@ -276,7 +278,27 @@ GLuint DepthMasks::effectMasks(const std::string& output) {
   return m.fxMaskTex;
 }
 
+int paintedChannels(const std::vector<std::uint8_t>& mask) {
+  int used = 0;
+  for (size_t i = 0; i + 3 < mask.size() && used != 15; i += 4)
+    for (int c = 0; c < 4; ++c)
+      if (mask[i + static_cast<size_t>(c)]) used |= 1 << c;
+  return used;
+}
+
+int DepthMasks::effectMasksUsed(const std::string& output) {
+  auto it = m_masks.find(output);
+  if (it == m_masks.end() || !it->second) return 0;
+  DepthMask& m = *it->second;
+  if (m.fxMaskUsedStale) {  // only after a stroke or a new wallpaper: a scan of ~2 MB
+    m.fxMaskUsed = paintedChannels(m.fxMask);
+    m.fxMaskUsedStale = false;
+  }
+  return m.fxMaskUsed;
+}
+
 void DepthMasks::uploadMaskRect(DepthMask& m, PixelBox box) {
+  m.fxMaskUsedStale = true;  // a stroke, an undo or a clear changed what is painted
   box.clip(m.fieldW, m.fieldH);
   if (box.empty() || !m.fxMaskTex || m.fxMaskUpload) return;  // a full upload is due anyway
   glBindTexture(GL_TEXTURE_2D, m.fxMaskTex);

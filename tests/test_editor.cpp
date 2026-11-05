@@ -209,6 +209,14 @@ int main() {
     CHECK(shows("visualizer", "style = 'dots'", "thickness") && !shows("visualizer", "style = 'dots'", "shape"));
     for (const char* look : {"style = 'wave'", "style = 'ribbon'", "style = 'curtain'", "style = 'line'", "style = 'orb'", "style = 'spiral'"})
       CHECK(!shows("visualizer", look, "thickness") && !shows("visualizer", look, "shape"));
+    // the wallpaper widget's depth plane: when it cuts its picture, or particles
+    // hide behind the subject, or an effect keeps to the subject or the background
+    CHECK(!shows("filter", "depth = false", "depth_level") && shows("filter", "depth = true", "depth_level"));
+    CHECK(shows("filter", "pt_petals = true\npt_petals_behind = true", "depth_level"));
+    CHECK(!shows("filter", "pt_petals = false\npt_petals_behind = true", "depth_level"));  // a system that is off
+    CHECK(!shows("filter", "pt_petals = true\npt_petals_mask = 'paint1'", "depth_level"));
+    CHECK(shows("filter", "fx_waves = true\nfx_waves_mask = 'subject'", "depth_level"));
+    CHECK(!shows("filter", "fx_waves = true\nfx_waves_mask = 'below'", "depth_level"));
     // the reflection: under a baseline at the bottom
     CHECK(shows("visualizer", "style = 'wave'", "reflection"));
     CHECK(!shows("visualizer", "style = 'wave'\ngrow = 'center'", "reflection"));

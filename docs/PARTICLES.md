@@ -44,7 +44,7 @@ speeds in those pixels per second; angles in degrees, 0 pointing right and 90 do
 | `streak` | stretch each particle along its travel by this many seconds (rain, sparks) |
 | `react` | how much it follows the music by default (0–1), for the `audio` operator |
 | `emitter` | where they are born: `{"shape": "box", "origin": [x, y], "size": [w, h]}` or `{"shape": "sphere", "origin": [x, y], "radius": r}`, as fractions of the screen (the radius of its height) |
-| `init` | what each starts with, a number or a `[low, high]` range: `lifetime` (s), `size`, `speed`, `direction`, `alpha`, `rotation`, `spin` (°/s), `depth` (0 far … 1 near: nearer ones are bigger and faster, and with "Behind the subject" the wallpaper hides those beyond it), and `color` (one or two colours to pick between) |
+| `init` | what each starts with, a number or a `[low, high]` range: `lifetime` (s), `size`, `speed`, `direction`, `alpha`, `rotation`, `spin` (°/s), `depth` (0 far … 1 near: nearer ones are bigger and faster; with "Behind the subject" a particle sits between the widget's depth plane, at 0, and the viewer, at 1, and the wallpaper nearer than that hides it), and `color` (one or two colours to pick between) |
 | `operators` | what changes as they live (below), applied in order |
 
 | Operator | Fields |
@@ -62,8 +62,9 @@ speeds in those pixels per second; angles in degrees, 0 pointing right and 90 do
 
 Every system also gets, in the editor and as `pt_<name>_<option>`: `amount`, `speed`,
 `size`, `wind`, `tint`, `react` (with the music), `behind` (behind the wallpaper's
-subject) and `mask` (where: everywhere, above or below a line, or one of the four masks
-painted with the brush).
+subject: what is nearer than the wallpaper widget's depth plane) and `mask` (where:
+everywhere, above or below a line, or one of the four masks painted with the brush; a
+mask with nothing painted on it yet means everywhere).
 
 ## Cost
 

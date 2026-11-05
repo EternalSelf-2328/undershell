@@ -596,8 +596,10 @@ uniform int u_fill;
 uniform int u_sprite;
 uniform sampler2D u_depth;
 uniform float u_depthOn, u_behind, u_feather;
+uniform float u_level;          // the widget's plane: what is nearer is the subject
 uniform sampler2D u_fxmasks;
 uniform float u_fxmasksOn;
+uniform int u_fxmasksUsed;      // bit i: painted mask i holds paint (an unpainted one is everywhere)
 uniform int u_mask;
 uniform float u_split;
 
@@ -662,13 +664,19 @@ void main() {
     if (a <= 0.003) discard;
     vec2 uv;
     bool on = wallUv(v_p, uv);
-    // behind the subject: the wallpaper nearer than this particle's plane hides it
-    if (u_behind > 0.5 && u_depthOn > 0.5 && on)
-        a *= 1.0 - smoothstep(v_depth - u_feather * 0.5, v_depth + u_feather * 0.5, texture(u_depth, uv).r);
+    // behind the subject: the subject is what is nearer than the widget's plane
+    // (as for the widget's own cut), so the background beyond it never hides a
+    // particle. Most particles sit on that plane and the subject hides them
+    // whole; the nearest (depth over ~0.55) sit between it and the viewer, so
+    // they weave through the subject's nearer parts or pass in front
+    if (u_behind > 0.5 && u_depthOn > 0.5 && on) {
+        float plane = mix(u_level, 1.0, smoothstep(0.55, 0.95, v_depth));
+        a *= 1.0 - smoothstep(plane - u_feather * 0.5, plane + u_feather * 0.5, texture(u_depth, uv).r);
+    }
     if (u_mask == 3 || u_mask == 4) {
         float s = smoothstep(u_split - 0.03, u_split + 0.03, on ? uv.y : v_p.y / u_size.y);
         a *= u_mask == 3 ? 1.0 - s : s;
-    } else if (u_mask >= 5) {
+    } else if (u_mask >= 5 && ((u_fxmasksUsed >> (u_mask - 5)) & 1) == 1) {
         a *= u_fxmasksOn > 0.5 && on ? texture(u_fxmasks, uv)[u_mask - 5] : 0.0;
     }
     if (a <= 0.003) discard;
@@ -781,6 +789,8 @@ void ParticleField::draw(const DrawContext& ctx, float imgW, float imgH, int onl
   glUniform1i(m_prog.uniform("u_depth"), 1);
   glUniform1f(m_prog.uniform("u_depthOn"), ctx.depthField ? 1.0F : 0.0F);
   glUniform1f(m_prog.uniform("u_feather"), std::max(0.04F, ctx.depthFeather));
+  glUniform1f(m_prog.uniform("u_level"), ctx.depthLevel);
+  glUniform1i(m_prog.uniform("u_fxmasksUsed"), ctx.effectMasks ? ctx.effectMasksUsed : 0);
   glUniform1i(m_prog.uniform("u_fxmasks"), 4);
   glUniform1f(m_prog.uniform("u_fxmasksOn"), ctx.effectMasks ? 1.0F : 0.0F);
   glActiveTexture(GL_TEXTURE1);

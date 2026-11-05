@@ -412,7 +412,9 @@ has a strength and a **where**: everywhere, only the background or only the
 subject (from the wallpaper's depth), above or below a line (sky, water), or
 one of four **masks you paint** on the wallpaper with the depth brush (its
 "Paints on" row: the river for the waves, the trees for the wind). Each
-wallpaper keeps its own masks.
+wallpaper keeps its own masks; until one is painted, it means everywhere.
+The subject is what is nearer than the widget's **Depth plane** (the default
+plane unless you set one).
 
 All effects that are on are joined into **one shader**: one full-screen pass,
 plus a pass at a quarter to half the resolution for the soft ones (light
@@ -429,9 +431,12 @@ The wallpaper widget also lays **particles** over the wallpaper: **snow**,
 **rain**, **petals**, **fireflies**, **floating dust**, **embers**,
 **bubbles** and **sparks to the beat**. Each has its amount, speed, size,
 wind, tint and how much it follows the music, and two things a plain overlay
-cannot do: **behind the subject** (each particle lives on a depth plane, so
-snow falls behind the person in the picture and in front of the mountains)
-and **where** (above or below a line, or a mask you paint). The simulation
+cannot do: **behind the subject** (each particle lives on a plane between
+the widget's Depth plane and you, so snow falls behind the person in the
+picture and in front of the mountains, and never behind what lies beyond
+the plane; lower the plane to send it behind more of the picture, or fix
+the subject with the depth brush) and **where** (above or below a line, or
+a mask you paint). The simulation
 runs on the CPU at a fixed step (30 or 60 Hz by the performance level), the
 counts follow the level too, and each system is one instanced draw: 700
 snowflakes take 0.02 ms of CPU per frame on the HD 520. Your own systems are

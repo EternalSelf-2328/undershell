@@ -217,6 +217,7 @@ void EffectChain::use(int which, const DrawContext& ctx, bool flipY, bool unprem
   glUniform1i(prog.uniform("u_hasLights"), which == 0 && hasLights() ? 1 : 0);
   glUniform1i(prog.uniform("u_fxmasks"), 4);
   glUniform1f(prog.uniform("u_fxmasksOn"), ctx.effectMasks ? 1.0F : 0.0F);
+  glUniform1i(prog.uniform("u_fxmasksUsed"), ctx.effectMasks ? ctx.effectMasksUsed : 0);
   const EffectLibrary& lib = effectLibrary();
   for (const Fx& f : m_fx) {
     const EffectSpec* e = lib.find(f.id);

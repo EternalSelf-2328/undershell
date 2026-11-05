@@ -62,12 +62,15 @@ struct DrawContext {
   bool movingWallpaper = false;  // a video or a scene: no still picture to work with
   // the wallpaper's depth field on this output, for widgets that ask
   // (wantsDepth): a GL texture over the picture (0 = none yet), and the
-  // default plane that splits subject from background
+  // widget's plane that splits subject from background (its depth_level, or
+  // the default plane)
   unsigned depthField = 0;
   float depthLevel = 0.5F, depthFeather = 0.1F;
   // the effect masks painted on this wallpaper (RGBA: four channels over the
-  // picture, like depthField; 0 = none painted)
+  // picture, like depthField; 0 = none painted), and which of the four hold
+  // any paint (bit i = channel i): an unpainted mask counts as everywhere
   unsigned effectMasks = 0;
+  int effectMasksUsed = 0;
 };
 
 class WidgetImpl {

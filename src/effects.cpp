@@ -36,6 +36,7 @@ uniform int u_flipY;          // the picture is an off-screen render: rows botto
 uniform int u_unpremul;       // the picture is a widget's own render: premultiplied
 uniform sampler2D u_fxmasks;  // the four painted effect masks (RGBA over the picture)
 uniform float u_fxmasksOn;
+uniform int u_fxmasksUsed;     // bit i: mask i holds paint (an unpainted one is everywhere)
 vec2 screenPx;                // this pixel on the surface, px
 
 vec2 edgeSafe(vec2 uv) { return u_wrap == 1 ? uv : clamp(uv, 0.0005, 0.9995); }
@@ -81,7 +82,10 @@ vec2 pictureOffset(vec2 d) { return vec2(d.x / u_aspect, d.y); }
 // where an effect applies: everywhere, the background, the subject, above or
 // below a line, or one of the four painted masks
 float fxMask(int mode, float split, vec2 uv) {
-    if (mode >= 5) return u_fxmasksOn > 0.5 ? texture(u_fxmasks, clamp(uv, 0.0, 1.0))[mode - 5] : 0.0;
+    if (mode >= 5) {
+        if (((u_fxmasksUsed >> (mode - 5)) & 1) == 0) return 1.0;  // nothing painted yet: everywhere
+        return u_fxmasksOn > 0.5 ? texture(u_fxmasks, clamp(uv, 0.0, 1.0))[mode - 5] : 0.0;
+    }
     if (mode == 1) return 1.0 - subject(uv);
     if (mode == 2) return subject(uv);
     if (mode == 3) return 1.0 - smoothstep(split - 0.03, split + 0.03, uv.y);

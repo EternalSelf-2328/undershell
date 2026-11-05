@@ -2,6 +2,7 @@
 // deaths, bounds, the level's counts, the music), the person's folder, the
 // inspector rows and (with GL) drawing over the wallpaper.
 #include "check.hpp"
+#include "gl.hpp"
 #include "noctalia.hpp"
 #include "offscreen.hpp"
 #include "particles.hpp"
@@ -171,6 +172,58 @@ int main() {
           if (y > 100) down += d;
         }
     CHECK(up < 1 && down > 100);
+
+    // behind the subject, against a depth field: the left half at 0.5, the
+    // right half at 0.95. Only what is nearer than the widget's plane hides
+    // the particles, so at the plane 0.72 the left half is background and
+    // keeps them all; at 0.3 it is subject too.
+    std::vector<unsigned char> field(160 * 90);
+    for (int y = 0; y < 90; ++y)
+      for (int x = 0; x < 160; ++x) field[static_cast<size_t>(y) * 160 + x] = x < 80 ? 128 : 242;
+    GLuint fieldTex = 0;
+    glGenTextures(1, &fieldTex);
+    glBindTexture(GL_TEXTURE_2D, fieldTex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, 160, 90, 0, GL_RED, GL_UNSIGNED_BYTE, field.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    toml::table snow = o;
+    snow.insert_or_assign("pt_snow", true);
+    snow.insert_or_assign("pt_snow_amount", 3.0);
+    // how much the snow shows on each side (the same particles every time: same seed, same ticks)
+    auto sides = [&](const toml::table& opts, float level, double& left, double& right) {
+      const Image img = renderWidget("filter", opts, 320, 180, pal, 1000, 30, 3.0, nullptr, png, 0, fieldTex, level);
+      left = right = 0;
+      for (int y = 0; y < 180; ++y)
+        for (int x = 0; x < 320; ++x)
+          for (int k = 0; k < 3; ++k) {
+            const size_t i = (static_cast<size_t>(y) * 320 + x) * 4 + k;
+            const int d = std::abs(img.rgba[i] - base.rgba[i]);
+            if (x < 150) left += d;
+            if (x > 170) right += d;
+          }
+    };
+    double frontL = 0, frontR = 0, behindL = 0, behindR = 0, lowL = 0, lowR = 0;
+    sides(snow, 0.72F, frontL, frontR);
+    toml::table behind = snow;
+    behind.insert_or_assign("pt_snow_behind", true);
+    sides(behind, 0.72F, behindL, behindR);
+    sides(behind, 0.30F, lowL, lowR);
+    std::fprintf(stderr, "snow behind: front %.0f/%.0f, plane .72 %.0f/%.0f, plane .30 %.0f/%.0f\n", frontL, frontR, behindL,
+                 behindR, lowL, lowR);
+    CHECK(frontL > 1000 && frontR > 1000);
+    CHECK(behindL > frontL * 0.97);   // the background beyond the plane hides none
+    CHECK(behindR < frontR * 0.75);   // the subject hides the farther ones
+    CHECK(lowL < behindL * 0.6);      // a farther plane: the left half is subject now
+    glDeleteTextures(1, &fieldTex);
+
+    // a painted mask with nothing painted yet: everywhere, not nowhere
+    toml::table unpainted = snow;
+    unpainted.insert_or_assign("pt_snow_mask", "paint1");
+    double maskL = 0, maskR = 0;
+    sides(unpainted, 0.72F, maskL, maskR);
+    CHECK(maskL > frontL * 0.97 && maskR > frontR * 0.97);
   } else {
     std::fputs("no surfaceless EGL: GL part skipped\n", stderr);
   }

@@ -245,7 +245,8 @@ Image renderClock(const ClockConfig& cfg, int w, int h, const NoctaliaState& noc
 Image renderDrawn(int w, int h, const std::function<void()>& draw) { return renderToImage(w, h, [&] { draw(); }); }
 
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct, double now,
-                   int ticks, double waitSeconds, WeatherService* weather, const std::string& wallpaper, unsigned effectMasks) {
+                   int ticks, double waitSeconds, WeatherService* weather, const std::string& wallpaper, unsigned effectMasks,
+                   unsigned depthField, float depthLevel, int effectMasksUsed) {
   std::unique_ptr<WidgetImpl> widget = createWidget(type);
   if (!widget) return {};
   WidgetConfig wc;
@@ -271,6 +272,9 @@ Image renderWidget(const std::string& type, const toml::table& options, int w, i
       dc.now = now;
       dc.wallpaper = wallpaper;
       dc.effectMasks = effectMasks;
+      dc.effectMasksUsed = effectMasksUsed;
+      dc.depthField = depthField;
+      dc.depthLevel = depthLevel;
       widget->draw(dc);
     });
   };

@@ -232,8 +232,13 @@ int main() {
       glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 160, 90, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-      const Image masked = renderWidget("filter", painted, 160, 90, pal, 1000, 1, 3.0, nullptr, png, masks);
+      const Image masked = renderWidget("filter", painted, 160, 90, pal, 1000, 1, 3.0, nullptr, png, masks, 0, 0.5F, 0b0010);
+      // nothing painted on this wallpaper, or only another mask: everywhere, as if there were no mask
       const Image unpainted = renderWidget("filter", painted, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
+      const Image otherOnly = renderWidget("filter", painted, 160, 90, pal, 1000, 1, 3.0, nullptr, png, masks, 0, 0.5F, 0b0001);
+      toml::table everywhere = plain;
+      everywhere.insert_or_assign("fx_waves", true);
+      const Image whole = renderWidget("filter", everywhere, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
       double up = 0, down = 0;
       for (int y = 0; y < 90; ++y)
         for (int x = 0; x < 160; ++x)
@@ -244,7 +249,7 @@ int main() {
             if (y > 50) down += d;
           }
       CHECK(up < 1 && down > 50);
-      CHECK(imageDiff(unpainted, base) < 0.05);  // nothing painted: nowhere
+      CHECK(imageDiff(unpainted, whole) < 0.01 && imageDiff(otherOnly, whole) < 0.01 && imageDiff(whole, base) > 0.2);
       glDeleteTextures(1, &masks);
     }
     // a light (drawn on its own smaller surface) lands where its mask says: mist above the line
