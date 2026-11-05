@@ -825,6 +825,14 @@ GdkPixbufLoader* decodeCover(const std::string& bytes, GdkPixbuf*& out) {
     }
   }
   gdk_pixbuf_loader_close(loader, nullptr);
+  // a small file (under one piece) may only name its format once closed: with
+  // glycin (gdk-pixbuf 2.44) a 2 KB PNG says nothing while it is being fed
+  if (ok && !tooBig && !checked)
+    if (GdkPixbufFormat* f = gdk_pixbuf_loader_get_format(loader)) {
+      checked = true;
+      const std::string name = gdk_pixbuf_format_get_name(f);
+      ok = name == "png" || name == "jpeg" || name == "webp" || name == "gif" || name == "bmp";
+    }
   if (ok && !tooBig && checked) out = gdk_pixbuf_loader_get_pixbuf(loader);
   if (!out) {
     g_object_unref(loader);
@@ -833,6 +841,15 @@ GdkPixbufLoader* decodeCover(const std::string& bytes, GdkPixbuf*& out) {
   return loader;
 }
 }  // namespace
+
+bool coverDecodes(const std::string& bytes, int& w, int& h) {
+  GdkPixbuf* pb = nullptr;
+  GdkPixbufLoader* loader = decodeCover(bytes, pb);
+  w = h = 0;
+  if (pb) w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb);
+  if (loader) g_object_unref(loader);
+  return pb != nullptr;
+}
 
 void MediaService::fetchCover(const std::string& url, const std::string& key) {
   m_coverFor = key;

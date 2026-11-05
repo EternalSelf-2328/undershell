@@ -58,6 +58,9 @@ std::string artPath(const std::string& url);
 // What tells one cover from another: the url and, for a local file, the file
 // as it is right now.
 std::string artKey(const std::string& url);
+// Whether cover bytes decode the way the service decodes them (a picture in
+// one of the formats a cover comes in, of a sane size), and its size
+bool coverDecodes(const std::string& bytes, int& w, int& h);
 // Ryoku's ArtColor.accentOf over RGBA pixels (w x h); false = no vivid colour
 bool accentOfPixels(const uint8_t* rgba, int w, int h, Color& out);
 // The accent of a wallpaper (Noctalia/Matugen M3 accent, falling back to

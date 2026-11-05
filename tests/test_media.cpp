@@ -2,12 +2,29 @@
 #include "check.hpp"
 #include "media.hpp"
 
+#include <gdk-pixbuf/gdk-pixbuf.h>
+
 #include <filesystem>
 #include <cstdint>
 
 using namespace undershell;
 
 int main() {
+  // covers of any size decode: a small one (under one 16 KB piece) only names
+  // its format once the loader is closed (glycin)
+  {
+    GdkPixbuf* pb = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, 64, 48);
+    gdk_pixbuf_fill(pb, 0x20a040ff);
+    gchar* buf = nullptr;
+    gsize n = 0;
+    CHECK(gdk_pixbuf_save_to_buffer(pb, &buf, &n, "png", nullptr, nullptr));
+    g_object_unref(pb);
+    const std::string png(buf, n);
+    g_free(buf);
+    int w = 0, h = 0;
+    CHECK(png.size() < 16384 && coverDecodes(png, w, h) && w == 64 && h == 48);
+    CHECK(!coverDecodes("not a picture at all", w, h));
+  }
   auto lines = parseLrc("[00:31.84] Se que estas pensando\n[00:12.00]first\n[01:02.5][01:40.25] chorus \nnot a lyric\n[00:40.00]");
   CHECK(lines.size() == 5);
   CHECK(lines[0].ms == 12000 && lines[0].text == "first");  // sorted
