@@ -62,6 +62,9 @@ struct Color {
 
 std::string expandHome(std::string_view path);
 std::string readFile(const std::string& path);
+// like readFile, but says whether the file could be read at all (an empty file
+// reads as "" too, and callers that rewrite the file must tell them apart)
+bool readFileChecked(const std::string& path, std::string& out);
 bool writeFileAtomic(const std::string& path, const std::string& content);
 std::string runCommand(const std::string& cmd, int timeoutSec = 10);
 

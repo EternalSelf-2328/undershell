@@ -8,6 +8,7 @@
 #include <glob.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -235,9 +236,12 @@ std::string sourcesStamp(const std::vector<CalSource>& sources) {
     std::vector<std::string> files = filesOf(s);
     if (s.sqlite) files.push_back(s.path + "-wal");
     for (const auto& f : files) {
-      std::error_code ec;
-      const auto t = fs::last_write_time(f, ec).time_since_epoch().count();
-      out += std::format("{}\x1f{}\x1f{}\n", f, ec ? 0 : fs::file_size(f, ec), ec ? 0 : t);
+      std::error_code ecTime, ecSize;
+      const auto when = fs::last_write_time(f, ecTime).time_since_epoch().count();
+      const std::uintmax_t bytes = fs::file_size(f, ecSize);
+      const unsigned long long sizeOut = ecSize ? 0ULL : static_cast<unsigned long long>(bytes);
+      const long long timeOut = ecTime ? 0LL : static_cast<long long>(when);
+      out += std::format("{}\x1f{}\x1f{}\n", f, sizeOut, timeOut);
     }
   }
   return out;

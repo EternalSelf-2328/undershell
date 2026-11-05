@@ -56,7 +56,8 @@ bool App::overwriteSave(const std::string& id) {
 
 // replaces the widgets on screen with `blocks`, as one undo step
 void App::replaceLayout(const std::string& blocks, bool record) {
-  const std::string text = readFile(m_configPath);
+  std::string text;
+  if (!readFileChecked(m_configPath, text)) return;
   if (record) {
     EditOp op;
     op.kind = "layout";

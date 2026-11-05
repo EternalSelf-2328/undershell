@@ -1071,7 +1071,8 @@ void App::duplicateWidget(Widget& w) {
 
 // A text's style: its keys come back to the style's own (one undo step)
 void App::setTextStyle(Widget& w, const std::string& style) {
-  const std::string text = readFile(m_configPath);
+  std::string text;
+  if (!readFileChecked(m_configPath, text)) return;
   EditOp op;
   op.kind = "layout";
   op.block = Config::widgetBlocks(text);
@@ -1097,7 +1098,8 @@ void App::setTextStyle(Widget& w, const std::string& style) {
 }
 
 void App::setProp(Widget& w, const std::string& key, const std::string& tomlValue) {
-  if ((w.cfg.type == "text" || w.cfg.type == "lyrics" || w.cfg.type == "filter") && key == "style" && tomlValue.size() >= 2) {
+  if ((w.cfg.type == "text" || w.cfg.type == "lyrics" || w.cfg.type == "filter") && key == "style" && tomlValue.size() >= 2 &&
+      tomlValue.front() == '"') {
     setTextStyle(w, tomlValue.substr(1, tomlValue.size() - 2));
     return;
   }

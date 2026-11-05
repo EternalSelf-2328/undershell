@@ -3,6 +3,7 @@
 #include "media.hpp"
 
 #include <filesystem>
+#include <cstdint>
 
 using namespace undershell;
 
@@ -88,5 +89,16 @@ int main() {
   Color wallCol2;
   CHECK(wallpaperAccent(starPng, wallCol2));
   CHECK(std::abs(wallCol.r - wallCol2.r) < 1e-4 && std::abs(wallCol.g - wallCol2.g) < 1e-4 && std::abs(wallCol.b - wallCol2.b) < 1e-4);
+
+  // the ternary in readNumber must not turn a signed int unsigned
+  {
+    const int32_t v = -5;
+    const char tu = 'u', ti = 'i';
+    const int64_t asU = tu == 'u' ? static_cast<int64_t>(static_cast<uint32_t>(v)) : static_cast<int64_t>(v);
+    const int64_t asI = ti == 'u' ? static_cast<int64_t>(static_cast<uint32_t>(v)) : static_cast<int64_t>(v);
+    CHECK(asI == -5);
+    CHECK(asU == 4294967291LL);
+  }
+
   return TEST_RESULT();
 }

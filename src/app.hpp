@@ -680,6 +680,7 @@ private:
   bool m_audioPaused = false;
   // a wallpaper daemon started again (swaybg): the old ones end a moment later
   std::vector<pid_t> m_endPids;
+  std::string m_endName;  // the comm those pids had: a pid can be reused in a second
   double m_endPidsAt = 0;
 };
 

@@ -92,12 +92,20 @@ std::string expandHome(std::string_view path) {
   return std::string(path);
 }
 
-std::string readFile(const std::string& path) {
+bool readFileChecked(const std::string& path, std::string& out) {
   std::ifstream f(path, std::ios::binary);
-  if (!f) return {};
+  if (!f) return false;
   std::ostringstream ss;
   ss << f.rdbuf();
-  return ss.str();
+  if (f.bad()) return false;
+  out = ss.str();
+  return true;
+}
+
+std::string readFile(const std::string& path) {
+  std::string out;
+  readFileChecked(path, out);
+  return out;
 }
 
 // the process's umask, read without changing it (umask() would, for a moment, for every thread)

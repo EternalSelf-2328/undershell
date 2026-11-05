@@ -1709,6 +1709,13 @@ std::vector<pid_t> processesNamed(const std::string& name) {
   }
   return pids;
 }
+// the comm of a pid right now, "" if it is gone
+std::string commOf(pid_t p) {
+  std::ifstream f("/proc/" + std::to_string(p) + "/comm");
+  std::string comm;
+  std::getline(f, comm);
+  return comm;
+}
 }  // namespace
 
 std::string App::wallpaperSetter() const {
@@ -1740,6 +1747,7 @@ std::string App::setWallpaper(const std::string& args) {
   if (!s.error.empty()) return "error: " + s.error;
   if (!s.replaces.empty()) {
     m_endPids = processesNamed(s.replaces);
+    m_endName = s.replaces;
     m_endPidsAt = nowSeconds() + 1.0;  // once the new one has drawn
   }
   for (const auto& a : s.commands) spawnArgv(a);
@@ -1815,7 +1823,8 @@ std::string App::handleCommand(const std::string& cmd) {
       Widget* live = nullptr;
       for (auto& w : m_widgets)
         if (w->cfg.id == c.id) live = w.get();
-      if (live && (live->cfg.type == "text" || live->cfg.type == "lyrics" || live->cfg.type == "filter") && key == "style" && toml.size() >= 2) {  // the style's keys reset too
+      if (live && (live->cfg.type == "text" || live->cfg.type == "lyrics" || live->cfg.type == "filter") && key == "style" &&
+          toml.size() >= 2 && toml.front() == '"') {  // the style's keys reset too
         setTextStyle(*live, toml.substr(1, toml.size() - 2));
         ++n;
       } else if (shapeKey && live) {
@@ -2305,8 +2314,10 @@ int App::run() {
 
     const double now = nowSeconds();
     if (m_endPidsAt > 0 && now >= m_endPidsAt) {
-      for (const pid_t p : m_endPids) kill(p, SIGTERM);
+      for (const pid_t p : m_endPids)
+        if (commOf(p) == m_endName) kill(p, SIGTERM);  // not whatever reused the pid
       m_endPids.clear();
+      m_endName.clear();
       m_endPidsAt = 0;
     }
     if (m_reloadConfigAt > 0 && now >= m_reloadConfigAt) {

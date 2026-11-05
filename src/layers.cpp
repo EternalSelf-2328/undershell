@@ -706,7 +706,8 @@ void App::groupDragEnd() {
 void App::writeGeometry(const std::vector<Widget*>& ws) {
   std::map<std::string, const Widget*> byId;
   for (const Widget* w : ws) byId[w->cfg.id] = w;
-  const std::string text = readFile(m_configPath);
+  std::string text;
+  if (!readFileChecked(m_configPath, text)) return;
   std::string out;
   for (const auto& b : Config::splitBlocks(Config::widgetBlocks(text))) {
     std::string nb = b;

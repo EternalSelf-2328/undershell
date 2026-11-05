@@ -275,7 +275,8 @@ static void setLine(std::vector<std::string>& lines, size_t start, size_t& end, 
 }
 
 bool Config::setGeneral(const std::string& path, const std::string& key, const std::string& tomlValue) {
-  std::string text = readFile(path);
+  std::string text;
+  if (!readFileChecked(path, text)) return false;
   std::istringstream in(text);
   std::vector<std::string> lines;
   for (std::string l; std::getline(in, l);) lines.push_back(l);
@@ -655,7 +656,8 @@ std::string Config::blockId(const std::string& block) {
 }
 
 bool Config::appendBlock(const std::string& path, const std::string& block) {
-  std::string text = readFile(path);
+  std::string text;
+  if (!readFileChecked(path, text)) return false;
   while (!text.empty() && (text.back() == '\n' || text.back() == ' ')) text.pop_back();
   return writeFileAtomic(path, text + "\n\n" + block + (block.ends_with("\n") ? "" : "\n"));
 }

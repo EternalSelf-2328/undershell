@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <memory>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 #include <nlohmann/json.hpp>
@@ -213,7 +214,7 @@ int64_t readNumber(sd_bus_message* m, const char* contents) {
   else if (t == 'i' || t == 'u') {
     int32_t v = 0;
     sd_bus_message_read(m, "v", contents, &v);
-    out = t == 'u' ? static_cast<uint32_t>(v) : v;
+    out = t == 'u' ? static_cast<int64_t>(static_cast<uint32_t>(v)) : static_cast<int64_t>(v);
   } else if (t == 'd') {
     double v = 0;
     sd_bus_message_read(m, "v", "d", &v);
@@ -622,8 +623,10 @@ void MediaService::scanPlayers() {
   if (m_scanPending > 0) return;
   ++m_scan;
   m_players.clear();
+  auto names = std::make_unique<ScanCall>(ScanCall{this, m_scan, {}, false});
   if (callAsync(m_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "ListNames", onNames,
-                new ScanCall{this, m_scan, {}, false}) >= 0) {
+                names.get()) >= 0) {
+    names.release();
     m_scanPending = 1;
     m_inFlight = true;
   }
@@ -645,13 +648,19 @@ void MediaService::onPlayerNames(sd_bus_message* m, uint64_t scan) {
     it = std::ranges::find(names, it->first) == names.end() ? m_idents.erase(it) : std::next(it);
   for (auto& n : names) {
     m_players[n];
+    auto props = std::make_unique<ScanCall>(ScanCall{this, scan, n, false});
     if (callAsync(m_bus, n.c_str(), kMprisPath, "org.freedesktop.DBus.Properties", "GetAll", onProps,
-                  new ScanCall{this, scan, n, false}, kMprisPlayer) >= 0)
+                  props.get(), kMprisPlayer) >= 0) {
+      props.release();
       ++m_scanPending;
+    }
     // the name and the .desktop entry never change: once per player
+    auto root = std::make_unique<ScanCall>(ScanCall{this, scan, n, true});
     if (!m_idents.contains(n) && callAsync(m_bus, n.c_str(), kMprisPath, "org.freedesktop.DBus.Properties", "GetAll", onProps,
-                                           new ScanCall{this, scan, n, true}, "org.mpris.MediaPlayer2") >= 0)
+                                           root.get(), "org.mpris.MediaPlayer2") >= 0) {
+      root.release();
       ++m_scanPending;
+    }
   }
   if (m_scanPending == 0) finishScan();
 }
