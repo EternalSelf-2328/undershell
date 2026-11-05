@@ -1475,7 +1475,7 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Redo: return es ? "Rehacer  (Ctrl+Shift+Z)" : "Redo  (Ctrl+Shift+Z)";
     case T::Magnet: return es ? "Imán: alinear con bordes, centro y otros widgets" : "Magnet: snap to edges, centre and widgets";
     case T::Grid: return es ? "Cuadrícula" : "Grid";
-    case T::Help: return es ? "Atajos de teclado" : "Keyboard shortcuts";
+    case T::Help: return es ? "Ajustes y atajos" : "Settings and shortcuts";
     case T::Collapse: return es ? "Minimizar / expandir" : "Fold / unfold";
     case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
     case T::Walls: return es ? "Fondos: tus imágenes y el Workshop de Wallpaper Engine" : "Wallpapers: your pictures and Wallpaper Engine's Workshop";
@@ -2956,10 +2956,13 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
       c.segment(cx + i * 4.5F, cy - 7, cx + i * 4.5F, cy + 7, 1.3F, col, false);
     }
   } else if (name == "help") {
-    // a question mark: the hook, the stem and the dot
-    c.arc(cx, cy - 2.5F, 4.2F, 2.1F, -1.3F, 1.9F, col, true);
-    c.segment(cx + 2.0F, cy + 1.2F, cx, cy + 2.6F, 2.1F, col);
-    c.circle(cx, cy + 6.6F, 1.4F, col);
+    // a gear (the card holds the language, the performance and the shortcuts):
+    // eight teeth that start inside the ring, so they read as one piece
+    for (int k = 0; k < 8; ++k) {
+      const float a = static_cast<float>(k) * 0.7854F, ca = std::cos(a), sa = std::sin(a);
+      c.segment(cx + ca * 4.8F, cy + sa * 4.8F, cx + ca * 7.7F, cy + sa * 7.7F, 3.0F, col, false);
+    }
+    c.circle(cx, cy, 5.6F, Color{0, 0, 0, 0}, 2.3F, col);
   } else if (name == "check") {
     c.segment(cx - 6, cy, cx - 2, cy + 4.5F, 2.2F, col);
     c.segment(cx - 2, cy + 4.5F, cx + 6.5F, cy - 5, 2.2F, col);
