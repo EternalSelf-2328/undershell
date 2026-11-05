@@ -72,6 +72,7 @@ local kGlyphs = {
   now_playing = "music",
   scene = "movie",
   shape = "shape",
+  system = "cpu",
   text = "typography",
   visualizer = "chart-bar",
   weather = "cloud",

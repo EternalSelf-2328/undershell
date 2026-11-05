@@ -167,6 +167,7 @@ core = static_library('undershell-core',
   'src/video.cpp',
   'src/visualizer.cpp',
   'src/weather.cpp',
+  'src/sysmon.cpp',
   'src/weatherfeed.cpp',
   'src/wallkind.cpp',
   'src/wallgallery.cpp',
@@ -217,7 +218,7 @@ configure_file(input : 'data/undershell.service.in', output : 'undershell.servic
 install_data('README.md', 'NOTICE.md', 'docs/OPTIONS.md', 'docs/EFFECTS.md', 'docs/PARTICLES.md', install_dir : docdir)
 install_data('LICENSE', install_dir : prefix / get_option('datadir') / 'licenses/undershell')
 
-foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles', 'motion', 'perf', 'render', 'wallset']
+foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles', 'motion', 'perf', 'render', 'system', 'wallset']
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep, cpp_args : test_args),
        env : ['UNDERSHELL_DATA_DIR=' + meson.project_source_root() / 'data', 'UNDERSHELL_SCENE_SELF=1'])
 endforeach

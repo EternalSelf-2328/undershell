@@ -77,7 +77,7 @@ const char* lookKey(const Widget& w) {
   if (w.cfg.type == "image") return "fit";
   if (w.cfg.type == "calendar") return "layout";
   if (w.cfg.type == "notes") return "plate";
-  if (w.cfg.type == "weather") return "layout";
+  if (w.cfg.type == "weather" || w.cfg.type == "system") return "layout";
   return "style";
 }
 std::string lookOf(const Widget& w) {
@@ -89,6 +89,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "calendar") return w.cfg.options["layout"].value_or(std::string("month"));
   if (w.cfg.type == "notes") return w.cfg.options["plate"].value_or(std::string("paper"));
   if (w.cfg.type == "weather") return w.cfg.options["layout"].value_or(std::string("now"));
+  if (w.cfg.type == "system") return w.cfg.options["layout"].value_or(std::string("rings"));
   if (w.cfg.type == "filter") return w.cfg.options["style"].value_or(std::string("warm"));
   if (w.cfg.type == "scene") return w.cfg.options["scene"].value_or(std::string());
   return w.cfg.options["style"].value_or(std::string("bars"));
@@ -1443,6 +1444,8 @@ void App::onScroll(double value) {
     looks = {"paper", "glass", "none"};
   } else if (w.cfg.type == "weather") {
     looks = {"now", "card", "week", "hours"};
+  } else if (w.cfg.type == "system") {
+    looks = {"rings", "bars", "graph", "text"};
   } else if (w.cfg.type == "filter") {
     looks = FilterWidget::styles();
   } else if (w.cfg.type == "visualizer") {

@@ -297,6 +297,24 @@ it redraws when a report lands and on the hour.
   <img src="docs/media/weather.webp" alt="The weather now, by the hour, for the week, and as a card" width="640">
 </p>
 
+## System monitor
+
+The **system** widget shows how the computer is doing: CPU, memory, GPU,
+temperature, network, disk and battery, as **rings**, **bars**, short
+**graphs** of the last minute, or plain **text**. Each reading can be turned
+off (`show_cpu`, `show_ram`, `show_gpu`, `show_temp`, `show_net`, `show_disk`,
+`show_battery`), and one past its limit (90 % used, 85 °C, a battery under
+15 % on its own) takes the **Alert** colour. Everything comes from `/proc`
+and `/sys`, with no programs run and no extra permissions: the GPU is AMD's
+`gpu_busy_percent` or, on Intel, the share of time it was not asleep
+(`rc6_residency_ms` on i915, `idle_residency_ms` on Xe); the temperature, the
+CPU package's sensor. A reading takes about 0.2 ms of CPU every second
+(`interval`), and the widget redraws only then.
+
+<p align="center">
+  <img src="docs/media/system.webp" alt="The system monitor as rings, bars, graphs and text" width="640">
+</p>
+
 ## Notes
 
 The **notes** widget keeps a note in a Markdown file: headings, lists (nested

@@ -216,6 +216,10 @@ int main() {
     for (const char* t : {"visualizer", "clock", "shape", "text", "lyrics", "calendar", "notes", "weather"})
       CHECK(hasKey(t, "colors_from"));
     for (const char* t : {"now_playing", "filter", "image", "scene"}) CHECK(!hasKey(t, "colors_from"));  // the card has accent_source
+    // the system monitor: Fahrenheit with the temperature, the disk's path with the disk
+    CHECK(shows("system", "", "fahrenheit") && !shows("system", "show_temp = false", "fahrenheit"));
+    CHECK(!shows("system", "", "disk_path") && shows("system", "show_disk = true", "disk_path"));
+    CHECK(hasKey("system", "colors_from") && hasKey("system", "interval"));
     // the wallpaper widget's depth plane: when it cuts its picture, or particles
     // hide behind the subject, or an effect keeps to the subject or the background
     CHECK(!shows("filter", "depth = false", "depth_level") && shows("filter", "depth = true", "depth_level"));

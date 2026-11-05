@@ -260,6 +260,31 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
   // the defaults are the "custom" style's (nothing changed); a style brings its own (FilterWidget::preset)
+  static const std::vector<PropSpec> system = {
+      {K::Enum, "layout", "Layout", "Disposición", {"rings", "bars", "graph", "text"}, 0, 0, 0, 0, "rings"},
+      {K::Bool, "show_cpu", "CPU", "CPU", {}, 0, 1, 1, 1},
+      {K::Bool, "show_ram", "Memory", "Memoria", {}, 0, 1, 1, 1},
+      {K::Bool, "show_gpu", "GPU", "GPU", {}, 0, 1, 1, 1},
+      {K::Bool, "show_temp", "Temperature", "Temperatura", {}, 0, 1, 1, 1},
+      {K::Bool, "show_net", "Network", "Red", {}, 0, 1, 1, 1},
+      {K::Bool, "show_disk", "Disk", "Disco", {}, 0, 1, 1, 0},
+      {K::Bool, "show_battery", "Battery", "Batería", {}, 0, 1, 1, 1},
+      {K::Text, "disk_path", "Disk at", "Disco en", {}, 0, 0, 0, 0, "/"},
+      {K::Number, "interval", "Every s", "Cada s", {}, 0.5, 10, 0.5, 1},
+      {K::Bool, "fahrenheit", "Fahrenheit", "Fahrenheit", {}, 0, 1, 1, 0},
+      {K::Enum, "plate", "Plate", "Fondo", {"glass", "solid", "none"}, 0, 0, 0, 0, "glass"},
+      {K::Font, "font", "Font", "Fuente", {}, 0, 0, 0, 0, "Space Grotesk"},
+      {K::Color, "accent", "Accent", "Acento", {}, 0, 0, 0, 0, "primary"},
+      {K::Color, "ink", "Ink", "Tinta", {}, 0, 0, 0, 0, "on_surface"},
+      {K::Color, "alert", "Alert", "Alerta", {}, 0, 0, 0, 0, "error"},
+      {K::Enum, "language", "Language", "Idioma", {"system", "en", "es"}, 0, 0, 0, 0, "system"},
+      {K::Enum, "colors_from", "Colours from", "Colores de", {"theme", "cover"}, 0, 0, 0, 0, "theme"},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> filter = {
       {K::Enum, "style", "Style", "Estilo", {"warm", "cool", "noir", "vintage", "dream", "night", "vivid", "faded", "duotone", "custom"}, 0, 0,
        0, 0, "warm"},
@@ -317,6 +342,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   if (type == "calendar") return calendar;
   if (type == "notes") return notes;
   if (type == "weather") return weather;
+  if (type == "system") return system;
   if (type == "filter") return filter;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;

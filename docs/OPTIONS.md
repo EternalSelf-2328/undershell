@@ -332,6 +332,31 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+| Key | Values | Default | |
+|---|---|---|---|
+| `layout` | `rings`, `bars`, `graph`, `text` | `"rings"` | Layout |
+| `show_cpu` | `true` / `false` | `true` | CPU |
+| `show_ram` | `true` / `false` | `true` | Memory |
+| `show_gpu` | `true` / `false` | `true` | GPU |
+| `show_temp` | `true` / `false` | `true` | Temperature |
+| `show_net` | `true` / `false` | `true` | Network |
+| `show_disk` | `true` / `false` | `false` | Disk |
+| `show_battery` | `true` / `false` | `true` | Battery |
+| `disk_path` | text | `"/"` | Disk at |
+| `interval` | 0.5 – 10 | `1` | Every s |
+| `fahrenheit` | `true` / `false` | `false` | Fahrenheit |
+| `plate` | `glass`, `solid`, `none` | `"glass"` | Plate |
+| `font` |  | `"Space Grotesk"` | Font |
+| `accent` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Accent |
+| `ink` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Ink |
+| `alert` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"error"` | Alert |
+| `language` | `system`, `en`, `es` | `"system"` | Language |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
+| `opacity` | 0.05 – 1 | `1` | Opacity |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
 
 ## `type = "scene"`
 
