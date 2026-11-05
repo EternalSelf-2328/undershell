@@ -112,8 +112,8 @@ void FxWidget::draw(const DrawContext& ctx) {
     glBindTexture(GL_TEXTURE_2D, m_tex);
     glUniform1f(prog.uniform("u_aspect"), static_cast<float>(w) / static_cast<float>(h));
   };
-  m_fx.drawLights(own, true, picture);
-  m_fx.use(0, own, true);
+  m_fx.drawLights(own, true, picture, true);  // its own render is premultiplied
+  m_fx.use(0, own, true, true);
   glUniform2f(m_fx.program().uniform("u_screen"), static_cast<float>(w), static_cast<float>(h));
   picture(m_fx.program());
   glDisable(GL_BLEND);

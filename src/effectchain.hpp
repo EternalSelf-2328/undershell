@@ -56,11 +56,12 @@ public:
   // Uses `prog` (0 main, 1 lights) and sets what the effects read: time,
   // music, quality, depth (unit 1), noise (2), the lights (3), the painted
   // masks (4), each effect's options. `flipY`: the picture is an off-screen
-  // render (its rows bottom up).
-  void use(int which, const DrawContext& ctx, bool flipY);
+  // render (its rows bottom up); `unpremul`: its colour is premultiplied, and
+  // wall()/wallLod() hand it back straight.
+  void use(int which, const DrawContext& ctx, bool flipY, bool unpremul = false);
   // The lights pass into its smaller texture (bound on unit 3 after);
   // `picture` sets the picture's own uniforms and binds it on unit 0.
-  void drawLights(const DrawContext& ctx, bool flipY, const std::function<void(const Program&)>& picture);
+  void drawLights(const DrawContext& ctx, bool flipY, const std::function<void(const Program&)>& picture, bool unpremul = false);
 
 private:
   struct Fx {

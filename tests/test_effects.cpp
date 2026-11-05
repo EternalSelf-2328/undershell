@@ -287,6 +287,27 @@ int main() {
       sq.erase("fx_waves");
       CHECK(imageDiff(renderWidget("shape", sq, 120, 120, pal), still) < 0.01);  // nothing on: drawn straight
     }
+    // an effect that resamples the picture (VHS) reads it straight: a widget at
+    // half opacity comes out at half the brightness, not a quarter
+    {
+      auto green = [&](double opacity) {
+        toml::table t;
+        t.insert_or_assign("shape", "rect");
+        t.insert_or_assign("fill", "#40c080");
+        t.insert_or_assign("opacity", opacity);
+        t.insert_or_assign("fx_vhs", true);
+        t.insert_or_assign("fx_vhs_strength", 1.0);
+        t.insert_or_assign("fx_vhs_snow", 0.0);
+        const Image img = renderWidget("shape", t, 120, 120, pal);
+        double sum = 0;
+        for (int y = 40; y < 80; ++y)
+          for (int x = 40; x < 80; ++x) sum += img.rgba[(static_cast<size_t>(y) * 120 + x) * 4 + 1];
+        return sum / 1600;
+      };
+      const double ratio = green(0.5) / green(1.0);
+      if (!(ratio > 0.45 && ratio < 0.55)) std::fprintf(stderr, "vhs at half opacity: %.3f of opaque\n", ratio);
+      CHECK(ratio > 0.45 && ratio < 0.55);
+    }
     // all together in one pass
     const Image every = renderWidget("filter", all, 160, 90, pal, 1000, 30, 3.0, nullptr, png);
     CHECK(every.w == 160 && every.rgba[(45 * 160 + 80) * 4 + 3] == 255);

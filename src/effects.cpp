@@ -33,14 +33,17 @@ uniform vec2 u_screen;        // the surface, px
 uniform float u_depthOn, u_depthLevel, u_depthFeather;
 uniform int u_wrap;           // the picture repeats (tiled)
 uniform int u_flipY;          // the picture is an off-screen render: rows bottom up
+uniform int u_unpremul;       // the picture is a widget's own render: premultiplied
 uniform sampler2D u_fxmasks;  // the four painted effect masks (RGBA over the picture)
 uniform float u_fxmasksOn;
 vec2 screenPx;                // this pixel on the surface, px
 
 vec2 edgeSafe(vec2 uv) { return u_wrap == 1 ? uv : clamp(uv, 0.0005, 0.9995); }
 vec2 texUv(vec2 uv) { uv = edgeSafe(uv); return u_flipY == 1 ? vec2(uv.x, 1.0 - uv.y) : uv; }
-vec3 wall(vec2 uv) { return texture(u_tex, texUv(uv)).rgb; }
-vec3 wallLod(vec2 uv, float lod) { return textureLod(u_tex, texUv(uv), lod).rgb; }
+// what an effect resamples is straight colour, like the c it is handed
+vec3 straight(vec4 t) { return u_unpremul == 1 && t.a > 0.0 ? t.rgb / t.a : t.rgb; }
+vec3 wall(vec2 uv) { return straight(texture(u_tex, texUv(uv))); }
+vec3 wallLod(vec2 uv, float lod) { return straight(textureLod(u_tex, texUv(uv), lod)); }
 float depth(vec2 uv) { return u_depthOn > 0.5 ? textureLod(u_depth, clamp(uv, 0.0, 1.0), 0.0).r : 0.0; }
 float subject(vec2 uv) {
     if (u_depthOn < 0.5) return 0.0;

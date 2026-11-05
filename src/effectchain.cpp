@@ -178,7 +178,7 @@ void EffectChain::build(const char* head, const char* fit, const char* body, con
   }
 }
 
-void EffectChain::use(int which, const DrawContext& ctx, bool flipY) {
+void EffectChain::use(int which, const DrawContext& ctx, bool flipY, bool unpremul) {
   const Program& prog = which == 0 ? m_prog : m_lightProg;
   if (!m_noise) {
     const std::vector<uint8_t> px = effectNoise();
@@ -206,6 +206,7 @@ void EffectChain::use(int which, const DrawContext& ctx, bool flipY) {
   glUniform1i(prog.uniform("u_quality"), perfKnobs().quality);
   glUniform1i(prog.uniform("u_wrap"), ctx.fillMode == 4 && !flipY ? 1 : 0);
   glUniform1i(prog.uniform("u_flipY"), flipY ? 1 : 0);
+  glUniform1i(prog.uniform("u_unpremul"), unpremul ? 1 : 0);
   glUniform1f(prog.uniform("u_depthOn"), ctx.depthField ? 1.0F : 0.0F);
   glUniform1f(prog.uniform("u_depthLevel"), ctx.depthLevel);
   glUniform1f(prog.uniform("u_depthFeather"), ctx.depthFeather);
@@ -240,7 +241,7 @@ void EffectChain::use(int which, const DrawContext& ctx, bool flipY) {
 // the light effects on a surface a fraction of the size (they are soft:
 // rays, fog), stretched over the sharp picture by the main pass; the cost of
 // their many samples falls with the area, 4 to 16 times
-void EffectChain::drawLights(const DrawContext& ctx, bool flipY, const std::function<void(const Program&)>& picture) {
+void EffectChain::drawLights(const DrawContext& ctx, bool flipY, const std::function<void(const Program&)>& picture, bool unpremul) {
   if (!hasLights()) return;
   GLint fbo = 0, vp[4] = {};
   glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo);
@@ -263,7 +264,7 @@ void EffectChain::drawLights(const DrawContext& ctx, bool flipY, const std::func
   glBindFramebuffer(GL_FRAMEBUFFER, m_lightFbo);
   glViewport(0, 0, lw, lh);
   glDisable(GL_BLEND);
-  use(1, ctx, flipY);
+  use(1, ctx, flipY, unpremul);
   glUniform2f(m_lightProg.uniform("u_screen"), static_cast<float>(lw), static_cast<float>(lh));
   picture(m_lightProg);
   drawUnitQuad();
