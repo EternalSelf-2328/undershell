@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.5.1
+Version:        1.6.0
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -88,6 +88,17 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Fri Nov 06 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.6.0-1
+- Wallpaper: with skwd v2 (or undershell-wall) running, each screen's wallpaper comes from it, not from the shell's possibly old path; changes followed on its socket (#1)
+- New widgets: system monitor (CPU, memory, GPU, temperature, network, disk, battery), activity (your commits by day from local git), and a pet that walks, climbs windows, dances and sleeps
+- New looks: Game of Life, lava lamp and a globe of dots lit by the real sun (32 looks)
+- New effects: rain on the glass, snow on things (from the depth map), aurora; real weather on the wallpaper from Open-Meteo
+- Screensaver after a while without input (ext-idle-notify), off by default
+- Colours from the album cover on eight widget types
+- Lyrics: karaoke word by word with enhanced LRC, and a .lrc beside a local track
+- Depth: particles and effects cut at the widget's own plane; an unpainted mask means everywhere
+- Music card: covers under 16 KB decode again
+
 * Mon Oct 26 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.5.1-1
 - Clock: automatic Matugen M3 accent from the wallpaper (`accent = "auto"`)
 - Clock: fix m_wall initialization order so the wallpaper accent loads immediately
