@@ -212,6 +212,7 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     const FilterConfig f = FilterConfig::fromTable(o);
     if (key == "tint") return f.tintAmount > 0;
     if (key == "dark" || key == "light") return f.duotone;
+    if (key == "weather_location") return o["weather_fx"].value_or(false);
     if (key == "depth_level") {  // the plane cuts the picture ("Background only"), and splits subject from background
       if (o["depth"].value_or(false)) return true;  // for particles behind it and effects on either side
       for (const auto& [k, v] : o) {
@@ -874,7 +875,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz", "fallback", "offset", "first_day", "weekends",
                "week_numbers", "show_cpu", "show_ram", "show_gpu", "show_temp", "show_net", "show_disk", "show_battery", "disk_path",
-               "interval"}))
+               "interval", "weather_fx", "weather_location"}))
       return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
     if (in(k, {"warp", "tilt_x", "tilt_y", "skew", "perspective", "mesh_preset", "mesh_amount", "mesh_grid", "mesh_between",

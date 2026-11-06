@@ -393,6 +393,8 @@ A colour filter over the wallpaper: it draws the wallpaper again (fitted as the 
 | `posterize` | 0 – 16 | `0` | Posterize |
 | `pixelate` | 0 – 40 | `0` | Pixelate |
 | `opacity` | 0.05 – 1 | `1` | Strength |
+| `weather_fx` | `true` / `false` | `false` | Real weather |
+| `weather_location` | text | `""` | Weather at |
 | `depth` | `true` / `false` | `false` | Background only |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
@@ -426,6 +428,11 @@ The same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, an
 | | `fx_sway_speed` | 0 – 3 | `1` | Speed |
 | | `fx_sway_gusts` | 0 – 1 | `0.5` | Gusts |
 | | `fx_sway_size` | 0.2 – 4 | `1` | Leaf size |
+| `fx_droplets` | | `true` / `false` | `false` | Rain on the glass |
+| | `fx_droplets_amount` | 0 – 1 | `0.6` | Amount |
+| | `fx_droplets_size` | 0.3 – 3 | `1` | Drop size |
+| | `fx_droplets_speed` | 0 – 3 | `1` | Speed |
+| | `fx_droplets_bend` | 0 – 2 | `1` | Refraction |
 | `fx_chroma` | | `true` / `false` | `false` | Lens fringe |
 | | `fx_chroma_beat` | `true` / `false` | `false` | On the beat |
 | `fx_vhs` | | `true` / `false` | `false` | VHS tape |
@@ -442,6 +449,10 @@ The same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, an
 | | `fx_shine_width` | 0.02 – 0.6 | `0.12` | Width |
 | | `fx_shine_angle` | -90 – 90 | `30` | Angle ° |
 | | `fx_shine_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#ffffff"` | Colour |
+| `fx_snowcap` | | `true` / `false` | `false` | Snow on things |
+| | `fx_snowcap_amount` | 0 – 1 | `0.7` | Amount |
+| | `fx_snowcap_thickness` | 0.2 – 3 | `1` | Thickness |
+| | `fx_snowcap_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#f4f8ff"` | Colour |
 | `fx_twinkle` | | `true` / `false` | `false` | Twinkle |
 | | `fx_twinkle_amount` | 0.2 – 3 | `1` | Density |
 | | `fx_twinkle_speed` | 0 – 3 | `1` | Speed |

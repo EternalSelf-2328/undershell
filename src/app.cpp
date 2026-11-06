@@ -1340,6 +1340,12 @@ void App::render(Widget& w) {
   tctx.audio = audioFrame(&w);
   tctx.media = &m_media;
   tctx.weather = &m_weather;
+  for (const auto& o : m_widgets)  // the place the weather widget names
+    if (o->cfg.type == "weather")
+      if (auto p = o->cfg.options["location"].value<std::string>(); p && !p->empty()) {
+        tctx.weatherPlace = *p;
+        break;
+      }
   w.impl->tick(tctx);
   // after the tick: what it just showed is not what it waits for next (an
   // animation's next frame, not the one it has put up)

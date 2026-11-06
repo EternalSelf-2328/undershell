@@ -123,6 +123,9 @@ const Builtin kBuiltins[] = {
     {"sway",
 #include "fx/sway.inc"
     },
+    {"droplets",  // the glass in front of everything: last of the warps
+#include "fx/droplets.inc"
+    },
     {"chroma",
 #include "fx/chroma.inc"
     },
@@ -134,6 +137,9 @@ const Builtin kBuiltins[] = {
     },
     {"shine",
 #include "fx/shine.inc"
+    },
+    {"snowcap",
+#include "fx/snowcap.inc"
     },
     {"twinkle",
 #include "fx/twinkle.inc"

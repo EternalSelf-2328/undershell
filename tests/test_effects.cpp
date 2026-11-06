@@ -38,7 +38,7 @@ int main() {
 
   // the built-ins: all well formed, warps first
   EffectLibrary& lib = effectLibrary();
-  CHECK(lib.all().size() == 14);
+  CHECK(lib.all().size() == 16);
   std::set<std::string> ids;
   int stage = 0;
   bool ordered = true;
@@ -98,7 +98,7 @@ int main() {
   CHECK(lib.find("tilt") && lib.find("tilt")->nameEs == "Inclinar" && !lib.find("tilt")->file.empty());
   CHECK(lib.find("grain") && lib.find("grain")->nameEn == "My grain" && !lib.find("grain")->file.empty());
   CHECK(lib.find("broken") && !lib.find("broken")->error.empty());
-  CHECK(lib.all().size() == 16);
+  CHECK(lib.all().size() == 18);
   CHECK(!lib.refresh());  // nothing changed since
 
   // only effects that are on and work
@@ -189,7 +189,7 @@ int main() {
       CHECK(img.w == 160 && img.rgba[(45 * 160 + 80) * 4 + 3] == 255);
     }
     // the ones that do something with no music and no depth change the picture
-    for (const char* id : {"waves", "ripple", "flow", "sway", "chroma", "vhs", "godrays", "mist", "grain"}) {
+    for (const char* id : {"waves", "ripple", "flow", "sway", "droplets", "chroma", "vhs", "godrays", "mist", "grain"}) {
       toml::table one = plain;
       one.insert_or_assign(effectKey(id), true);
       const Image img = renderWidget("filter", one, 160, 90, pal, 1000, 1, 3.0, nullptr, png);

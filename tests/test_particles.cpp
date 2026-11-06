@@ -2,12 +2,16 @@
 // deaths, bounds, the level's counts, the music), the person's folder, the
 // inspector rows and (with GL) drawing over the wallpaper.
 #include "check.hpp"
+#include "weatherfeed.hpp"
+#include "jobs.hpp"
+#include "filter.hpp"
 #include "gl.hpp"
 #include "noctalia.hpp"
 #include "offscreen.hpp"
 #include "particles.hpp"
 #include "perf.hpp"
 
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -132,6 +136,28 @@ int main() {
   opts.insert_or_assign("pt_snow_mask", "paint2");
   CHECK(hasRow(particleRows(opts, false), "pt_snow_paint"));
 
+  // the real weather: rain, snow, drops, snow on things and mist follow the sky
+  {
+    toml::table own;
+    own.insert_or_assign("pt_rain_amount", 2.0);  // the person wants it heavier
+    own.insert_or_assign("pt_rain_behind", true);
+    own.insert_or_assign("fx_mist", true);         // the weather owns the mist
+    const toml::table rain = weatherOptions(own, Sky::Rain, 0);
+    CHECK(rain["pt_rain"].value_or(false) && rain["pt_rain_amount"].value_or(0.0) == 2.4 && rain["pt_rain_behind"].value_or(false));
+    CHECK(rain["fx_droplets"].value_or(false) && !rain["pt_snow"].value_or(true) && !rain["fx_mist"].value_or(true));
+    const toml::table clear = weatherOptions(own, Sky::Clear, 0);
+    CHECK(!clear["pt_rain"].value_or(true) && !clear["fx_droplets"].value_or(true) && !clear["fx_snowcap"].value_or(true));
+    CHECK(clear["pt_rain_behind"].value_or(false));  // its other options stay
+    const toml::table snow0 = weatherOptions(own, Sky::Snow, 0), snow10 = weatherOptions(own, Sky::Snow, 10),
+                      snow60 = weatherOptions(own, Sky::Snow, 60);
+    CHECK(snow0["pt_snow"].value_or(false) && !snow0["fx_snowcap"].value_or(true));  // nothing lies yet
+    CHECK(snow10["fx_snowcap"].value_or(false) && std::abs(snow10["fx_snowcap_amount"].value_or(0.0) - 0.4) < 1e-9);
+    CHECK(std::abs(snow60["fx_snowcap_amount"].value_or(0.0) - 0.8) < 1e-9);  // and stops thickening
+    const toml::table fog = weatherOptions({}, Sky::Fog, 0), cloud = weatherOptions({}, Sky::Cloudy, 0);
+    CHECK(fog["fx_mist"].value_or(false) && fog["fx_mist_look"].value_or(std::string()) == "fog");
+    CHECK(cloud["fx_mist_look"].value_or(std::string()) == "shadows");
+  }
+
   // with GL: over the wallpaper, and gone when off
   Headless gl;
   if (gl.ok()) {
@@ -154,6 +180,24 @@ int main() {
       const double diff = imageDiff(img, base);
       if (!(diff > 0.005)) std::fprintf(stderr, "%s changed the picture by %.3f\n", d.id.c_str(), diff);
       CHECK(diff > 0.005);  // dust and embers are small: a little
+    }
+    // the real weather on the wallpaper: rain where the report says so, with nothing turned on by hand
+    {
+      Jobs jobs(1);
+      WeatherService svc(jobs);
+      WeatherReport r;
+      r.state = WeatherReport::State::Ready;
+      r.code = 63;  // moderate rain
+      svc.setForTest("Quito", false, false, r);
+      toml::table w = o;
+      w.insert_or_assign("weather_fx", true);
+      w.insert_or_assign("weather_location", "Quito");
+      const Image wet = renderWidget("filter", w, 320, 180, pal, 1000, 30, 3.0, &svc, png);
+      r.code = 0;  // clear: nothing over the picture
+      svc.setForTest("Quito", false, false, r);
+      const Image dry = renderWidget("filter", w, 320, 180, pal, 1000, 30, 3.0, &svc, png);
+      std::fprintf(stderr, "weather: rain changes the picture by %.3f, a clear sky by %.3f\n", imageDiff(wet, base), imageDiff(dry, base));
+      CHECK(imageDiff(wet, base) > 0.05 && imageDiff(dry, base) < 0.01);
     }
     // only below the line: the top as it was
     toml::table below = o;

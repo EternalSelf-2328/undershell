@@ -304,6 +304,8 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "posterize", "Posterize", "Posterizar", {}, 0, 16, 1, 0, "", true},
       {K::Number, "pixelate", "Pixelate", "Pixelar", {}, 0, 40, 1, 0, "", true},
       {K::Number, "opacity", "Strength", "Intensidad", {}, 0.05, 1, 0.05, 1},
+      {K::Bool, "weather_fx", "Real weather", "Clima real", {}, 0, 1, 1, 0},
+      {K::Text, "weather_location", "Weather at", "Clima de", {}, 0, 0, 0, 0, ""},
       {K::Bool, "depth", "Background only", "Solo el fondo", {}, 0, 1, 1, 0},
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},

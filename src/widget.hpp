@@ -47,6 +47,7 @@ struct TickContext {
   AudioFrame audio;
   MediaService* media = nullptr;
   WeatherService* weather = nullptr;
+  std::string weatherPlace;  // the place a weather widget names, for widgets that leave theirs empty
 };
 
 struct DrawContext {

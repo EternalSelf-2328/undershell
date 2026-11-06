@@ -216,8 +216,77 @@ void FilterWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct)
   m_lightC = noct.color(m_cfg.light, Color::fromHex("#ffd9a8"));
   effectLibrary().refresh();  // a file added while undershell was not watching
   particleLibrary().refresh();
-  m_fx.configure(cfg.options, noct);
-  m_pt.configure(cfg.options, noct);
+  m_opts = cfg.options;
+  m_noct = noct;
+  m_weather = cfg.options["weather_fx"].value_or(false);
+  m_place = cfg.options["weather_location"].value_or(std::string());
+  applyWeather();
+}
+
+toml::table weatherOptions(const toml::table& own, Sky sky, double snowMinutes) {
+  toml::table o = own;
+  double rain = 0, drops = 0, snow = 0, mist = 0;
+  bool shadows = false;
+  switch (sky) {
+    case Sky::Drizzle: rain = 0.5, drops = 0.35; break;
+    case Sky::Rain: rain = 1.2, drops = 0.65; break;
+    case Sky::Thunder: rain = 1.8, drops = 0.85; break;
+    case Sky::Snow: snow = 1.2; break;
+    case Sky::Fog: mist = 0.65; break;
+    case Sky::Cloudy: mist = 0.45, shadows = true; break;
+    default: break;
+  }
+  auto scaled = [&](const char* key, double v) {  // the person's amount, as a scale of the weather's
+    o.insert_or_assign(key, std::clamp(v * own[key].value_or(1.0), 0.0, 3.0));
+  };
+  o.insert_or_assign("pt_rain", rain > 0);
+  if (rain > 0) scaled("pt_rain_amount", rain);
+  o.insert_or_assign("fx_droplets", drops > 0);
+  if (drops > 0) o.insert_or_assign("fx_droplets_amount", drops);
+  o.insert_or_assign("pt_snow", snow > 0);
+  if (snow > 0) scaled("pt_snow_amount", snow);
+  const double cap = snow > 0 ? std::clamp(snowMinutes / 20.0, 0.0, 1.0) * 0.8 : 0;
+  o.insert_or_assign("fx_snowcap", cap > 0.02);
+  if (cap > 0.02) o.insert_or_assign("fx_snowcap_amount", cap);
+  o.insert_or_assign("fx_mist", mist > 0);
+  if (mist > 0) {
+    o.insert_or_assign("fx_mist_density", mist);
+    o.insert_or_assign("fx_mist_look", shadows ? "shadows" : "fog");
+  }
+  return o;
+}
+
+void FilterWidget::applyWeather() {
+  if (!m_weather) {
+    m_fx.configure(m_opts, m_noct);
+    m_pt.configure(m_opts, m_noct);
+    return;
+  }
+  const double minutes = m_snowSince >= 0 ? (nowSeconds() - m_snowSince) / 60 : 0;
+  const toml::table o = weatherOptions(m_opts, m_skyKnown ? m_sky : Sky::Clear, minutes);
+  m_fx.configure(o, m_noct);
+  m_pt.configure(o, m_noct);
+  m_snowApplied = minutes;
+}
+
+void FilterWidget::tick(const TickContext& ctx) {
+  if (m_weather && ctx.weather) {
+    const std::string place = m_place.empty() ? ctx.weatherPlace : m_place;
+    const WeatherReport& r = ctx.weather->want(place, false, false);
+    if (r.state == WeatherReport::State::Ready) {
+      const Sky sky = skyOf(r.code);
+      if (!m_skyKnown || sky != m_sky) {
+        m_sky = sky;
+        m_skyKnown = true;
+        m_snowSince = sky == Sky::Snow ? ctx.now : -1;
+        applyWeather();
+      } else if (m_snowSince >= 0 && (ctx.now - m_snowSince) / 60 - m_snowApplied > 1 && m_snowApplied < 20) {
+        applyWeather();  // the snow on things thickens a little each minute
+      }
+    }
+  }
+  m_fx.tick(ctx);
+  m_pt.tick(ctx);
 }
 
 void FilterWidget::draw(const DrawContext& ctx) {

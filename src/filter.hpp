@@ -21,6 +21,7 @@
 #include "particles.hpp"
 #include "gl.hpp"
 #include "wallstore.hpp"
+#include "weatherfeed.hpp"
 #include "widget.hpp"
 
 #include <array>
@@ -49,13 +50,17 @@ struct FilterConfig {
   static FilterConfig fromTable(const toml::table& t);
 };
 
+// The real weather on the wallpaper (weather_fx = true): the person's options
+// with rain, snow, drops on the glass, snow on things and mist turned on or
+// off by the sky, as heavy as it is; snow on things thickens over 20 minutes
+// of snowfall. Their other options (speed, tint, behind the subject…) stay.
+[[nodiscard]] toml::table weatherOptions(const toml::table& own, Sky sky, double snowMinutes);
+
 class FilterWidget final : public WidgetImpl {
 public:
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
-  void tick(const TickContext& ctx) override {
-    m_fx.tick(ctx);
-    m_pt.tick(ctx);
-  }
+  void tick(const TickContext& ctx) override;
+  [[nodiscard]] bool wantsWeather() const override { return m_weather; }
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool fullscreen() const override { return true; }
   [[nodiscard]] bool animating(const TickContext&) const override {
@@ -78,7 +83,10 @@ public:
   }
   [[nodiscard]] size_t particles() const { return m_pt.count(); }
   // a picture still decoding: look again soon
-  [[nodiscard]] double nextWakeup(double now) const override { return !idle() && m_fade.waiting() ? now + 0.05 : 1e18; }
+  // (with the real weather on: a look at the sky every half minute, even with nothing to draw)
+  [[nodiscard]] double nextWakeup(double now) const override {
+    return std::min(!idle() && m_fade.waiting() ? now + 0.05 : 1e18, m_weather ? now + 30 : 1e18);
+  }
   [[nodiscard]] Color accent() const override { return m_tintC; }
 
   static const std::vector<std::string>& styles();
@@ -88,7 +96,16 @@ private:
   [[nodiscard]] bool idle() const { return m_cfg.neutral() && m_fx.empty() && m_pt.empty(); }
   void drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity);
 
+  void applyWeather();
+
   FilterConfig m_cfg;
+  toml::table m_opts;  // as written (the weather lays its own over them)
+  NoctaliaState m_noct;
+  bool m_weather = false;
+  std::string m_place;
+  Sky m_sky = Sky::Clear;
+  bool m_skyKnown = false;
+  double m_snowSince = -1, m_snowApplied = -1;
   Color m_tintC, m_darkC, m_lightC;
   EffectChain m_fx;
   ParticleField m_pt;

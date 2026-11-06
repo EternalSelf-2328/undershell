@@ -427,8 +427,10 @@ The same widget can **move** the wallpaper, whatever program sets it:
 **wind** in leaves and grass, a **2.5D camera** that drifts through the
 picture using its depth, a **lens fringe** and a **VHS tape**, a **shine** that
 sweeps across, **twinkles** on the bright spots, a **pulse** with the music,
-**light rays** from a point you place, **drifting mist** or cloud shadows, and
-moving **film** grain. Turn them on in the inspector (each switch opens its
+**light rays** from a point you place, **drifting mist** or cloud shadows,
+**rain on the glass** (beads and running drops that bend the picture behind
+them), **snow on things** (it settles on whatever the depth map says has a top:
+heads, branches, roofs against the sky) and moving **film** grain. Turn them on in the inspector (each switch opens its
 options), with `undershell msg set <id> fx_waves true`, or in the config
 (`fx_<effect> = true`, options in [docs/OPTIONS.md](docs/OPTIONS.md)). Each one
 has a strength and a **where**: everywhere, only the background or only the
@@ -447,6 +449,17 @@ one effect costs about 1 ms of GPU per frame and with six 2.5 ms: about 7 % of
 that GPU at 30 fps. It stays at full resolution (a softer copy of the
 wallpaper would show at once); under load the governor lowers the effects'
 quality and the lights pass's resolution instead.
+
+### The real weather
+
+**Real weather** (`weather_fx = true`) lets the sky outside decide: rain and
+drops on the glass when it rains (heavier in a storm), snow when it snows,
+and snow on things that thickens over twenty minutes of snowfall, fog or
+cloud shadows when it is grey; on a clear day, the wallpaper as it is. The
+weather comes from Open-Meteo for **Weather at** (`weather_location`), or the
+place your weather widget names; it is asked for every half hour. Your own
+settings of those effects (amount, speed, behind the subject, where) stay,
+the weather only turns them on and off and sets how heavy.
 
 ### Particles
 
