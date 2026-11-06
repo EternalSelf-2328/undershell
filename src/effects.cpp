@@ -147,6 +147,9 @@ const Builtin kBuiltins[] = {
     {"pulse",
 #include "fx/pulse.inc"
     },
+    {"aurora",
+#include "fx/aurora.inc"
+    },
     {"mist",
 #include "fx/mist.inc"
     },

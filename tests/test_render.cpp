@@ -455,6 +455,45 @@ int main(int argc, char** argv) {
     }
   }
 
+  // the Game of Life: it lives (generation 40 differs from the start), it is
+  // the same every time, and neither dies out nor fills up; the lava lamp:
+  // its glass leaves the corners empty and holds wax, and the theme's
+  // colours change it
+  {
+    auto filled = [](const Image& img) {
+      size_t n = 0;
+      for (size_t i = 3; i < img.rgba.size(); i += 4) n += img.rgba[i] > 128;
+      return static_cast<double>(n) / static_cast<double>(img.w * img.h);
+    };
+    toml::table lf;
+    lf.insert_or_assign("life_preview", 0.0);
+    const Image gen0 = renderLook("life", 360, 200, pal, &lf);
+    lf.insert_or_assign("life_preview", 40.0);
+    const Image gen40 = renderLook("life", 360, 200, pal, &lf), again = renderLook("life", 360, 200, pal, &lf);
+    const double alive = filled(gen40);
+    if (!(alive > 0.02 && alive < 0.45)) std::fprintf(stderr, "life: %.3f of the box alive after 40 generations\n", alive);
+    CHECK(imageDiff(gen0, gen40) > 1 && imageDiff(gen40, again) < 0.001 && alive > 0.02 && alive < 0.45);
+    toml::table lv;
+    lv.insert_or_assign("lava_preview", 4.0);
+    const Image lamp = renderLook("lava", 300, 300, pal, &lv);
+    auto alphaAtL = [](const Image& img, int x, int y) { return img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3]; };
+    CHECK(alphaAtL(lamp, 4, 150) == 0 && alphaAtL(lamp, 295, 150) == 0 && alphaAtL(lamp, 150, 150) > 0);  // the glass, and inside it
+    size_t wax = 0;  // opaque wax inside
+    for (size_t i = 3; i < lamp.rgba.size(); i += 4) wax += lamp.rgba[i] > 240;
+    CHECK(wax > 1500);
+    lv.insert_or_assign("lava_colors", "theme");
+    CHECK(imageDiff(renderLook("lava", 300, 300, pal, &lv), lamp) > 1);
+    // free in the box: the wax alone, without the glass's translucent fluid round it
+    auto fluid = [](const Image& img) {
+      size_t n = 0;
+      for (size_t i = 3; i < img.rgba.size(); i += 4) n += img.rgba[i] > 30 && img.rgba[i] < 200;
+      return n;
+    };
+    lv.insert_or_assign("lava_colors", "classic");
+    lv.insert_or_assign("lava_glass", false);
+    CHECK(fluid(lamp) > 10000 && fluid(renderLook("lava", 300, 300, pal, &lv)) < fluid(lamp) / 5);
+  }
+
   // the neon sign: its words lit in its colour round the box's middle, a shape
   // drawn in tubes; the text matches its golden (its face is bundled)
   {

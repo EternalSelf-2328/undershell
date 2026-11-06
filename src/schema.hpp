@@ -43,7 +43,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Enum, "style", "Look", "Estilo",
        {"bars", "split", "dots", "segments", "wave", "ribbon", "curtain", "line", "frame", "radial", "orb", "spiral", "halo",
         "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal", "tv", "pond", "aura",
-        "stars", "pixels"}, 0, 0, 0,
+        "stars", "pixels", "life", "lava"}, 0, 0, 0,
        0, "bars"},
       {K::Enum, "color_mode", "Colour", "Color", {"theme", "gradient", "custom"}, 0, 0, 0, 0, "theme"},
       {K::Color, "color", "Colour 1", "Color 1", {}, 0, 0, 0, 0, "primary"},

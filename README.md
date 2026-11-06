@@ -230,13 +230,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 29 looks
+## Visualizer: 31 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`). Plus seventeen of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `pixels`, `terminal` and `tv` (see below).
+and Ryoku's motion (`Motion.qml`). Plus nineteen of its own: `halo` (a glowing
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `pixels`, `life`, `lava`, `terminal` and `tv` (see below).
 
 <p align="center">
   <img src="docs/media/looks.webp" alt="The same visualizer box in the editor switching through looks: vortex, fire, smoke, a comic KRAKOOM, rain, a neon LIVE sign, a terminal, bars, TV static, split bars, dots and a filled wave" width="800"><br>
@@ -443,7 +443,7 @@ The same widget can **move** the wallpaper, whatever program sets it:
 **wind** in leaves and grass, a **2.5D camera** that drifts through the
 picture using its depth, a **lens fringe** and a **VHS tape**, a **shine** that
 sweeps across, **twinkles** on the bright spots, a **pulse** with the music,
-**light rays** from a point you place, **drifting mist** or cloud shadows,
+**light rays** from a point you place, **an aurora** in the sky (on the beat if you like), **drifting mist** or cloud shadows,
 **rain on the glass** (beads and running drops that bend the picture behind
 them), **snow on things** (it settles on whatever the depth map says has a top:
 heads, branches, roofs against the sky) and moving **film** grain. Turn them on in the inspector (each switch opens its
@@ -1032,6 +1032,32 @@ laptop), half that at 30.
 <p align="center">
   <img src="docs/media/pixels.webp" alt="A dark field of square blue pixels, sparse in the middle and dense at the bottom corners, with the word UNDERSHELL in big pixels shaded from pale at the top to dark below, and a square outline opening near it" width="760"><br>
   <sub><code>pixels</code> with <code>pixels_text = "UNDERSHELL"</code></sub>
+</p>
+
+## Game of Life
+
+`life`: Conway's Game of Life over the box, the cells born with three
+neighbours and kept with two or three, a little faster with the groove.
+Each kick drops gliders and small seeds where the spectrum is loudest, a
+dead cell leaves a fading trail, and a world that dies out or freezes
+starts again. Cell size, generations per second and the trail are yours;
+0.25 ms of GPU at 1074×621 on an HD 520.
+
+<p align="center">
+  <img src="docs/media/life.webp" alt="The Game of Life look: cells in the theme's colours with fading trails" width="520">
+</p>
+
+## Lava lamp
+
+`lava`: wax warms at the bottom, rises, cools at the top and sinks again,
+the blobs merging and pulling apart as they pass (metaballs). The groove
+turns the heat up, so they climb faster and swell; a kick gives the lowest
+blob a push. In its glass (a tapered lamp in the middle of the box) or free
+over the whole box; classic, neon, ocean or the theme's colours. 0.37 ms of
+GPU in its glass.
+
+<p align="center">
+  <img src="docs/media/lava.webp" alt="The lava lamp look at three moments and in neon colours" width="640">
 </p>
 
 ## Terminal

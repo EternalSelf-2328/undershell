@@ -54,7 +54,7 @@ y = 760                   # on any other screen the widget keeps its place on th
 width = 1000
 height = 280
 space = [1920, 1080]
-# bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars pixels
+# bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars pixels life lava
 style = "bars"
 bars = 64
 thickness = 0.58
@@ -714,7 +714,7 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
          "accent_color = \"#e2342a\"\nink = \"on_surface\"\n"
          "language = \"system\"      # system en es\nweather = true            # metal face\nfahrenheit = false\n";
   } else if (type == "visualizer") {
-    b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars pixels\n",
+    b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars pixels life lava\n",
                      look.empty() ? "bars" : look);
   } else if (type == "scene") {
     b += "scene = \"\"                 # a Wallpaper Engine wallpaper: its Workshop id or folder (scenes and videos)\n"
@@ -725,7 +725,7 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
     b += "depth = false              # true: only the background, behind the wallpaper's subject\n"
          "layer = -999               # under every other widget\n"
          "# animated effects: fx_waves fx_ripple fx_flow fx_sway fx_scroll fx_parallax fx_droplets fx_godrays fx_shine fx_twinkle\n"
-         "# fx_pulse fx_mist fx_snowcap fx_grain fx_vhs fx_chroma = true (options: docs/OPTIONS.md, your own: docs/EFFECTS.md)\n"
+         "# fx_pulse fx_aurora fx_mist fx_snowcap fx_grain fx_vhs fx_chroma = true (options: docs/OPTIONS.md, your own: docs/EFFECTS.md)\n"
          "# particles: pt_snow pt_rain pt_petals pt_fireflies pt_dust pt_embers pt_bubbles pt_sparks = true (docs/PARTICLES.md)\n";
   } else if (type == "weather") {
     b += std::format("layout = \"{}\"           # now card week hours\n", look.empty() ? "now" : look);

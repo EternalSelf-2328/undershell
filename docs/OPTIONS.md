@@ -45,7 +45,7 @@ Ryoku's desktop spectrum.
 
 | Key | Values | Default | |
 |---|---|---|---|
-| `style` | `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`, `frame`, `radial`, `orb`, `spiral`, `halo`, `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `terminal`, `tv`, `pond`, `aura`, `stars`, `pixels` | `"bars"` | Look |
+| `style` | `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`, `frame`, `radial`, `orb`, `spiral`, `halo`, `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `terminal`, `tv`, `pond`, `aura`, `stars`, `pixels`, `life`, `lava` | `"bars"` | Look |
 | `color_mode` | `theme`, `gradient`, `custom` | `"theme"` | Colour |
 | `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour 1 |
 | `color2` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"tertiary"` | Colour 2 |
@@ -481,6 +481,13 @@ The same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, an
 | | `fx_pulse_source` | `bass`, `mid`, `treble`, `beat` | `"bass"` | Follows |
 | | `fx_pulse_mode` | `brighten`, `glow` | `"glow"` | Does |
 | | `fx_pulse_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Glow colour |
+| `fx_aurora` | | `true` / `false` | `false` | Aurora |
+| | `fx_aurora_height` | 0 – 0.8 | `0.15` | Height |
+| | `fx_aurora_speed` | 0 – 3 | `0.6` | Speed |
+| | `fx_aurora_glow` | 0 – 2 | `1` | Brightness |
+| | `fx_aurora_tint` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#3dffa8"` | Colour |
+| | `fx_aurora_tint2` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#8a5cff"` | Top colour |
+| | `fx_aurora_music` | `true` / `false` | `false` | With the music |
 | `fx_mist` | | `true` / `false` | `false` | Drifting mist |
 | | `fx_mist_look` | `fog`, `shadows` | `"fog"` | Kind |
 | | `fx_mist_speed` | 0 – 3 | `0.5` | Speed |
