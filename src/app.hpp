@@ -22,6 +22,7 @@
 #include "canvas.hpp"
 #include "text.hpp"
 #include "wallkind.hpp"
+#include "windowfeed.hpp"
 #include "widget.hpp"
 
 #include <EGL/egl.h>
@@ -75,6 +76,7 @@ struct Output {
   // fractional scale (1366x768 at 0.98 is 1393x783) mode / scale is wrong
   zxdg_output_v1* xdg = nullptr;
   int logW = 0, logH = 0;
+  int logX = 0, logY = 0;  // where it sits in the layout (xdg-output), logical px
   [[nodiscard]] float logicalW() const { return logW > 0 ? static_cast<float>(logW) : static_cast<float>(modeW) / scale; }
   [[nodiscard]] float logicalH() const { return logH > 0 ? static_cast<float>(logH) : static_cast<float>(modeH) / scale; }
 };
@@ -412,6 +414,7 @@ private:
   bool m_saverHover = false;        // the pointer is over one of its surfaces
   double m_saverSince = 0;
   std::vector<std::unique_ptr<Widget>> m_saver;  // its widgets on every screen, while it shows
+  WindowFeed m_windowFeed;    // the windows, for widgets that walk on them (umbriel)
   SkwdEvents m_skwd;          // skwd's (or undershell-wall's) wallpaper changes, as they happen
   bool m_skwdHere = false;    // either is installed: worth connecting to
   wl_pointer* m_pointer = nullptr;

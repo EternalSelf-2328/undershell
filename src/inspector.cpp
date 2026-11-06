@@ -234,6 +234,7 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "pet") return true;
   if (c.type == "activity") {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
@@ -972,6 +973,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "weather") return es ? "Clima" : "Weather";
   if (type == "system") return es ? "Sistema" : "System";
   if (type == "activity") return es ? "Actividad" : "Activity";
+  if (type == "pet") return es ? "Mascota" : "Pet";
   if (type == "filter") return es ? "Fondo y efectos" : "Wallpaper & effects";
   if (type == "scene") return "Wallpaper Engine";  // the same in both languages, and it fits a gallery card
   return "Widget";
@@ -1069,6 +1071,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   if (type == "text") dw = 640, dh = 180;
   if (type == "lyrics") dw = 820, dh = 260;
   if (type == "notes") dw = 340, dh = 380;
+  if (type == "pet") dw = dh = 96;  // its home: where it stands and how big it is
   if (type == "activity") {  // its layout sets its shape
     if (look == "weeks") dw = 520, dh = 160;
     else dw = 720, dh = 170;
@@ -1532,7 +1535,7 @@ const std::vector<GalleryGroup>& galleryGroups() {
   static const std::vector<GalleryGroup> groups = {
       {"Music", "Música", {"visualizer", "lyrics", "now_playing"}},
       {"Time & info", "Hora e información", {"clock", "calendar", "weather", "system", "activity", "notes"}},
-      {"Decoration", "Decoración", {"text", "shape", "image"}},
+      {"Decoration", "Decoración", {"text", "shape", "image", "pet"}},
       {"Wallpaper", "Fondo de pantalla", {"filter", "filter:fx", "filter:pt", "scene"}},
   };
   return groups;
@@ -1551,6 +1554,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "weather") return "weather";
   if (type == "system") return "system";
   if (type == "activity") return "activity";
+  if (type == "pet") return "pet";
   if (type == "filter") return "filter";
   if (type == "scene") return "scene";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
@@ -3176,6 +3180,12 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
   } else if (name == "filter") {  // a frame half in colour
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.triangle(cx - 6, cy + 5, cx + 6, cy - 5, cx + 6, cy + 5, col);
+  } else if (name == "pet") {  // a round little creature with a sprout
+    c.roundRect(cx - 7, cy - 3, 14, 10, 4.5F, Color{0, 0, 0, 0}, 1.5F, col);
+    c.circle(cx - 3, cy + 1, 1.2F, col);
+    c.circle(cx + 3, cy + 1, 1.2F, col);
+    c.segment(cx, cy - 3, cx, cy - 7, 1.4F, col);
+    c.circle(cx + 2, cy - 7.5F, 1.6F, col);
   } else if (name == "activity") {  // a little grid of days, some filled
     for (int i = 0; i < 9; ++i) {
       const float x = cx - 6 + static_cast<float>(i % 3) * 5, y = cy - 6 + static_cast<float>(i / 3) * 5;
@@ -3739,6 +3749,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "weather" ? (es ? "Ahora · horas · semana" : "Now · hours · week")
                        : c.value == "system"  ? (es ? "CPU · memoria · GPU · red" : "CPU · memory · GPU · network")
                        : c.value == "activity" ? (es ? "Tus commits por día · git local" : "Your commits by day · local git")
+                       : c.value == "pet"     ? (es ? "Camina, salta a las ventanas, baila" : "Walks, climbs windows, dances")
                        : c.value == "filter"  ? (es ? "Estilos · duotono · viñeta" : "Looks · two-tone · vignette")
                        : c.value == "filter:fx" ? (es ? "Agua · luz · movimiento · retro" : "Water · light · motion · retro")
                        : c.value == "filter:pt" ? (es ? "Nieve · lluvia · pétalos · chispas" : "Snow · rain · petals · sparks")

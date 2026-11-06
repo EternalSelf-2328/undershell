@@ -53,6 +53,7 @@
     "shape": "Shape",
     "system": "System",
     "activity": "Activity",
+    "pet": "Pet",
     "text": "Text",
     "visualizer": "Visualizer",
     "weather": "Weather"

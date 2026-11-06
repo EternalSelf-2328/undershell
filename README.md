@@ -580,6 +580,24 @@ over one in the editor steps through the shapes.
   <img src="docs/media/shapes.webp" alt="Every shape, and a few with a gradient, a glow, an outline and a shadow" width="600">
 </p>
 
+## Pet
+
+The **pet** is a small round creature with a sprout on its head, in pixel art,
+that lives on your desktop: it walks along the line where you put it, stops
+to look about or sit, hops up onto the **tops of windows** and falls when the
+window under it goes, **dances** and hops on the beat while music plays, and
+dozes off after a minute of silence. It is drawn over the windows but never
+in the way (the overlay layer, click-through), on a surface the size of its
+box that moves with it, so it costs next to nothing: 0.09 ms of GPU a frame
+and 0.1 % of CPU on an HD 520. Where the windows are comes from Umbriel
+(`umbriel subscribe windows`, only while a pet climbs); on other compositors
+it keeps to its line. Its colour, its sprout, its speed, and whether it
+climbs, dances and sleeps are options; in the editor it waits at home.
+
+<p align="center">
+  <img src="docs/media/pet.webp" alt="The pet walking, dancing with a note and asleep" width="520">
+</p>
+
 ## Pictures and stickers
 
 The **image** widget puts a picture on the desktop: a photo, a sticker, a GIF,

@@ -376,6 +376,17 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+| Key | Values | Default | |
+|---|---|---|---|
+| `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour |
+| `sprout` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#7ed957"` | Sprout |
+| `speed` | 0.2 – 3 | `1` | Speed |
+| `climb` | `true` / `false` | `true` | Climbs windows |
+| `dance` | `true` / `false` | `true` | Dances |
+| `sleep` | `true` / `false` | `true` | Sleeps in silence |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
+| `opacity` | 0.05 – 1 | `1` | Opacity |
+| `layer` | -999 – 999 | `0` | Layer |
 
 ## `type = "scene"`
 

@@ -5,6 +5,7 @@
 #include "noctalia.hpp"
 #include "offscreen.hpp"
 #include "activity.hpp"
+#include "pet.hpp"
 #include "sysmon.hpp"
 #include "text.hpp"
 
@@ -192,6 +193,53 @@ int main() {
       }
     std::fprintf(stderr, "activity: accent per week %d %d %d %d\n", col[0], col[1], col[2], col[3]);
     CHECK(col[2] > 300 && col[2] > 4 * (col[0] + col[1] + col[3]));  // the busy week, full; the quiet ones, a faint cell or nothing
+  }
+  // the pet: on its ground line, it climbs a window whose top is within reach,
+  // falls when the window goes, and dozes off after a minute of silence
+  {
+    PetWidget pet;
+    WidgetConfig wc;
+    wc.type = "pet";
+    pet.configure(wc, testPalette());
+    std::vector<Rect> windows{{200, 520, 900, 300}};  // its top 120 px above the ground (640)
+    TickContext tc;
+    tc.box = {600, 544, 96, 96};
+    tc.outputW = 1366, tc.outputH = 768;
+    tc.dt = 1 / 30.0;
+    tc.windows = &windows;
+    bool climbed = false;
+    for (int i = 0; i < 90 * 30; ++i) {
+      tc.now = i / 30.0;
+      pet.tick(tc);
+      climbed = climbed || std::abs(pet.y() - 520) < 0.5;  // standing on the window's top
+    }
+    CHECK(climbed);  // it got up there
+    windows.clear();                     // the window closes under it
+    for (int i = 0; i < 45; ++i) pet.tick(tc);
+    CHECK(std::abs(pet.y() - 640) < 1);  // back on its ground
+    CHECK(pet.mode() == PetWidget::Mode::Sleep);  // 90 s without music
+  }
+  if (gl.ok()) {
+    auto pose = [&](const char* p) {
+      PetWidget pet;
+      WidgetConfig wc;
+      wc.type = "pet";
+      wc.options.insert_or_assign("pet_preview", p);
+      pet.configure(wc, testPalette());
+      TextRenderer tr;
+      Image img = renderDrawn(96, 96, [&] {
+        DrawContext dc;
+        dc.w = 96, dc.h = 96, dc.text = &tr;
+        pet.draw(dc);
+      });
+      tr.releaseGl();
+      return img;
+    };
+    const Image walk = pose("walk"), sleep = pose("sleep");
+    size_t body = 0;
+    for (size_t i = 3; i < walk.rgba.size(); i += 4) body += walk.rgba[i] > 200;
+    CHECK(body > 800);                       // a creature, not a speck
+    CHECK(imageDiff(walk, sleep) > 1);       // asleep it looks otherwise
   }
   fs::remove_all(root);
   return TEST_RESULT();

@@ -14,6 +14,7 @@
 #include "textwidget.hpp"
 #include "visualizer.hpp"
 #include "activity.hpp"
+#include "pet.hpp"
 #include "sysmon.hpp"
 #include "weather.hpp"
 
@@ -32,6 +33,7 @@ std::unique_ptr<WidgetImpl> plainWidget(const std::string& type) {
   if (type == "weather") return std::make_unique<WeatherWidget>();
   if (type == "system") return std::make_unique<SystemWidget>();
   if (type == "activity") return std::make_unique<ActivityWidget>();
+  if (type == "pet") return std::make_unique<PetWidget>();
   if (type == "image") return std::make_unique<ImageWidget>();
   if (type == "scene") return std::make_unique<SceneWidget>();
   return nullptr;
@@ -45,6 +47,6 @@ std::unique_ptr<WidgetImpl> createWidget(const std::string& type) {
   return nullptr;
 }
 
-std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "system", "activity", "filter", "scene"}; }
+std::vector<std::string> widgetTypes() { return {"visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "system", "activity", "pet", "filter", "scene"}; }
 
 }  // namespace undershell

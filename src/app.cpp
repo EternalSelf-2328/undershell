@@ -92,7 +92,11 @@ static const wl_output_listener kOutput = {outGeometry, outMode, outDone, outSca
 
 // xdg-output: the output's size in logical (surface) pixels; since v3 it
 // lands atomically with wl_output.done
-static void xoPosition(void*, zxdg_output_v1*, int32_t, int32_t) {}
+static void xoPosition(void* d, zxdg_output_v1*, int32_t x, int32_t y) {
+  auto* o = static_cast<Output*>(d);
+  o->logX = x;
+  o->logY = y;
+}
 static void xoSize(void* d, zxdg_output_v1*, int32_t w, int32_t h) {
   auto* o = static_cast<Output*>(d);
   o->logW = w;
@@ -841,7 +845,7 @@ void App::createSurface(Widget& w) {
   // Bottom layer, like Noctalia's own desktop widgets: above the wallpaper,
   // below every window. The screensaver: over everything.
   w.layer = zwlr_layer_shell_v1_get_layer_surface(m_layerShell, w.surface, w.output->wl,
-                                                  w.saver ? ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY : ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
+                                                  w.saver || w.impl->overlay() ? ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY : ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
                                                   w.saver ? "undershell-screensaver" : "undershell");
   auto* ctx = new WidgetCtx{this, &w};
   zwlr_layer_surface_v1_add_listener(w.layer, &kLayer, ctx);
@@ -1346,7 +1350,36 @@ void App::render(Widget& w) {
         tctx.weatherPlace = *p;
         break;
       }
+  {
+    const Box hb = surfaceBox(w.cfg);
+    tctx.box = {static_cast<float>(hb.x), static_cast<float>(hb.y), static_cast<float>(hb.w), static_cast<float>(hb.h)};
+    tctx.outputW = w.output ? w.output->logicalW() : 0;
+    tctx.outputH = w.output ? w.output->logicalH() : 0;
+  }
+  std::vector<Rect> windows;  // its output's windows, in its output's own coordinates
+  if (w.impl->wantsWindows() && w.output && m_windowFeed.fd() >= 0) {
+    for (const WindowBox& b : m_windowFeed.windows())
+      if (b.output == w.output->name)
+        windows.push_back({static_cast<float>(b.x - w.output->logX), static_cast<float>(b.y - w.output->logY), static_cast<float>(b.w),
+                           static_cast<float>(b.h)});
+    tctx.windows = &windows;
+  }
   w.impl->tick(tctx);
+  // a widget that roams (the pet): its surface goes where it is, or home while editing
+  if (w.layer && w.output && !w.impl->fullscreen()) {
+    float dx = 0, dy = 0;
+    if (w.impl->offset(dx, dy) || w.appliedX != surfaceBox(w.cfg).x || w.appliedY != surfaceBox(w.cfg).y) {
+      const Box b = surfaceBox(w.cfg);
+      const int ow = static_cast<int>(w.output->logicalW()), oh = static_cast<int>(w.output->logicalH());
+      const int nx = m_edit ? b.x : std::clamp(b.x + static_cast<int>(std::lround(dx)), 0, std::max(0, ow - b.w));
+      const int ny = m_edit ? b.y : std::clamp(b.y + static_cast<int>(std::lround(dy)), 0, std::max(0, oh - b.h));
+      if (nx != w.appliedX || ny != w.appliedY) {  // (applied with the frame's commit)
+        zwlr_layer_surface_v1_set_margin(w.layer, ny, 0, 0, nx);
+        w.appliedX = nx;
+        w.appliedY = ny;
+      }
+    }
+  }
   // after the tick: what it just showed is not what it waits for next (an
   // animation's next frame, not the one it has put up)
   w.wakeAt = w.impl->nextWakeup(now);
@@ -1446,7 +1479,7 @@ void App::render(Widget& w) {
         US_ERROR("widget {}: rotated blit failed: {}", w.cfg.id, ex.what());
       }
     }
-    if (w.cfg.depth && w.output && !m_motion) {  // a moving wallpaper has no mask that fits
+    if (w.cfg.depth && w.output && !m_motion && !w.impl->overlay()) {  // a moving wallpaper has no mask that fits (nor a pet that roams)
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         MaskParams mp;
         mp.surfaceW = static_cast<float>(w.w);
@@ -2382,7 +2415,12 @@ int App::run() {
       m_skwd.tick(nowSeconds());
       if (!was && m_skwd.fd() >= 0) checkWallpaperKind();  // it (re)started: what does it show?
     }
-    pollfd fds[10] = {{wl_display_get_fd(m_display), POLLIN, 0},
+    {  // the windows, while a widget walks on them
+      bool want = false;
+      for (auto& w : m_widgets) want = want || (w->impl && !w->cfg.hidden && w->impl->wantsWindows());
+      m_windowFeed.want(want);
+    }
+    pollfd fds[11] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
                      {m_inotify, POLLIN, 0},
                      {m_ipc.fd(), POLLIN, 0},
@@ -2391,8 +2429,9 @@ int App::run() {
                      {m_picker.fd(), POLLIN, 0},
                      {m_dconf.fd(), POLLIN, 0},
                      {m_sourceJobs.fd(), POLLIN, 0},
-                     {m_skwd.fd(), POLLIN, 0}};
-    int r = poll(fds, 10, computeTimeout());
+                     {m_skwd.fd(), POLLIN, 0},
+                     {m_windowFeed.fd(), POLLIN, 0}};
+    int r = poll(fds, 11, computeTimeout());
     if (r < 0 && errno != EINTR) {
       wl_display_cancel_read(m_display);
       break;
@@ -2407,6 +2446,9 @@ int App::run() {
 
     if (r > 0 && (fds[1].revents & POLLIN)) m_audio.dispatch();
     if (r > 0 && (fds[9].revents & (POLLIN | POLLHUP | POLLERR)) && m_skwd.dispatch()) checkWallpaperKind();
+    if (r > 0 && (fds[10].revents & (POLLIN | POLLHUP | POLLERR)) && m_windowFeed.dispatch())
+      for (auto& w : m_widgets)
+        if (w->impl && w->impl->wantsWindows()) w->needsRender = true;
     if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();

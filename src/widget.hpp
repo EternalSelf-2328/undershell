@@ -48,6 +48,12 @@ struct TickContext {
   MediaService* media = nullptr;
   WeatherService* weather = nullptr;
   std::string weatherPlace;  // the place a weather widget names, for widgets that leave theirs empty
+  // the windows on this widget's output (output-local logical px), for
+  // widgets that walk on them (wantsWindows); null when nobody says where
+  const std::vector<Rect>* windows = nullptr;
+  // the widget's box on its output and the output's size (logical px)
+  Rect box;
+  float outputW = 0, outputH = 0;
 };
 
 struct DrawContext {
@@ -146,12 +152,22 @@ public:
   [[nodiscard]] virtual bool wantsMedia() const { return false; }
   [[nodiscard]] virtual bool wantsLyrics() const { return false; }
   [[nodiscard]] virtual bool wantsWeather() const { return false; }
+  [[nodiscard]] virtual bool wantsWindows() const { return false; }
+
+  // Over the windows (the overlay layer), still click-through: a pet that
+  // climbs them. And where it is now, from its box in the config (logical
+  // px); the App moves the surface there, except while editing.
+  [[nodiscard]] virtual bool overlay() const { return false; }
+  [[nodiscard]] virtual bool offset(float& dx, float& dy) const {
+    dx = dy = 0;
+    return false;
+  }
 
 protected:
   bool m_editable = false;  // its text can be typed on in the editor
 };
 
-// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "system", "activity", "filter", "scene". Returns nullptr for an unknown type.
+// Known types: "visualizer", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "system", "activity", "pet", "filter", "scene". Returns nullptr for an unknown type.
 std::unique_ptr<WidgetImpl> createWidget(const std::string& type);
 [[nodiscard]] std::vector<std::string> widgetTypes();
 

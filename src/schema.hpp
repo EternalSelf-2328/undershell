@@ -304,6 +304,17 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  static const std::vector<PropSpec> pet = {
+      {K::Color, "color", "Colour", "Color", {}, 0, 0, 0, 0, "primary"},
+      {K::Color, "sprout", "Sprout", "Brote", {}, 0, 0, 0, 0, "#7ed957"},
+      {K::Number, "speed", "Speed", "Velocidad", {}, 0.2, 3, 0.1, 1},
+      {K::Bool, "climb", "Climbs windows", "Sube a ventanas", {}, 0, 1, 1, 1},
+      {K::Bool, "dance", "Dances", "Baila", {}, 0, 1, 1, 1},
+      {K::Bool, "sleep", "Sleeps in silence", "Duerme en silencio", {}, 0, 1, 1, 1},
+      {K::Enum, "colors_from", "Colours from", "Colores de", {"theme", "cover"}, 0, 0, 0, 0, "theme"},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> filter = {
       {K::Enum, "style", "Style", "Estilo", {"warm", "cool", "noir", "vintage", "dream", "night", "vivid", "faded", "duotone", "custom"}, 0, 0,
        0, 0, "warm"},
@@ -365,6 +376,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   if (type == "weather") return weather;
   if (type == "system") return system;
   if (type == "activity") return activity;
+  if (type == "pet") return pet;
   if (type == "filter") return filter;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;

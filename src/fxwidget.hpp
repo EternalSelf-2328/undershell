@@ -48,6 +48,9 @@ public:
   [[nodiscard]] bool wantsMedia() const override { return m_inner->wantsMedia(); }
   [[nodiscard]] bool wantsLyrics() const override { return m_inner->wantsLyrics(); }
   [[nodiscard]] bool wantsWeather() const override { return m_inner->wantsWeather(); }
+  [[nodiscard]] bool wantsWindows() const override { return m_inner->wantsWindows(); }
+  [[nodiscard]] bool overlay() const override { return m_inner->overlay(); }
+  [[nodiscard]] bool offset(float& dx, float& dy) const override { return m_inner->offset(dx, dy); }
 
 private:
   std::unique_ptr<WidgetImpl> m_inner;

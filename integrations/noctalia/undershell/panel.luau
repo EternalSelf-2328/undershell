@@ -74,6 +74,7 @@ local kGlyphs = {
   shape = "shape",
   system = "cpu",
   activity = "chart-dots",
+  pet = "paw",
   text = "typography",
   visualizer = "chart-bar",
   weather = "cloud",
