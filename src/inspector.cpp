@@ -1723,7 +1723,11 @@ void App::layoutUi(const EditSurface& e) {
           break;
         }
     const auto& schema = m_inspSchema;
-    float contentH = kHeadH + kFootH;
+    // the rows start 6 px under the title (drawUi and the controls below):
+    // that and as much under the last row count too, or the last row (an
+    // effect's "+ Add effect", in every inspector) stays a few px under the
+    // footer, never wholly visible, and so never clickable, however far it scrolls
+    float contentH = kHeadH + kFootH + 12;
     for (const auto& p : schema) contentH += p.kind == PropSpec::Color ? kColorRowH : kRowH;
     const float top = m_areaTop;
     const float maxH = m_areaBottom - top;
