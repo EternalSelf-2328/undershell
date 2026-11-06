@@ -370,6 +370,11 @@ song's lyrics run early or late. Between lines it sleeps until the next one
 is due, so it only draws while a line changes (karaoke: 30 fps for the
 light).
 
+A local track with a `.lrc` beside it (`song.flac` → `song.lrc`) uses that
+file first, with no network. When the lyrics time each word (enhanced LRC,
+`[00:12.00]<00:12.00>Hola <00:12.40>mundo`), karaoke lights them word by word
+as they are sung; otherwise it spreads the light over the line's time.
+
 <p align="center">
   <img src="docs/media/lyrics.webp" alt="Lyrics as three scrolling lines, as karaoke, as one neon line and as three retro lines" width="640">
 </p>

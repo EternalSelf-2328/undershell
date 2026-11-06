@@ -123,10 +123,36 @@ std::vector<LyricLine> parseLrcImpl(const std::string& text) {
       i = j + 1;
     }
     if (stamps.empty()) continue;
-    const std::string rest = raw.substr(i);
+    // enhanced LRC: <mm:ss.xx> before each word; taken out of the text and kept apart
+    std::string rest;
+    std::vector<std::pair<int, int>> words;
+    for (size_t k = i; k < raw.size();) {
+      if (raw[k] == '<') {
+        size_t j = k + 1;
+        long min = 0, sec = 0, frac = 0;
+        if (digits(raw, j, 4, min) && j < raw.size() && raw[j] == ':' && (++j, digits(raw, j, 2, sec))) {
+          double f = 0;
+          bool ok = true;
+          if (j < raw.size() && raw[j] == '.') {
+            ++j;
+            const size_t from = j;
+            ok = digits(raw, j, 3, frac);
+            f = static_cast<double>(frac) / std::pow(10.0, static_cast<double>(j - from));
+          }
+          if (ok && j < raw.size() && raw[j] == '>') {
+            words.push_back({static_cast<int>((min * 60 + sec + f) * 1000), static_cast<int>(rest.size())});
+            k = j + 1;
+            continue;
+          }
+        }
+      }
+      rest += raw[k++];
+    }
     const auto b = rest.find_first_not_of(" \t\r"), e = rest.find_last_not_of(" \t\r");
     const std::string txt = b == std::string::npos ? "" : rest.substr(b, e - b + 1);
-    for (int t : stamps) lines.push_back({t, txt});
+    for (auto& [ms, at] : words) at = std::clamp(at - static_cast<int>(b == std::string::npos ? 0 : b), 0, static_cast<int>(txt.size()));
+    std::erase_if(words, [&](const auto& w) { return w.second >= static_cast<int>(txt.size()); });  // a closing stamp: no word after it
+    for (int t : stamps) lines.push_back({t, txt, words});
   }
   std::sort(lines.begin(), lines.end(), [](const LyricLine& a, const LyricLine& b) { return a.ms < b.ms; });
   return lines;
@@ -275,6 +301,7 @@ void readMprisProps(sd_bus_message* m, MediaState& s, std::string& trackId) {
         else if (n == "xesam:album") s.album = readString(m, mc);
         else if (n == "xesam:artist") s.artist = readStrings(m, mc);
         else if (n == "mpris:artUrl") s.artUrl = readString(m, mc);
+        else if (n == "xesam:url") s.url = readString(m, mc);
         else if (n == "mpris:trackid") trackId = readString(m, mc);
         else if (n == "mpris:length") s.lengthUs = readNumber(m, mc);
         else sd_bus_message_skip(m, "v");
@@ -312,6 +339,14 @@ int callAsync(sd_bus* bus, const char* dest, const char* path, const char* iface
 }  // namespace
 
 std::vector<LyricLine> parseLrc(const std::string& text) { return parseLrcImpl(text); }
+
+std::string lrcBeside(const std::string& trackUrl) {
+  const std::string path = artPath(trackUrl);  // file:// or a plain path; never http
+  if (path.empty()) return {};
+  const fs::path p(path);
+  if (!p.has_extension()) return {};
+  return fs::path(p).replace_extension(".lrc").string();
+}
 
 // The file an art url points at, or "" when it is not a local one. Players
 // spell it `file:///…`, `file:/…` or a bare path.
@@ -751,6 +786,7 @@ void MediaService::finishScan() {
   s.artist = p.s.artist;
   s.album = p.s.album;
   s.artUrl = p.s.artUrl;
+  s.url = p.s.url;
   s.playing = p.s.playing;
   s.lengthUs = p.s.lengthUs;
   s.positionUs = p.s.positionUs;
@@ -1013,10 +1049,28 @@ void MediaService::fetchLyrics() {
   m_state.lyrics = MediaState::Lyrics::Searching;
   const std::string title = m_state.title, artist = m_state.artist, album = m_state.album;
   const int64_t lengthUs = m_state.lengthUs;
-  m_jobs.run([this, key, title, artist, album, lengthUs]() -> Jobs::Done {
+  const std::string lrc = lrcBeside(m_state.url);
+  m_jobs.run([this, key, title, artist, album, lengthUs, lrc]() -> Jobs::Done {
     const std::string file = cacheDir("lyrics") + "/" + hashOf(key) + ".json";
     LyricsResult res;
     bool ok = false;
+    // a .lrc beside a local track comes first: no network, and it may time each word
+    if (!lrc.empty()) {
+      const std::string text = readRegularFile(lrc, 1u << 20);
+      if (!text.empty()) {
+        res.lines = parseLrcImpl(text);
+        if (!res.lines.empty()) {
+          res.kind = MediaState::Lyrics::Synced;
+          return [this, key, res = std::move(res)]() mutable {
+            if (m_lyricsFor != key) return;
+            m_state.lyrics = res.kind;
+            m_state.lines = std::move(res.lines);
+            m_state.plain.clear();
+            ++m_generation;
+          };
+        }
+      }
+    }
     std::string cached = readFile(file);
     if (!cached.empty()) {
       try {

@@ -272,8 +272,30 @@ void LyricsWidget::draw(const DrawContext& ctx) {
     const double from = m_lines[static_cast<size_t>(m_idx)].ms / 1000.0;
     const size_t nx = static_cast<size_t>(m_idx) + 1;
     const double to = nx < m_lines.size() ? m_lines[nx].ms / 1000.0 : from + kLastLine;
-    // sung a little ahead of its time, so the light leads the voice
-    wipe = static_cast<float>(std::clamp((m_pos - from) / std::max(0.2, (to - from) * 0.9), 0.0, 1.0));
+    const LyricLine& line = m_lines[static_cast<size_t>(m_idx)];
+    if (!line.words.empty()) {
+      // word by word (enhanced LRC): the light reaches each word as it is sung
+      // (a share of the line's letters, not of its width: close enough)
+      auto letters = [&](int bytes) {
+        int n = 0;
+        for (int k = 0; k < bytes && k < static_cast<int>(line.text.size()); ++k) n += (static_cast<unsigned char>(line.text[k]) & 0xC0) != 0x80;
+        return n;
+      };
+      const double total = std::max(1, letters(static_cast<int>(line.text.size())));
+      const double ms = m_pos * 1000;
+      double lit = 0;
+      for (size_t k = 0; k < line.words.size(); ++k) {
+        const double t0 = line.words[k].first, t1 = k + 1 < line.words.size() ? line.words[k + 1].first : to * 1000;
+        if (ms < t0) break;
+        const double a = letters(line.words[k].second);
+        const double z = k + 1 < line.words.size() ? letters(line.words[k + 1].second) : total;
+        lit = a + (z - a) * std::clamp((ms - t0) / std::max(60.0, t1 - t0), 0.0, 1.0);
+      }
+      wipe = static_cast<float>(std::clamp(lit / total, 0.0, 1.0));
+    } else {
+      // sung a little ahead of its time, so the light leads the voice
+      wipe = static_cast<float>(std::clamp((m_pos - from) / std::max(0.2, (to - from) * 0.9), 0.0, 1.0));
+    }
   }
   drawLine(ctx, m_idx, dy, scale, alpha, true, reveal, wipe);
 }

@@ -43,6 +43,16 @@ int main() {
   // hostile input (anyone can publish to LRCLIB): endless digits, a stamp
   // that overflows, very long lines -- read without crashing, kept short
   const std::string many(300000, '9');
+  // enhanced LRC: the word stamps come out of the text and are kept apart
+  {
+    auto w = parseLrc("[00:10.00]<00:10.00>Hola <00:10.80>mundo <00:11.50>cruel<00:12.20>\n[00:13.00]sin marcas");
+    CHECK(w.size() == 2 && w[0].text == "Hola mundo cruel" && w[1].text == "sin marcas" && w[1].words.empty());
+    CHECK(w[0].words.size() == 3 && w[0].words[0] == std::pair(10000, 0) && w[0].words[1] == std::pair(10800, 5) &&
+          w[0].words[2] == std::pair(11500, 11));  // the closing stamp has no word after it
+    auto odd = parseLrc("[00:01.00]a <b> c <00:02>d");  // only real stamps go
+    CHECK(odd.size() == 1 && odd[0].text == "a <b> c d" && odd[0].words.size() == 1 && odd[0].words[0].first == 2000);
+    CHECK(lrcBeside("file:///music/a%20b/song.flac") == "/music/a b/song.lrc" && lrcBeside("https://x/y.mp3").empty() && lrcBeside("").empty());
+  }
   auto bad = parseLrc("[" + many + ":00.00]x\n[99999999999:99.999]y\n[00:01.5]" + std::string(100000, 'a') + "\n[0:2]z\n[00:03]ok");
   CHECK(bad.size() == 3);
   CHECK(bad[0].ms == 1500 && bad[0].text.size() < 5000);

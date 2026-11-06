@@ -25,11 +25,15 @@ namespace undershell {
 struct LyricLine {
   int ms = 0;
   std::string text;
+  // enhanced LRC: when each word starts (ms, and its byte offset in text);
+  // empty for plain synced lines
+  std::vector<std::pair<int, int>> words;
 };
 
 struct MediaState {
   bool present = false;
   std::string title, artist, album, identity, desktopEntry, artUrl, trackKey;
+  std::string url;  // the track itself (xesam:url): a local file may have its .lrc beside it
   bool playing = false;
   int64_t lengthUs = 0;
   int64_t positionUs = 0;
@@ -57,6 +61,9 @@ struct MediaState {
 
 // exposed for tests
 std::vector<LyricLine> parseLrc(const std::string& text);
+// The lyrics file beside a local track ("song.flac" -> "song.lrc"), or "" when
+// the track is not a local file
+std::string lrcBeside(const std::string& trackUrl);
 // The file an MPRIS art url points at, or "" when it is not a local one.
 std::string artPath(const std::string& url);
 // What tells one cover from another: the url and, for a local file, the file
