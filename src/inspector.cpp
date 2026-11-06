@@ -146,7 +146,7 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
   if (c.type == "visualizer") {
     const std::string look = o["style"].value_or(std::string("bars"));
     const bool own = in(look, {"halo", "vortex", "fire", "muzzle", "electric", "sfx", "speedlines", "rain", "ripples", "neon", "fireworks", "terminal", "tv",
-                               "pond", "aura", "stars", "pixels", "life", "lava"});  // the newer looks draw their own way
+                               "pond", "aura", "stars", "pixels", "life", "lava", "globe"});  // the newer looks draw their own way
     const bool polar = in(look, {"radial", "orb", "spiral"});
     const bool linear = !own && !polar && look != "frame";
     const std::string mode = o["color_mode"].value_or(std::string("theme"));
@@ -675,6 +675,20 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
         {K::Number, "life_speed", "Generations/s", "Generaciones/s", {}, 1, 30, 1, 8, "", true},
         {K::Number, "life_trail", "Trail", "Estela", {}, 0, 1, 0.05, 0.6},
         {K::Number, "halo_hits", "Seeds on the beat", "Semillas al golpe", {}, 0, 1, 0.05, 0.7},
+    };
+    s.insert(s.begin() + 1, f.begin(), f.end());
+  }
+  if (look == "globe") {
+    std::vector<PropSpec> f = {
+        {K::Number, "globe_lat", "Your latitude", "Tu latitud", {}, -90, 90, 0.5, -999},
+        {K::Number, "globe_lon", "Your longitude", "Tu longitud", {}, -180, 180, 0.5, -999},
+        {K::Number, "globe_spin", "Turn °/s", "Giro °/s", {}, 0, 60, 1, 6},
+        {K::Number, "globe_tilt", "Tilt °", "Inclinación °", {}, -60, 60, 1, 18},
+        {K::Number, "globe_size", "Size", "Tamaño", {}, 0.3, 1, 0.05, 0.9},
+        {K::Number, "globe_dots", "Dots", "Puntos", {}, 40, 300, 10, 140, "", true},
+        {K::Number, "globe_ocean", "Sea", "Mar", {}, 0, 1, 0.05, 0.25},
+        {K::Bool, "globe_daynight", "Day and night", "Día y noche", {}, 0, 1, 1, 1},
+        {K::Number, "halo_hits", "Rings on the beat", "Ondas al golpe", {}, 0, 1, 0.05, 0.7},
     };
     s.insert(s.begin() + 1, f.begin(), f.end());
   }
@@ -3714,7 +3728,7 @@ void App::drawUi(EditSurface& e) {
     cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 12, hot ? withAlphaC(accent, 0.16F) : raised);
     cv.roundRect(c.r.x + 12, c.r.y + 15, 32, 32, 10, withAlphaC(accent, 0.22F));
     icon(cv, chipIcon(c.value), c.r.x + 28, c.r.y + 31, accent);
-    const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 31 estilos" : "Audio spectrum · 31 looks")
+    const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 32 estilos" : "Audio spectrum · 32 looks")
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
                        : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")

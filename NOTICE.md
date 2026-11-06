@@ -47,3 +47,8 @@ bundled so it can be picked for a clock face or for the music card's type.
 Project Authors (https://github.com/googlefonts/bangers), under the SIL Open
 Font License 1.1 (`data/fonts/OFL-Bangers.txt`). It is bundled for the
 English words of the onomatopoeia look.
+
+## Natural Earth
+
+`src/worldland.inc` (the land of the `globe` look) is rasterized from Natural Earth's 1:110m land
+(<https://www.naturalearthdata.com>), which is in the public domain.

@@ -16,6 +16,7 @@ std::unique_ptr<StrokeLook> makeStars();
 std::unique_ptr<StrokeLook> makePixels();
 std::unique_ptr<StrokeLook> makeLife();
 std::unique_ptr<StrokeLook> makeLava();
+std::unique_ptr<StrokeLook> makeGlobe();
 
 namespace {
 struct Entry {
@@ -36,6 +37,7 @@ const Entry kLooks[] = {
     {"pixels", makePixels},
     {"life", makeLife},
     {"lava", makeLava},
+    {"globe", makeGlobe},
 };
 }  // namespace
 

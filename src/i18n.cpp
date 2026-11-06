@@ -71,7 +71,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"paper", "Papel"}, {"write", "Escribir"}, {"open", "Abrir"},
       {"warm", "Cálido"}, {"cool", "Frío"}, {"noir", "Noir"}, {"vintage", "Vintage"}, {"dream", "Sueño"}, {"night", "Noche"},
       {"vivid", "Vívido"}, {"faded", "Desvaído"}, {"duotone", "Duotono"},
-      {"pond", "Onda de agua"}, {"aura", "Aura"}, {"stars", "Estrellas"}, {"pixels", "Píxeles"}, {"life", "Vida"}, {"lava", "Lámpara de lava"}, {"ocean", "Océano"}, {"rise", "Ascendente"},
+      {"pond", "Onda de agua"}, {"aura", "Aura"}, {"stars", "Estrellas"}, {"pixels", "Píxeles"}, {"life", "Vida"}, {"lava", "Lámpara de lava"}, {"globe", "Globo"}, {"ocean", "Océano"}, {"rise", "Ascendente"},
       {"arcane", "Arcana"}, {"holy", "Sagrada"}, {"frost", "Escarcha"}, {"nature", "Naturaleza"}, {"infernal", "Infernal"}, {"void", "Vacío"},
       {"field", "Cielo"}, {"warp", "Velocidad luz"}, {"constellation", "Constelaciones"}, {"gold", "Oro"},
       {"agenda", "Agenda"}, {"month", "Mes"}, {"week", "Semana"}, {"day", "Día"}, {"monday", "Lunes"}, {"sunday", "Domingo"},

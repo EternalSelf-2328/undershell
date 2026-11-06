@@ -230,13 +230,13 @@ Noctalia bar plugin, remove it from Noctalia's plugin settings (or, if you
 linked it from a checkout, `noctalia msg plugins disable eternalself-2328/undershell`
 and delete the link).
 
-## Visualizer: 31 looks
+## Visualizer: 32 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,
 `frame` (a ring around the whole screen), `radial`, `orb`, `spiral`: Ryoku's
 `spectrum.frag` ported to GLSL ES 3.00, with glow, reflection, falling peaks
-and Ryoku's motion (`Motion.qml`). Plus nineteen of its own: `halo` (a glowing
-ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `pixels`, `life`, `lava`, `terminal` and `tv` (see below).
+and Ryoku's motion (`Motion.qml`). Plus twenty of its own: `halo` (a glowing
+ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `pixels`, `life`, `lava`, `globe`, `terminal` and `tv` (see below).
 
 <p align="center">
   <img src="docs/media/looks.webp" alt="The same visualizer box in the editor switching through looks: vortex, fire, smoke, a comic KRAKOOM, rain, a neon LIVE sign, a terminal, bars, TV static, split bars, dots and a filled wave" width="800"><br>
@@ -1058,6 +1058,21 @@ GPU in its glass.
 
 <p align="center">
   <img src="docs/media/lava.webp" alt="The lava lamp look at three moments and in neon colours" width="640">
+</p>
+
+## Globe
+
+`globe`: the continents as dots on a turning sphere, the night side dimmer
+where the real sun has set (worked out from the date and the time), a thin
+atmosphere round the rim. The bass swells the dots; give it **your latitude
+and longitude** and it starts with your place in front, marks it, and every
+kick sends a ring across the world from there. Turn speed, tilt, how many
+dots and how much of the sea shows are yours. The land is Natural Earth's
+(1:110m, public domain), 256 × 128 cells built in; 0.41 ms of GPU at
+1074×621.
+
+<p align="center">
+  <img src="docs/media/globe.webp" alt="The globe look: Europe and Africa in dots, lit by the sun, with a glowing rim" width="360">
 </p>
 
 ## Terminal

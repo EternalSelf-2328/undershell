@@ -494,6 +494,23 @@ int main(int argc, char** argv) {
     CHECK(fluid(lamp) > 10000 && fluid(renderLook("lava", 300, 300, pal, &lv)) < fluid(lamp) / 5);
   }
 
+  // the globe: facing Africa at noon UTC (in the sun, mostly land) it lights
+  // far more dots than facing the Pacific (at night, mostly sea)
+  {
+    auto lit = [](const Image& img) {
+      size_t n = 0;
+      for (size_t i = 0; i < img.rgba.size(); i += 4) n += img.rgba[i + 3] > 150;
+      return n;
+    };
+    toml::table gl;
+    gl.insert_or_assign("globe_preview", 1.5);   // longitude 4 E in front
+    const size_t africa = lit(renderLook("globe", 300, 300, pal, &gl));
+    gl.insert_or_assign("globe_preview", 4.2);   // 150 W: the Pacific, past midnight there
+    const size_t pacific = lit(renderLook("globe", 300, 300, pal, &gl));
+    if (!(africa > 3 * pacific && africa > 2000)) std::fprintf(stderr, "globe: %zu dots lit over Africa, %zu over the Pacific\n", africa, pacific);
+    CHECK(africa > 3 * pacific && africa > 2000);
+  }
+
   // the neon sign: its words lit in its colour round the box's middle, a shape
   // drawn in tubes; the text matches its golden (its face is bundled)
   {
