@@ -1,7 +1,7 @@
 # undershell
 
 <p align="center">
-  <img src="docs/media/hero.jpg" alt="undershell on a desktop: a red spectrum passing behind a katana blade, and a clock" width="100%">
+  <img src="docs/media/hero.jpg" alt="undershell on six desktops: a red spectrum behind a katana blade, a manga revolver firing on the kicks, a CRT terminal, a halo round a skull, flames behind a skeleton, an old TV in an anime room" width="100%">
 </p>
 
 [▶ Watch the 69-second demo](https://github.com/user-attachments/assets/523ec5c1-bcba-4fc5-892a-d8c912360f7a) ·
