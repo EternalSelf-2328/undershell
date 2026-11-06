@@ -91,6 +91,7 @@ std::string lookOf(const Widget& w) {
   if (w.cfg.type == "weather") return w.cfg.options["layout"].value_or(std::string("now"));
   if (w.cfg.type == "system") return w.cfg.options["layout"].value_or(std::string("rings"));
   if (w.cfg.type == "activity") return w.cfg.options["layout"].value_or(std::string("grid"));
+  if (w.cfg.type == "pet") return {};  // it has no look to pick (not the visualizer's "bars")
   if (w.cfg.type == "filter") return w.cfg.options["style"].value_or(std::string("warm"));
   if (w.cfg.type == "scene") return w.cfg.options["scene"].value_or(std::string());
   return w.cfg.options["style"].value_or(std::string("bars"));
@@ -1497,6 +1498,7 @@ void App::drawEditorText(EditSurface& e) {
       const std::string file = w->cfg.options["file"].value_or(std::string());
       what = file.empty() ? (spanish() ? "sin imagen" : "no picture") : std::filesystem::path(file).filename().string();
     }
+    if (w->cfg.type == "pet") what = spanish() ? "Mascota" : "Pet";
     if (w->cfg.type == "lyrics") what += "  ·  " + optionLabel(w->cfg.options["layout"].value_or(std::string("lines")), spanish());
     if (w->cfg.type == "text") {  // the style and the first words
       std::string words = w->cfg.options["text"].value_or(std::string("undershell"));
