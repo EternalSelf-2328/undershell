@@ -233,6 +233,13 @@ void Noctalia::compose() {
     s.defaultWallpaper = m_manual;
     s.wallpaperByOutput.clear();
     if (!m_manualFill.empty()) s.fillMode = fillModeIndex(m_manualFill);
+  } else if (!m_picked.empty()) {
+    // the wallpaper program's own word wins over the shell's (its picker may
+    // be off and its path old); outputs it does not name keep the shell's
+    if (s.wallpaperByOutput.empty() && !s.defaultWallpaper.empty())
+      for (const auto& [o, p] : m_screens) s.wallpaperByOutput[o] = s.defaultWallpaper;
+    for (const auto& [out, path] : m_picked) s.wallpaperByOutput[out] = path;
+    if (s.defaultWallpaper.empty()) s.defaultWallpaper = m_picked.begin()->second;
   }
   // a scene's still on its output, filling it as the scene does
   for (const auto& [out, still] : m_stills) {
@@ -257,6 +264,13 @@ bool Noctalia::setManual(const std::string& wallpaper, const std::string& fill) 
 bool Noctalia::setSceneStills(std::map<std::string, std::string> stills) {
   if (stills == m_stills) return false;
   m_stills = std::move(stills);
+  compose();
+  return true;
+}
+
+bool Noctalia::setPicked(std::map<std::string, std::string> picked) {
+  if (picked == m_picked) return false;
+  m_picked = std::move(picked);
   compose();
   return true;
 }

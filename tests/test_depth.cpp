@@ -174,6 +174,17 @@ int main() {
   CHECK(skwdShowsMotion(moving, {}) && skwdShowsMotion(moving, {"HDMI-A-1"}));
   CHECK(!skwdShowsMotion(moving, {"DP-2"}));          // not one of ours
   CHECK(!skwdShowsMotion("", {}) && !skwdShowsMotion("not json", {}));
+  // what each output shows, from the same report (skwd v2 and undershell-wall answer alike)
+  const std::string shown = R"({"outputs":[{"connected":true,"current":"/w/a.png","name":"HDMI-A-1","path":"/w/a \"b\".png","type":"static"},)"
+                            R"({"connected":false,"name":"eDP-1","path":"/w/off.png"},{"connected":true,"name":"DP-1","path":""}]})";
+  const auto paths = skwdPaths(shown);
+  CHECK(paths.size() == 1 && paths.at("HDMI-A-1") == "/w/a \"b\".png");  // the disconnected one and the empty one left out
+  CHECK(skwdPaths("").empty() && skwdPaths("{not json").empty());
+  // its events: a wallpaper applied or cleared and the screens changing count; thumbnails and the rest do not
+  CHECK(SkwdEvents::changes(R"({"event":"skwd.wall.applied","data":{"path":"/w/a.png","output":"HDMI-A-1"}})"));
+  CHECK(SkwdEvents::changes(R"({"event":"skwd.wall.outputs_changed","data":{}})"));
+  CHECK(!SkwdEvents::changes(R"({"event":"skwd.wall.thumbnail_updated","data":{}})"));
+  CHECK(!SkwdEvents::changes(R"({"id":1,"result":{"subscribed":true}})"));
   CHECK(isVideoPath("/w/rain.MP4") && isVideoPath("a.webm") && !isVideoPath("/w/katana.png") && !isVideoPath("noext"));
 
   // Material 3 shapes: a circle is round, a 12-sided cookie has 12 lobes,

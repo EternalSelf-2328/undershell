@@ -112,8 +112,10 @@ void App::checkWallpaperKind() {
   // undershell-wall (skwd's fork) answers like skwd-helm when its daemon runs
   std::string ctl;
   if (programRunning("undershell-walld")) ctl = findProgram("undershell-wallctl");
+  else if (programRunning("skwd-walld")) ctl = findProgram("skwd-helm");
   else if (fs::exists("/usr/bin/skwd-helm") || fs::exists("/usr/local/bin/skwd-helm")) ctl = "skwd-helm";
   if (ctl.empty()) {
+    if (m_noctalia.setPicked({})) noctaliaChanged();  // no program to ask: the shell's word again
     setMotion(videoPath);
     return;
   }
@@ -121,8 +123,15 @@ void App::checkWallpaperKind() {
   m_jobs.run([this, outs, videoPath, ctl]() -> Jobs::Done {
     const std::string json = runCommand("'" + ctl + "' current --json", 4);
     const bool motion = videoPath || skwdShowsMotion(json, outs);
-    return [this, motion] {
+    auto picked = skwdPaths(json);  // (empty when its daemon is not running: the shell's word)
+    return [this, motion, picked = std::move(picked)]() mutable {
       m_motionCheckBusy = false;
+      std::string said;
+      for (const auto& [o, p] : picked) said += (said.empty() ? "" : ", ") + o + ": " + fs::path(p).filename().string();
+      if (m_noctalia.setPicked(std::move(picked))) {
+        US_INFO("wallpaper: as the wallpaper program says ({})", said.empty() ? "nothing: the shell's again" : said);
+        noctaliaChanged();  // (asks again; the same answer then changes nothing)
+      }
       setMotion(motion);
       if (m_motionCheckAgain) {
         m_motionCheckAgain = false;

@@ -1200,9 +1200,17 @@ Engine scene is on screen (undershell asks skwd-wall with `skwd-helm
 current`, and also treats a video file set as the wallpaper as moving),
 depth turns off for every widget and its controls lock — the inspector
 rows, the depth brush, `msg set … depth`, and the Noctalia panel — until a
-still wallpaper returns; the widgets' settings are kept. skwd's hooks can
-call `undershell msg wallpaper-check` after each change for an instant
-update.
+still wallpaper returns; the widgets' settings are kept.
+
+When skwd-wall (or its fork undershell-wall) is running, undershell also takes
+**which picture each screen shows** from it rather than from the shell: with
+Noctalia's own wallpaper service off, the path Noctalia keeps can be an old
+one, and the filter would redraw that old picture over skwd's. undershell
+subscribes to skwd's socket (`$SKWD_WALL_V2_SOCK`, or `wall.sock` in
+`$XDG_RUNTIME_DIR/skwd-wall-v2`), so a wallpaper applied there reaches the
+filter, the depth and the per-wallpaper layouts at once, with no hooks. A
+wallpaper named in `[general] wallpaper` still wins over both.
+`undershell msg wallpaper-check` asks again by hand.
 
 ### Fixing the depth by hand
 

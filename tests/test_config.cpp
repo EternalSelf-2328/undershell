@@ -304,6 +304,13 @@ int main() {
     CHECK(n.state().wallpaperFor("HDMI-A-1") == expandHome("~/w/a b.jpg"));
     CHECK(n.setManual("", ""));
     CHECK(!n.state().manualWallpaper);
+    // what skwd says each output shows wins over the shell's (whose picker may be off and its path old) ...
+    CHECK(n.setPicked({{"HDMI-A-1", "/w/skwd.jpg"}}) && !n.setPicked({{"HDMI-A-1", "/w/skwd.jpg"}}));
+    CHECK(n.state().wallpaperFor("HDMI-A-1") == "/w/skwd.jpg");
+    // ... and a wallpaper named in [general] over both
+    CHECK(n.setManual("/w/mine.png", ""));
+    CHECK(n.state().wallpaperFor("HDMI-A-1") == "/w/mine.png");
+    CHECK(n.setManual("", "") && n.setPicked({}) && n.state().wallpaperFor("HDMI-A-1").empty());
   }
 
   // KDE Plasma: KConfig groups, escapes, translations and [$e] keys

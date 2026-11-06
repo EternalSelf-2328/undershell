@@ -56,6 +56,10 @@ public:
   // outputs where undershell draws a scene: its still stands for their
   // wallpaper; true when it changed
   bool setSceneStills(std::map<std::string, std::string> stills);
+  // what skwd (or undershell-wall) says each output shows: over what the
+  // shell keeps, which can be old when skwd draws the wallpaper with the
+  // shell's own wallpaper service off; true when it changed
+  bool setPicked(std::map<std::string, std::string> picked);
   // each screen's connector and pixel size (picks images out of Plasma's
   // wallpaper packages); true when they changed
   bool setScreens(std::map<std::string, std::pair<int, int>> screens);
@@ -79,6 +83,7 @@ private:
   void compose();
   NoctaliaState m_base;   // what the source says
   std::map<std::string, std::string> m_stills;  // output -> a scene's still
+  std::map<std::string, std::string> m_picked;  // output -> skwd's wallpaper
   NoctaliaState m_state;  // with the manual wallpaper over it
   std::string m_paletteKey;
   std::string m_lastExport;

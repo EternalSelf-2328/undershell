@@ -2291,6 +2291,7 @@ int App::computeTimeout() {
     if (e->needsRender && !e->frameCb) next = now;
   if (m_edit && m_repeatKey) next = std::min(next, m_repeatNext);
   if (m_edit && m_depthGen.downloading()) next = std::min(next, m_depthTick);
+  if (m_skwdHere && m_skwd.fd() < 0) next = std::min(next, now + 10);  // its daemon may start later
   int timeout = next >= 1e8 ? -1 : std::max(0, static_cast<int>(std::ceil((next - now) * 1000)));
   bool idleDemo = false;
   if (m_nothingPlaying)
@@ -2312,6 +2313,8 @@ int App::run() {
   // Wayland first: without layer-shell and without the GNOME extension
   // there is nothing to do, and a clean exit keeps systemd from retrying
   if (!initWayland()) return m_noHost ? 0 : 1;
+  // skwd or its fork installed: follow its wallpaper changes on its socket
+  m_skwdHere = !findProgram("skwd-helm").empty() || !findProgram("undershell-wallctl").empty();
   if (!m_ipc.listen([this](const std::string& c) {
         // a bad command is an error for its sender, never the end of the daemon
         try {
@@ -2367,7 +2370,12 @@ int App::run() {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
     wl_display_flush(m_display);
 
-    pollfd fds[9] = {{wl_display_get_fd(m_display), POLLIN, 0},
+    if (m_skwdHere) {
+      const bool was = m_skwd.fd() >= 0;
+      m_skwd.tick(nowSeconds());
+      if (!was && m_skwd.fd() >= 0) checkWallpaperKind();  // it (re)started: what does it show?
+    }
+    pollfd fds[10] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
                      {m_inotify, POLLIN, 0},
                      {m_ipc.fd(), POLLIN, 0},
@@ -2375,8 +2383,9 @@ int App::run() {
                      {m_jobs.fd(), POLLIN, 0},
                      {m_picker.fd(), POLLIN, 0},
                      {m_dconf.fd(), POLLIN, 0},
-                     {m_sourceJobs.fd(), POLLIN, 0}};
-    int r = poll(fds, 9, computeTimeout());
+                     {m_sourceJobs.fd(), POLLIN, 0},
+                     {m_skwd.fd(), POLLIN, 0}};
+    int r = poll(fds, 10, computeTimeout());
     if (r < 0 && errno != EINTR) {
       wl_display_cancel_read(m_display);
       break;
@@ -2390,6 +2399,7 @@ int App::run() {
     wl_display_dispatch_pending(m_display);
 
     if (r > 0 && (fds[1].revents & POLLIN)) m_audio.dispatch();
+    if (r > 0 && (fds[9].revents & (POLLIN | POLLHUP | POLLERR)) && m_skwd.dispatch()) checkWallpaperKind();
     if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();

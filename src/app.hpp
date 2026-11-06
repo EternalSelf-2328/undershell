@@ -21,6 +21,7 @@
 #include "schema.hpp"
 #include "canvas.hpp"
 #include "text.hpp"
+#include "wallkind.hpp"
 #include "widget.hpp"
 
 #include <EGL/egl.h>
@@ -411,6 +412,8 @@ private:
   bool m_saverHover = false;        // the pointer is over one of its surfaces
   double m_saverSince = 0;
   std::vector<std::unique_ptr<Widget>> m_saver;  // its widgets on every screen, while it shows
+  SkwdEvents m_skwd;          // skwd's (or undershell-wall's) wallpaper changes, as they happen
+  bool m_skwdHere = false;    // either is installed: worth connecting to
   wl_pointer* m_pointer = nullptr;
   wl_keyboard* m_keyboard = nullptr;
   wl_cursor_theme* m_cursorTheme = nullptr;
