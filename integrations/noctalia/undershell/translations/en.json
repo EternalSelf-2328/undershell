@@ -52,6 +52,7 @@
     "scene": "Wallpaper Engine",
     "shape": "Shape",
     "system": "System",
+    "activity": "Activity",
     "text": "Text",
     "visualizer": "Visualizer",
     "weather": "Weather"

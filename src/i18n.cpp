@@ -39,7 +39,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"bar", "Barra"}, {"bars", "Barras"}, {"bighour", "Hora grande"}, {"bonfire", "Hoguera"}, {"brand", "Marca"},
       {"burst", "Estallido"}, {"center", "Centro"}, {"circle", "Círculo"}, {"clover4Leaf", "Trébol de 4"},
       {"clover8Leaf", "Trébol de 8"}, {"column", "Columna"}, {"cookie12Sided", "Galleta 12"}, {"cookie4Sided", "Galleta 4"},
-      {"cookie6Sided", "Galleta 6"}, {"cookie7Sided", "Galleta 7"}, {"cookie9Sided", "Galleta 9"}, {"cover", "Portada"}, {"graph", "Gráfica"},
+      {"cookie6Sided", "Galleta 6"}, {"cookie7Sided", "Galleta 7"}, {"cookie9Sided", "Galleta 9"}, {"cover", "Portada"}, {"graph", "Gráfica"}, {"grid", "Cuadrícula"}, {"weeks", "Semanas"},
       {"curtain", "Cortina"}, {"custom", "Personalizado"}, {"cycle", "Ciclo"}, {"dash", "Guion"}, {"demo", "Demo"},
       {"digital", "Digital"}, {"dot", "Punto"}, {"dots", "Puntos"}, {"down", "Abajo"}, {"en", "Inglés"}, {"es", "Español"},
       {"fire", "Fuego"}, {"flip", "Flip"}, {"flower", "Flor"}, {"font", "Fuente"}, {"frame", "Marco"}, {"glass", "Vidrio"},

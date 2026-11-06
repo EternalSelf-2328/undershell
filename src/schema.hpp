@@ -285,6 +285,25 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
+  static const std::vector<PropSpec> activity = {
+      {K::Enum, "layout", "Layout", "Disposición", {"grid", "weeks"}, 0, 0, 0, 0, "grid"},
+      {K::Number, "weeks", "Weeks", "Semanas", {}, 4, 53, 1, 53, "", true},
+      {K::Text, "folders", "Folders", "Carpetas", {}, 0, 0, 0, 0, "~"},
+      {K::Text, "author", "Author", "Autor", {}, 0, 0, 0, 0, ""},
+      {K::Bool, "show_total", "Count", "Conteo", {}, 0, 1, 1, 1},
+      {K::Number, "react", "With the music", "Con la música", {}, 0, 1, 0.05, 0},
+      {K::Enum, "plate", "Plate", "Fondo", {"glass", "solid", "none"}, 0, 0, 0, 0, "glass"},
+      {K::Font, "font", "Font", "Fuente", {}, 0, 0, 0, 0, "Space Grotesk"},
+      {K::Color, "accent", "Accent", "Acento", {}, 0, 0, 0, 0, "primary"},
+      {K::Color, "ink", "Ink", "Tinta", {}, 0, 0, 0, 0, "on_surface"},
+      {K::Enum, "language", "Language", "Idioma", {"system", "en", "es"}, 0, 0, 0, 0, "system"},
+      {K::Enum, "colors_from", "Colours from", "Colores de", {"theme", "cover"}, 0, 0, 0, 0, "theme"},
+      {K::Number, "opacity", "Opacity", "Opacidad", {}, 0.05, 1, 0.05, 1},
+      {K::Number, "rotation", "Rotation °", "Rotación °", {}, -180, 180, 0.1, 0},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> filter = {
       {K::Enum, "style", "Style", "Estilo", {"warm", "cool", "noir", "vintage", "dream", "night", "vivid", "faded", "duotone", "custom"}, 0, 0,
        0, 0, "warm"},
@@ -345,6 +364,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   if (type == "notes") return notes;
   if (type == "weather") return weather;
   if (type == "system") return system;
+  if (type == "activity") return activity;
   if (type == "filter") return filter;
   if (type == "visualizer") return visualizer;
   if (type == "clock") return clock;

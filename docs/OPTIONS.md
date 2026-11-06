@@ -357,6 +357,25 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+| Key | Values | Default | |
+|---|---|---|---|
+| `layout` | `grid`, `weeks` | `"grid"` | Layout |
+| `weeks` | 4 – 53 | `53` | Weeks |
+| `folders` | text | `"~"` | Folders |
+| `author` | text | `""` | Author |
+| `show_total` | `true` / `false` | `true` | Count |
+| `react` | 0 – 1 | `0` | With the music |
+| `plate` | `glass`, `solid`, `none` | `"glass"` | Plate |
+| `font` |  | `"Space Grotesk"` | Font |
+| `accent` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Accent |
+| `ink` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"on_surface"` | Ink |
+| `language` | `system`, `en`, `es` | `"system"` | Language |
+| `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
+| `opacity` | 0.05 – 1 | `1` | Opacity |
+| `rotation` | -180 – 180 | `0` | Rotation ° |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
 
 ## `type = "scene"`
 

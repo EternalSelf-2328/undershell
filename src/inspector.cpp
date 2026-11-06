@@ -234,6 +234,10 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "activity") {
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (c.type == "system") {
     if (key == "fahrenheit") return o["show_temp"].value_or(true);
     if (key == "disk_path") return o["show_disk"].value_or(false);
@@ -875,7 +879,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz", "fallback", "offset", "first_day", "weekends",
                "week_numbers", "show_cpu", "show_ram", "show_gpu", "show_temp", "show_net", "show_disk", "show_battery", "disk_path",
-               "interval", "weather_fx", "weather_location"}))
+               "interval", "weather_fx", "weather_location", "weeks", "folders", "author", "show_total"}))
       return 3;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
     if (in(k, {"warp", "tilt_x", "tilt_y", "skew", "perspective", "mesh_preset", "mesh_amount", "mesh_grid", "mesh_between",
@@ -934,6 +938,7 @@ const char* typeName(const std::string& type, bool es) {
   if (type == "notes") return es ? "Notas" : "Notes";
   if (type == "weather") return es ? "Clima" : "Weather";
   if (type == "system") return es ? "Sistema" : "System";
+  if (type == "activity") return es ? "Actividad" : "Activity";
   if (type == "filter") return es ? "Fondo y efectos" : "Wallpaper & effects";
   if (type == "scene") return "Wallpaper Engine";  // the same in both languages, and it fits a gallery card
   return "Widget";
@@ -1031,6 +1036,10 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   if (type == "text") dw = 640, dh = 180;
   if (type == "lyrics") dw = 820, dh = 260;
   if (type == "notes") dw = 340, dh = 380;
+  if (type == "activity") {  // its layout sets its shape
+    if (look == "weeks") dw = 520, dh = 160;
+    else dw = 720, dh = 170;
+  }
   if (type == "system") {  // its layout sets its shape
     if (look == "bars" || look == "text") dw = 420, dh = 240;
     else if (look == "graph") dw = 460, dh = 320;
@@ -1489,7 +1498,7 @@ struct GalleryGroup {
 const std::vector<GalleryGroup>& galleryGroups() {
   static const std::vector<GalleryGroup> groups = {
       {"Music", "Música", {"visualizer", "lyrics", "now_playing"}},
-      {"Time & info", "Hora e información", {"clock", "calendar", "weather", "system", "notes"}},
+      {"Time & info", "Hora e información", {"clock", "calendar", "weather", "system", "activity", "notes"}},
       {"Decoration", "Decoración", {"text", "shape", "image"}},
       {"Wallpaper", "Fondo de pantalla", {"filter", "filter:fx", "filter:pt", "scene"}},
   };
@@ -1508,6 +1517,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "notes") return "notes";
   if (type == "weather") return "weather";
   if (type == "system") return "system";
+  if (type == "activity") return "activity";
   if (type == "filter") return "filter";
   if (type == "scene") return "scene";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
@@ -3133,6 +3143,12 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
   } else if (name == "filter") {  // a frame half in colour
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.triangle(cx - 6, cy + 5, cx + 6, cy - 5, cx + 6, cy + 5, col);
+  } else if (name == "activity") {  // a little grid of days, some filled
+    for (int i = 0; i < 9; ++i) {
+      const float x = cx - 6 + static_cast<float>(i % 3) * 5, y = cy - 6 + static_cast<float>(i / 3) * 5;
+      if (i == 1 || i == 5 || i == 6 || i == 8) c.roundRect(x - 1.8F, y - 1.8F, 3.6F, 3.6F, 0.8F, col);
+      else c.roundRect(x - 1.8F, y - 1.8F, 3.6F, 3.6F, 0.8F, Color{0, 0, 0, 0}, 1.1F, col);
+    }
   } else if (name == "system") {  // a gauge: an arc and its needle
     c.arc(cx, cy + 2, 7, 1.6F, 4.19F, 8.38F, col, true);  // from 8 o'clock to 4 (angles from 12, clockwise)
     c.segment(cx, cy + 2, cx + 4, cy - 3, 1.6F, col);
@@ -3689,6 +3705,7 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "notes"   ? (es ? "Markdown · tareas" : "Markdown · tasks")
                        : c.value == "weather" ? (es ? "Ahora · horas · semana" : "Now · hours · week")
                        : c.value == "system"  ? (es ? "CPU · memoria · GPU · red" : "CPU · memory · GPU · network")
+                       : c.value == "activity" ? (es ? "Tus commits por día · git local" : "Your commits by day · local git")
                        : c.value == "filter"  ? (es ? "Estilos · duotono · viñeta" : "Looks · two-tone · vignette")
                        : c.value == "filter:fx" ? (es ? "Agua · luz · movimiento · retro" : "Water · light · motion · retro")
                        : c.value == "filter:pt" ? (es ? "Nieve · lluvia · pétalos · chispas" : "Snow · rain · petals · sparks")

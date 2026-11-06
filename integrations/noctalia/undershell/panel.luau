@@ -73,6 +73,7 @@ local kGlyphs = {
   scene = "movie",
   shape = "shape",
   system = "cpu",
+  activity = "chart-dots",
   text = "typography",
   visualizer = "chart-bar",
   weather = "cloud",

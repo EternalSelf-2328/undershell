@@ -125,6 +125,7 @@ std::string optionsMarkdown() {
         "half hour; answers are cached in `~/.cache/undershell/weather`.\n\n";
   table(md, "weather");
   table(md, "system");
+  table(md, "activity");
   md += "\n## `type = \"scene\"`\n\nA Wallpaper Engine wallpaper from your own Steam install: `scene` is its Workshop id (or a "
         "folder with a `project.json`). Videos play through FFmpeg; scenes are unpacked by `undershell-scene`, a confined helper, "
         "into `~/.cache/undershell/scenes` and drawn layer by layer, with their effects (as undershell's own), particles, camera, bloom and text, whose scripts run "

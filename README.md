@@ -315,6 +315,22 @@ CPU package's sensor. A reading takes about 0.2 ms of CPU every second
   <img src="docs/media/system.webp" alt="The system monitor as rings, bars, graphs and text" width="640">
 </p>
 
+## Activity
+
+The **activity** widget shows how much you committed each day: the grid code
+hosts draw (weeks across, days down, four shades) or a bar per week, over
+the last year or fewer weeks. It reads the git repositories under your
+**Folders** (`folders = ["~"]`, three levels down, skipping hidden folders and
+dependency trees) with `git log`, so nothing leaves your computer and private
+repositories count; **Author** is your `git config user.email` unless you name
+someone (or `all`). The reading runs on a thread of its own every half hour
+(16 repositories: about 0.2 s); with **With the music** above 0 the busy days
+twinkle on the beat.
+
+<p align="center">
+  <img src="docs/media/activity.webp" alt="The activity widget as a year grid and as bars per week" width="640">
+</p>
+
 ## Notes
 
 The **notes** widget keeps a note in a Markdown file: headings, lists (nested

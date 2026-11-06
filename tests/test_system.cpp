@@ -4,10 +4,13 @@
 #include "check.hpp"
 #include "noctalia.hpp"
 #include "offscreen.hpp"
+#include "activity.hpp"
 #include "sysmon.hpp"
 #include "text.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <format>
 #include <filesystem>
 #include <fstream>
 #include <unistd.h>
@@ -139,6 +142,56 @@ int main() {
     }
   } else {
     std::fputs("no surfaceless EGL: GL part skipped\n", stderr);
+  }
+  // the activity widget: repositories under the folders, commits per day, drawn by level
+  {
+    const fs::path home = root / "home";
+    for (const char* d : {"code/app/.git", "code/app/sub/.git", "code/node_modules/dep/.git", "code/.hidden/x/.git", "notes/a/b/c/deep/.git", "w/lib/.git"})
+      fs::create_directories(home / d);
+    put(home / "w/file/.git", "gitdir: elsewhere");  // a worktree's .git is a file
+    const auto repos = findRepositories({(home / "code").string(), (home / "w").string(), (home / "notes").string()});
+    CHECK(repos.size() == 3);  // app (not its sub), lib, file; not node_modules, hidden or too deep
+    CHECK(std::ranges::count_if(repos, [](const std::string& r) { return r.ends_with("/app") || r.ends_with("/lib") || r.ends_with("/file"); }) == 3);
+    ActivityDays days;
+    const int64_t noon = 20000LL * 86400 + 12 * 3600;  // midday: the same local day in any zone within ±11 h
+    countDays(std::format("{}\n{}\n{}\nnot a time\n", noon, noon + 60, noon + 86400), days);
+    CHECK(days.size() == 2 && days[localDay(noon)] == 2 && days[localDay(noon + 86400)] == 1);
+    ActivityConfig ac = ActivityConfig::fromTable(toml::parse("folders = \"~/a, ~/b \"\nweeks = 99"));
+    CHECK(ac.folders.size() == 2 && ac.folders[1] == "~/b" && ac.weeks == 53);
+  }
+  if (gl.ok()) {
+    // a busy week and a quiet one: the busy days fill more accent
+    const NoctaliaState pal = testPalette();
+    const Color accent = pal.color("primary");
+    ActivityWidget a;
+    WidgetConfig wc;
+    wc.type = "activity";
+    wc.options.insert_or_assign("weeks", 4);
+    wc.options.insert_or_assign("show_total", false);
+    wc.options.insert_or_assign("plate", "none");
+    a.configure(wc, pal);
+    const int64_t today = 20004;  // a Monday: the last column holds only it
+    ActivityDays d;
+    for (int64_t k = today - 7 - ((today + 3) % 7); k < today - ((today + 3) % 7); ++k) d[k] = 9;  // last week, every day
+    d[today - 20] = 1;
+    a.setDays(d, today);
+    TextRenderer tr;
+    const Image img = renderDrawn(200, 100, [&] {
+      DrawContext dc;
+      dc.w = 200, dc.h = 100, dc.text = &tr;
+      a.draw(dc);
+    });
+    tr.releaseGl();
+    std::vector<int> col(4, 0);  // accent per column
+    for (int y = 0; y < 100; ++y)
+      for (int x = 0; x < 200; ++x) {
+        const size_t i = (static_cast<size_t>(y) * 200 + x) * 4;
+        const float al = img.rgba[i + 3] / 255.0F;
+        if (al < 0.9F) continue;
+        if (std::abs(img.rgba[i] / 255.0F / al - accent.r) + std::abs(img.rgba[i + 1] / 255.0F / al - accent.g) < 0.1F) ++col[std::min(3, (x - 14) * 4 / 172)];
+      }
+    std::fprintf(stderr, "activity: accent per week %d %d %d %d\n", col[0], col[1], col[2], col[3]);
+    CHECK(col[2] > 300 && col[2] > 4 * (col[0] + col[1] + col[3]));  // the busy week, full; the quiet ones, a faint cell or nothing
   }
   fs::remove_all(root);
   return TEST_RESULT();

@@ -731,6 +731,10 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
     b += std::format("layout = \"{}\"           # now card week hours\n", look.empty() ? "now" : look);
     b += "location = \"\"            # your city (\"Quito, Ecuador\") or \"lat, lon\": only Open-Meteo sees it\n"
          "units = \"metric\"         # metric imperial\n";
+  } else if (type == "activity") {
+    b += std::format("layout = \"{}\"            # grid weeks\n", look.empty() ? "grid" : look);
+    b += "folders = [\"~\"]          # where git repositories are looked for (three levels down)\n"
+         "author = \"\"              # \"\": your git email; \"all\": anyone; or a name or email\n";
   } else if (type == "system") {
     b += std::format("layout = \"{}\"           # rings bars graph text\n", look.empty() ? "rings" : look);
     b += "show_cpu = true            # also show_ram show_gpu show_temp show_net show_disk show_battery\n"
