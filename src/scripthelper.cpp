@@ -91,7 +91,12 @@ globalThis.__mods = { WEMath: globalThis.WEMath, WEVector: globalThis.WEVector, 
 double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
 double g_deadline = 0;  // a call past this is stopped
-int interrupt(JSRuntime*, void*) { return g_deadline > 0 && now() > g_deadline ? 1 : 0; }
+// quickjs-ng up to 0.17 hands the handler the runtime, later ones the
+// context: a template fits whichever the installed header asks for
+template <typename Where>
+int interrupt(Where*, void*) {
+  return g_deadline > 0 && now() > g_deadline ? 1 : 0;
+}
 
 // a module made into a script that hands back what it exports
 std::string wrap(std::string src) {
@@ -182,7 +187,7 @@ int main(int argc, char** argv) {
   JSRuntime* rt = JS_NewRuntime();
   JS_SetMemoryLimit(rt, 64u << 20);
   JS_SetMaxStackSize(rt, 1u << 20);
-  JS_SetInterruptHandler(rt, interrupt, nullptr);
+  JS_SetInterruptHandler(rt, interrupt, nullptr);  // (the template's type comes from the header's handler type)
   JSContext* ctx = JS_NewContext(rt);  // the standard library only: no std/os modules
   JSValue pre = JS_Eval(ctx, kPrelude, std::strlen(kPrelude), "<prelude>", JS_EVAL_TYPE_GLOBAL);
   if (JS_IsException(pre)) {
