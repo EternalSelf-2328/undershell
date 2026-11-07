@@ -509,6 +509,17 @@ int main(int argc, char** argv) {
     const size_t pacific = lit(renderLook("globe", 300, 300, pal, &gl));
     if (!(africa > 3 * pacific && africa > 2000)) std::fprintf(stderr, "globe: %zu dots lit over Africa, %zu over the Pacific\n", africa, pacific);
     CHECK(africa > 3 * pacific && africa > 2000);
+    // east is on the right, as seen from space: facing Africa, Arabia and the
+    // Indian Ocean's shores lie right of the middle, the empty Atlantic left
+    // (a mirrored frame swapped them)
+    gl.insert_or_assign("globe_preview", 1.5);
+    const Image front = renderLook("globe", 300, 300, pal, &gl);
+    size_t left = 0, right = 0;
+    for (int y = 0; y < front.h; ++y)
+      for (int x = 0; x < front.w; ++x)
+        if (front.rgba[(static_cast<size_t>(y * front.w + x)) * 4 + 3] > 150) (x < front.w / 2 ? left : right) += 1;
+    if (!(right > left * 3 / 2)) std::fprintf(stderr, "globe: %zu dots lit left of the middle, %zu right\n", left, right);
+    CHECK(right > left * 3 / 2);
   }
 
   // the neon sign: its words lit in its colour round the box's middle, a shape

@@ -56,7 +56,8 @@ void main() {
     float ct = cos(u_tilt), st = sin(u_tilt);
     vec3 q = vec3(n.x, n.y * ct + n.z * st, -n.y * st + n.z * ct);   // y up, z towards us
     float cr = cos(u_turn), sr = sin(u_turn);
-    vec3 g = vec3(q.x * cr + q.z * sr, -q.x * sr + q.z * cr, q.y);  // x, y on the equator; z the north pole
+    // right is east: (-sin, cos) of the longitude facing us, pi/2 - turn (a right-handed frame, not a mirror)
+    vec3 g = vec3(-q.x * cr + q.z * sr, q.x * sr + q.z * cr, q.y);  // x, y on the equator; z the north pole
     float lat = asin(clamp(g.z, -1.0, 1.0));
     float lon = atan(g.y, g.x);
     // the dot grid: rows of latitude, each with as many dots as fit round it
