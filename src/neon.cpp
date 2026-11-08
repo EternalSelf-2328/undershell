@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numbers>
 #include <vector>
 
@@ -26,7 +27,7 @@ using Polyline = std::vector<Pt>;
 // a shape in [-1, 1]: its pieces (each fails on its own), closed or not
 struct Shape {
   std::vector<Polyline> pieces;
-  std::vector<bool> closed;
+  std::vector<uint8_t> closed;  // (not vector<bool>: GCC 16 warns on its growth)
 };
 
 Polyline ellipse(float cx, float cy, float rx, float ry, float tilt, int n) {
@@ -43,7 +44,7 @@ Shape shapeOf(const std::string& name) {
   Shape s;
   auto add = [&s](Polyline p, bool closed) {
     s.pieces.push_back(std::move(p));
-    s.closed.push_back(closed);
+    s.closed.push_back(closed ? 1 : 0);
   };
   if (name == "heart") {
     Polyline p;

@@ -97,7 +97,7 @@ void LyricsWidget::tick(const TickContext& ctx) {
       const char* lines[] = {es ? "Esta es la letra" : "These are the lyrics", es ? "de la canción que suena" : "of the song that plays",
                              es ? "línea a línea, a tiempo" : "line by line, in time", "♪"};
       m_lines.clear();
-      for (int k = 0; k < 4; ++k) m_lines.push_back({static_cast<int>(k * kSampleStep * 1000), lines[k]});
+      for (int k = 0; k < 4; ++k) m_lines.push_back({static_cast<int>(k * kSampleStep * 1000), lines[k], {}});
       m_fx.clear();
       m_idx = m_prev = -1;
       m_track.clear();
