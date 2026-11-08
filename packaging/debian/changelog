@@ -1,3 +1,12 @@
+undershell (1.6.1) unstable; urgency=medium
+
+  * Globe look: east on the right; the continents were mirrored east to west
+  * Inspector: the last row is clickable again ("+ Add effect" on the pet and
+    others)
+  * Editor: the pet's label says "Pet", not "Bars"
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Sat, 07 Nov 2026 12:00:00 -0500
+
 undershell (1.6.0) unstable; urgency=medium
 
   * Wallpaper: with skwd v2 (or undershell-wall) running, each screen's

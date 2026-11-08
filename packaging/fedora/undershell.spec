@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.6.0
+Version:        1.6.1
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -88,6 +88,11 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Sat Nov 07 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.6.1-1
+- Globe look: east on the right; the continents were mirrored east to west
+- Inspector: the last row is clickable again ("+ Add effect" on the pet and others)
+- Editor: the pet's label says "Pet", not "Bars"
+
 * Fri Nov 06 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.6.0-1
 - Wallpaper: with skwd v2 (or undershell-wall) running, each screen's wallpaper comes from it, not from the shell's possibly old path; changes followed on its socket (#1)
 - New widgets: system monitor (CPU, memory, GPU, temperature, network, disk, battery), activity (your commits by day from local git), and a pet that walks, climbs windows, dances and sleeps
