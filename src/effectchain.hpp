@@ -64,6 +64,7 @@ public:
   void drawLights(const DrawContext& ctx, bool flipY, const std::function<void(const Program&)>& picture, bool unpremul = false);
 
 private:
+  void locate();  // each effect's uniform locations, in both programs
   struct Fx {
     std::string id;
     uint64_t hash = 0;

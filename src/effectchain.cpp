@@ -111,7 +111,20 @@ void EffectChain::build(const char* head, const char* fit, const char* body, con
     for (const Fx& f : m_fx) sig += std::format("{}:{};", f.id, f.hash);
     return sig;
   };
-  if (m_prog.valid() && signature() == m_built) return;
+  // configure() (every option change, on the same widget) makes the list
+  // anew: the program stays, but where each option goes has to be found
+  // again, or use() skips the effect and it keeps its old values
+  auto located = [&] {
+    const EffectLibrary& lib = effectLibrary();
+    return std::ranges::all_of(m_fx, [&](const Fx& f) {
+      const EffectSpec* e = lib.find(f.id);
+      return !e || !m_prog.valid() || f.loc[0].size() == e->params.size() + 3;
+    });
+  };
+  if (m_prog.valid() && signature() == m_built) {
+    if (!located()) locate();
+    return;
+  }
   auto specs = [&](const std::vector<Fx>& list) {
     std::vector<const EffectSpec*> out;
     for (const Fx& f : list)
@@ -163,7 +176,11 @@ void EffectChain::build(const char* head, const char* fit, const char* body, con
     }
   }
   m_built = signature();
-  // where each effect's options went, in both programs
+  locate();
+}
+
+// where each effect's options went, in both programs
+void EffectChain::locate() {
   for (size_t i = 0; i < m_fx.size(); ++i) {
     Fx& f = m_fx[i];
     for (int which = 0; which < 2; ++which) {

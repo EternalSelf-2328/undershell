@@ -55,7 +55,9 @@ Image renderNowPlaying(const MediaState* state, int w, int h, const NoctaliaStat
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct,
                    double now = 1000, int ticks = 1, double waitSeconds = 0, WeatherService* weather = nullptr,
                    const std::string& wallpaper = {}, unsigned effectMasks = 0, unsigned depthField = 0,
-                   float depthLevel = 0.5F, int effectMasksUsed = 0);
+                   float depthLevel = 0.5F, int effectMasksUsed = 0, const toml::table* reconfigure = nullptr);
+// (`reconfigure`: drawn once, then configured again with these options on
+// the same widget, as the inspector does, and drawn again)
 // Lays `src` (a rendered widget) on a surface at `degrees` the way the daemon
 // draws a turned widget; the result is the turned box's surface (needs Headless).
 Image renderRotated(const Image& src, double degrees);

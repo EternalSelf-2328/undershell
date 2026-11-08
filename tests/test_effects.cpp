@@ -197,6 +197,35 @@ int main() {
       if (!(d > 0.2)) std::fprintf(stderr, "%s changed the picture by %.3f\n", id, d);
       CHECK(d > 0.2);
     }
+    // an option changed on the same widget (the inspector does that) takes
+    // effect: the program is kept, its options are set again
+    {
+      toml::table strong = plain, calm = plain, big = plain;
+      strong.insert_or_assign("fx_waves", true);
+      calm = strong;
+      calm.insert_or_assign("fx_waves_strength", 0.0);
+      const Image again = renderWidget("filter", strong, 160, 90, pal, 1000, 1, 3.0, nullptr, png, 0, 0, 0.5F, 0, &calm);
+      if (!(imageDiff(again, base) < 0.05)) std::fprintf(stderr, "strength 0 on the same widget: %.3f from the picture\n", imageDiff(again, base));
+      CHECK(imageDiff(again, base) < 0.05);
+      big = strong;
+      big.insert_or_assign("fx_waves_size", 3.5);
+      const Image fresh = renderWidget("filter", big, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
+      const Image resized = renderWidget("filter", strong, 160, 90, pal, 1000, 1, 3.0, nullptr, png, 0, 0, 0.5F, 0, &big);
+      if (!(imageDiff(resized, fresh) < 0.05)) std::fprintf(stderr, "wave size on the same widget: %.3f from a new one\n", imageDiff(resized, fresh));
+      CHECK(imageDiff(resized, fresh) < 0.05);
+      // and on any widget's own effects (FxWidget wraps them)
+      toml::table text;
+      text.insert_or_assign("text", "Effects");
+      text.insert_or_assign("fx_chroma", true);
+      toml::table textCalm = text;
+      textCalm.insert_or_assign("fx_chroma_strength", 0.0);
+      toml::table textPlain;
+      textPlain.insert_or_assign("text", "Effects");
+      const Image t0 = renderWidget("text", textPlain, 320, 120, pal);
+      const Image t1 = renderWidget("text", text, 320, 120, pal, 1000, 1, 0, nullptr, {}, 0, 0, 0.5F, 0, &textCalm);
+      if (!(imageDiff(t1, t0) < 0.05)) std::fprintf(stderr, "text: chroma at strength 0 on the same widget: %.3f\n", imageDiff(t1, t0));
+      CHECK(imageDiff(t1, t0) < 0.05);
+    }
     // strength 0 and a mask that covers nothing leave it as it was
     toml::table none = plain;
     none.insert_or_assign("fx_waves", true);

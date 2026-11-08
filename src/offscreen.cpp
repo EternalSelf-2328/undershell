@@ -246,7 +246,7 @@ Image renderDrawn(int w, int h, const std::function<void()>& draw) { return rend
 
 Image renderWidget(const std::string& type, const toml::table& options, int w, int h, const NoctaliaState& noct, double now,
                    int ticks, double waitSeconds, WeatherService* weather, const std::string& wallpaper, unsigned effectMasks,
-                   unsigned depthField, float depthLevel, int effectMasksUsed) {
+                   unsigned depthField, float depthLevel, int effectMasksUsed, const toml::table* reconfigure) {
   std::unique_ptr<WidgetImpl> widget = createWidget(type);
   if (!widget) return {};
   WidgetConfig wc;
@@ -288,6 +288,11 @@ Image renderWidget(const std::string& type, const toml::table& options, int w, i
     tc.now = now + ticks / 60.0 + waited;
     tc.dt = 0.01;
     widget->tick(tc);
+    img = once();
+  }
+  if (reconfigure) {
+    wc.options = *reconfigure;
+    widget->configure(wc, noct);
     img = once();
   }
   tr.releaseGl();
