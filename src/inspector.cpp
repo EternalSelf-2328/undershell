@@ -234,7 +234,11 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
-  if (c.type == "pet") return true;
+  if (c.type == "pet") {
+    if (key == "color" || key == "sprout" || key == "colors_from")
+      return petKind(o["species"].value_or(std::string("sprout"))) == PetKind::Sprout;
+    return true;
+  }
   if (c.type == "activity") {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
@@ -1071,7 +1075,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   if (type == "text") dw = 640, dh = 180;
   if (type == "lyrics") dw = 820, dh = 260;
   if (type == "notes") dw = 340, dh = 380;
-  if (type == "pet") dw = dh = 96;  // its home: where it stands and how big it is
+  if (type == "pet") dw = dh = look.empty() || look == "sprout" ? 96 : 256;  // detailed 128px sprites at 2x
   if (type == "activity") {  // its layout sets its shape
     if (look == "weeks") dw = 520, dh = 160;
     else dw = 720, dh = 170;

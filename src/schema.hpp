@@ -4,6 +4,8 @@
 // what each widget's fromTable() reads.
 #pragma once
 
+#include "petart.hpp"
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +38,12 @@ struct PropSpec {
 // Whether an option does anything for a widget as it is configured now (its
 // look, face, layout, colour mode…); the inspector shows only those.
 bool optionApplies(const WidgetConfig& c, const std::string& key);
+
+inline PropSpec petSpeciesProperty() {
+  PropSpec p{PropSpec::Enum, "species", "Companion", "Compañero", petSpeciesIds(), 0, 0, 0, 0, "sprout"};
+  for (const auto& s : kPetSpecies) p.optionNames.emplace_back(s.en, s.es);
+  return p;
+}
 
 inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   using K = PropSpec::Kind;
@@ -305,6 +313,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
   };
   static const std::vector<PropSpec> pet = {
+      petSpeciesProperty(),
       {K::Color, "color", "Colour", "Color", {}, 0, 0, 0, 0, "primary"},
       {K::Color, "sprout", "Sprout", "Brote", {}, 0, 0, 0, 0, "#7ed957"},
       {K::Number, "speed", "Speed", "Velocidad", {}, 0.2, 3, 0.1, 1},

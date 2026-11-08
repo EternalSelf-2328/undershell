@@ -338,21 +338,34 @@ second.
 
 ## Pet
 
-The **pet** is a small round creature with a sprout on its head, in pixel art,
-that lives on your desktop: it walks along the line where you put it, stops
-to look about or sit, hops up onto the **tops of windows** and falls when the
-window under it goes, **dances** and hops on the beat while music plays, and
-dozes off after a minute of silence. It is drawn over the windows but never
-in the way (the overlay layer, click-through), on a surface the size of its
-box that moves with it, so it costs next to nothing: 0.09 ms of GPU a frame
-and 0.1 % of CPU on an HD 520. Where the windows are comes from Umbriel
-(`umbriel subscribe windows`, only while a pet climbs); on other compositors
-it keeps to its line. Its colour, its sprout, its speed, and whether it
-climbs, dances and sleeps are options; in the editor it waits at home.
+The **pet** is a pixel-art companion that lives on your desktop: it walks
+along the line where you put it, stops to look about or sit, hops up onto the
+**tops of windows** and falls when the window under it goes, **dances** and
+hops on the beat while music plays, and dozes off after a minute of silence.
+It is drawn over the windows but never in the way (the overlay layer,
+click-through), on a surface the size of its box that moves with it. Where
+the windows are comes from Umbriel (`umbriel subscribe windows`, only while a
+pet climbs); on other compositors it keeps to its line. Its speed, and
+whether it climbs, dances and sleeps, are options; in the editor it waits at
+home.
+
+**Companion** picks who it is: **Sprout**, the original round creature with
+a sprout on its head (its colours follow the theme), or one of 28 sprites:
+fourteen detailed creatures from Chinese, Greek, Japanese and Norse
+mythology, Western fantasy, two mecha and two original anime-style
+characters, and a **chibi** version of each (`kitsune_chibi`). The sprites
+are 128 × 128 pixels, drawn by whole pixels (256 × 256 shows them at 2×).
+The [catalogue](PETS.md) has them all.
 
 <p align="center">
   <img src="media/pet.webp" alt="The pet walking, dancing with a note and asleep" width="520">
 </p>
+
+```sh
+undershell msg add pet long
+undershell msg add pet long_chibi
+undershell msg edit          # select the pet, then Companion / Compañero
+```
 
 ## Colours from the album
 

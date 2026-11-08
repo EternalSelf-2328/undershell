@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// The pet: a small round creature with a sprout on its head, in pixel art,
+// The pet: a selectable pixel-art companion (original sprite atlases in art/pets)
 // that lives on your desktop. It walks along the line of its box, hops up
 // onto the tops of windows (Umbriel says where they are) and falls when the
 // window under it goes; it dances on the beat while music plays and dozes
@@ -28,8 +28,13 @@ Color withA(Color c, float a) {
 constexpr double kGravity = 1500;  // logical px/s²
 }  // namespace
 
+PetWidget::~PetWidget() {
+  if (m_sprite) glDeleteTextures(1, &m_sprite);
+}
+
 void PetWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   const toml::table& t = cfg.options;
+  m_species = petKind(get<std::string>(t, "species", "sprout"));
   m_body = noct.color(get<std::string>(t, "color", "primary"), Color::fromHex("#7fd18b"));
   m_sprout = noct.color(get<std::string>(t, "sprout", "#7ed957"), Color::fromHex("#7ed957"));
   m_speed = std::clamp(get<double>(t, "speed", 1.0), 0.2, 3.0);
@@ -38,6 +43,8 @@ void PetWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
   m_dances = get<bool>(t, "dance", true);
   m_opacity = std::clamp(get<double>(t, "opacity", 1.0), 0.05, 1.0);
   m_preview = get<std::string>(t, "pet_preview", "");
+  if (m_preview != "idle" && m_preview != "sit" && m_preview != "walk" && m_preview != "jump" &&
+      m_preview != "dance" && m_preview != "sleep") m_preview.clear();
 }
 
 double PetWidget::rnd() {
@@ -178,8 +185,13 @@ void PetWidget::draw(const DrawContext& ctx) {
   const float op = static_cast<float>(m_opacity);
   // the creature on a 16 x 14 grid, scaled to the box, standing on its bottom middle
   const float px = std::max(1.0F, std::floor(std::min(ctx.w / 24.0F, ctx.h / 20.0F)));  // room round it for the notes and the z's
-  const Mode mode = m_preview == "sleep" ? Mode::Sleep : m_preview == "walk" ? Mode::Walk : m_preview == "dance" ? Mode::Dance : m_mode;
+  const Mode mode = m_preview == "sleep" ? Mode::Sleep : m_preview == "walk" ? Mode::Walk : m_preview == "dance" ? Mode::Dance :
+                    m_preview == "sit" ? Mode::Sit : m_preview == "jump" ? Mode::Jump : m_preview == "idle" ? Mode::Idle : m_mode;
   const double t = m_preview.empty() ? m_time : 0.3;
+  if (m_species != PetKind::Sprout) {
+    drawSpecies(ctx, mode, t);
+    return;
+  }
   const bool sitting = mode == Mode::Sit || mode == Mode::Sleep;
   // squash and stretch: on landing, when sitting, and bobbing to the music
   double squash = m_squash + (sitting ? 0.12 : 0);
@@ -245,6 +257,34 @@ void PetWidget::draw(const DrawContext& ctx) {
     c.note(baseX + (flip ? -2 : bodyW + 2) * px, top - static_cast<float>(ph) * px * 6, px * 4, withA(m_body, op * static_cast<float>(1 - ph)));
   }
   if (ctx.text) ctx.text->collect(60);
+}
+
+void PetWidget::drawSpecies(const DrawContext& ctx, Mode mode, double time) {
+  if (ctx.w <= 0 || ctx.h <= 0 || ctx.scale <= 0) return;
+  const bool frame = (mode == Mode::Walk || mode == Mode::Dance) &&
+                     std::fmod(time * (mode == Mode::Walk ? 6 * m_speed : 4), 2.0) < 1;
+  const bool blink = m_preview.empty() && m_blink < 0, flip = m_facing < 0;
+  // Upload only when the discrete animation frame changes.
+  const int key = static_cast<int>(m_species) * 64 + static_cast<int>(mode) * 8 + frame * 4 + blink * 2 + flip;
+  if (!m_sprite || key != m_spriteKey) {
+    const PetPixels pixels = petPixels(m_species, mode, frame, blink, flip);
+    if (!m_sprite) glGenTextures(1, &m_sprite);
+    glBindTexture(GL_TEXTURE_2D, m_sprite);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kPetPixels, kPetPixels, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    m_spriteKey = key;
+  }
+  // Snap to physical pixels on fractional-scale displays as well. Very small
+  // boxes shrink to fit instead of clipping the face or feet.
+  const float available = std::min(ctx.w, ctx.h) * ctx.scale / kPetPixels;
+  const float pixel = (available >= 1 ? std::floor(available) : available) / ctx.scale;
+  const float size = kPetPixels * pixel;
+  const float x = std::floor((ctx.w - size) * 0.5F * ctx.scale) / ctx.scale;
+  const float y = std::floor((ctx.h - size) * ctx.scale) / ctx.scale;
+  m_canvas.image(m_sprite, kPetPixels, kPetPixels, x, y, size, size, 0, static_cast<float>(m_opacity));
 }
 
 }  // namespace undershell

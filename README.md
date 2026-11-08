@@ -35,7 +35,7 @@ Its first widgets are ports of
 | | |
 |---|---|
 | [Visualizer](docs/LOOKS.md) | 32 looks that follow the music: bars and rings, fire, electricity, rain, neon, a CRT terminal, an old TV, the Game of Life, a lava lamp, a globe… |
-| [Widgets](docs/WIDGETS.md) | Clocks (12 faces), calendar, weather, system monitor, activity, notes, the music card, lyrics (karaoke), text, shapes, pictures and a pet |
+| [Widgets](docs/WIDGETS.md) | Clocks (12 faces), calendar, weather, system monitor, activity, notes, the music card, lyrics (karaoke), text, shapes, pictures and a pet with 29 companions |
 | [Wallpaper](docs/WALLPAPER.md) | A colour filter, 17 animated effects, particles, the real weather, Wallpaper Engine scenes and videos, depth planes, a layout per wallpaper |
 | [Editor](docs/EDITOR.md) | Placing, shaping, grouping and layering widgets on screen, the depth brush, every shortcut |
 | [Desktop](docs/DESKTOP.md) | A screensaver, performance profiles, KDE Plasma, GNOME and other shells, the Noctalia bar widget |
@@ -71,6 +71,8 @@ undershell msg add clock flip  # add a widget: visualizer, clock, calendar, weat
                                # the second word is its look: a clock face, a
                                # visualizer style or a card layout, and the new
                                # widget comes out at that layout's own shape
+undershell msg add pet qilin   # pixel companions: mythological creatures, mecha and original anime characters (docs/PETS.md)
+undershell msg add pet qilin_chibi  # adorable chibi counterpart; both versions remain available
 undershell msg remove clock    # remove it
 undershell msg select clock    # select it in the editor (scripts); several ids select them together
 undershell msg group viz clock # group widgets (ungroup <id>: its whole group)

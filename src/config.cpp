@@ -732,7 +732,8 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
     b += "location = \"\"            # your city (\"Quito, Ecuador\") or \"lat, lon\": only Open-Meteo sees it\n"
          "units = \"metric\"         # metric imperial\n";
   } else if (type == "pet") {
-    b += "color = \"primary\"         # its body; sprout = its leaf\n"
+    b += std::format("species = \"{}\"          # companion; see docs/PETS.md\n", look.empty() ? "sprout" : look);
+    b += "color = \"primary\"         # Sprout's body; sprout = its leaf\n"
          "climb = true               # hop onto window tops (Umbriel says where they are)\n"
          "depth = false\n";
   } else if (type == "activity") {

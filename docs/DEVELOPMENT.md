@@ -33,6 +33,7 @@ makes it fail (for development); if you change a look on purpose:
 | `src/editor.cpp`, `snap.hpp` | the editor: selection, magnet, keyboard, undo/redo, labels |
 | `src/inspector.cpp`, `schema.hpp` | inspector (options per type) and widget gallery |
 | `src/widget.*` | the widget interface (`WidgetImpl`) and the type registry |
+| `src/pet.*`, `src/petart.*` | desktop companion behaviour, species catalogue and embedded 128 × 128 sprite artwork |
 | `src/visualizer.*`, `motion.hpp`, `shaders/`, `*_shader.inc` | the visualizer (Ryoku's looks, halo, vortex, fire) |
 | `src/clock.*`, `src/clockparts.*` | the clocks (Ryoku): faces as display lists; editable structures |
 | `src/m3shapes.*` | Material 3 shapes (from Sung) |
@@ -71,3 +72,18 @@ makes it fail (for development); if you change a look on purpose:
 | `integrations/noctalia/undershell/` | the Noctalia bar plugin |
 | `packaging/arch/` | PKGBUILD |
 | `packaging/build-release.sh`, `.github/workflows/release.yml` | the packages of every release (one container per distribution) |
+
+## Pet artwork
+
+`meson test -C build pets system editor docs` checks the catalogue, poses,
+mirroring, opaque pixel edges, live species changes and legacy behaviour.
+`build/test_pets --gallery build/pets` exports the rendered catalogue as
+`bestiary.png` (Actitud), `bestiary-chibi.png` (Chibi), a transparent PNG per
+companion and a `*-sheet.png` per new
+species. Sheets are 256 × 768: two 128 × 128 frames in each row, ordered idle,
+sit, walk, jump, dance, sleep. Walk alternates at six frames per second
+(times `speed`), dance at four. Still poses repeat; blinking and facing are
+runtime variants. The atlases in `art/pets/` are embedded at build time
+(`tools/embed-pets.py`); how they are made from the generated pictures is in
+[`art/pets/README.md`](../art/pets/README.md). No network, external files or
+compositor is needed at run time.

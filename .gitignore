@@ -10,3 +10,7 @@
 .obsidian/
 .vscode/
 .idea/
+# the pets' generated source pictures (only tools/pack-pets.cpp needs them; they
+# are attached to the releases as undershell-pet-sources.tar)
+art/pets/source/
+art/pets/chibi/source/

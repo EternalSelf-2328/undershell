@@ -378,6 +378,7 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `layer` | -999 – 999 | `0` | Layer |
 | Key | Values | Default | |
 |---|---|---|---|
+| `species` | `sprout`, `long`, `qilin`, `fenghuang`, `cerberus`, `pegasus`, `griffin`, `kitsune`, `fenrir`, `wyvern`, `unicorn`, `sentinel`, `rover`, `star_mage`, `moon_ranger`, `long_chibi`, `qilin_chibi`, `fenghuang_chibi`, `cerberus_chibi`, `pegasus_chibi`, `griffin_chibi`, `kitsune_chibi`, `fenrir_chibi`, `wyvern_chibi`, `unicorn_chibi`, `sentinel_chibi`, `rover_chibi`, `star_mage_chibi`, `moon_ranger_chibi` | `"sprout"` | Companion |
 | `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour |
 | `sprout` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#7ed957"` | Sprout |
 | `speed` | 0.2 – 3 | `1` | Speed |

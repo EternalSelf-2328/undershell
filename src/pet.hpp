@@ -3,6 +3,7 @@
 #pragma once
 
 #include "canvas.hpp"
+#include "petart.hpp"
 #include "widget.hpp"
 
 #include <cstdint>
@@ -13,6 +14,7 @@ namespace undershell {
 
 class PetWidget final : public WidgetImpl {
 public:
+  ~PetWidget() override;
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override;
   void tick(const TickContext& ctx) override;
   void draw(const DrawContext& ctx) override;
@@ -25,7 +27,7 @@ public:
   [[nodiscard]] bool offset(float& dx, float& dy) const override;
   [[nodiscard]] Color accent() const override { return m_body; }
 
-  enum class Mode { Idle, Sit, Walk, Jump, Dance, Sleep };
+  using Mode = PetPose;
   // tests: where it stands and what it does
   [[nodiscard]] double x() const { return m_x; }
   [[nodiscard]] double y() const { return m_y; }
@@ -36,7 +38,11 @@ private:
   [[nodiscard]] double support(double x, double y) const;
   void pick(Mode m, double secs);
   void stepBy(const TickContext& ctx, double dt, bool kick);
+  void drawSpecies(const DrawContext& ctx, Mode mode, double time);
 
+  PetKind m_species = PetKind::Sprout;
+  GLuint m_sprite = 0;
+  int m_spriteKey = -1;
   Color m_body, m_sprout;
   double m_speed = 1, m_opacity = 1;
   bool m_climb = true, m_sleeps = true, m_dances = true;

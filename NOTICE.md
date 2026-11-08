@@ -52,3 +52,14 @@ English words of the onomatopoeia look.
 
 `src/worldland.inc` (the land of the `globe` look) is rasterized from Natural Earth's 1:110m land
 (<https://www.naturalearthdata.com>), which is in the public domain.
+
+## Pixel companions
+
+`art/pets/` contains sprite designs created for this project with image
+generation, converted to a fixed pixel grid by `tools/pack-pets.cpp` and
+embedded into the executable at build time. The artwork and animation code
+are distributed under GPL-3.0-or-later like the rest of the project. Mythological names refer to
+traditional creatures; the drawings do not reproduce a game's, film's or
+anime's version. Bastion, Copper, Luma and Nox are original designs. No
+third-party franchise sprites, music, voices or logos are bundled.
+Hatsune Miku is not included.
