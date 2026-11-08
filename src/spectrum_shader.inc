@@ -104,8 +104,9 @@ void main() {
     vec2 px = v_uv * res;
     int st = int(style + 0.5);
     if (st == 8) {
+        // (a bar in a rounded corner stands a little further in: + 0.3 R)
         float edge = min(min(px.x, res.x - px.x), min(px.y, res.y - px.y));
-        if (edge > maxLen + glowPx * 3.5 + 2.0) {
+        if (edge > maxLen * 1.6 + glowPx * 3.5 + 2.0) {
             fragColor = vec4(0.0);
             return;
         }
@@ -287,39 +288,68 @@ void main() {
     } else if (st == 8) {
         // the frame: a full ring of bars around the whole screen's edge, packed
         // with a small gap and each grown inward to its own height, so it reads
-        // as a bar spectrum wrapped around the display.
-        float dL = cpx.x;
-        float dR = cw - cpx.x;
-        float dT = cpx.y;
-        float dB = ch - cpx.y;
-        float perim = 2.0 * (cw + ch);
-        float ed;   // inward distance from the nearest edge
-        float s;    // arc length clockwise from the top-left corner
-        float mE = min(min(dL, dR), min(dT, dB));
-        if (mE == dT)      { ed = dT; s = cpx.x; }
-        else if (mE == dR) { ed = dR; s = cw + cpx.y; }
-        else if (mE == dB) { ed = dB; s = cw + ch + (cw - cpx.x); }
-        else               { ed = dL; s = 2.0 * cw + ch + (ch - cpx.y); }
-        float al = s / perim;
+        // as a bar spectrum wrapped around the display. The ring follows a
+        // rounded rectangle measured along its length: on the straight sides
+        // the bars stand square to the edge, round each corner they fan out
+        // like the radial look's, so no bar is cut where two sides meet and
+        // the spectrum runs on without a seam.
+        float R = min(maxLen * 2.0, min(cw, ch) * 0.5);   // the corners' radius
+        float Lx = max(0.0, cw - 2.0 * R), Ly = max(0.0, ch - 2.0 * R), q = 0.5 * PI * R;
+        float perim = 2.0 * (Lx + Ly) + 4.0 * q;
+        float ed;        // inward distance from the ring's base
+        float s;         // arc length clockwise from the top side's start
+        float k = 1.0;   // across a corner the slots narrow towards its centre
+        bool left = cpx.x < R, right = cpx.x > cw - R, top = cpx.y < R, bottom = cpx.y > ch - R;
+        if ((left || right) && (top || bottom)) {
+            vec2 c = vec2(left ? R : cw - R, top ? R : ch - R);
+            vec2 d = cpx - c;
+            float a;     // 0..pi/2 round the corner, clockwise
+            float base;  // the arc length where the corner starts
+            if (top && right)        { a = atan(d.x, -d.y);  base = Lx; }
+            else if (bottom && right) { a = atan(d.y, d.x);   base = Lx + q + Ly; }
+            else if (bottom && left)  { a = atan(-d.x, d.y);  base = 2.0 * Lx + 2.0 * q + Ly; }
+            else                      { a = atan(-d.y, -d.x); base = 2.0 * Lx + 3.0 * q + 2.0 * Ly; }
+            float r = length(d);
+            ed = R - r;
+            s = base + clamp(a, 0.0, 0.5 * PI) * R;
+            k = clamp(r / max(R, 1.0), 0.0, 1.0);
+        } else {
+            float dL = cpx.x, dR = cw - cpx.x, dT = cpx.y, dB = ch - cpx.y;
+            float mE = min(min(dL, dR), min(dT, dB));
+            if (mE == dT)      { ed = dT; s = cpx.x - R; }
+            else if (mE == dR) { ed = dR; s = Lx + q + (cpx.y - R); }
+            else if (mE == dB) { ed = dB; s = Lx + 2.0 * q + Ly + (cw - R - cpx.x); }
+            else               { ed = dL; s = 2.0 * Lx + 3.0 * q + Ly + (ch - R - cpx.y); }
+        }
+        // measured from the middle of the left side: the spectrum is mirrored
+        // in four, the bass at the middle of the left and right sides, the
+        // treble at the middle of the top and bottom (where a bar or a dock
+        // usually sits), so it has no end anywhere to jump from loud to quiet
+        s = mod(s - (2.0 * Lx + 3.0 * q + 1.5 * Ly), perim);
         // Many bars, packed: each samples the smoothed spectrum at its own spot,
         // so the ring fills with bars of uneven height rather than sparse ticks.
-        float ticks = max(bands, 1.0) * 3.0;
+        // A whole number of slots, a multiple of four: the quarters mirror exactly.
+        float ticks = max(4.0, floor(max(bands, 1.0) * 0.75 + 0.5) * 4.0);
         float slotP = perim / ticks;
-        float ti = floor(s / slotP);
+        float ti = min(floor(s / slotP), ticks - 1.0);
         float ci = (ti + 0.5) * slotP;
-        float tAl = (ti + 0.5) / ticks;
+        float tAl = 1.0 - abs(1.0 - 2.0 * fract(2.0 * (ti + 0.5) / ticks));
         float lvv = lvSmooth(tAl);
         float len = max(minLen, maxLen * lvv);
         float barWp = max(1.5, slotP * thickness);
         tRamp = tAl;
         hot = lvv;
-        sd = roundBox(vec2(s - ci, ed - len * 0.5), vec2(barWp * 0.5, len * 0.5), capR);
+        // in a corner the offset along the arc shrinks with the radius, so the
+        // bar is measured in real pixels and keeps its gap to the next one
+        float halfW = barWp * 0.5 * k;
+        float lat = (s - ci) * k;
+        sd = roundBox(vec2(lat, ed - len * 0.5), vec2(max(0.5, halfW), len * 0.5), min(capR, halfW));
         lift = clamp(ed / max(len, 1.0), 0.0, 1.0);
         if (peakOn > 0.5) {
             float ph = maxLen * pkAt(bandAt(tAl));
             float capH = max(2.0, min(capR * 1.1, barWp * 0.34));
-            float sdp = roundBox(vec2(s - ci, ed - (ph + capH * 1.6)),
-                                 vec2(barWp * 0.46, capH * 0.5), capH * 0.5);
+            float sdp = roundBox(vec2(lat, ed - (ph + capH * 1.6)),
+                                 vec2(max(0.5, barWp * 0.46 * k), capH * 0.5), min(capH * 0.5, barWp * 0.46 * k));
             extraA += (1.0 - smoothstep(-aa, aa, sdp)) * 0.85;
         }
     } else if (st == 9) {

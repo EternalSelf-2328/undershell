@@ -79,6 +79,22 @@ int main(int argc, char** argv) {
     GOLDEN(d);
   }
 
+  // the frame has no seam and no cut corner: it reads the same mirrored left
+  // to right and top to bottom (rounded corners, the spectrum in four)
+  {
+    const Image f = renderLook("frame", 480, 270, pal);
+    double dh = 0, dv = 0;
+    for (int y = 0; y < f.h; ++y)
+      for (int x = 0; x < f.w; ++x) {
+        const size_t i = (static_cast<size_t>(y) * f.w + x) * 4 + 3;
+        dh += std::abs(f.rgba[i] - f.rgba[(static_cast<size_t>(y) * f.w + (f.w - 1 - x)) * 4 + 3]);
+        dv += std::abs(f.rgba[i] - f.rgba[(static_cast<size_t>(f.h - 1 - y) * f.w + x) * 4 + 3]);
+      }
+    dh /= f.w * f.h, dv /= f.w * f.h;
+    if (!(dh < 1.5 && dv < 1.5)) std::fprintf(stderr, "frame: %.2f off its mirror left-right, %.2f top-bottom\n", dh, dv);
+    CHECK(dh < 1.5 && dv < 1.5);
+  }
+
   // clock faces at a fixed moment (Sat 2026-09-26 21:07:42 local), English
   // names and no weather, so the goldens do not depend on this machine
   setenv("TZ", "UTC", 1);
