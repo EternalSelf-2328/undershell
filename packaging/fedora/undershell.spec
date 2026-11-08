@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.6.1
+Version:        1.7.0
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -88,6 +88,11 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Sun Nov 08 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.7.0-1
+- Pets: 28 sprite companions (mythological creatures, mecha, original characters) in an Actitud and a chibi collection, besides Sprout
+- Effects: an option changed in the inspector takes effect at once (it only did after switching an effect off and on, or a restart)
+- Frame look: rounded corners with the bars fanned round them, no cut bars, and the spectrum mirrored in four with no seam
+
 * Sat Nov 07 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.6.1-1
 - Globe look: east on the right; the continents were mirrored east to west
 - Inspector: the last row is clickable again ("+ Add effect" on the pet and others)

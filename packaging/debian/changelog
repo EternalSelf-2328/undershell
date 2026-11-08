@@ -1,3 +1,14 @@
+undershell (1.7.0) unstable; urgency=medium
+
+  * Pets: 28 sprite companions (mythological creatures, mecha, original
+    characters) in an Actitud and a chibi collection, besides Sprout
+  * Effects: an option changed in the inspector takes effect at once (it
+    only did after switching an effect off and on, or a restart)
+  * Frame look: rounded corners with the bars fanned round them, no cut
+    bars, and the spectrum mirrored in four with no seam
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Sun, 08 Nov 2026 12:00:00 -0500
+
 undershell (1.6.1) unstable; urgency=medium
 
   * Globe look: east on the right; the continents were mirrored east to west
