@@ -26,12 +26,13 @@ it is used only on the standing pose. The original eye coordinates remain
 exclusive to the serious collection.
 
 Each character has a standing, stepping and resting drawing. The runtime
-provides the six existing behaviours through two-frame cycles and small
-pixel shifts. Sitting and sleeping share the resting drawing. Jumping
-and dancing reuse the step. All orientations support horizontal mirroring.
+animates the six behaviours on top of them (`src/petmotion.cpp`, see the
+Behaviour section of [docs/PETS.md](../../../docs/PETS.md)). Sitting and
+sleeping share the resting drawing. All orientations support horizontal
+mirroring.
 
 `build/test_pets --gallery build/pets` exports the actual runtime sprites,
-two-frame six-row sheets and `bestiary-chibi.png`, as well as the serious
+eight-frame six-row sheets and `bestiary-chibi.png`, as well as the serious
 collection. Chibi variants have their own IDs; existing configurations
 keep the selected original designs.
 

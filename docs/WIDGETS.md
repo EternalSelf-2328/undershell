@@ -339,23 +339,23 @@ second.
 ## Pet
 
 The **pet** is a pixel-art companion that lives on your desktop: it walks
-along the line where you put it, stops to look about or sit, hops up onto the
-**tops of windows** and falls when the window under it goes, **dances** and
-hops on the beat while music plays, and dozes off after a minute of silence.
-It is drawn over the windows but never in the way (the overlay layer,
-click-through), on a surface the size of its box that moves with it. Where
-the windows are comes from Umbriel (`umbriel subscribe windows`, only while a
-pet climbs); on other compositors it keeps to its line. Its speed, and
-whether it climbs, dances and sleeps, are options; in the editor it waits at
-home.
+along the line where you put it, stops to look about, sit or lie down, hops
+up onto the **tops of windows** and falls when the window under it goes,
+**dances** on the beat while music plays, and sleeps while you are away. It
+**tells you** of notifications, a low battery, the hour and a break due, in a
+bubble over its head; a click pats it, a drag carries it. It is drawn over
+the windows (the overlay layer), click-through except for the creature
+itself, on a surface the size of its box that moves with it. Where the
+windows are comes from Umbriel (`umbriel subscribe windows`, only while a pet
+climbs); on other compositors it keeps to its line. In the editor it waits
+at home.
 
-**Companion** picks who it is: **Sprout**, the original round creature with
-a sprout on its head (its colours follow the theme), or one of 28 sprites:
-fourteen detailed creatures from Chinese, Greek, Japanese and Norse
-mythology, Western fantasy, two mecha and two original anime-style
-characters, and a **chibi** version of each (`kitsune_chibi`). The sprites
-are 128 × 128 pixels, drawn by whole pixels (256 × 256 shows them at 2×).
-The [catalogue](PETS.md) has them all.
+**Companion** picks who it is: one of **36 rigged companions** (animals,
+mythical creatures, birds and blobs, people and spirits, built from jointed
+parts so their legs really step and their colours can be anything: a
+variant, the theme's, the wallpaper's or your own), one of the **28 drawn
+ones** (`*_classic` and `*_chibi`), or **Sprout**, the original round
+creature. The [catalogue](PETS.md) has them all, with every option.
 
 <p align="center">
   <img src="media/pet.webp" alt="The pet walking, dancing with a note and asleep" width="520">

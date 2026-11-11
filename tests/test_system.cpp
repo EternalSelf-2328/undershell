@@ -195,11 +195,13 @@ int main() {
     CHECK(col[2] > 300 && col[2] > 4 * (col[0] + col[1] + col[3]));  // the busy week, full; the quiet ones, a faint cell or nothing
   }
   // the pet: on its ground line, it climbs a window whose top is within reach,
-  // falls when the window goes, and dozes off after a minute of silence
+  // falls when the window goes, and dozes off after five minutes of silence
   {
     PetWidget pet;
     WidgetConfig wc;
     wc.type = "pet";
+    // deterministic: no notifications or battery from the machine running the test
+    wc.options = toml::table{{"notify", "off"}, {"battery", false}};
     pet.configure(wc, testPalette());
     std::vector<Rect> windows{{200, 520, 900, 300}};  // its top 120 px above the ground (640)
     TickContext tc;
@@ -217,7 +219,8 @@ int main() {
     windows.clear();                     // the window closes under it
     for (int i = 0; i < 45; ++i) pet.tick(tc);
     CHECK(std::abs(pet.y() - 640) < 1);  // back on its ground
-    CHECK(pet.mode() == PetWidget::Mode::Sleep);  // 90 s without music
+    for (int i = 0; i < 230 * 30; ++i) pet.tick(tc);
+    CHECK(pet.mode() == PetWidget::Mode::Sleep);  // five minutes without music (sooner at night)
   }
   if (gl.ok()) {
     auto pose = [&](const char* p) {

@@ -21,10 +21,11 @@ Cell order in either collection, left to right and top to bottom:
 
 The design direction uses assertive poses, adult proportions, asymmetrical
 silhouettes, expressive faces and a shared ivory/jade/gold/oxblood palette.
-The original standing and resting poses are distinct drawings. Walking
-alternates the standing and stride drawings; jumping and dancing reuse the
-stride. Sitting and sleeping share the resting drawing. These are short,
-two-frame animation cycles, not full frame-by-frame walking sequences.
+The original standing and resting poses are distinct drawings. Sitting and
+sleeping share the resting drawing. The movement between the drawings (the
+walk's four beats, squash and stretch, tails and wings, turns, the habits of
+each kind) is made at run time by `src/petmotion.cpp`; see the Behaviour
+section of [docs/PETS.md](../../docs/PETS.md).
 
 ## Rebuild the runtime atlas
 

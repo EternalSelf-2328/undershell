@@ -72,9 +72,26 @@ void dot(PetPixels& p,int x,int y,std::uint32_t color) {
 }
 } // namespace
 
+const PetPixels& petDrawing(PetKind kind, PetDrawing drawing, bool blink) {
+  static const PetPixels none{};
+  static PetPixels shut;
+  const bool chibi=isChibiPet(kind);
+  const int index=static_cast<int>(kind)-static_cast<int>(chibi?PetKind::LongChibi:PetKind::LongClassic);
+  if(index<0 || index>=kPetFamilySize) return none;
+  const auto& art=artwork(chibi);
+  if(drawing==PetDrawing::Rest) return art.rest[index];
+  if(drawing==PetDrawing::Stride) return art.stride[index];
+  if(!blink) return art.idle[index];
+  if(chibi) return chibiBlinks()[index];
+  shut=art.idle[index];
+  shutEye(shut,eyes[index]);
+  if(kind==PetKind::CerberusClassic) { shutEye(shut,{77,23,3}); shutEye(shut,{110,48,3}); }
+  return shut;
+}
+
 PetPixels petPixels(PetKind kind, PetPose pose, bool frame, bool blink, bool flip) {
   const bool chibi=isChibiPet(kind);
-  const int index=static_cast<int>(kind)-static_cast<int>(chibi?PetKind::LongChibi:PetKind::Long);
+  const int index=static_cast<int>(kind)-static_cast<int>(chibi?PetKind::LongChibi:PetKind::LongClassic);
   if(index<0 || index>=kPetFamilySize) return {}; // Sprout has its original renderer.
   const auto& art=artwork(chibi);
   const bool resting=pose==PetPose::Sit || pose==PetPose::Sleep;
@@ -83,7 +100,7 @@ PetPixels petPixels(PetKind kind, PetPose pose, bool frame, bool blink, bool fli
   if(blink && !resting && !alternate) {
     if(chibi) pixels=chibiBlinks()[index];
     else shutEye(pixels,eyes[index]);
-    if(kind==PetKind::Cerberus) { shutEye(pixels,{77,23,3}); shutEye(pixels,{110,48,3}); }
+    if(kind==PetKind::CerberusClassic) { shutEye(pixels,{77,23,3}); shutEye(pixels,{110,48,3}); }
   }
   if(pose==PetPose::Jump || (pose==PetPose::Dance && frame)) {
     const auto original=pixels; pixels.fill(0);

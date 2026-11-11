@@ -11,6 +11,9 @@
 #include "wallset.hpp"
 #include "wescene.hpp"
 #include "notes.hpp"
+#include "petframes.hpp"
+#include "petlife.hpp"
+#include "colorpick.hpp"
 #include "textwidget.hpp"
 
 #include <climits>
@@ -235,8 +238,19 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     return true;
   }
   if (c.type == "pet") {
-    if (key == "color" || key == "sprout" || key == "colors_from")
-      return petKind(o["species"].value_or(std::string("sprout"))) == PetKind::Sprout;
+    const PetKind kind = petKind(o["species"].value_or(std::string("sprout")));
+    const bool sprout = kind == PetKind::Sprout;
+    if (key == "color" || key == "sprout" || key == "colors_from") return sprout;
+    if (sprout && (key == "variant" || key == "paint" || key.ends_with("_color"))) return false;
+    if (key == "variant") return o["paint"].value_or(std::string("variant")) == "variant";
+    // painted frames: only a species that has them in some style shows the choice
+    const std::string id = o["species"].value_or(std::string("sprout"));
+    const bool painted = isRigPet(kind) && (frameAtlas(id, FrameStyle::Chibi) || frameAtlas(id, FrameStyle::Pixel));
+    if (key == "art") return painted;
+    // your own colours, part by part; a drawn or painted companion has two to move (its main and second colour)
+    if (key.ends_with("_color"))
+      return o["paint"].value_or(std::string("variant")) == "custom" && ((isRigPet(kind) && !painted) || key == "body_color" || key == "mark_color");
+    if (key == "notify_ignore" || key == "bubble_seconds") return o["notify"].value_or(std::string("title")) != "off";
     return true;
   }
   if (c.type == "activity") {
@@ -487,6 +501,29 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
   all.push_back({K::Enum, "mesh_grid", "Points", "Puntos", {"3", "4", "5"}, 0, 0, 0, 0, "3"});
   all.push_back({K::Enum, "mesh_between", "Between points", "Entre puntos", {"smooth", "straight"}, 0, 0, 0, 0, "smooth"});
   all.push_back({K::Action, "mesh_reset", "Reset mesh", "Restablecer malla"});
+  if (w.cfg.type == "pet") {
+    // its variants are its species' own; your own colours start from the variant's
+    const PetKind kind = petKind(w.cfg.options["species"].value_or(std::string("sprout")));
+    const std::string id = w.cfg.options["species"].value_or(std::string("sprout"));
+    const FrameStyle style = w.cfg.options["art"].value_or(std::string("chibi")) == "pixel" ? FrameStyle::Pixel : FrameStyle::Chibi;
+    // painted frames are tinted like the drawn ones, so they share the drawn ones' variants
+    const RigKind* rig = rigKind(kind) && !frameAtlasOrOther(id, style) ? rigKind(kind) : nullptr;
+    const std::vector<RigPreset>& presets = rig ? rig->presets : classicTints();
+    const std::string chosen = w.cfg.options["variant"].value_or(std::string());
+    const RigPreset* base = &presets.front();
+    for (const RigPreset& v : presets)
+      if (v.id == chosen) base = &v;
+    for (auto& p : all) {
+      if (p.key == "variant") {
+        p.options.clear(), p.optionNames.clear();
+        for (const RigPreset& v : presets) p.options.emplace_back(v.id), p.optionNames.emplace_back(std::string(v.en), std::string(v.es));
+        p.defText = std::string(presets.front().id);
+      }
+      const Color* slot = p.key == "body_color" ? &base->palette.body : p.key == "belly_color" ? &base->palette.belly : p.key == "mark_color" ? &base->palette.mark
+                        : p.key == "eye_color" ? &base->palette.eyes : p.key == "detail_color" ? &base->palette.extra : nullptr;
+      if (slot && rig) p.defText = toHex(*slot);
+    }
+  }
   for (const auto& p : all)
     if (expanded == "*" || optionApplies(w.cfg, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
@@ -1075,7 +1112,8 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   if (type == "text") dw = 640, dh = 180;
   if (type == "lyrics") dw = 820, dh = 260;
   if (type == "notes") dw = 340, dh = 380;
-  if (type == "pet") dw = dh = look.empty() || look == "sprout" ? 96 : 256;  // detailed 128px sprites at 2x
+  // detailed 128 px sprites at 2x; the rigged ones' 96 grid at 3x
+  if (type == "pet") dw = dh = look.empty() || look == "sprout" ? 96 : isRigPet(petKind(look)) ? 288 : 256;
   if (type == "activity") {  // its layout sets its shape
     if (look == "weeks") dw = 520, dh = 160;
     else dw = 720, dh = 170;

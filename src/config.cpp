@@ -734,7 +734,11 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "pet") {
     b += std::format("species = \"{}\"          # companion; see docs/PETS.md\n", look.empty() ? "sprout" : look);
     b += "color = \"primary\"         # Sprout's body; sprout = its leaf\n"
+         "variant = \"\"               # its colouring (each species has its own; \"\" = the natural one)\n"
+         "paint = \"variant\"         # variant theme wallpaper custom (then body_color belly_color mark_color eye_color detail_color)\n"
          "climb = true               # hop onto window tops (Umbriel says where they are)\n"
+         "notify = \"title\"          # off react app title full: what it tells you of a notification\n"
+         "interact = true            # a click pats it, a drag carries it, a double click makes it jump\n"
          "depth = false\n";
   } else if (type == "activity") {
     b += std::format("layout = \"{}\"            # grid weeks\n", look.empty() ? "grid" : look);

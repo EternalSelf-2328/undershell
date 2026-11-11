@@ -48,6 +48,17 @@ void App::updateSaver(double now) {
     }
     m_idleNoteFor = want;
   }
+  if (m_idleNotifier && m_seat && !m_awayNote) {
+    static const ext_idle_notification_v1_listener kAway = {
+        [](void* d, ext_idle_notification_v1*) { static_cast<App*>(d)->m_userAway = true; },
+        [](void* d, ext_idle_notification_v1*) {
+          auto* a = static_cast<App*>(d);
+          a->m_userAway = false;
+          for (auto& w : a->m_widgets) w->needsRender = true;  // the pets wake up to greet you
+        }};
+    m_awayNote = ext_idle_notifier_v1_get_idle_notification(m_idleNotifier, 90 * 1000, m_seat);
+    ext_idle_notification_v1_add_listener(m_awayNote, &kAway, this);
+  }
 #endif
   if (m_saverStop) {
     m_saverStop = false;

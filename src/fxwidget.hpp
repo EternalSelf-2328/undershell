@@ -40,6 +40,7 @@ public:
   [[nodiscard]] std::vector<Rect> inputRects() const override { return m_inner->inputRects(); }
   bool onPointer(const PointerEvent& ev) override { return m_inner->onPointer(ev); }
   [[nodiscard]] const char* cursor() const override { return m_inner->cursor(); }
+  bool command(const std::string& verb, const std::string& arg) override { return m_inner->command(verb, arg); }
   [[nodiscard]] std::vector<std::string> watchedFiles() const override;
   void filesChanged() override;
   [[nodiscard]] std::string editableText() const override { return m_inner->editableText(); }

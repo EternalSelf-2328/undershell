@@ -54,6 +54,9 @@ struct TickContext {
   // the widget's box on its output and the output's size (logical px)
   Rect box;
   float outputW = 0, outputH = 0;
+  // nobody has touched the keyboard or the pointer for a while (90 s; the
+  // compositor's idle notice), false again with the first input
+  bool userAway = false;
 };
 
 struct DrawContext {
@@ -130,6 +133,12 @@ public:
     return false;
   }
   [[nodiscard]] virtual const char* cursor() const { return "default"; }
+  // a word from a script (`undershell msg pet <verb> <words>`): true if it understood
+  virtual bool command(const std::string& verb, const std::string& arg) {
+    (void)verb;
+    (void)arg;
+    return false;
+  }
 
   // Files the widget shows: the App watches their folders and calls
   // filesChanged() when one of them is written (no polling). A path ending

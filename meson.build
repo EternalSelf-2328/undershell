@@ -111,9 +111,18 @@ pet_art = custom_target('petart.inc',
   output : 'petart.inc',
   command : [find_program('python3'), files('tools/embed-pets.py'), '@OUTPUT@', '@INPUT@'])
 
+# the painted companions' frame atlases (art/pets/frames/<style>/<id>.png, made by
+# tools/import-pet-frames.py), pulled in with .incbin; rescanned on every build
+pet_frames = custom_target('petframes.inc',
+  output : 'petframes.inc',
+  build_always_stale : true,
+  command : [find_program('python3'), files('tools/embed-pet-frames.py'), '@OUTPUT@',
+             meson.current_source_dir() / 'art/pets/frames'])
+
 core = static_library('undershell-core',
   proto_src,
   pet_art,
+  pet_frames,
   'src/app.cpp',
   'src/audio.cpp',
   'src/aura.cpp',
@@ -190,6 +199,12 @@ core = static_library('undershell-core',
   'src/globe.cpp',
   'src/pet.cpp',
   'src/petart.cpp',
+  'src/petmotion.cpp',
+  'src/petrig.cpp',
+  'src/petlife.cpp',
+  'src/petkinds.cpp',
+  'src/petframes.cpp',
+  'src/notifywatch.cpp',
   'src/windowfeed.cpp',
   'src/screensaver.cpp',
   'src/weatherfeed.cpp',

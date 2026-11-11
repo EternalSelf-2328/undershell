@@ -410,6 +410,8 @@ private:
   ext_idle_notification_v1* m_idleNote = nullptr;
   double m_idleNoteFor = 0;         // the timeout it was made with (s)
   bool m_userIdle = false;          // the compositor said idle and not yet resumed
+  ext_idle_notification_v1* m_awayNote = nullptr;  // 90 s without input: the pets notice you are away
+  bool m_userAway = false;
   bool m_saverStop = false;         // input came: take it down at the next turn
   bool m_saverHover = false;        // the pointer is over one of its surfaces
   double m_saverSince = 0;

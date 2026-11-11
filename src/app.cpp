@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app.hpp"
+#include "pet.hpp"
 
 #include "visualizer.hpp"
 #include "wallset.hpp"
@@ -1344,6 +1345,7 @@ void App::render(Widget& w) {
   tctx.audio = audioFrame(&w);
   tctx.media = &m_media;
   tctx.weather = &m_weather;
+  tctx.userAway = m_userAway;
   for (const auto& o : m_widgets)  // the place the weather widget names
     if (o->cfg.type == "weather")
       if (auto p = o->cfg.options["location"].value<std::string>(); p && !p->empty()) {
@@ -2123,6 +2125,20 @@ std::string App::handleCommand(const std::string& cmd) {
     m_demo = cmd == "demo" ? !m_demo : cmd == "demo-on";
     for (auto& w : m_widgets) w->needsRender = true;
     return m_demo ? "demo on" : "demo off";
+  }
+  if (cmd.rfind("pet ", 0) == 0) {
+    // the pets, from a script: `pet say <words>`, `pet react <alert|happy|dance|jump|sleep|wake>`,
+    // `pet notify <words>` (as if a notification had come)
+    const std::string rest = cmd.substr(4);
+    const size_t sp = rest.find(' ');
+    const std::string verb = rest.substr(0, sp), arg = sp == std::string::npos ? std::string() : rest.substr(sp + 1);
+    int heard = 0;
+    for (auto& w : m_widgets)
+      if (w->cfg.type == "pet" && w->impl && w->impl->command(verb, arg)) {
+        ++heard;
+        w->needsRender = true;
+      }
+    return heard ? std::format("pet: {} ({} heard it)", verb, heard) : "pet: none heard it (no pet, or not one of say, react, notify)";
   }
   if (cmd == "quit") {
     m_running = false;

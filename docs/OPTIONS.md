@@ -378,13 +378,30 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `layer` | -999 – 999 | `0` | Layer |
 | Key | Values | Default | |
 |---|---|---|---|
-| `species` | `sprout`, `long`, `qilin`, `fenghuang`, `cerberus`, `pegasus`, `griffin`, `kitsune`, `fenrir`, `wyvern`, `unicorn`, `sentinel`, `rover`, `star_mage`, `moon_ranger`, `long_chibi`, `qilin_chibi`, `fenghuang_chibi`, `cerberus_chibi`, `pegasus_chibi`, `griffin_chibi`, `kitsune_chibi`, `fenrir_chibi`, `wyvern_chibi`, `unicorn_chibi`, `sentinel_chibi`, `rover_chibi`, `star_mage_chibi`, `moon_ranger_chibi` | `"sprout"` | Companion |
+| `species` | `sprout`, `long_classic`, `qilin_classic`, `fenghuang_classic`, `cerberus_classic`, `pegasus_classic`, `griffin_classic`, `kitsune_classic`, `fenrir_classic`, `wyvern_classic`, `unicorn_classic`, `sentinel_classic`, `rover_classic`, `star_mage_classic`, `moon_ranger_classic`, `long_chibi`, `qilin_chibi`, `fenghuang_chibi`, `cerberus_chibi`, `pegasus_chibi`, `griffin_chibi`, `kitsune_chibi`, `fenrir_chibi`, `wyvern_chibi`, `unicorn_chibi`, `sentinel_chibi`, `rover_chibi`, `star_mage_chibi`, `moon_ranger_chibi`, `long`, `qilin`, `fenghuang`, `cerberus`, `pegasus`, `griffin`, `kitsune`, `fenrir`, `wyvern`, `unicorn`, `sentinel`, `rover`, `star_mage`, `moon_ranger`, `cat`, `shiba`, `corgi`, `bunny`, `hamster`, `fox`, `wolf`, `deer`, `raccoon`, `red_panda`, `bear`, `dragon`, `owl`, `penguin`, `duckling`, `slime`, `ghost`, `skeleton`, `wukong`, `cultivator`, `ninja`, `witch` | `"sprout"` | Companion |
+| `art` | `chibi`, `pixel` | `"chibi"` | Art |
+| `variant` |  | `""` | Variant |
+| `paint` | `variant`, `theme`, `wallpaper`, `custom` | `"variant"` | Colours from |
+| `body_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `""` | Body |
+| `belly_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `""` | Belly, face |
+| `mark_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `""` | Markings, hair |
+| `eye_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `""` | Eyes, glow |
+| `detail_color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `""` | Horns, metal |
 | `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour |
 | `sprout` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"#7ed957"` | Sprout |
 | `speed` | 0.2 – 3 | `1` | Speed |
+| `lively` | 0.2 – 3 | `1` | Liveliness |
 | `climb` | `true` / `false` | `true` | Climbs windows |
 | `dance` | `true` / `false` | `true` | Dances |
-| `sleep` | `true` / `false` | `true` | Sleeps in silence |
+| `sleep` | `true` / `false` | `true` | Sleeps |
+| `interact` | `true` / `false` | `true` | Pat and carry |
+| `notify` | `off`, `react`, `app`, `title`, `full` | `"title"` | Notifications |
+| `notify_ignore` | text | `""` | Ignore apps |
+| `bubble_seconds` | 2 – 20 | `5` | Bubble, s |
+| `greet` | `true` / `false` | `true` | Greets you back |
+| `battery` | `true` / `false` | `true` | Low battery |
+| `hourly` | `true` / `false` | `false` | On the hour |
+| `breaks` | 0 – 180 | `0` | Break every, min |
 | `colors_from` | `theme`, `cover` | `"theme"` | Colours from |
 | `opacity` | 0.05 – 1 | `1` | Opacity |
 | `layer` | -999 – 999 | `0` | Layer |
