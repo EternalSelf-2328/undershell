@@ -38,5 +38,5 @@ Recommends: pipewire, xdg-desktop-portal | zenity
 Description: desktop widgets that live under your Wayland shell
  Audio visualizers, clocks and a now-playing card for Wayland compositors
  that support the layer-shell protocol. They sit above the wallpaper and
- below the windows; with Noctalia they take its palette and, through its
- depth plugin, pass behind the subject of the wallpaper.
+ below the windows. They can take Noctalia's palette and use undershell's
+ own depth maps to pass behind the subject of the wallpaper.

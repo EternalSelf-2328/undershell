@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.7.0
+Version:        1.8.0
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -54,8 +54,8 @@ Recommends:     (xdg-desktop-portal or zenity)
 %description
 Desktop widgets for Wayland compositors that support the layer-shell
 protocol: audio visualizers, clocks and a now-playing card that sit above the
-wallpaper and below the windows. With Noctalia they take its palette and,
-through its depth plugin, pass behind the subject of the wallpaper.
+wallpaper and below the windows. They can take Noctalia's palette and use
+undershell's own depth maps to pass behind the subject of the wallpaper.
 
 %prep
 %autosetup
@@ -88,6 +88,11 @@ through its depth plugin, pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Sat Nov 14 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.8.0-1
+- Add 36 painted companions in chibi and pixel styles, with 1728 animation frames
+- Add configurable rectangular mirror and water reflections with transparency
+- Preserve imported artwork, improve visualizer controls and fill Frame screen corners
+
 * Sun Nov 08 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.7.0-1
 - Pets: 28 sprite companions (mythological creatures, mecha, original characters) in an Actitud and a chibi collection, besides Sprout
 - Effects: an option changed in the inspector takes effect at once (it only did after switching an effect off and on, or a restart)

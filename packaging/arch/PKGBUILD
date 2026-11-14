@@ -5,7 +5,7 @@
 #   UNDERSHELL_REPO=$PWD/../.. makepkg -si
 
 pkgname=undershell
-pkgver=1.7.0
+pkgver=1.8.0
 pkgrel=1
 pkgdesc="Desktop widgets that live under your shell: Ryoku's visualizer, clocks and music card, with Noctalia palette and depth"
 arch=('x86_64')
@@ -15,7 +15,7 @@ depends=('wayland' 'libglvnd' 'libpipewire' 'tomlplusplus' 'glib2' 'cairo' 'pang
          'libxkbcommon' 'systemd-libs' 'gdk-pixbuf2' 'curl' 'ffmpeg' 'onnxruntime' 'sqlite'
          'lz4' 'quickjs-ng')
 makedepends=('git' 'meson' 'ninja' 'wayland-protocols' 'nlohmann-json')
-optdepends=('noctalia: theme palette, wallpaper and wallpaper_depth integration'
+optdepends=('noctalia: theme palette and wallpaper integration'
             'pipewire: live audio for the visualizer'
             'xdg-desktop-portal: file chooser for the TV look (or zenity)')
 _repo="${UNDERSHELL_REPO:-https://github.com/EternalSelf-2328/undershell.git}"

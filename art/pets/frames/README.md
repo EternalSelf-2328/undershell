@@ -11,7 +11,8 @@ crouch, jump rise, jump fall, land, alert, happy, sleep, sleep/breathe,
 carried, and three action frames (`src/petframes.hpp`).
 
 The source sheets are 1536 × 1024 PNGs, made for undershell with image
-generation. To import a sheet named `<species>-chibi.png` (or
+generation. The selected 72 sheets are attached to releases as
+`undershell-painted-pet-sources.tar.zst`, with a checksum manifest. To import a sheet named `<species>-chibi.png` (or
 `<species>-pixel.png`):
 
 ```sh

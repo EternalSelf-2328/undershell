@@ -1,3 +1,15 @@
+undershell (1.8.0) unstable; urgency=medium
+
+  * Add 36 painted companions in chibi and side-view pixel styles, with 24
+    frames per species and style; keep the classic collections available
+  * Decode embedded pet artwork directly with Cairo and prevent cropped
+    tails or misplaced feet when importing painted animation frames
+  * Add configurable rectangular mirror and animated-water reflections
+  * Preserve transparency and opacity when reflecting visualizers and text
+  * Show valid Split/Curtain controls and fill the Frame look's screen corners
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Sat, 14 Nov 2026 15:31:10 -0500
+
 undershell (1.7.0) unstable; urgency=medium
 
   * Pets: 28 sprite companions (mythological creatures, mecha, original

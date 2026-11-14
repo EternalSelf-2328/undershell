@@ -57,9 +57,9 @@ systemctl --user enable --now undershell
 ```
 
 To update, install the next release's package the same way. The Ubuntu
-package comes without `undershell-depth` (Ubuntu has no ONNX Runtime
-package), so there depth behind the wallpaper's subject needs Noctalia's
-`wallpaper_depth`.
+package comes without `undershell-depth` because ONNX Runtime is not packaged
+for that target. Generating new subject-depth maps requires a compatible
+`undershell-depth` helper and ONNX Runtime installation.
 
 **From source** (any distribution; `./update.sh` then keeps it up to date):
 
