@@ -3,9 +3,14 @@
 // (with GL) that every built-in compiles and draws.
 #include "check.hpp"
 #include "effects.hpp"
+#include "effectchain.hpp"
+#include "filter.hpp"
 #include "widget.hpp"
 #include "noctalia.hpp"
 #include "offscreen.hpp"
+#include "text.hpp"
+
+#include <cmath>
 
 #include <GLES3/gl3.h>
 
@@ -28,8 +33,43 @@ static bool hasRow(const std::vector<PropSpec>& rows, const std::string& key) {
   return false;
 }
 
+// Exercise the factory wrapper with real audio, not just the bare Visualizer.
+static Image effectVisualizer(const toml::table& opts) {
+  auto widget = createWidget("visualizer");
+  WidgetConfig wc;
+  wc.type = "visualizer";
+  wc.options = opts;
+  widget->configure(wc, testPalette());
+  std::vector<float> bands(64);
+  for (int i = 0; i < 64; ++i) bands[i] = static_cast<float>(0.12 + 0.65 * std::exp(-i / 24.0));
+  for (int i = 0; i < 90; ++i) {
+    TickContext tc;
+    tc.now = 1000 + i / 60.0;
+    tc.dt = 1.0 / 60;
+    tc.audio.bands = &bands;
+    tc.audio.energy = 0.4;
+    tc.audio.silent = false;
+    widget->tick(tc);
+  }
+  TextRenderer text;
+  Image img = renderDrawn(320, 180, [&] {
+    DrawContext dc;
+    dc.w = dc.outputW = 320;
+    dc.h = dc.outputH = 180;
+    dc.now = 1001.5;
+    dc.text = &text;
+    widget->draw(dc);
+  });
+  text.releaseGl();
+  return img;
+}
+
 int main() {
-  const fs::path dir = fs::temp_directory_path() / ("undershell-effects-" + std::to_string(getpid()));
+  std::string pattern = (fs::temp_directory_path() / "undershell-effects-XXXXXX").string();
+  const char* unique = mkdtemp(pattern.data());
+  CHECK(unique);
+  if (!unique) return TEST_RESULT();
+  const fs::path dir(unique);
   fs::create_directories(dir / "undershell/effects");
   setenv("XDG_CONFIG_HOME", dir.c_str(), 1);  // never the person's own folders
   setenv("XDG_DATA_HOME", dir.c_str(), 1);
@@ -38,7 +78,7 @@ int main() {
 
   // the built-ins: all well formed, warps first
   EffectLibrary& lib = effectLibrary();
-  CHECK(lib.all().size() == 17);
+  CHECK(lib.all().size() == 18);
   std::set<std::string> ids;
   int stage = 0;
   bool ordered = true;
@@ -54,6 +94,27 @@ int main() {
   CHECK(lib.find("parallax") && lib.find("parallax")->depth && lib.find("parallax")->audioWhen == "beat");
   CHECK(lib.find("pulse") && lib.find("pulse")->audio && !lib.find("pulse")->time);
   CHECK(lib.find("godrays") && lib.find("godrays")->stage == EffectSpec::Light);
+  CHECK(lib.find("reflection") && lib.find("reflection")->timeWhen == "water");
+  // A mirror sleeps; switching to water on the same chain requests frames.
+  {
+    EffectChain chain;
+    toml::table mirror{{"fx_reflection", true}};
+    chain.configure(mirror, testPalette());
+    CHECK(!chain.empty() && !chain.moving() && !chain.audio());
+    mirror.insert_or_assign("fx_reflection_water", true);
+    chain.configure(mirror, testPalette());
+    CHECK(chain.moving());
+    mirror.insert_or_assign("fx_reflection_water", false);
+    chain.configure(mirror, testPalette());
+    chain.tick(TickContext{});
+    CHECK(!chain.moving());
+  }
+
+  CHECK(lib.find("reflection") && lib.find("reflection")->rgba);
+  const EffectSpec rgba = parseEffect("rgba", own(R"({"stage":"colour"})",
+      "vec4 pixel(vec4 c, vec2 uv) { return wallPixel(uv); }\n"));
+  CHECK(rgba.error.empty() && rgba.rgba);
+  CHECK(effectCode({&rgba}).colours.find("fx0_pixel") != std::string::npos);
 
   // what the format refuses
   const std::string warp = "vec2 warp(vec2 uv) { return uv; }\n";
@@ -68,6 +129,8 @@ int main() {
   CHECK(!parseEffect("x", own(R"({"stage": "warp"})", "uniform float k;\n" + warp)).error.empty());
   CHECK(!parseEffect("x", own(R"({"stage": "warp"})", "#define K 2.0\n" + warp)).error.empty());
   CHECK(!parseEffect("x", own(R"({"stage": "warp", "audio_when": "beat"})", warp)).error.empty());
+  CHECK(!parseEffect("x", own(R"({"stage": "warp", "time_when": "water"})", warp)).error.empty());
+  CHECK(!parseEffect("x", own(R"({"stage": "warp", "time_when": "speed", "params": [{"key": "speed"}]})", warp)).error.empty());
   CHECK(!parseEffect("x", own(R"({"stage": "warp"})", "vec2 warp(vec2 uv) { return uv;\n")).error.empty());
   const EffectSpec ok = parseEffect("x", own(R"({"stage": "warp", "name": "Plain",
       "params": [{"key": "k", "kind": "number", "min": 0, "max": 2, "default": 5},
@@ -98,7 +161,7 @@ int main() {
   CHECK(lib.find("tilt") && lib.find("tilt")->nameEs == "Inclinar" && !lib.find("tilt")->file.empty());
   CHECK(lib.find("grain") && lib.find("grain")->nameEn == "My grain" && !lib.find("grain")->file.empty());
   CHECK(lib.find("broken") && !lib.find("broken")->error.empty());
-  CHECK(lib.all().size() == 19);
+  CHECK(lib.all().size() == 20);
   CHECK(!lib.refresh());  // nothing changed since
 
   // only effects that are on and work
@@ -189,13 +252,92 @@ int main() {
       CHECK(img.w == 160 && img.rgba[(45 * 160 + 80) * 4 + 3] == 255);
     }
     // the ones that do something with no music and no depth change the picture
-    for (const char* id : {"waves", "ripple", "flow", "sway", "droplets", "chroma", "vhs", "godrays", "aurora", "mist", "grain"}) {
+    for (const char* id : {"waves", "ripple", "flow", "sway", "droplets", "reflection", "chroma", "vhs", "godrays", "aurora", "mist", "grain"}) {
       toml::table one = plain;
       one.insert_or_assign(effectKey(id), true);
       const Image img = renderWidget("filter", one, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
       const double d = imageDiff(img, base);
       if (!(d > 0.2)) std::fprintf(stderr, "%s changed the picture by %.3f\n", id, d);
       CHECK(d > 0.2);
+    }
+    // An asymmetric image proves the mirror reads ABOVE its upper edge,
+    // reverses Y, keeps X and leaves every pixel outside its rectangle alone.
+    {
+      toml::table mirror = plain;
+      mirror.insert_or_assign("fx_reflection", true);
+      mirror.insert_or_assign("fx_reflection_left", 0.25);
+      mirror.insert_or_assign("fx_reflection_width", 0.5);
+      mirror.insert_or_assign("fx_reflection_height", 0.4);
+      auto draw = [&](const toml::table& o) {
+        return renderWidget("filter", o, 160, 90, pal, 1000, 1, 3.0, nullptr, png);
+      };
+      const Image reflected = draw(mirror);
+      double outside = 0, inside = 0;
+      for (int y = 0; y < 90; ++y)
+        for (int x = 0; x < 160; ++x)
+          for (int k = 0; k < 4; ++k) {
+            const size_t i = (static_cast<size_t>(y) * 160 + x) * 4 + k;
+            if (x >= 40 && x < 120 && y >= 45 && y < 81) {
+              const size_t src = (static_cast<size_t>(89 - y) * 160 + x) * 4 + k;
+              inside += std::abs(reflected.rgba[i] - base.rgba[src]);
+            } else outside += std::abs(reflected.rgba[i] - base.rgba[i]);
+          }
+      if (!(outside < 1 && inside / (80 * 36 * 4) < 0.6))
+        std::fprintf(stderr, "reflection rectangle: outside %.0f, inside mean %.4f\n", outside, inside / (80 * 36 * 4));
+      CHECK(outside < 1 && inside / (80 * 36 * 4) < 0.6);
+      toml::table weak = mirror;
+      weak.insert_or_assign("fx_reflection_strength", 0.0);
+      CHECK(imageDiff(draw(weak), base) < 0.05);
+      weak.insert_or_assign("fx_reflection_strength", 0.5);
+      const Image blended = draw(weak);
+      const size_t probe = (60 * 160 + 80) * 4 + 1;
+      CHECK(std::abs(blended.rgba[probe] * 2 - reflected.rgba[probe] - base.rgba[probe]) <= 2);
+      toml::table empty = mirror;
+      empty.insert_or_assign("fx_reflection_width", 0.0);
+      CHECK(imageDiff(draw(empty), base) < 0.05);
+      // A reflection taller than the available source must not repeat/smear.
+      toml::table shortSource = mirror;
+      shortSource.insert_or_assign("fx_reflection_top", 0.1);
+      shortSource.insert_or_assign("fx_reflection_height", 0.8);
+      CHECK(draw(shortSource).rgba[probe] == base.rgba[probe]);
+      toml::table water = mirror;
+      water.insert_or_assign("fx_reflection_water", true);
+      water.insert_or_assign("fx_reflection_bend", 2.0);
+      CHECK(imageDiff(draw(water), reflected) > 0.2);
+      FilterWidget live;
+      WidgetConfig wc;
+      wc.type = "filter";
+      wc.options = water;
+      live.configure(wc, pal);
+      auto at = [&](double now) {
+        TickContext tick;
+        tick.now = now;
+        tick.dt = 1.0 / 30;
+        live.tick(tick);
+        return renderDrawn(160, 90, [&] {
+          DrawContext dc;
+          dc.w = 160;
+          dc.h = 90;
+          dc.outputW = 1920;  // same decode bucket as renderWidget above
+          dc.outputH = 1080;
+          dc.now = now;
+          dc.wallpaper = png;
+          live.draw(dc);
+        });
+      };
+      const Image water0 = at(1000);
+      CHECK(imageDiff(at(1001), water0) > 0.1);
+      wc.options = mirror;
+      live.configure(wc, pal);
+      const Image mirror0 = at(1002);
+      CHECK(imageDiff(at(1003), mirror0) < 0.01);
+      // The inspector changes the existing widget, including its shoreline.
+      toml::table moved = mirror;
+      moved.insert_or_assign("fx_reflection_top", 0.6);
+      const Image reconfigured = renderWidget("filter", mirror, 160, 90, pal, 1000, 1, 3.0, nullptr, png, 0, 0, 0.5F, 0, &moved);
+      CHECK(imageDiff(reconfigured, draw(moved)) < 0.05);
+      CHECK(hasRow(effectRows(mirror, false), "fx_reflection_water"));
+      CHECK(hasRow(effectRows(mirror, false), "fx_reflection_top"));
     }
     // an option changed on the same widget (the inspector does that) takes
     // effect: the program is kept, its options are set again
@@ -300,6 +442,64 @@ int main() {
           }
       if (!(up > 50 && down < 1)) std::fprintf(stderr, "mist above: up %.0f down %.0f\n", up, down);
       CHECK(up > 50 && down < 1);
+    }
+    // All classic renderers also pass through the real factory wrapper.
+    // A lower-half mirror must match the upper half, including coverage.
+    for (const char* look : {"bars", "split", "dots", "segments", "wave", "ribbon", "curtain", "line", "frame", "radial", "orb", "spiral"}) {
+      toml::table opts{{"style", look}, {"reflection", 0.0}};
+      const Image source = effectVisualizer(opts);
+      opts.insert_or_assign("fx_reflection", true);
+      const Image reflected = effectVisualizer(opts);
+      double mismatch = 0, outside = 0;
+      for (int y = 0; y < 180; ++y)
+        for (int x = 0; x < 320; ++x)
+          for (int k = 0; k < 4; ++k) {
+            const size_t i = (static_cast<size_t>(y) * 320 + x) * 4 + k;
+            const size_t src = (static_cast<size_t>(179 - y) * 320 + x) * 4 + k;
+            if (y < 90) outside += std::abs(reflected.rgba[i] - source.rgba[i]);
+            else mismatch += std::abs(reflected.rgba[i] - source.rgba[src]);
+          }
+      if (!(mismatch / (90 * 320 * 4) < 0.6 && outside < 1))
+        std::fprintf(stderr, "%s reflection: mismatch %.4f outside %.0f\n", look, mismatch / (90 * 320 * 4), outside);
+      CHECK(mismatch / (90 * 320 * 4) < 0.6 && outside < 1);
+    }
+    // Reflection must carry alpha into empty pixels of a visualizer. A colour
+    // comparison on an opaque wallpaper cannot catch this failure.
+    {
+      toml::table opts{{"style", "bars"}, {"grow", "down"}, {"gain", 0.3},
+                       {"glow", 0.0}, {"reflection", 0.0}};
+      const Image plainViz = effectVisualizer(opts);
+      opts.insert_or_assign("fx_reflection", true);
+      const Image mirrored = effectVisualizer(opts);
+      double originalBottom = 0, reflectedBottom = 0, mismatch = 0;
+      for (int y = 92; y < 178; ++y)
+        for (int x = 0; x < 320; ++x) {
+          const size_t i = (static_cast<size_t>(y) * 320 + x) * 4;
+          const size_t src = (static_cast<size_t>(179 - y) * 320 + x) * 4;
+          originalBottom += plainViz.rgba[i + 3];
+          reflectedBottom += mirrored.rgba[i + 3];
+          for (int k = 0; k < 4; ++k) mismatch += std::abs(mirrored.rgba[i + k] - plainViz.rgba[src + k]);
+        }
+      CHECK(originalBottom == 0 && reflectedBottom > 1000);
+      CHECK(mismatch / (86 * 320 * 4) < 0.6);
+      toml::table translucent = opts;
+      translucent.insert_or_assign("opacity", 0.5);
+      const Image half = effectVisualizer(translucent);
+      double halfAlpha = 0;
+      for (int y = 92; y < 178; ++y)
+        for (int x = 0; x < 320; ++x) halfAlpha += half.rgba[(static_cast<size_t>(y) * 320 + x) * 4 + 3];
+      CHECK(reflectedBottom > 0 && halfAlpha / reflectedBottom > 0.45 && halfAlpha / reflectedBottom < 0.55);
+      opts.insert_or_assign("fx_reflection_strength", 0.0);
+      CHECK(imageDiff(effectVisualizer(opts), plainViz) < 0.05);
+      opts.insert_or_assign("fx_reflection_strength", 0.5);
+      const Image blend = effectVisualizer(opts);
+      double blendAlpha = 0;
+      for (int y = 92; y < 178; ++y)
+        for (int x = 0; x < 320; ++x) blendAlpha += blend.rgba[(static_cast<size_t>(y) * 320 + x) * 4 + 3];
+      CHECK(reflectedBottom > 0 && blendAlpha / reflectedBottom > 0.45 && blendAlpha / reflectedBottom < 0.55);
+      opts.insert_or_assign("fx_reflection_strength", 1.0);
+      opts.insert_or_assign("fx_reflection_water", true);
+      CHECK(imageDiff(effectVisualizer(opts), mirrored) > 0.05);
     }
     // any other widget: drawn into its own texture, then through the effects
     {

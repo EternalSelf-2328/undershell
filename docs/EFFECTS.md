@@ -48,6 +48,7 @@ above / below a line (the depth and the painted masks belong to the wallpaper).
 | `stage` | `"warp"`: the effect bends **where** the picture is read, with `vec2 warp(vec2 uv)`. `"colour"` (or `"color"`): it changes **what** was read, with `vec3 color(vec3 c, vec2 uv)`. `"light"`: something soft laid **over** the picture (rays, fog, cloud shadows), with `vec4 light(vec2 uv)`: the colour to add (already multiplied by how much it covers) and how much it covers what is under it (0 adds light, 1 hides the picture). Lights are drawn on a surface a quarter to a half of the size and stretched over the sharp picture, so they can take many samples cheaply |
 | `uses` | any of `"time"` (it moves by itself, so frames keep coming), `"audio"` (it follows the music), `"depth"` (it reads the wallpaper's depth) |
 | `audio_when` | the key of one of its `bool` options: it listens to the music only while that option is on |
+| `time_when` | the key of one of its `bool` options: it requests continuous frames only while that option is on (also declare `"time"` in `uses`). For example, reflection animates only with water waves on |
 | `params` | its options, up to 16 (below) |
 
 Each option:
@@ -90,12 +91,27 @@ effects never clash.
 | `u_aspect` | the picture's width / height |
 | `u_screen` | the surface's size in pixels |
 | `screenPx` | this pixel's position on the surface, in pixels (in a light, on its smaller surface) |
+| `wallPixel(uv)` | the original picture as premultiplied RGBA at LOD 0, for a `pixel()` effect |
 | `wall(uv)`, `wallLod(uv, lod)` | the picture at a point (`wallLod` reads a smaller, softer copy: cheaper for many samples) |
 | `depth(uv)`, `subject(uv)` | the depth there (0 far … 1 near; 0 without a depth map), and whether it is the subject (0..1) |
 | `noise(p)`, `noise4(p)`, `flow(p)`, `fbm(p)` | smooth noise: 0..1, four independent channels, a random direction in −1..1, layered noise (more layers at higher quality) |
 | `hash(p)` | a random 0..1 for a point |
 | `luma(c)` | a colour's brightness |
 | `pictureOffset(d)` | turns an offset measured in picture heights into a `uv` offset (so a circle stays round) |
+
+## Effects that resample transparency
+
+A colour-stage effect can use `vec4 pixel(vec4 c, vec2 uv)` instead of
+`vec3 color(vec3 c, vec2 uv)`. Its input and output are **premultiplied RGBA**.
+Use `wallPixel(uv)` to sample the original picture in the same format, with
+explicit LOD 0. Outside a widget's texture it returns transparent black.
+
+The effect chain blends all four channels with Strength and Where, so a
+reflection can appear in an empty part of a visualizer, text or image widget
+and keeps the source's opacity. Ordinary `color()` effects keep the current
+coverage, as before. Do not divide and multiply opacity a second time.
+For example, the built-in reflection mixes its incoming pixel with
+`wallPixel(reflectedUV)`, including its feather and fade.
 
 ## Cost
 

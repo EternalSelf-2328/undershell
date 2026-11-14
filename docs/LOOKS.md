@@ -2,6 +2,12 @@
 
 Part of [undershell](../README.md)'s documentation.
 
+The classic **Reflection** control (`reflection`) reserves space below the
+baseline of bars, dots, segments, wave, ribbon and curtain when **Grow** is
+**Up**. The separate **Reflection** effect (`fx_reflection`) in **Animated
+effects** mirrors a chosen rectangle of the widget, including transparency;
+resize or place its mirror line to leave room for the result.
+
 ## Visualizer: 32 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,

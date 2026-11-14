@@ -25,6 +25,7 @@ wallpaper has no still picture, and then the filter draws nothing.
 
 The same widget can **move** the wallpaper, whatever program sets it:
 **water waves**, **rippling water**, **flowing water** (a river, a waterfall),
+**reflections** in a rectangular mirror or rippling water,
 **wind** in leaves and grass, a **2.5D camera** that drifts through the
 picture using its depth, a **lens fringe** and a **VHS tape**, a **shine** that
 sweeps across, **twinkles** on the bright spots, a **pulse** with the music,
@@ -50,6 +51,49 @@ one effect costs about 1 ms of GPU per frame and with six 2.5 ms: about 7 % of
 that GPU at 30 fps. It stays at full resolution (a softer copy of the
 wallpaper would show at once); under load the governor lowers the effects'
 quality and the lights pass's resolution instead.
+
+### Mirror and water reflections
+
+![One landscape: original, a rectangular mirror, and rippling water](media/reflection.png)
+
+In **Wallpaper & effects → + Add effect → Water → Reflection**, set **Left**,
+**Top / mirror line**, **Width** and **Height** to place the rectangle. Values
+are fractions of the original wallpaper (0–1); the area follows its crop and
+fit on each output. The upper edge is the reflection axis: the picture above
+it appears upside down inside the rectangle. For a square, set
+`width × picture width = height × picture height`.
+
+Leave **Water waves** off for a still mirror, or turn it on for water and
+adjust **Wave strength**, **Wave size** and **Speed**. **Vertical stretch**,
+**Soft edges**, **Fade towards bottom**, **Strength** (1 = full reflection;
+0.5 blends with the original) and the usual painted masks let it fit a pond
+or an irregular shoreline. Areas beyond the available source image retain
+the original wallpaper.
+
+```toml
+[[widget]]
+id = "pond"
+type = "filter"
+style = "custom"
+depth = false
+fx_reflection = true
+fx_reflection_left = 0.2
+fx_reflection_top = 0.55
+fx_reflection_width = 0.6
+fx_reflection_height = 0.35
+fx_reflection_water = true
+fx_reflection_fade = 0.3
+fx_reflection_feather = 0.01
+```
+
+It reflects the still wallpaper, or any widget's own content when added
+to that widget (including visualizers, text and images with transparency). Windows and other widgets are not part of that image. Like
+the colour filter, it does not reflect a live video or scene wallpaper.
+The reflection shares the existing effect pass and texture, with one extra
+picture read inside the rectangle and no extra render target. A still mirror
+does not request continuous frames; water uses `fx_fps` (30 by default).
+
+![Reflection on a transparent visualizer, before and after the alpha correction](media/reflection-visualizer.png)
 
 ### The real weather
 

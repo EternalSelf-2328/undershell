@@ -43,6 +43,7 @@ void EffectChain::configure(const toml::table& opts, const NoctaliaState& noct) 
     const std::string mask = m_opts[effectKey(e->id, "mask")].value_or(std::string("all"));
     f.mask = static_cast<int>(std::ranges::find(kMasks, mask) - kMasks.begin()) % static_cast<int>(kMasks.size());
     bool listening = e->audio;
+    bool moving = e->time;
     for (const EffectParam& p : e->params) {
       const std::string key = effectKey(e->id, p.key);
       std::array<float, 3> v{};
@@ -51,6 +52,7 @@ void EffectChain::configure(const toml::table& opts, const NoctaliaState& noct) 
       } else if (p.kind == EffectParam::Bool) {
         v[0] = m_opts[key].value_or(p.def > 0.5) ? 1.0F : 0.0F;
         if (p.key == e->audioWhen) listening = e->audio && v[0] > 0.5F;
+        if (p.key == e->timeWhen) moving = e->time && v[0] > 0.5F;
       } else if (p.kind == EffectParam::Choice) {
         const std::string c = m_opts[key].value_or(p.defText);
         auto it = std::ranges::find(p.options, c);
@@ -62,7 +64,7 @@ void EffectChain::configure(const toml::table& opts, const NoctaliaState& noct) 
       }
       f.values.push_back(v);
     }
-    m_time |= e->time;
+    m_time |= moving;
     m_audio |= listening;
     m_depth |= e->depth || f.mask == 1 || f.mask == 2 || f.mask >= 5;  // painted masks come with the depth field
     fx.push_back(std::move(f));

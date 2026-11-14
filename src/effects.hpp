@@ -42,10 +42,12 @@ struct EffectSpec {
   // light: something soft laid over it (rays, fog), drawn at a fraction of
   // the resolution in a pass of its own and stretched over the sharp picture
   enum Stage { Warp, Colour, Light } stage = Warp;
+  bool rgba = false;        // colour stage uses pixel(vec4, vec2), premultiplied RGBA
   bool time = false;        // moves by itself: frames keep coming
   bool depth = false;       // reads the wallpaper's depth
   bool audio = false;       // follows the music…
   std::string audioWhen;    // …only while this bool option is on ("" = always)
+  std::string timeWhen;     // animates only while this bool option is on ("" = always)
   std::vector<EffectParam> params;
   std::string body;   // the GLSL, comments stripped
   std::string file;   // where it came from ("" = built in)

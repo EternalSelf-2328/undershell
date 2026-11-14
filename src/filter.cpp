@@ -103,6 +103,7 @@ void main() {
     } else {
         c = texture(u_tex, uv).rgb;
     }
+    float coverage = 1.0;
     // …then the colour stages change what was read
 //@COLOURS
     // …and the lights are laid over it
@@ -129,7 +130,7 @@ void main() {
         c += (n - 0.5) * 0.16 * u_grain;
     }
     c = clamp(c, 0.0, 1.0);
-    fragColor = vec4(c * u_opacity, u_opacity);
+    fragColor = vec4(c * (u_opacity * coverage), u_opacity * coverage);
 }
 )";
 }  // namespace

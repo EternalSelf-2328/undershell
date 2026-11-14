@@ -81,6 +81,20 @@ int main(int argc, char** argv) {
     GOLDEN(d);
   }
 
+  // The original reflection control still draws below each supported
+  // classic baseline; moving the root alone is not enough.
+  for (const char* look : {"bars", "dots", "segments", "wave", "ribbon", "curtain"}) {
+    if (frameOnly) break;
+    toml::table opts{{"reflection", 0.0}, {"grow", "up"}, {"glow", 0.0}};
+    const Image plain = renderLook(look, 320, 180, pal, &opts);
+    opts.insert_or_assign("reflection", 0.4);
+    const Image reflected = renderLook(look, 320, 180, pal, &opts);
+    double lower = 0;
+    for (int y = 135; y < 174; ++y)
+      for (int x = 0; x < 320; ++x) lower += reflected.rgba[(static_cast<size_t>(y) * 320 + x) * 4 + 3];
+    CHECK(lower > 100 && imageDiff(plain, reflected) > 0.2);
+  }
+
   // the frame has no seam and no cut corner: it reads the same mirrored left
   // to right and top to bottom (rounded corners, the spectrum in four)
   {

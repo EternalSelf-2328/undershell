@@ -45,6 +45,13 @@ vec2 texUv(vec2 uv) { uv = edgeSafe(uv); return u_flipY == 1 ? vec2(uv.x, 1.0 - 
 vec3 straight(vec4 t) { return u_unpremul == 1 && t.a > 0.0 ? t.rgb / t.a : t.rgb; }
 vec3 wall(vec2 uv) { return straight(texture(u_tex, texUv(uv))); }
 vec3 wallLod(vec2 uv, float lod) { return straight(textureLod(u_tex, texUv(uv), lod)); }
+// Alpha-aware resampling. Colour effects that move content into transparent
+// pixels need both its colour and coverage, interpolated premultiplied.
+vec4 wallPixel(vec2 uv) {
+    if (u_unpremul == 1 && (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))))) return vec4(0.0);
+    vec4 t = textureLod(u_tex, texUv(uv), 0.0);
+    return u_unpremul == 1 ? t : vec4(t.rgb * t.a, t.a);
+}
 float depth(vec2 uv) { return u_depthOn > 0.5 ? textureLod(u_depth, clamp(uv, 0.0, 1.0), 0.0).r : 0.0; }
 float subject(vec2 uv) {
     if (u_depthOn < 0.5) return 0.0;
@@ -126,6 +133,9 @@ const Builtin kBuiltins[] = {
     {"droplets",  // the glass in front of everything: last of the warps
 #include "fx/droplets.inc"
     },
+    {"reflection",
+#include "fx/reflection.inc"
+    },
     {"chroma",
 #include "fx/chroma.inc"
     },
@@ -170,7 +180,7 @@ uint64_t fnv(const std::string& s) {
 // names an option may not take: GLSL words and what kEffectApi defines
 bool reservedName(const std::string& k) {
   static const std::set<std::string> kWords = {
-      "strength", "mask", "split", "paint", "uv", "c", "L", "warp", "color", "light", "wall", "wallLod", "depth", "subject", "luma", "hash", "noise",
+      "strength", "mask", "split", "paint", "uv", "c", "L", "coverage", "pixel", "wallPixel", "warp", "color", "light", "wall", "wallLod", "depth", "subject", "luma", "hash", "noise",
       "noise4", "flow", "fbm", "pictureOffset", "edgeSafe", "texUv", "fxMask", "screenPx", "float", "int", "uint", "bool", "vec2", "vec3",
       "vec4", "ivec2", "ivec3", "ivec4", "bvec2", "bvec3", "bvec4", "mat2", "mat3", "mat4", "void", "true", "false", "if", "else",
       "for", "while", "do", "return", "break", "continue", "discard", "const", "in", "out", "inout", "uniform", "struct",
@@ -355,6 +365,7 @@ EffectSpec parseEffect(const std::string& id, const std::string& text) {
         e.audio |= s == "audio";
       }
   e.audioWhen = h.value("audio_when", std::string());
+  e.timeWhen = h.value("time_when", std::string());
   static const std::regex kKey("^[a-z][a-z0-9_]{0,23}$");
   static const std::regex kWord("^[a-z0-9_#]{1,24}$");
   std::set<std::string> keys;
@@ -427,6 +438,13 @@ EffectSpec parseEffect(const std::string& id, const std::string& text) {
       return e;
     }
   }
+  if (!e.timeWhen.empty()) {
+    const auto it = std::ranges::find_if(e.params, [&](const EffectParam& p) { return p.key == e.timeWhen; });
+    if (it == e.params.end() || it->kind != EffectParam::Bool) {
+      e.error = "\"time_when\" must name one of its bool options";
+      return e;
+    }
+  }
   e.body = stripComments(text.substr(close + 2));
   std::string why;
   const std::set<std::string> names = topLevelNames(lex(e.body), why);
@@ -434,10 +452,11 @@ EffectSpec parseEffect(const std::string& id, const std::string& text) {
     e.error = why;
     return e;
   }
-  const char* entry = e.stage == EffectSpec::Warp ? "warp" : e.stage == EffectSpec::Colour ? "color" : "light";
+  e.rgba = e.stage == EffectSpec::Colour && names.contains("pixel");
+  const char* entry = e.stage == EffectSpec::Warp ? "warp" : e.stage == EffectSpec::Colour ? (e.rgba ? "pixel" : "color") : "light";
   if (!names.contains(entry)) {
     e.error = e.stage == EffectSpec::Warp     ? "a warp needs vec2 warp(vec2 uv)"
-              : e.stage == EffectSpec::Colour ? "a colour effect needs vec3 color(vec3 c, vec2 uv)"
+              : e.stage == EffectSpec::Colour ? "a colour effect needs vec3 color(vec3 c, vec2 uv) or vec4 pixel(vec4 c, vec2 uv)"
                                               : "a light needs vec4 light(vec2 uv)";
     return e;
   }
@@ -549,6 +568,10 @@ EffectCode effectCode(const std::vector<const EffectSpec*>& fx) {
     const std::string mask = std::format("fxMask({0}mask, {0}split, uv) * {0}strength", own);
     if (e.stage == EffectSpec::Warp)
       code.warps += std::format("    {{ float m = {}; if (m > 0.0) uv = mix(uv, {}warp(uv), m); }}\n", mask, pre);
+    else if (e.stage == EffectSpec::Colour && e.rgba)
+      code.colours += std::format("    {{ float m = {}; if (m > 0.0) {{ vec4 rgba = vec4(c * coverage, coverage); "
+                                 "rgba = mix(rgba, {}pixel(rgba, uv), m); coverage = clamp(rgba.a, 0.0, 1.0); "
+                                 "c = rgba.a > 0.0 ? rgba.rgb / rgba.a : vec3(0.0); }} }}\n", mask, pre);
     else if (e.stage == EffectSpec::Colour)
       code.colours += std::format("    {{ float m = {}; if (m > 0.0) c = mix(c, {}color(c, uv), m); }}\n", mask, pre);
     else  // laid over what the lights before it laid

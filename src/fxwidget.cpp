@@ -15,20 +15,21 @@ uniform int u_hasLights;
 )";
 
 // the widget's picture is premultiplied: the effects see its colour, and
-// what they make keeps the widget's own coverage
+// colour-only effects keep coverage; pixel effects can resample it too
 const char* kBody = R"(
 void main() {
     screenPx = v_uv * u_screen;
     vec2 uv = v_uv;
 //@WARPS
     vec4 t = any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0))) ? vec4(0.0) : texture(u_tex, vec2(uv.x, 1.0 - uv.y));
+    float coverage = t.a;
     vec3 c = t.a > 0.0 ? t.rgb / t.a : vec3(0.0);
 //@COLOURS
     if (u_hasLights == 1) {
         vec4 L = texture(u_lights, vec2(v_uv.x, 1.0 - v_uv.y));
         c = c * (1.0 - L.a) + L.rgb;
     }
-    fragColor = vec4(clamp(c, 0.0, 1.0) * t.a, t.a);
+    fragColor = vec4(clamp(c, 0.0, 1.0) * coverage, coverage);
 }
 )";
 

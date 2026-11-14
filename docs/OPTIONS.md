@@ -481,6 +481,18 @@ The same widget moves the wallpaper: `fx_<effect> = true` turns an effect on, an
 | | `fx_droplets_size` | 0.3 – 3 | `1` | Drop size |
 | | `fx_droplets_speed` | 0 – 3 | `1` | Speed |
 | | `fx_droplets_bend` | 0 – 2 | `1` | Refraction |
+| `fx_reflection` | | `true` / `false` | `false` | Reflection |
+| | `fx_reflection_left` | 0 – 1 | `0` | Left |
+| | `fx_reflection_top` | 0 – 1 | `0.5` | Top / mirror line |
+| | `fx_reflection_width` | 0 – 1 | `1` | Width |
+| | `fx_reflection_height` | 0 – 1 | `0.5` | Height |
+| | `fx_reflection_water` | `true` / `false` | `false` | Water waves |
+| | `fx_reflection_bend` | 0 – 2 | `0.5` | Wave strength |
+| | `fx_reflection_speed` | 0 – 3 | `1` | Speed |
+| | `fx_reflection_size` | 0.2 – 4 | `1` | Wave size |
+| | `fx_reflection_stretch` | 0.25 – 4 | `1` | Vertical stretch |
+| | `fx_reflection_fade` | 0 – 1 | `0` | Fade towards bottom |
+| | `fx_reflection_feather` | 0 – 0.1 | `0` | Soft edges |
 | `fx_chroma` | | `true` / `false` | `false` | Lens fringe |
 | | `fx_chroma_beat` | `true` / `false` | `false` | On the beat |
 | `fx_vhs` | | `true` / `false` | `false` | VHS tape |

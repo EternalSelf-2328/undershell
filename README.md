@@ -36,7 +36,7 @@ Its first widgets are ports of
 |---|---|
 | [Visualizer](docs/LOOKS.md) | 32 looks that follow the music: bars and rings, fire, electricity, rain, neon, a CRT terminal, an old TV, the Game of Life, a lava lamp, a globe… |
 | [Widgets](docs/WIDGETS.md) | Clocks (12 faces), calendar, weather, system monitor, activity, notes, the music card, lyrics (karaoke), text, shapes, pictures and a pet with 65 companions (36 with painted chibi and pixel animations) that tells you of notifications |
-| [Wallpaper](docs/WALLPAPER.md) | A colour filter, 17 animated effects, particles, the real weather, Wallpaper Engine scenes and videos, depth planes, a layout per wallpaper |
+| [Wallpaper](docs/WALLPAPER.md) | A colour filter, 18 effects including mirror and water reflections, particles, the real weather, Wallpaper Engine scenes and videos, depth planes, a layout per wallpaper |
 | [Editor](docs/EDITOR.md) | Placing, shaping, grouping and layering widgets on screen, the depth brush, every shortcut |
 | [Desktop](docs/DESKTOP.md) | A screensaver, performance profiles, KDE Plasma, GNOME and other shells, the Noctalia bar widget |
 | [Options](docs/OPTIONS.md) | Every option of every widget |
