@@ -2,7 +2,7 @@
 // Original generated sprite artwork, embedded for offline use. The source
 // atlases and reproducible import tool live in art/pets and tools/pack-pets.cpp.
 #include "petart.hpp"
-#include <gdk-pixbuf/gdk-pixbuf.h>
+#include "petpng.hpp"
 #include <algorithm>
 #include <cstdio>
 
@@ -14,21 +14,15 @@ using Frames = std::array<PetPixels, kPetFamilySize>;
 
 Frames decode(const unsigned char* png, size_t size) {
   Frames frames{};
-  GdkPixbufLoader* loader = gdk_pixbuf_loader_new_with_type("png", nullptr);
-  if (!loader) return frames;
-  const bool fed = gdk_pixbuf_loader_write(loader, png, size, nullptr);
-  const bool closed = gdk_pixbuf_loader_close(loader, nullptr);
-  GdkPixbuf* pb = fed && closed ? gdk_pixbuf_loader_get_pixbuf(loader) : nullptr;
-  if (pb && gdk_pixbuf_get_width(pb) == S*4 && gdk_pixbuf_get_height(pb) == S*4 &&
-      gdk_pixbuf_get_n_channels(pb) == 4) {
-    const auto* data = gdk_pixbuf_read_pixels(pb);
-    const int stride = gdk_pixbuf_get_rowstride(pb);
+  std::vector<std::uint8_t> rgba;
+  if (decodePetPng(png, size, S*4, S*4, rgba)) {
+    const auto* data = rgba.data();
+    const int stride = S*4*4;
     for (int i=0;i<kPetFamilySize;++i) for(int y=0;y<S;++y)
       std::copy_n(data+((i/4)*S+y)*stride+(i%4)*S*4,S*4,frames[i].data()+y*S*4);
   } else {
     std::fputs("undershell: could not decode embedded pet artwork\n", stderr);
   }
-  g_object_unref(loader);
   return frames;
 }
 

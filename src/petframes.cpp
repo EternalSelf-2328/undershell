@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Painted companions (petframes.hpp): the embedded atlases and the choice of frame.
 #include "petframes.hpp"
-
-#include <gdk-pixbuf/gdk-pixbuf.h>
+#include "petpng.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -44,28 +43,12 @@ void measure(FrameAtlas& a) {
 }
 
 bool decode(const Embedded& e, FrameAtlas& out) {
-  GdkPixbufLoader* loader = gdk_pixbuf_loader_new_with_type("png", nullptr);
-  if (!loader) return false;
-  const bool fed = gdk_pixbuf_loader_write(loader, e.begin, static_cast<gsize>(e.end - e.begin), nullptr);
-  const bool closed = gdk_pixbuf_loader_close(loader, nullptr);
-  GdkPixbuf* pb = fed && closed ? gdk_pixbuf_loader_get_pixbuf(loader) : nullptr;
-  bool ok = false;
-  if (pb && gdk_pixbuf_get_width(pb) == kCols * kFrameCell && gdk_pixbuf_get_height(pb) == kRows * kFrameCell &&
-      gdk_pixbuf_get_n_channels(pb) == 4) {
-    const guint8* data = gdk_pixbuf_read_pixels(pb);
-    const int stride = gdk_pixbuf_get_rowstride(pb);
-    const int row = kCols * kFrameCell * 4;
-    out.rgba.resize(static_cast<size_t>(row) * kRows * kFrameCell);
-    for (int y = 0; y < kRows * kFrameCell; ++y) std::copy_n(data + static_cast<size_t>(y) * stride, row, out.rgba.data() + static_cast<size_t>(y) * row);
-    // binary alpha, whatever the file says
-    for (size_t i = 3; i < out.rgba.size(); i += 4) out.rgba[i] = out.rgba[i] >= 128 ? 255 : 0;
-    measure(out);
-    ok = true;
-  } else {
+  if (!decodePetPng(e.begin, static_cast<size_t>(e.end - e.begin), kCols * kFrameCell, kRows * kFrameCell, out.rgba)) {
     std::fprintf(stderr, "undershell: could not decode the frames of %s\n", e.id);
+    return false;
   }
-  g_object_unref(loader);
-  return ok;
+  measure(out);
+  return true;
 }
 
 const FrameAtlas* find(std::string_view id, int style) {

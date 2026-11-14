@@ -122,6 +122,23 @@ def place(frames: list[np.ndarray]) -> tuple[list[np.ndarray], list[str]]:
     notes = []
     # one horizontal anchor for the whole sheet: the standing pose's body
     anchor = body_centre(frames[0])
+
+    def wanted(i: int, f: np.ndarray) -> int:
+        centre = anchor if i in ACTS or i in AIRBORNE else body_centre(f)
+        return int(round(OUT_CELL / 2 - centre))
+
+    # a long tail can push a body-centred figure off the frame: slide the whole
+    # sheet by one amount (so no frame moves against another) until all fit
+    lo, hi = -OUT_CELL, OUT_CELL
+    for i, f in enumerate(frames):
+        b = bbox(f)
+        if b is not None:
+            dx = wanted(i, f)
+            lo = max(lo, 1 - (int(b[0]) + dx))
+            hi = min(hi, OUT_CELL - 2 - (int(b[2]) + dx))
+    slide = max(lo, min(hi, 0)) if lo <= hi else 0
+    if slide:
+        notes.append(f'sheet slid {slide:+d} px to fit the frame')
     out = []
     for i, f in enumerate(frames):
         b = bbox(f)
@@ -129,15 +146,20 @@ def place(frames: list[np.ndarray]) -> tuple[list[np.ndarray], list[str]]:
             notes.append(f'cell {i + 1}: empty')
             out.append(f)
             continue
-        dx = int(round(OUT_CELL / 2 - anchor)) if i in ACTS or i in AIRBORNE else int(round(OUT_CELL / 2 - body_centre(f)))
+        dx = wanted(i, f) + slide
+        if lo > hi:  # no single slide fits them all: hold this frame inside on its own
+            dx = max(1 - int(b[0]), min(OUT_CELL - 2 - int(b[2]), dx))
         # every frame stands on the ground row: the program lifts a jumping or carried
         # companion itself. Only an action may leave the ground (a pounce's arc).
         dy = int(GROUND - b[3])
-        if i in ACTS and abs(dy) > 4:
+        if i in ACTS and dy > 4:
             dy = 0
         elif i not in AIRBORNE and abs(dy) > 4:
             notes.append(f'cell {i + 1}: feet {dy:+d} px off the ground, snapped')
         g = shift(f, dx, dy)
+        lost = int(np.count_nonzero(f[..., 3]) - np.count_nonzero(g[..., 3]))
+        if lost:
+            raise ValueError(f'cell {i + 1}: placing would clip {lost} painted pixels; correct the source sheet')
         nb = bbox(g)
         if nb and (nb[0] == 0 or nb[1] == 0 or nb[2] == OUT_CELL - 1):
             notes.append(f'cell {i + 1}: touches the frame edge after placing')
@@ -159,7 +181,12 @@ def main() -> int:
             status = 1
             continue
         sid, style = name.rsplit('-', 1)
-        frames, notes = place(frames_of(Image.open(path)))
+        try:
+            frames, notes = place(frames_of(Image.open(path)))
+        except ValueError as error:
+            print(f'{path}: {error}', file=sys.stderr)
+            status = 1
+            continue
         atlas = np.zeros((ROWS * OUT_CELL, COLS * OUT_CELL, 4), np.uint8)
         for i, f in enumerate(frames):
             x0, y0 = (i % COLS) * OUT_CELL, (i // COLS) * OUT_CELL

@@ -255,7 +255,7 @@ unit_conf.set('DOCDIR', docdir)
 configure_file(input : 'data/undershell.service.in', output : 'undershell.service',
   configuration : unit_conf, install : true, install_dir : unitdir)
 install_data('README.md', 'NOTICE.md', 'docs/OPTIONS.md', 'docs/EFFECTS.md', 'docs/PARTICLES.md', 'docs/PETS.md', install_dir : docdir)
-install_data('docs/media/pets-bestiary.png', 'docs/media/pets-chibi.png', install_dir : docdir / 'media')
+install_data('docs/media/pets-bestiary.png', 'docs/media/pets-chibi.png', 'docs/media/pets-painted.png', 'docs/media/pets-painted-pixel.png', install_dir : docdir / 'media')
 install_data('LICENSE', install_dir : prefix / get_option('datadir') / 'licenses/undershell')
 
 foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles', 'motion', 'perf', 'render', 'system', 'wallset', 'pets']

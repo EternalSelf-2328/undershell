@@ -5,20 +5,22 @@ Part of [undershell](../README.md)'s documentation.
 The `pet` widget is a small companion that lives on the desktop: it walks
 along its box, hops onto window tops (on Umbriel), dances while music plays,
 sleeps while you are away, tells you of notifications in a bubble, and lets
-itself be patted and carried. There are three families:
+itself be patted and carried. There are 65 companions:
 
-- **36 rigged companions**, built from parts (a spine, jointed legs, necks,
-  heads, ears, tails, wings, robes, hair) and drawn as pixel art on every
-  frame: their legs really step and every colour can be changed. Domestic and
+- **36 painted companions**, with 24 drawings in each of two styles:
+  **chibi** and **side-view pixel art** (48 drawings per species). Domestic and
   forest animals, mythical creatures, birds and blobs, and people and spirits.
-  A species that has **painted frames** (24 frames, chibi or side-view pixel
-  art, see [The artwork](#the-artwork)) is shown with them instead.
+  Their behaviour comes from the rig, their movement from the drawings.
+  The original rig remains as a fallback for species without artwork.
+  Choose `art = "chibi"` or `art = "pixel"` in the editor's **Art** row.
 - **28 drawn companions**: the fourteen of the **Actitud** collection
   (`*_classic`) and their **chibi** versions (`*_chibi`), three drawings each,
   shown as drawn (alternated, never bent); they can be recoloured too.
 - **Sprout**, the original round creature drawn in code.
 
-![The rigged companions](media/pets-rigged.png)
+![The 36 painted companions](media/pets-painted.png)
+
+![The 36 side-view pixel companions](media/pets-painted-pixel.png)
 
 ![The Actitud collection](media/pets-bestiary.png)
 
@@ -44,31 +46,31 @@ species = "fox"
 width = 288
 height = 288
 art = "chibi"            # chibi pixel: the painted frames' style, when it has them
-variant = "arctic"       # its colouring; see the catalogue
+variant = "original"     # original rose jade azure violet gold obsidian frost
 paint = "variant"        # variant theme wallpaper custom
 notify = "title"         # off react app title full
 interact = true
 ```
 
-The rigged companions are drawn on a 96 × 96 grid and the drawn ones on
-128 × 128; both scale by whole pixels (a 288 px box shows a rigged one at 3×
-on a scale-1 screen, a 256 px box a drawn one at 2×), and a box too small
-shrinks them to fit. New pets start at those sizes. A config with no
+Painted and classic companions use a 128 × 128 grid; the fallback rig uses
+96 × 96. They scale by whole pixels (a 256 px box shows a painted one at 2×
+on a scale-1 screen), and a box too small shrinks them to fit. A config with no
 `species`, or one undershell does not know, gets Sprout.
 
 The ids `long`, `qilin`, `fenghuang`, `cerberus`, `pegasus`, `griffin`,
 `kitsune`, `fenrir`, `wyvern`, `unicorn`, `sentinel`, `rover`, `star_mage`
-and `moon_ranger` are the rigged versions; the drawn originals are
+and `moon_ranger` select the painted versions; the drawn originals are
 `long_classic`, `qilin_classic`… and `long_chibi`, `qilin_chibi`…
 
 ## Catalogue
 
-### Rigged
+### Painted companions and fallback rigs
 
 Every one walks, runs now and then, sits or lies down, sleeps, dances, leaps
 and does the things in the last column when it is left to itself (it also
 looks about and at you). The variants are its colourings, the first its
-natural one.
+natural one. These part-by-part variants apply to the fallback rig; painted
+companions use the tints described under [Colours](#colours).
 
 | ID | Name | Variants | Its habits |
 |---|---|---|---|
@@ -142,7 +144,7 @@ and accessories of the original.
 
 | `paint` | Colours |
 |---|---|
-| `variant` | One of its kind's own colourings, `variant` (the catalogue lists them). Drawn companions have the tints `original`, `rose`, `jade`, `azure`, `violet`, `gold`, `obsidian`, `frost`. |
+| `variant` | One of its kind's own colourings, `variant` (the catalogue lists them). Painted and classic companions have the tints `original`, `rose`, `jade`, `azure`, `violet`, `gold`, `obsidian`, `frost`. |
 | `theme` | The theme's palette (Noctalia's): the body in the primary, the markings in the secondary, the eyes in the tertiary, a pale belly from the primary. |
 | `wallpaper` | The wallpaper under it: its dominant colours are read off the main thread whenever it changes, and the liveliest common one becomes the body, another hue the markings, a contrasting one the eyes. |
 | `custom` | Your own, part by part. |
@@ -163,85 +165,33 @@ apply to them.
 
 ## What it does
 
-The rigged companions:
+The 36 painted companions select one of their 24 drawings for each action:
+idle, breathing, looking about, blinking, sitting, a six-frame walk,
+crouching, rising, falling, landing, alert, happy, sleeping, being carried,
+and three frames of a species-specific action. Walking advances by the
+distance covered. Frames are shown as drawn, with whole-pixel scaling and
+horizontal mirroring.
 
-- **Walk** with real legs: four beats (left hind, left fore, right hind, right
-  fore), each foot planted while the body passes over it and lifted, folded
-  and swung forward in its turn, so the feet never slide. Running is a trot
-  (diagonal pairs) with the mouth open. Rabbits, owls and slimes hop; birds
-  waddle; people walk with the opposite arm swinging; the jade dragon swims
-  through the air; ghosts and mages float.
-- **Every behaviour is a pose it moves into**: the body eases in about 0.16 s,
-  the head in 0.1 s and the ears quicker still, so sitting down, lying,
-  getting up and looking round are movements, not switches. Horses and deer
-  lie down instead of sitting; people sit cross-legged (a mage or a
-  cultivator on the air).
-- **Springs** in the tails, ears, robes, capes, hair, manes and whiskers: they
-  lag the body and overshoot, trail when it walks and flick on a landing.
-- It **looks about** every few seconds (now and then right at you), twitches
-  an ear, breathes, blinks; it turns round by looking at you halfway. On
-  its own it does the things its kind does (grooming, scratching an ear with
-  a hind foot, the play bow, howling, preening, a staff twirled, a flying
-  sword called round, meditating with qi gathering…); **Liveliness**
-  (`lively`) sets how often.
-- It **crouches** before a leap, stretches out in the air, reaches for the
-  ground coming down and **lands** as hard as it fell; winged ones beat up to
-  a window and glide down.
-- It **sleeps** while you are away (90 s without input, then a little more),
-  or after five minutes without music (a minute and a half at night), and
-  gets up with a stretch when you come back or the music starts.
-- It **dances** on the beat: a bounce on each kick, a paw or an arm up, its
-  tail wagging, notes rising.
+They keep the rig's behaviour: walking and running, hopping onto windows,
+looking about, grooming or performing their species' actions, sleeping
+while you are away, and dancing to the music. **Liveliness** (`lively`)
+controls how often they do something on their own. The three action frames
+are shared by the species' spontaneous acts. A painted pose changes when
+its state changes; there are no generated in-between deformations.
 
-The drawn companions move as described below.
+The fallback rig builds these poses from articulated parts on a 96-pixel
+grid. Its tail rotates from the root; robes, capes and serpent bodies do not
+use a travelling wave.
 
-Each drawn collection has three
-drawings per character (standing, a step and resting); everything in between
-is animated by undershell, in whole sprite pixels, the way pixel artists
-animate with few frames (`src/petmotion.cpp`, timing in `src/pet.cpp`):
+The 28 classic drawings use their standing and stepping drawings to walk,
+and the resting drawing to sit or sleep. The drawings are never squashed,
+bent or made to ripple. Jumps move the whole figure; glints, shadows, dust,
+sleep marks and dance notes are added separately.
 
-- **Walking** uses the two standing drawings as four beats (stand, step,
-  stand, step, as Shimeji does), about 240 ms each. The body drops into each
-  footfall and rises as the legs pass, a triangle rather than a sine, while
-  the feet stay planted; each step covers the ground it should, so the
-  cadence follows the speed and the feet do not slide.
-- **Squash and stretch** live in the torso: the head keeps its rows and the
-  feet stay on the ground. It crouches before a jump, stretches as it rises,
-  is round at the top of the arc and squashes on landing as hard as it fell,
-  with a puff of dust.
-- **Follow-through**: tails, manes, capes and hair trail the body with a wave
-  that runs out to the tip and grows on the way; wings beat (the downstroke
-  takes 60 % of the beat) and spread to glide down.
-- It **turns round** (narrowing to an edge and opening the other way) instead
-  of mirroring at once, settles down and gets up instead of switching
-  drawings, stretches when it wakes, breathes (about a pixel every 3.3 s, slower
-  asleep) and blinks every 2–7 s, now and then twice. Two pets on one desktop
-  never move in step.
-- While it **dances**, it squashes and rebounds on each kick, leans to one
-  side and then the other, bobs its head and lets notes rise; a mecha stomps
-  instead of hopping.
-
-Each kind moves its own way:
-
-| Kind | Companions | How it moves | Its own habits |
-|---|---|---|---|
-| Hooves | Qilin, Pegasus, Unicorn | A trot with two head nods per stride | Tosses its head, stamps, swishes its tail |
-| Paws | Cerberus, Griffin | A steady pad | Cerberus pants with its three heads out of step and shakes like a dog; the griffin's eagle head holds still while its body bobs, and moves in snaps |
-| Fox | Kitsune | A light, springy trot, nine tails rippling | The mousing pounce: crouch, a high leap, down head first; a head tilt |
-| Wolf | Fenrir | A level, ground-eating trot, head low | Howls, muzzle to the sky |
-| Bird | Fenghuang | The head holds still in the air and snaps forward, once a step | Pecks, shivers its tail, ruffles its wings |
-| Serpent | Jade dragon | Swims through the air: a wave from head to tail, a slow hover and a shadow below | Coils |
-| Hover | Luma | Floats (3 s up and down), hair and robe trailing, the orb drifting and glowing on its own | Spins the orb |
-| Mecha | Bastion, Copper | Heavy: a slow stride, the body sinking into each footfall and rebounding, dust at every step | A light crossing the visor, a servo settling; Copper's cape |
-| Biped | Nox | A walk with the coat and scarf trailing | Cape in the wind, a head tilt |
-| Lumber | Ember wyvern | Waddles, leaning over each foot, wings twitching | Stretches its wings, whips its tail |
-
-Winged companions (Fenghuang, Pegasus, Griffin, the wyvern) beat their wings
-up to a window and glide down; the dragon and Luma float up. The frame
-changes 12 times a second while the companion does something, 8 while it
-stands about and 4 asleep; the surface moves at 30 fps while it travels. A
-frame takes about 0.4 ms of CPU to make and is uploaded only when it
-changed.
+Painted companions and fallback rigs update at 30 Hz while active, 15 Hz
+while idle and 8 Hz asleep. Classic frames update at 12, 8 and 4 Hz
+respectively. Their surfaces move at 30 fps while travelling; textures are
+uploaded only when the pixels change.
 
 The motion was worked out from references on pixel-art animation, animal
 locomotion and other desktop pets, among them:
@@ -300,6 +250,17 @@ a notification had come (it follows `notify`). Every pet hears it.
 
 ## Cost
 
+The 72 painted atlases add 28.46 MiB of compressed PNG data to the
+executable (14.87 MiB chibi, 13.59 MiB pixel). A species and style is decoded
+on first use and kept in memory: 1.5 MiB per atlas, or 108 MiB after visiting
+all 36 species in both styles. Embedded sprites are decoded
+directly with Cairo, without an image-loader process or a D-Bus connection.
+Across all 36 species on the Skylake laptop, composing a chibi frame took
+0.012 ms of CPU on average (0.014 ms worst); first decoding took about
+16 ms per species. These timings exclude drawing and GPU uploads.
+The pixel style measured 0.007 ms of CPU per composition on average
+(0.015 ms worst) and about 12 ms for first decoding, with the same exclusions.
+
 A rigged frame takes about 0.4–0.5 ms of CPU (96 × 96, a body of a dozen
 parts, each shaded as one volume) and is uploaded only when it changed. It
 is drawn 30 times a second while the companion moves, 15 while it stands
@@ -323,7 +284,7 @@ executable at build time (`tools/embed-pets.py`): no files are read and
 nothing is downloaded at run time.
 
 `build/test_pets --gallery build/pets` exports the catalogues as the program
-draws them (`bestiary.png`, `bestiary-chibi.png`), a transparent PNG of each
+draws them (`painted-chibi.png`, `painted-pixel.png`, `bestiary.png`, `bestiary-chibi.png`), a transparent PNG of each classic
 companion and a `*-sheet.png` per species: 1024 × 768, eight 128 × 128 frames
 in each row (a whole cycle for the walk), in the order idle, sit, walk, jump,
 dance, sleep.
@@ -342,6 +303,8 @@ put on the ground and centred by its upper body so the walk does not slide),
 and the build embeds every atlas there (`tools/embed-pet-frames.py`, with the
 assembler's `.incbin`). A painted companion keeps the rig's behaviour; its
 frame is chosen from what it is doing, the walk by the ground covered.
+The importer refuses a placement that would crop painted pixels. An action
+can float above the ground; it is never left below the rendered ground row.
 Painted frames are tinted like the drawn companions (`variant` lists the same
 tints).
 

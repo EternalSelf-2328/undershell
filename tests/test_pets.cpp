@@ -4,6 +4,7 @@
 #include "offscreen.hpp"
 #include "pet.hpp"
 #include "petframes.hpp"
+#include "petpng.hpp"
 #include "schema.hpp"
 
 #include <algorithm>
@@ -14,8 +15,9 @@ using namespace undershell;
 
 namespace {
 constexpr int S = kPetPixels;
-Image render(const std::string& species, const std::string& pose, int size = 128, double opacity = 1) {
-  return renderWidget("pet", toml::table{{"species", species}, {"pet_preview", pose}, {"opacity", opacity}},
+Image render(const std::string& species, const std::string& pose, int size = 128, double opacity = 1,
+             const std::string& art = "chibi") {
+  return renderWidget("pet", toml::table{{"species", species}, {"pet_preview", pose}, {"opacity", opacity}, {"art", art}},
                       size, size, testPalette());
 }
 
@@ -85,9 +87,68 @@ void gallery(const std::filesystem::path& dir, bool chibi) {
   CHECK(writePng(page, (dir / (chibi?"bestiary-chibi.png":"bestiary.png")).string(), false));
   text.releaseGl();
 }
+
+void paintedGallery(const std::filesystem::path& dir, FrameStyle style) {
+  std::filesystem::create_directories(dir);
+  const auto species = framedSpecies(style);
+  if (species.empty()) return;
+  const std::string art = style == FrameStyle::Pixel ? "pixel" : "chibi";
+  constexpr int columns = 6, cardW = 192, cardH = 180, padding = 32;
+  const int rows = static_cast<int>((species.size() + columns - 1) / columns);
+  const int width = columns * cardW, height = 80 + rows * cardH;
+  TextRenderer text;
+  Canvas canvas;
+  Image page = renderDrawn(width, height, [&] {
+    canvas.begin(width, height, 1, &text);
+    canvas.roundRect(0, 0, width, height, 0, Color::fromHex("#242730"));
+    canvas.text("Painted companions", {.family="Space Grotesk", .size=28, .weight=700}, 24, 18, Color::fromHex("#f2edf8"));
+    canvas.text(std::to_string(species.size()) + " species · 24 frames each · " + art,
+                {.size=14}, 24, 52, Color::fromHex("#c3b7d0"));
+    for (size_t i = 0; i < species.size(); ++i) {
+      const int x = static_cast<int>(i % columns) * cardW, y = 80 + static_cast<int>(i / columns) * cardH;
+      canvas.text(std::string(species[i]), {.family="JetBrains Mono", .size=12}, x + 16, y + 150, Color::fromHex("#e1dae8"));
+    }
+  });
+  for (size_t i = 0; i < species.size(); ++i) {
+    const Image sprite = render(std::string(species[i]), "idle", 128, 1, art);
+    const int ox = static_cast<int>(i % columns) * cardW + padding;
+    const int oy = 80 + static_cast<int>(i / columns) * cardH;
+    for (int y = 0; y < sprite.h; ++y)
+      for (int x = 0; x < sprite.w; ++x) {
+        const size_t src = (y * sprite.w + x) * 4, dst = ((oy + y) * width + ox + x) * 4;
+        const int alpha = sprite.rgba[src + 3];
+        for (int c = 0; c < 3; ++c) page.rgba[dst + c] = sprite.rgba[src + c] + page.rgba[dst + c] * (255 - alpha) / 255;
+      }
+  }
+  CHECK(writePng(page, (dir / ("painted-" + art + ".png")).string(), false));
+  text.releaseGl();
+}
 }  // namespace
 
 int main(int argc, char** argv) {
+  // Embedded sprites decode without an image-loader process. Channel order and
+  // transparency must survive exactly; malformed PNGs leave the output alone.
+  {
+    std::vector<unsigned char> png;
+    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 2, 2);
+    auto* pixels = reinterpret_cast<std::uint32_t*>(cairo_image_surface_get_data(surface));
+    pixels[0] = 0xffe05020, pixels[1] = 0, pixels[2] = 0xff1278d4, pixels[3] = 0xff20d050;
+    cairo_surface_mark_dirty(surface);
+    const auto write = [](void* closure, const unsigned char* data, unsigned int length) -> cairo_status_t {
+      auto& bytes = *static_cast<std::vector<unsigned char>*>(closure);
+      bytes.insert(bytes.end(), data, data + length);
+      return CAIRO_STATUS_SUCCESS;
+    };
+    CHECK(cairo_surface_write_to_png_stream(surface, write, &png) == CAIRO_STATUS_SUCCESS);
+    cairo_surface_destroy(surface);
+    std::vector<std::uint8_t> decoded;
+    const std::vector<std::uint8_t> expected{224, 80, 32, 255, 0, 0, 0, 0, 18, 120, 212, 255, 32, 208, 80, 255};
+    CHECK(decodePetPng(png.data(), png.size(), 2, 2, decoded));
+    CHECK(decoded == expected);
+    CHECK(!decodePetPng(png.data(), png.size() / 2, 2, 2, decoded));
+    CHECK(!decodePetPng(png.data(), png.size(), 3, 2, decoded));
+    CHECK(decoded == expected);
+  }
   CHECK(petKind("") == PetKind::Sprout);
   CHECK(petKind("not-a-species") == PetKind::Sprout);
   std::set<std::string> ids;
@@ -230,6 +291,79 @@ int main(int argc, char** argv) {
     CHECK(painted.size() == rk->presets.size());
   }
   CHECK(rigKinds == 36);
+  // Exercise the delivered artwork, not just the synthetic atlas below: every
+  // rigged species has 24 decodable frames in each style, a six-frame walk, clear edges
+  // and feet on the ground. No part may be lost when frameCompose grounds it.
+  const auto chibiFrames = framedSpecies(FrameStyle::Chibi);
+  const auto paintedPixelFrames = framedSpecies(FrameStyle::Pixel);
+  CHECK(chibiFrames.size() == rigKinds);
+  CHECK(paintedPixelFrames.size() == rigKinds);
+  for (FrameStyle style : {FrameStyle::Chibi, FrameStyle::Pixel}) {
+    for (const auto& s : kPetSpecies) {
+      if (!isRigPet(s.kind)) continue;
+      CHECK(std::find(chibiFrames.begin(), chibiFrames.end(), s.id) != chibiFrames.end());
+      CHECK(std::find(paintedPixelFrames.begin(), paintedPixelFrames.end(), s.id) != paintedPixelFrames.end());
+      const FrameAtlas* atlas = frameAtlas(s.id, style);
+      CHECK(atlas != nullptr);
+      if (!atlas) continue;
+      CHECK(atlas->rgba.size() == 6U * 4U * kFrameCell * kFrameCell * 4U);
+      std::set<PetPixels> walk;
+      for (int cell = 0; cell < kFrameCount; ++cell) {
+        size_t sourcePixels = 0;
+        int bottom = -1;
+        for (int y = 0; y < kFrameCell; ++y)
+          for (int x = 0; x < kFrameCell; ++x) {
+            const size_t o = (static_cast<size_t>(cell / 6 * kFrameCell + y) * 6 * kFrameCell + cell % 6 * kFrameCell + x) * 4;
+            const auto alpha = atlas->rgba[o + 3];
+            CHECK(alpha == 0 || alpha == 255);
+            if (x == 0 || x == kFrameCell - 1) CHECK(alpha == 0);
+            if (alpha) ++sourcePixels, bottom = y;
+          }
+        CHECK(sourcePixels > 0);
+        if (cell < fcell::Act) CHECK(bottom == kFrameGround);
+        PetPixels right, left;
+        frameCompose(*atlas, cell, false, right);
+        frameCompose(*atlas, cell, true, left);
+        size_t drawnPixels = 0;
+        for (int y = 0; y < kPetPixels; ++y)
+          for (int x = 0; x < kPetPixels; ++x) {
+            const int o = (y * kPetPixels + x) * 4;
+            // Atlas row 0 is valid: grounding adds eleven clear rows above it.
+            if (y == 0) CHECK(right[o + 3] == 0);
+            drawnPixels += right[o + 3] != 0;
+            for (int c = 0; c < 4; ++c)
+              CHECK(right[o + c] == left[(y * kPetPixels + kPetPixels - 1 - x) * 4 + c]);
+          }
+        CHECK(drawnPixels == sourcePixels);
+        if (cell >= fcell::Walk && cell < fcell::Walk + 6) walk.insert(right);
+      }
+      CHECK(walk.size() == 6);
+      PetWidget pet;
+      WidgetConfig wc;
+      wc.type = "pet";
+      wc.options = toml::table{{"species", std::string(s.id)}, {"art", style == FrameStyle::Pixel ? "pixel" : "chibi"}};
+      pet.configure(wc, testPalette());
+      CHECK(pet.painted());
+      PetPixels expected, selected;
+      frameCompose(*atlas, fcell::Breathe, false, expected);
+      CHECK(pet.previewFrames(PetPose::Idle, 0.5, selected));
+      CHECK(selected == expected);
+      if (style == FrameStyle::Pixel) {
+        const auto* chibi = frameAtlas(s.id, FrameStyle::Chibi);
+        CHECK(chibi && atlas->rgba != chibi->rgba);
+      }
+      if (style == FrameStyle::Chibi && !frameAtlas(s.id, FrameStyle::Pixel)) {
+        CHECK(frameAtlasOrOther(s.id, FrameStyle::Pixel) == atlas);
+        PetPixels chibi, fallback;
+        CHECK(pet.previewFrames(PetPose::Idle, 0.5, chibi));
+        wc.options.insert_or_assign("art", "pixel");
+        pet.configure(wc, testPalette());
+        CHECK(pet.painted() && pet.previewFrames(PetPose::Idle, 0.5, fallback));
+        CHECK(chibi == fallback);
+      }
+    }
+  }
+  for (const auto id : framedSpecies(FrameStyle::Pixel)) CHECK(isRigPet(petKind(id)));
   // colours from a picture: a lively body, a pale belly, the eyes in another hue
   {
     const RigPalette fallback;
@@ -368,7 +502,8 @@ int main(int argc, char** argv) {
     CHECK(frameAtlasOrOther("test-one-style", FrameStyle::Chibi) == &atlas);
     frameAtlasOverride("test-one-style", FrameStyle::Pixel, nullptr);
     CHECK(frameAtlasOrOther("test-one-style", FrameStyle::Chibi) == nullptr);
-    CHECK(std::find(framedSpecies(FrameStyle::Pixel).begin(), framedSpecies(FrameStyle::Pixel).end(), "fox") != framedSpecies(FrameStyle::Pixel).end());
+    const auto pixelFrames = framedSpecies(FrameStyle::Pixel);
+    CHECK(std::find(pixelFrames.begin(), pixelFrames.end(), "fox") != pixelFrames.end());
     PetWidget painted;
     WidgetConfig wc;
     wc.type = "pet";
@@ -437,6 +572,8 @@ int main(int argc, char** argv) {
   if (argc == 3 && std::string_view(argv[1]) == "--gallery") {
     gallery(argv[2],false);
     gallery(argv[2],true);
+    paintedGallery(argv[2], FrameStyle::Chibi);
+    paintedGallery(argv[2], FrameStyle::Pixel);
   }
   return TEST_RESULT();
 }
