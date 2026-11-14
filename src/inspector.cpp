@@ -52,6 +52,7 @@ std::string valueText(const toml::table& opts, const PropSpec& p) {
     case PropSpec::Text:
     case PropSpec::Font: {
       const std::string v = n && n->is_string() ? n->value_or(p.defText) : p.defText;
+      if (p.key == "grow") return visualizerGrowValue(opts["style"].value_or(std::string("bars")), v);
       return v.empty() ? p.defText : v;  // "" = the design default
     }
     case PropSpec::Bool: return (n && n->is_boolean() ? n->value_or(p.def != 0) : p.def != 0) ? "true" : "false";
@@ -489,6 +490,9 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
         else if (v.size() >= 2) p.defText = v.substr(1, v.size() - 2);
       }
   }
+  if (w.cfg.type == "visualizer")
+    for (auto& p : all)
+      if (p.key == "grow") p = visualizerGrowProperty(w.cfg.options["style"].value_or(std::string("bars")));
   // shape, for every widget: a mode, then that mode's own controls
   all.push_back({K::Enum, "warp", "Mode", "Modo", {"none", "tilt", "pin", "mesh"}, 0, 0, 0, 0, "none"});
   all.push_back({K::Number, "tilt_x", "Lean back °", "Inclinar atrás °", {}, -70, 70, 0.5, 0});

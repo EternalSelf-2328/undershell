@@ -8,6 +8,10 @@ baseline of bars, dots, segments, wave, ribbon and curtain when **Grow** is
 effects** mirrors a chosen rectangle of the widget, including transparency;
 resize or place its mirror line to leave room for the result.
 
+For **Split**, the inspector offers horizontal or vertical **Orientation**.
+For **Curtain**, Grow offers the four edges it can hang from; it has no centred
+variant. Existing saved directions retain their equivalent appearance.
+
 ## Visualizer: 32 looks
 
 `bars`, `split`, `dots`, `segments`, `wave`, `ribbon`, `curtain`, `line`,

@@ -45,6 +45,29 @@ inline PropSpec petSpeciesProperty() {
   return p;
 }
 
+// Only offer directions that change this look. Split is symmetric about
+// its root; curtain hangs from an edge and has no centred variant.
+inline PropSpec visualizerGrowProperty(const std::string& look) {
+  using K = PropSpec::Kind;
+  PropSpec p{K::Enum, "grow", "Grow", "Crecer", {"up", "down", "center", "left", "right"}, 0, 0, 0, 0, "up"};
+  if (look == "split") {
+    p.labelEn = "Orientation";
+    p.labelEs = "Orientación";
+    p.options = {"center", "left"};
+    p.optionNames = {{"Horizontal", "Horizontal"}, {"Vertical", "Vertical"}};
+    p.defText = "center";
+  } else if (look == "curtain") p.options = {"up", "down", "left", "right"};
+  return p;
+}
+
+// Display legacy saved directions as their equivalent supported choice,
+// without rewriting a layout just because the inspector was opened.
+inline std::string visualizerGrowValue(const std::string& look, std::string value) {
+  if (look == "split") return value == "left" || value == "right" ? "left" : "center";
+  if (look == "curtain" && value == "center") return "up";
+  return value;
+}
+
 inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   using K = PropSpec::Kind;
   static const std::vector<PropSpec> visualizer = {

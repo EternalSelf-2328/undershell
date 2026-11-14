@@ -232,6 +232,17 @@ int main() {
     CHECK(shows("visualizer", "style = 'wave'", "reflection"));
     CHECK(!shows("visualizer", "style = 'wave'\ngrow = 'center'", "reflection"));
     CHECK(!shows("visualizer", "style = 'split'", "reflection") && !shows("visualizer", "style = 'line'", "reflection"));
+    // Do not offer several names for the same split orientation, nor a
+    // centre option that curtain ignores. Saved aliases remain readable.
+    const PropSpec splitGrow = visualizerGrowProperty("split");
+    CHECK(splitGrow.options == std::vector<std::string>({"center", "left"}));
+    CHECK(splitGrow.labelEs == "Orientación" && splitGrow.defText == "center");
+    CHECK(visualizerGrowValue("split", "up") == "center");
+    CHECK(visualizerGrowValue("split", "down") == "center");
+    CHECK(visualizerGrowValue("split", "right") == "left");
+    CHECK(visualizerGrowValue("curtain", "center") == "up");
+    CHECK(visualizerGrowProperty("curtain").options == std::vector<std::string>({"up", "down", "left", "right"}));
+    CHECK(visualizerGrowProperty("bars").options.size() == 5);
     // the shared colours: classic looks, halo, vortex; the others when they take the theme's
     CHECK(shows("visualizer", "style = 'bars'", "color_mode") && shows("visualizer", "style = 'halo'", "color_mode"));
     for (const char* look : {"style = 'sfx'", "style = 'rain'", "style = 'neon'", "style = 'terminal'", "style = 'tv'", "style = 'fireworks'"})
