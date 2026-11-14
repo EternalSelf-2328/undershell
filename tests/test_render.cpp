@@ -49,6 +49,7 @@ static bool strictGolden() {
 
 int main(int argc, char** argv) {
   const bool update = argc > 1 && !std::strcmp(argv[1], "--update");
+  const bool frameOnly = argc > 1 && !std::strcmp(argv[1], "--frame-only");
   Headless gl;
   if (!gl.ok()) {
     std::fputs("no surfaceless EGL: skipping\n", stderr);
@@ -58,6 +59,7 @@ int main(int argc, char** argv) {
   const NoctaliaState pal = testPalette();
   for (const char* look : {"bars", "split", "dots", "segments", "wave", "ribbon", "curtain", "line", "frame", "radial", "orb", "spiral",
                            "halo", "vortex", "fire"}) {
+    if (frameOnly && std::strcmp(look, "frame")) continue;
     const bool polar = !std::strcmp(look, "radial") || !std::strcmp(look, "orb") || !std::strcmp(look, "spiral") ||
                        !std::strcmp(look, "halo") || !std::strcmp(look, "vortex");
     const int w = !std::strcmp(look, "frame") ? 480 : (polar ? 240 : 480);
@@ -94,6 +96,35 @@ int main(int argc, char** argv) {
     if (!(dh < 1.5 && dv < 1.5)) std::fprintf(stderr, "frame: %.2f off its mirror left-right, %.2f top-bottom\n", dh, dv);
     CHECK(dh < 1.5 && dv < 1.5);
   }
+
+  // The corner fans must reach the rectangular screen edges, not leave the
+  // triangular region outside each rounded arc blank. Disable glow so bloom
+  // cannot hide an empty corner. Check every corner on wide, tall and square
+  // surfaces, with both bar shapes and different spectrum densities.
+  for (const auto [w, h] : {std::pair{480, 270}, std::pair{1366, 768}, std::pair{540, 960}, std::pair{640, 640}}) {
+    for (int count : {32, 88}) {
+      for (const char* shape : {"square", "rounded"}) {
+        toml::table opts{{"bars", count}, {"thickness", 0.58}, {"glow", 0.0}, {"shape", shape}, {"peaks", false}};
+        const Image frame = renderLook("frame", w, h, pal, &opts);
+        const int side = std::max(6, static_cast<int>(std::min(w, h) * 0.03));
+        for (int corner = 0; corner < 4; ++corner) {
+          int lit = 0;
+          for (int y = 0; y < side; ++y)
+            for (int x = 0; x < side; ++x) {
+              const int sx = (corner & 1) ? w - 1 - x : x;
+              const int sy = (corner & 2) ? h - 1 - y : y;
+              lit += frame.rgba[(static_cast<size_t>(sy) * w + sx) * 4 + 3] > 20;
+            }
+          if (lit < side * side / 10)
+            std::fprintf(stderr, "frame: blank corner %d at %dx%d, %d bands, %s (%d pixels)\n",
+                         corner, w, h, count, shape, lit);
+          CHECK(lit >= side * side / 10);
+        }
+      }
+    }
+  }
+
+  if (frameOnly) return TEST_RESULT();
 
   // clock faces at a fixed moment (Sat 2026-09-26 21:07:42 local), English
   // names and no weather, so the goldens do not depend on this machine

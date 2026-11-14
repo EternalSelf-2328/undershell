@@ -10,6 +10,10 @@ Part of [undershell](../README.md)'s documentation.
 and Ryoku's motion (`Motion.qml`). Plus twenty of its own: `halo` (a glowing
 ring), `vortex`, `fire`, `muzzle`, `electric`, `sfx`, `speedlines`, `rain`, `ripples`, `neon`, `fireworks`, `pond`, `aura`, `stars`, `pixels`, `life`, `lava`, `globe`, `terminal` and `tv` (see below).
 
+Frame keeps rounded inner corners, with the bars fanning out to the screen
+edges so the space outside each corner arc is filled too. Its spectrum stays
+mirrored horizontally and vertically.
+
 <p align="center">
   <img src="media/looks.webp" alt="The same visualizer box in the editor switching through looks: vortex, fire, smoke, a comic KRAKOOM, rain, a neon LIVE sign, a terminal, bars, TV static, split bars, dots and a filled wave" width="800"><br>
   <sub>One widget, cycled through its looks in the editor.</sub>

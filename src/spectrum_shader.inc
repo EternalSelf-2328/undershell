@@ -299,6 +299,7 @@ void main() {
         float ed;        // inward distance from the ring's base
         float s;         // arc length clockwise from the top side's start
         float k = 1.0;   // across a corner the slots narrow towards its centre
+        float outset = 0.0;  // fill the corner between the arc and the screen edge
         bool left = cpx.x < R, right = cpx.x > cw - R, top = cpx.y < R, bottom = cpx.y > ch - R;
         if ((left || right) && (top || bottom)) {
             vec2 c = vec2(left ? R : cw - R, top ? R : ch - R);
@@ -312,7 +313,12 @@ void main() {
             float r = length(d);
             ed = R - r;
             s = base + clamp(a, 0.0, 0.5 * PI) * R;
-            k = clamp(r / max(R, 1.0), 0.0, 1.0);
+            k = r / max(R, 1.0);
+            // Keep the curved inner tips, but carry each fan sector outward
+            // to the rectangular surface. The ray reaches the first of its
+            // two screen edges; at a tangent the extension tends to zero.
+            // Clamping k to one outside the arc would widen the angular gaps.
+            outset = max(0.0, R * (r / max(max(abs(d.x), abs(d.y)), 0.001) - 1.0));
         } else {
             float dL = cpx.x, dR = cw - cpx.x, dT = cpx.y, dB = ch - cpx.y;
             float mE = min(min(dL, dR), min(dT, dB));
@@ -343,7 +349,8 @@ void main() {
         // bar is measured in real pixels and keeps its gap to the next one
         float halfW = barWp * 0.5 * k;
         float lat = (s - ci) * k;
-        sd = roundBox(vec2(lat, ed - len * 0.5), vec2(max(0.5, halfW), len * 0.5), min(capR, halfW));
+        sd = roundBox(vec2(lat, ed - (len - outset) * 0.5),
+                      vec2(max(0.5, halfW), (len + outset) * 0.5), min(capR, halfW));
         lift = clamp(ed / max(len, 1.0), 0.0, 1.0);
         if (peakOn > 0.5) {
             float ph = maxLen * pkAt(bandAt(tAl));
