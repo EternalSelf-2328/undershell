@@ -6,7 +6,14 @@ out=${1:?usage: build-closure.sh <outdir>}
 repo="$(cd -- "$(dirname -- "$0")/../.." && pwd)"
 mkdir -p -- "$out"
 work="$(mktemp -d)"
-trap 'rm -rf -- "$work"' EXIT
+cleanup() {
+  # Imported Nix store directories are read-only, including in this test store.
+  if [[ -d "$work/test-store/nix/store" ]]; then
+    find "$work/test-store/nix/store" -type d -exec chmod u+w {} +
+  fi
+  rm -rf -- "$work"
+}
+trap cleanup EXIT
 mkdir "$work/source"
 git -C "$repo" archive HEAD | tar -xf - -C "$work/source"
 
