@@ -79,7 +79,7 @@ jobs:
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b  # v31.11.3
       - name: Build and verify the Nix runtime closure
         run: bash packaging/nix/build-closure.sh "$GITHUB_WORKSPACE/out"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886af677262  # v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: undershell-nixos
           path: out/*
@@ -111,7 +111,7 @@ jobs:
               git config --global --add safe.directory /src
               bash /src/packaging/void/build-xbps.sh /out
             '
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607a02  # v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: undershell-void-${{ matrix.libc }}
           path: out/*.xbps
