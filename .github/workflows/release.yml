@@ -1,6 +1,6 @@
 # Packages for every release: pushing a tag v* builds undershell for Debian 13,
-# Ubuntu 24.04, Fedora 43 and 44 and Arch Linux, each in a container of its own
-# (packaging/build-release.sh), and publishes them on the tag's GitHub Release
+# Ubuntu 24.04, Fedora 43 and 44, Arch Linux, NixOS and Void Linux, and
+# publishes them on the tag's GitHub Release
 # with their SHA-256 sums. "Run workflow" builds them without publishing (they
 # stay as the run's artifacts). Actions are pinned to commits (the tag in the
 # comment); only the publishing job may write to the repository.
@@ -10,6 +10,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      nixos_void_only:
+        description: Build only NixOS and Void packages
+        type: boolean
+        default: false
 
 # the builds only read; publishing (the last job) is the only one that writes
 permissions:
@@ -35,6 +40,7 @@ jobs:
 
   build:
     needs: version
+    if: ${{ !inputs.nixos_void_only }}
     name: ${{ matrix.target }}
     runs-on: ubuntu-24.04
     container: ${{ matrix.image }}
@@ -63,8 +69,56 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  nixos:
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b  # v31.11.3
+      - name: Build and verify the Nix runtime closure
+        run: bash packaging/nix/build-closure.sh "$GITHUB_WORKSPACE/out"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886af677262  # v4.6.2
+        with:
+          name: undershell-nixos
+          path: out/*
+          if-no-files-found: error
+
+  void:
+    needs: version
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        libc: [glibc, musl]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      # The Actions runner and artifact uploader run on glibc even when
+      # the build container uses musl.
+      - name: Build and install the XBPS package
+        env:
+          VOID_LIBC: ${{ matrix.libc }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          docker run --rm --mount "type=bind,source=$GITHUB_WORKSPACE,target=/src,readonly" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE/out,target=/out" \
+            "ghcr.io/void-linux/void-$VOID_LIBC-full:latest" sh -ec '
+              xbps-install -Syu
+              xbps-install -y git bash
+              git config --global --add safe.directory /src
+              bash /src/packaging/void/build-xbps.sh /out
+            '
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607a02  # v4.6.2
+        with:
+          name: undershell-void-${{ matrix.libc }}
+          path: out/*.xbps
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, nixos, void]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:

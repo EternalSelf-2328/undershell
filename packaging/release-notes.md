@@ -49,6 +49,8 @@ Download the one for your system below, then:
 | Fedora 43 / 44 | `sudo dnf install ./undershell-*.fc43.x86_64.rpm` (or `fc44`) |
 | Debian 13 | `sudo apt install ./undershell_*_debian-13_amd64.deb` |
 | Ubuntu 24.04 | `sudo apt install ./undershell_*_ubuntu-24.04_amd64.deb` |
+| NixOS (x86_64) | Import the `.closure.xz` archive and install it into a Nix profile. See [installation](https://github.com/EternalSelf-2328/undershell/blob/main/docs/INSTALL.md#nixos). |
+| Void Linux (x86_64 glibc or musl) | Index the matching `.xbps` and install it with XBPS. See [installation](https://github.com/EternalSelf-2328/undershell/blob/main/docs/INSTALL.md#void-linux). |
 
 Then start it: `systemctl --user enable --now undershell`, and open the editor
 with `undershell msg edit`.

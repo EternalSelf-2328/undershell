@@ -43,9 +43,10 @@ Its first widgets are ports of
 
 ## Install
 
-Prebuilt packages for Arch, Fedora 43/44, Debian 13 and Ubuntu 24.04 are on
-the [Releases page](https://github.com/EternalSelf-2328/undershell/releases/latest);
-then `systemctl --user enable --now undershell` and `undershell msg edit`.
+Get prebuilt packages from the
+[Releases page](https://github.com/EternalSelf-2328/undershell/releases/latest).
+The [installation guide](docs/INSTALL.md#install) covers Arch, Fedora 43/44,
+Debian 13, Ubuntu 24.04, NixOS and Void Linux.
 From source:
 
 ```sh

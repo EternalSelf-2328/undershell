@@ -43,10 +43,12 @@ sudo dnf builddep packaging/fedora/undershell.spec
 
 ## Install
 
-**Prebuilt packages:** every [release](https://github.com/EternalSelf-2328/undershell/releases/latest)
-has packages for Arch Linux (and derivatives), Fedora 43 and 44, Debian 13 and
-Ubuntu 24.04, built by GitHub Actions from the tagged source. Download the
-one for your system, then:
+Download the prebuilt package for your system from the
+[Releases page](https://github.com/EternalSelf-2328/undershell/releases/latest).
+GitHub Actions builds the packages from the tagged source. You can check the
+download against the release's `SHA256SUMS`.
+
+### Arch, Fedora, Debian and Ubuntu
 
 ```sh
 sudo pacman -U undershell-*.pkg.tar.zst                       # Arch, CachyOS, EndeavourOS…
@@ -61,7 +63,45 @@ package comes without `undershell-depth` because ONNX Runtime is not packaged
 for that target. Generating new subject-depth maps requires a compatible
 `undershell-depth` helper and ONNX Runtime installation.
 
-**From source** (any distribution; `./update.sh` then keeps it up to date):
+### NixOS
+
+The `undershell-*-nixos-x86_64.closure.xz` asset includes Undershell and its
+runtime dependencies from NixOS 26.05 (x86_64). Import it into the system
+Nix store, then install the imported package into your user profile. Run
+these commands in a directory with only one Undershell closure.
+
+```sh
+set -o pipefail
+package=$(xz -dc undershell-*-nixos-x86_64.closure.xz | sudo nix-store --import |
+  grep -E '^/nix/store/[a-z0-9]{32}-undershell-[0-9]+\.[0-9]+\.[0-9]+$')
+nix --extra-experimental-features 'nix-command flakes' profile install "$package"
+```
+
+Use `nix-env -i "$package"` if your profile is managed by `nix-env`.
+For an update, remove the previous entry from your profile before installing
+the new store path. Start `undershell` in your Wayland session, or add it to
+your compositor's autostart.
+
+### Void Linux
+
+Check the architecture with `xbps-uhelper arch` and download the matching
+`undershell-*.x86_64.xbps` (glibc) or `undershell-*.x86_64-musl.xbps` (musl)
+into a dedicated directory. Index the local package and install it with XBPS.
+
+```sh
+xbps-rindex -a undershell-*.xbps
+sudo xbps-install --repository="$PWD" undershell
+```
+
+For an update, index the new package and run the same installation command.
+Start `undershell` in your Wayland session, or add it to your compositor's
+autostart. The Void build includes video, Evolution calendars and Wallpaper
+Engine scenes. Built-in depth-map generation and JavaScript for Wallpaper
+Engine scenes are unavailable in these packages.
+
+### Build from source
+
+Clone the repository:
 
 ```sh
 git clone https://github.com/EternalSelf-2328/undershell.git
@@ -95,6 +135,16 @@ systemctl --user enable --now undershell
 ```
 
 Same idea: build dependencies, a `.deb` in `build-deb/`, installed with `-i`.
+
+**As a package on NixOS:** with nixpkgs in your Nix search path, run
+`nix-build packaging/nix`. The release builder
+(`bash packaging/nix/build-closure.sh build-nixos`) uses a pinned nixpkgs
+revision and packages the committed source with its runtime dependencies.
+
+**As a package on Void:** use the official Void container for your libc,
+mount the checkout read-only at `/src` and a writable output directory at
+`/out`. In that container install Git and Bash, mark `/src` as a safe Git
+directory, then run `bash /src/packaging/void/build-xbps.sh /out`.
 
 **By hand:**
 
@@ -149,7 +199,7 @@ The Noctalia bar plugin updates from Noctalia's plugin store.
 
 ## Uninstall
 
-First stop the service, whichever way you installed it:
+If you enabled the systemd user service, stop it first:
 
 ```sh
 systemctl --user disable --now undershell
@@ -162,6 +212,8 @@ Then remove it the way it was installed:
 | the Arch package (`makepkg -si`) | `sudo pacman -R undershell` |
 | the Fedora package (`build-rpm.sh -i`) | `sudo dnf remove undershell` |
 | the Debian/Ubuntu package (`build-deb.sh -i`) | `sudo apt remove undershell` (`purge` instead of `remove` also drops its package record) |
+| a Nix profile | `nix profile remove undershell` or `nix-env -e undershell` |
+| the Void package | `sudo xbps-remove undershell` |
 | by hand (`meson install`) | `ninja -C build uninstall`, from the checkout you installed from |
 
 If you installed by hand and no longer have that `build` folder, delete the
