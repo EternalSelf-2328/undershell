@@ -17,7 +17,7 @@ xbps-install -y base-devel meson ninja python3 pkg-config \
   wayland-devel wayland-protocols libglvnd-devel pipewire-devel tomlplusplus-devel \
   libglib-devel cairo-devel pango-devel fontconfig-devel libxkbcommon-devel \
   elogind-devel gdk-pixbuf-devel libcurl-devel ffmpeg6-devel sqlite-devel \
-  lz4-devel json-c++
+  liblz4-devel json-c++
 
 meson setup "$work/build" "$work/source" --prefix=/usr --buildtype=release \
   -Ddev_paths=false -Dvideo=enabled -Devolution=enabled -Dscenes=enabled \

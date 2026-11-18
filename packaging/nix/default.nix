@@ -28,7 +28,7 @@ pkgs.stdenv.mkDerivation {
   };
 
   strictDeps = true;
-  nativeBuildInputs = with pkgs; [ meson ninja pkg-config python3 wayland ];
+  nativeBuildInputs = with pkgs; [ meson ninja pkg-config python3 wayland-scanner ];
   buildInputs = with pkgs; [
     cairo curl ffmpeg fontconfig gdk-pixbuf glib libglvnd libxkbcommon lz4
     nlohmann_json onnxruntime pango pipewire quickjs-ng sqlite systemd
