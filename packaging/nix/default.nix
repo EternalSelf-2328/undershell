@@ -48,7 +48,8 @@ pkgs.stdenv.mkDerivation {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    meson test --no-rebuild --print-errorlogs config docs editor media motion wallset
+    TZDIR="${pkgs.tzdata}/share/zoneinfo" \
+      meson test --no-rebuild --print-errorlogs config docs editor media motion wallset
     runHook postCheck
   '';
 
