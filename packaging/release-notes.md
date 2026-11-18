@@ -52,15 +52,16 @@ Download the one for your system below, then:
 | NixOS (x86_64) | Import the `.closure.xz` archive and install it into a Nix profile. See [installation](https://github.com/EternalSelf-2328/undershell/blob/main/docs/INSTALL.md#nixos). |
 | Void Linux (x86_64 glibc or musl) | Index the matching `.xbps` and install it with XBPS. See [installation](https://github.com/EternalSelf-2328/undershell/blob/main/docs/INSTALL.md#void-linux). |
 
-Then start it: `systemctl --user enable --now undershell`, and open the editor
-with `undershell msg edit`.
+Start Undershell in your Wayland session. For systemd package installs use
+`systemctl --user enable --now undershell`. On NixOS and Void you can start
+`undershell` from the compositor's autostart. Open the editor with
+`undershell msg edit`.
 
-- The Ubuntu package is built without `undershell-depth` because ONNX Runtime
-  is not packaged for that target. Generating new subject-depth maps requires
-  a compatible `undershell-depth` helper and ONNX Runtime installation.
+- The Ubuntu and Void packages are built without `undershell-depth`.
+  Generating new subject-depth maps requires a compatible `undershell-depth`
+  helper and ONNX Runtime installation.
 - Wallpaper Engine scenes work in every package; their scripts (clocks and dates
-  on a scene's text layers) only in the Arch one: the other systems do not
-  package quickjs-ng.
+  on a scene's text layers) are supported by the Arch and NixOS packages.
 - `SHA256SUMS` lists every file's checksum: `sha256sum -c SHA256SUMS --ignore-missing`.
 - Packages are x86_64 only. Anything else: build it from source (see Install in
   the README); `./update.sh` keeps a source build up to date.

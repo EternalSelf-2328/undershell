@@ -70,7 +70,7 @@ runtime dependencies from NixOS 26.05 (x86_64). Import it into the system
 Nix store, then install the imported package into your user profile. Run
 these commands in a directory with only one Undershell closure.
 
-```sh
+```bash
 set -o pipefail
 package=$(xz -dc undershell-*-nixos-x86_64.closure.xz | sudo nix-store --import |
   grep -E '^/nix/store/[a-z0-9]{32}-undershell-[0-9]+\.[0-9]+\.[0-9]+$')
@@ -181,7 +181,9 @@ bar widget, see [Noctalia bar widget](DESKTOP.md#noctalia-bar-widget).
 
 ## Update
 
-From the folder you cloned, one command for every install method:
+To update a prebuilt NixOS or Void package, follow the instructions for that
+distribution above. For the source installs managed by `update.sh`, run it
+from the checkout:
 
 ```sh
 ./update.sh

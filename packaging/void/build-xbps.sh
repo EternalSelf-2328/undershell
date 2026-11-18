@@ -37,7 +37,13 @@ for binary in "$work/stage/usr/bin/undershell" "$work/stage/usr/libexec/undershe
   readelf -d "$binary" | sed -n 's/.*(NEEDED).*\[\(.*\)\].*/\1/p' > "$work/needed"
   ldd "$binary" > "$work/linked"
   while IFS= read -r soname; do
-    library="$(awk -v name="$soname" '$1 == name && $3 ~ /^\// {print $3}' "$work/linked")"
+    library="$(awk -v name="$soname" '
+      $1 == name && $3 ~ /^\// { print $3; exit }
+      $1 ~ /^\// {
+        count = split($1, path, "/")
+        if (path[count] == name) { print $1; exit }
+      }
+    ' "$work/linked")"
     if [[ -z "$library" ]]; then
       echo "Cannot resolve $soname in $binary" >&2
       exit 1
