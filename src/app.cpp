@@ -247,6 +247,7 @@ static const wl_seat_listener kSeat = {seatCaps, seatName};
 App::App() = default;
 
 App::~App() {
+  stopSaver();
   for (auto& e : m_editSurfaces) destroyEditSurface(*e);
   for (auto& w : m_widgets) destroySurface(*w);
   if (m_egl != EGL_NO_DISPLAY) {
@@ -2061,6 +2062,12 @@ std::string App::handleCommand(const std::string& cmd) {
   if (cmd.starts_with("card color ")) {  // the colour picker for an option of the selected widget
     if (!m_edit) setEditMode(true);
     if (!m_selected) return "error: nothing selected";
+    if (m_inspSchema.empty())
+      for (const auto& e : m_editSurfaces)
+        if (!m_uiOutput || e->output == m_uiOutput) {
+          layoutUi(*e);
+          break;
+        }
     for (const auto& p : m_inspSchema)
       if (p.kind == PropSpec::Color && p.key == cmd.substr(11)) {
         openColorPick(*m_selected, p);

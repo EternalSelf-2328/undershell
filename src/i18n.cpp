@@ -79,6 +79,7 @@ std::string optionLabel(const std::string& value, bool es) {
       {"always", "Siempre"}, {"playing", "Mientras suena"}, {"missing", "Si falta"},
       {"sheet", "Hoja"}, {"vinyl", "Vinilo"}, {"tile", "Mosaico"}, {"strip", "Tira"},
       {"portrait", "Vertical"}, {"cyber", "Cyber"}, {"upper", "MAYÚSCULAS"}, {"normal", "Normal"},
+      {"ink", "Tinta"}, {"accent", "Acento"},
   };
   static const std::map<std::string_view, const char*> kEn = {
       {"bighour", "Big hour"}, {"goodnight", "Good night"}, {"en", "English"}, {"es", "Spanish"},

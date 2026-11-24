@@ -85,8 +85,17 @@ void storeOption(toml::table& t, const std::string& key, const std::string& toml
     }
     return;
   }
-  if (tomlValue.size() >= 2 && tomlValue.front() == '"') t.insert_or_assign(key, tomlValue.substr(1, tomlValue.size() - 2));
-  else if (tomlValue == "true" || tomlValue == "false") t.insert_or_assign(key, tomlValue == "true");
+  if (tomlValue.size() >= 2 && tomlValue.front() == '"') {
+    try {
+      auto parsed = toml::parse("v = " + tomlValue);
+      if (const auto* s = parsed["v"].as_string()) {
+        t.insert_or_assign(key, s->get());
+        return;
+      }
+    } catch (const std::exception&) {
+    }
+    t.insert_or_assign(key, tomlValue.substr(1, tomlValue.size() - 2));
+  } else if (tomlValue == "true" || tomlValue == "false") t.insert_or_assign(key, tomlValue == "true");
   else if (!tomlValue.empty()) {
     // inf, nan and out-of-range numbers are valid TOML: this runs inside a
     // libwayland callback, where an escaping exception ends the process
@@ -335,7 +344,7 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
              (!in(key, {"artist_size", "artist_font"}) || o["show_artist"].value_or(true));
     // only the sheet has a column beside the sleeve; the cyber console puts
     // the spectrum on its foot instead, as a data stream
-    if (in(key, {"show_lyrics", "lyrics_style"})) return layout == "sheet";
+    if (key == "show_lyrics") return layout == "sheet";
     if (key == "show_viz") return in(layout, {"sheet", "cyber"});
     if (key == "viz") return in(layout, {"sheet", "cyber"}) && o["show_viz"].value_or(true);
     if (key == "lyrics_style") return layout == "sheet" && o["show_lyrics"].value_or(true);
@@ -1193,8 +1202,12 @@ void App::duplicateWidget(Widget& w) {
   WidgetConfig moved = w.cfg;
   moved.x += 32;
   moved.y += 32;
+  for (int i = 0; i < 4; ++i) moved.pin[2 * i] += 32, moved.pin[2 * i + 1] += 32;
+  for (int i = 0; i < moved.meshN * moved.meshN; ++i) moved.mesh[2 * i] += 32, moved.mesh[2 * i + 1] += 32;
   mapWidget(moved, w.toScreen.inverse());  // the block is in its own space
   block = Config::retargetBlock(block, id, moved.x, moved.y);
+  if (moved.pinned) block = Config::setBlockKey(block, "pin", pinText(moved.pin));
+  if (moved.meshed) block = Config::setBlockKey(block, "mesh", pointsText(moved.mesh, 2 * moved.meshN * moved.meshN));
   if (!Config::appendBlock(m_configPath, block)) return;
   WidgetConfig placeholder;
   placeholder.id = id;
@@ -1428,10 +1441,14 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
       const toml::array* a = w.cfg.options["pin"].as_array();
       if (!a || a->size() != 8) {
         for (int i = 0; i < 4; ++i) w.cfg.pin[2 * i] = qx[i], w.cfg.pin[2 * i + 1] = qy[i];
-        storeOption(w.cfg.options, "pin", pinText(w.cfg.pin));
-        Config::setKey(m_configPath, w.cfg.id, "pin", pinText(toStored(w).pin));
+        const std::string stored = pinText(toStored(w).pin);
+        storeOption(w.cfg.options, "pin", stored);
+        Config::setKey(m_configPath, w.cfg.id, "pin", stored);
       } else {
-        for (size_t k = 0; k < 8; ++k) w.cfg.pin[k] = (*a)[k].value_or(0.0);
+        for (size_t i = 0; i < 4; ++i) {
+          w.cfg.pin[2 * i] = w.toScreen.ax * (*a)[2 * i].value_or(0.0) + w.toScreen.bx;
+          w.cfg.pin[2 * i + 1] = w.toScreen.ay * (*a)[2 * i + 1].value_or(0.0) + w.toScreen.by;
+        }
       }
     }
     w.cfg.pinned = on;
@@ -1442,7 +1459,10 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
     try {
       auto parsed = toml::parse("v = " + v);
       if (const toml::array* a = parsed["v"].as_array(); a && a->size() == 8)
-        for (size_t k = 0; k < 8; ++k) w.cfg.pin[k] = (*a)[k].value_or(0.0);
+        for (size_t i = 0; i < 4; ++i) {
+          w.cfg.pin[2 * i] = w.toScreen.ax * (*a)[2 * i].value_or(0.0) + w.toScreen.bx;
+          w.cfg.pin[2 * i + 1] = w.toScreen.ay * (*a)[2 * i + 1].value_or(0.0) + w.toScreen.by;
+        }
       if (w.cfg.pinned) placeLayer(w);
     } catch (const std::exception&) {
     }
@@ -1503,9 +1523,12 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (key == "mesh") {
     try {
       auto parsed = toml::parse("v = " + v);
-      const size_t want = static_cast<size_t>(2 * w.cfg.meshN * w.cfg.meshN);
-      if (const toml::array* a = parsed["v"].as_array(); a && a->size() == want)
-        for (size_t k = 0; k < want; ++k) w.cfg.mesh[k] = (*a)[k].value_or(0.0);
+      const size_t pts = static_cast<size_t>(w.cfg.meshN * w.cfg.meshN);
+      if (const toml::array* a = parsed["v"].as_array(); a && a->size() == 2 * pts)
+        for (size_t i = 0; i < pts; ++i) {
+          w.cfg.mesh[2 * i] = w.toScreen.ax * (*a)[2 * i].value_or(0.0) + w.toScreen.bx;
+          w.cfg.mesh[2 * i + 1] = w.toScreen.ay * (*a)[2 * i + 1].value_or(0.0) + w.toScreen.by;
+        }
       if (w.cfg.meshed) placeLayer(w);
     } catch (const std::exception&) {
     }

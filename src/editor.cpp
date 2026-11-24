@@ -103,7 +103,7 @@ std::string lookOf(const Widget& w) {
 Widget* App::widgetAt(const Output* o, double x, double y) {
   // the selected widget wins overlaps, then the topmost (last listed)
   if (m_selected && m_selected->output == o && m_selected->impl && !m_selected->impl->fullscreen() &&
-      insideWidget(m_selected->cfg, x, y))
+      m_selected->surface && !m_selected->cfg.locked && insideWidget(m_selected->cfg, x, y))
     return m_selected;
   for (auto it = m_widgets.rbegin(); it != m_widgets.rend(); ++it) {
     Widget& w = **it;
@@ -132,12 +132,12 @@ void App::commitPin(Widget& w) {
   m_lastOpKind.clear();
   int nw = 0, nh = 0;
   if (w.cfg.meshed) {
-    setProp(w, "mesh", pointsText(w.cfg.mesh, 2 * w.cfg.meshN * w.cfg.meshN));
+    setProp(w, "mesh", pointsText(toStored(w).mesh, 2 * w.cfg.meshN * w.cfg.meshN));
     // moved by hand: no longer the preset it started from
     setQuietly(w, "mesh_preset", "\"custom\"");
     meshFitSize(w.cfg, nw, nh);
   } else {
-    setProp(w, "pin", pinText(w.cfg.pin));
+    setProp(w, "pin", pinText(toStored(w).pin));
     const double* q = w.cfg.pin;
     auto len = [&](int a, int b) { return std::hypot(q[2 * a] - q[2 * b], q[2 * a + 1] - q[2 * b + 1]); };
     nw = std::max(48, static_cast<int>(std::lround((len(0, 1) + len(3, 2)) / 2)));
@@ -1264,6 +1264,10 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     commitRename();
     commitLayerRename();
     commitField();
+    // commitLayerRename() may have replaced the layout and cleared m_pointerWidget
+    w = m_pointerWidget;
+    if (!w && m_pointerEdit) w = widgetAt(m_pointerEdit->output, m_px, m_py);
+    m_pointerWidget = w;
     if (!m_noteFor.empty() && !(w && w->cfg.id == m_noteFor)) endNote();  // a click on the note keeps typing
     markEditDirty();
     if (modActive(XKB_MOD_NAME_SHIFT)) {  // Shift+click: in or out of the selection (empty space keeps it)
@@ -1342,6 +1346,12 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
     m_dragW = w->cfg.width;
     m_dragH = w->cfg.height;
     setCursor(m_drag == Drag::Resize ? gripCursor(m_gripCorner) : "grabbing");
+  } else if (m_drag != Drag::None && !w) {
+    m_drag = Drag::None;
+    m_guidesV.clear();
+    m_guidesH.clear();
+    setCursor("default");
+    markEditDirty();
   } else if ((m_drag == Drag::Pin || m_drag == Drag::Move) && w && handPlaced(w->cfg)) {
     m_drag = Drag::None;
     bool moved = false;

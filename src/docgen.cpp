@@ -68,7 +68,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `filter` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `system`, `activity`, `pet`, `scene`, `filter` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -124,8 +124,11 @@ std::string optionsMarkdown() {
         "(sent once to Open-Meteo's geocoding) or `\"lat, lon\"`. Only coordinates rounded to 0.01° are sent after that, every "
         "half hour; answers are cached in `~/.cache/undershell/weather`.\n\n";
   table(md, "weather");
+  md += "\n## `type = \"system\"`\n\nLive system monitor (CPU, memory, GPU, temperature, network, disk, battery).\n\n";
   table(md, "system");
+  md += "\n## `type = \"activity\"`\n\nCommit activity from local git repositories.\n\n";
   table(md, "activity");
+  md += "\n## `type = \"pet\"`\n\nAn animated desktop companion.\n\n";
   table(md, "pet");
   md += "\n## `type = \"scene\"`\n\nA Wallpaper Engine wallpaper from your own Steam install: `scene` is its Workshop id (or a "
         "folder with a `project.json`). Videos play through FFmpeg; scenes are unpacked by `undershell-scene`, a confined helper, "

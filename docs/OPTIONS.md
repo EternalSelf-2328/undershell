@@ -27,7 +27,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | Key | Values | Default | |
 |---|---|---|---|
 | `id` | text | type name | unique name (used by `msg set/select/remove`) |
-| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `filter` | `"visualizer"` | |
+| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `system`, `activity`, `pet`, `scene`, `filter` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
@@ -332,6 +332,11 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+
+## `type = "system"`
+
+Live system monitor (CPU, memory, GPU, temperature, network, disk, battery).
+
 | Key | Values | Default | |
 |---|---|---|---|
 | `layout` | `rings`, `bars`, `graph`, `text` | `"rings"` | Layout |
@@ -357,6 +362,11 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+
+## `type = "activity"`
+
+Commit activity from local git repositories.
+
 | Key | Values | Default | |
 |---|---|---|---|
 | `layout` | `grid`, `weeks` | `"grid"` | Layout |
@@ -376,6 +386,11 @@ The weather from Open-Meteo (no account or key) for the `location` you write: a 
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+
+## `type = "pet"`
+
+An animated desktop companion.
+
 | Key | Values | Default | |
 |---|---|---|---|
 | `species` | `sprout`, `long_classic`, `qilin_classic`, `fenghuang_classic`, `cerberus_classic`, `pegasus_classic`, `griffin_classic`, `kitsune_classic`, `fenrir_classic`, `wyvern_classic`, `unicorn_classic`, `sentinel_classic`, `rover_classic`, `star_mage_classic`, `moon_ranger_classic`, `long_chibi`, `qilin_chibi`, `fenghuang_chibi`, `cerberus_chibi`, `pegasus_chibi`, `griffin_chibi`, `kitsune_chibi`, `fenrir_chibi`, `wyvern_chibi`, `unicorn_chibi`, `sentinel_chibi`, `rover_chibi`, `star_mage_chibi`, `moon_ranger_chibi`, `long`, `qilin`, `fenghuang`, `cerberus`, `pegasus`, `griffin`, `kitsune`, `fenrir`, `wyvern`, `unicorn`, `sentinel`, `rover`, `star_mage`, `moon_ranger`, `cat`, `shiba`, `corgi`, `bunny`, `hamster`, `fox`, `wolf`, `deer`, `raccoon`, `red_panda`, `bear`, `dragon`, `owl`, `penguin`, `duckling`, `slime`, `ghost`, `skeleton`, `wukong`, `cultivator`, `ninja`, `witch` | `"sprout"` | Companion |

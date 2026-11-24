@@ -626,13 +626,16 @@ int Config::switchProfile(const std::string& path, const std::string& dir, const
                           const std::string& fromLabel, const std::string& toKey) {
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
-  const std::string text = readFile(path);
+  std::string text;
+  if (!readFileChecked(path, text)) return -1;
   const std::string saved = std::format("# undershell layout for {}\n# (restored whenever this wallpaper is shown)\n\n{}",
                                         fromLabel.empty() ? fromKey : fromLabel, widgetBlocks(text));
   if (!writeFileAtomic(dir + "/" + fromKey + ".toml", saved)) return -1;
   const std::string next = dir + "/" + toKey + ".toml";
   if (!std::filesystem::exists(next, ec)) return 0;
-  return writeFileAtomic(path, replaceWidgetBlocks(text, widgetBlocks(readFile(next)))) ? 1 : -1;
+  std::string nextText;
+  if (!readFileChecked(next, nextText)) return -1;
+  return writeFileAtomic(path, replaceWidgetBlocks(text, widgetBlocks(nextText))) ? 1 : -1;
 }
 
 std::string Config::retargetBlock(const std::string& block, const std::string& id, int x, int y) {
@@ -687,9 +690,13 @@ std::string Config::tomlText(const toml::node& n) {
   if (const auto* str = n.as_string()) {
     // always a basic "..." string (toml++ would pick '...' literals)
     std::string out = "\"";
-    for (char c : str->get()) {
-      if (c == '"' || c == '\\') out += '\\';
-      out += c;
+    for (unsigned char c : str->get()) {
+      if (c == '"' || c == '\\') { out += '\\'; out += static_cast<char>(c); }
+      else if (c == '\n') out += "\\n";
+      else if (c == '\r') out += "\\r";
+      else if (c == '\t') out += "\\t";
+      else if (c < 0x20 || c == 0x7F) out += std::format("\\u{:04X}", static_cast<unsigned>(c));
+      else out += static_cast<char>(c);
     }
     return out + "\"";
   }
