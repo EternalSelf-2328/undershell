@@ -8,6 +8,7 @@
 #include "schema.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <set>
 
@@ -569,6 +570,34 @@ int main(int argc, char** argv) {
     if(x==0 || y==0 || x==scaled.w-1) CHECK(alpha==0);  // the bottom row is where the feet (or a shadow) are
   }
   CHECK(scaledDrawn>880);
+  // Regression: default Sprout sets inputRects and renders narrow / UTF-8 bubbles without clamp UB
+  {
+    PetWidget sprout;
+    WidgetConfig sc;
+    sc.id = "sprout";
+    sc.type = "pet";
+    sc.width = 160;
+    sc.height = 160;
+    sc.options = toml::table{{"species", "sprout"}};
+    sprout.configure(sc, testPalette());
+    sprout.say(".", 5);
+    renderDrawn(160, 160, [&] {
+      DrawContext ctx;
+      ctx.w = 160;
+      ctx.h = 160;
+      ctx.scale = 1;
+      sprout.draw(ctx);
+    });
+    CHECK(!sprout.inputRects().empty());
+    sprout.say("¡Hola! — canción muy larga con acentos áéíóúñ para recortar sin romper UTF-8", 5);
+    renderDrawn(160, 160, [&] {
+      DrawContext ctx;
+      ctx.w = 160;
+      ctx.h = 160;
+      ctx.scale = 1;
+      sprout.draw(ctx);
+    });
+  }
   if (argc == 3 && std::string_view(argv[1]) == "--gallery") {
     gallery(argv[2],false);
     gallery(argv[2],true);

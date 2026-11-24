@@ -177,7 +177,13 @@ public:
   }
 
   [[nodiscard]] bool visible() const override { return true; }
-  [[nodiscard]] bool moving() const override { return m_preview < 0 && (m_spin > 0 || m_swell > 0.01); }
+  [[nodiscard]] bool moving() const override {
+    if (m_preview >= 0) return false;
+    if (m_spin > 0 || m_swell > 0.01) return true;
+    for (float r : m_rings)
+      if (r >= 0) return true;
+    return false;
+  }
   // in silence it keeps turning, slowly: a frame every few degrees
   [[nodiscard]] double idleFrame() const override { return m_spin > 0 ? std::clamp(1.5 / m_spin, 1.0 / 30, 1.0) : 60.0; }
 

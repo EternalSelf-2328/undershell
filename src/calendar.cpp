@@ -4,6 +4,8 @@
 
 #include "i18n.hpp"
 
+#include <glib.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -14,6 +16,14 @@
 namespace undershell {
 
 namespace {
+std::string utf8Upper(const std::string& s) {
+  gchar* u = g_utf8_strup(s.data(), static_cast<gssize>(s.size()));
+  if (!u) return s;
+  std::string out(u);
+  g_free(u);
+  return out;
+}
+
 template <typename T>
 T get(const toml::table& t, std::string_view key, T def) {
   if (auto v = t[key].value<T>()) return *v;
@@ -301,8 +311,7 @@ void CalendarWidget::drawPage(Canvas& c, float w, float h, const Day& t) {
   const float radius = std::min(w, h) * 0.08F;
   const float band = h * 0.24F;
   const std::string month = m_es ? kMonthsEs[t.m - 1] : kMonthsEn[t.m - 1];
-  std::string upper;
-  for (char ch : month) upper += static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+  const std::string upper = utf8Upper(month);
   const TextStyle head{.family = m_cfg.font, .size = std::min(band * 0.5F, w * 0.12F), .weight = 700, .letterSpacing = band * 0.04F};
   if (m_cfg.plate != "none") {
     // the page's coloured top, its corners rounded with the plate's
@@ -378,8 +387,7 @@ void CalendarWidget::drawAgenda(Canvas& c, float w, float h, const Day& t) {
     any = true;
     const int wd = weekdayOf(day);
     std::string label = k == 0 ? (m_es ? "HOY" : "TODAY") : k == 1 ? (m_es ? "MAÑANA" : "TOMORROW")
-                                                                    : std::format("{} {}", m_es ? kShortEs[wd] : kShortEn[wd], dd);
-    for (char& ch : label) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+                                                                    : utf8Upper(std::format("{} {}", m_es ? kShortEs[wd] : kShortEn[wd], dd));
     c.text(label, dayStyle, pad, y, withA(k == 0 ? m_accent : m_ink, (k == 0 ? 1.0F : 0.55F) * op));
     y += unit * 1.35F;
     for (const CalEvent* e : ev) {

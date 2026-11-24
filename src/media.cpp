@@ -7,6 +7,7 @@
 #include <cmath>
 #include <filesystem>
 #include <memory>
+#include <EGL/egl.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 #include <nlohmann/json.hpp>
@@ -510,7 +511,7 @@ MediaService::~MediaService() {
     if (sl) sd_bus_slot_unref(sl);
   if (m_matchSlot) sd_bus_slot_unref(m_matchSlot);
   if (m_bus) sd_bus_flush_close_unref(m_bus);
-  if (m_state.cover) glDeleteTextures(1, &m_state.cover);
+  if (m_state.cover && eglGetCurrentContext() != EGL_NO_CONTEXT) glDeleteTextures(1, &m_state.cover);
 }
 
 bool MediaService::start() {
@@ -595,8 +596,16 @@ void MediaService::onPlayerReply(sd_bus_message* m) {
     clearPlayer();
     return;
   }
-  MediaState s = m_state;
+  MediaState s{};
   s.present = true;
+  // keep the current cover texture/palette while apply() decides whether it changed
+  s.cover = m_state.cover;
+  s.coverW = m_state.coverW;
+  s.coverH = m_state.coverH;
+  s.accent = m_state.accent;
+  s.hasAccent = m_state.hasAccent;
+  s.palette = m_state.palette;
+  s.lyrics = m_state.lyrics;
   std::string artists, busName, trackId;
   if (sd_bus_message_enter_container(m, 'a', "{sv}") < 0) return;
   while (sd_bus_message_enter_container(m, 'e', "sv") > 0) {
@@ -927,7 +936,10 @@ void MediaService::setPaletteWanted(bool wanted, bool dark, const std::string& s
     m_state.palette.clear();
     ++m_generation;
   }
-  if (more) m_coverFor.clear();  // the song playing now: fetched again, with its scheme
+  if (more) {
+    m_coverFor.clear();  // the song playing now: fetched again, with its scheme
+    if (m_state.present && !m_state.artUrl.empty()) fetchCover(m_state.artUrl, m_state.trackKey);
+  }
 }
 
 void MediaService::fetchCover(const std::string& url, const std::string& key) {

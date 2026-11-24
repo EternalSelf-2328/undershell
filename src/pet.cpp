@@ -139,11 +139,13 @@ void PetWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) {
     m_themePal = {primary, rigTint(primary, 0.94F), noct.color("secondary", m_variantPal.mark), noct.color("tertiary", m_variantPal.eyes),
                   rigTint(noct.color("tertiary", m_variantPal.extra), 0.82F)};
     static constexpr const char* keys[5] = {"body_color", "belly_color", "mark_color", "eye_color", "detail_color"};
+    bool anyOverride = false;
     for (int i = 0; i < 5; ++i) {
       const std::string v = get<std::string>(t, keys[i], "");
       m_overrides[i] = v.empty() ? std::nullopt : std::optional<Color>(noct.color(v, Color{1, 1, 1, 1}));
+      if (m_overrides[i]) anyOverride = true;
     }
-    if (drawn && get<std::string>(t, "paint", "variant") != "variant") m_original = false;
+    if (drawn && (get<std::string>(t, "paint", "variant") != "variant" || anyOverride)) m_original = false;
     applyPalette();
     if (drawn) m_tintLut.clear(), m_frameTick = -1;
   }
@@ -389,6 +391,7 @@ void PetWidget::stepBy(const TickContext& ctx, double dt, bool kick) {
         m_y -= 0.01;
       }
       m_squash = std::max(0.0, m_squash - dt * 2.5);
+      if (m_rig) m_life.step(lifeIn(dt));
       return;
     }
     // music first: it dances once the music has gone on a moment (not at
@@ -866,6 +869,9 @@ void PetWidget::draw(const DrawContext& ctx) {
     const double ph = std::fmod(t * 0.9, 1.0);
     c.note(baseX + (flip ? -2 : bodyW + 2) * px, top - static_cast<float>(ph) * px * 6, px * 4, withA(m_body, op * static_cast<float>(1 - ph)));
   }
+  m_hit = {baseX - px * 2, top - px * 4, static_cast<float>(bodyW + 4) * px, static_cast<float>(bodyH + 5) * px};
+  m_figLeft = 0, m_figRight = bodyW, m_figTop = 0;
+  drawBubble(ctx, baseX, top, px, bodyH);
   if (ctx.text) ctx.text->collect(60);
 }
 
@@ -891,10 +897,14 @@ std::string plain(const std::string& in) {
 int batteryLevel(bool& charging) {
   namespace fs = std::filesystem;
   std::error_code ec;
-  for (const auto& e : fs::directory_iterator("/sys/class/power_supply", ec)) {
+  for (fs::directory_iterator it("/sys/class/power_supply", ec), end; !ec && it != end; it.increment(ec)) {
+    const auto& e = *it;
     std::ifstream type(e.path() / "type");
     std::string t;
     if (!(type >> t) || t != "Battery") continue;
+    std::ifstream scope(e.path() / "scope");
+    std::string sc;
+    if ((scope >> sc) && sc == "Device") continue;
     std::ifstream cap(e.path() / "capacity"), st(e.path() / "status");
     int c = -1;
     std::string status;
@@ -1125,6 +1135,13 @@ void PetWidget::drawBubble(const DrawContext& ctx, float spriteX, float spriteY,
   {
     std::string line, word;
     auto fits = [&](const std::string& t) { return Canvas::measure(t, st).w <= maxW - 16; };
+    auto popUtf8 = [](std::string& s) {
+      while (!s.empty()) {
+        const unsigned char c = static_cast<unsigned char>(s.back());
+        s.pop_back();
+        if ((c & 0xC0) != 0x80) break;  // stopped at UTF-8 lead/ASCII byte
+      }
+    };
     auto flush = [&] {
       if (word.empty()) return;
       const std::string tryLine = line.empty() ? word : line + " " + word;
@@ -1132,7 +1149,7 @@ void PetWidget::drawBubble(const DrawContext& ctx, float spriteX, float spriteY,
       else {
         if (!line.empty()) lines.push_back(line);
         line = word;
-        while (!fits(line) && line.size() > 4) line.resize(line.size() - 2);
+        while (!fits(line) && line.size() > 4) popUtf8(line);
       }
       word.clear();
     };
@@ -1144,14 +1161,14 @@ void PetWidget::drawBubble(const DrawContext& ctx, float spriteX, float spriteY,
     if (!line.empty()) lines.push_back(line);
     if (lines.size() > 3) {
       lines.resize(3);
-      while (!lines[2].empty() && !fits(lines[2] + "…")) lines[2].pop_back();
+      while (!lines[2].empty() && !fits(lines[2] + "…")) popUtf8(lines[2]);
       lines[2] += "…";
     }
   }
   if (lines.empty()) return;
   float tw = 0;
   for (const auto& l : lines) tw = std::max(tw, Canvas::measure(l, st).w);
-  const float lineH = 16, bw = std::ceil(tw + 16), bh = static_cast<float>(lines.size()) * lineH + 10;
+  const float lineH = 16, bw = std::max(20.0F, std::ceil(tw + 16)), bh = static_cast<float>(lines.size()) * lineH + 10;
   // over its head: the top of the figure in this frame, on the side it faces
   const float headX = spriteX + static_cast<float>(m_facing > 0 ? m_figRight - 8 : m_figLeft + 8) * pixel;
   const float topY = spriteY + static_cast<float>(m_figTop) * pixel;

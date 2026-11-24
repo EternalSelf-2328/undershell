@@ -364,10 +364,11 @@ render = function()
     table.insert(children, actions())
     table.insert(children, ui.separator({}))
     local cards = { savesSection(), ui.separator({}) }
-    for _, w in ipairs(state.widgets or {}) do
+    local widgets = state.widgets or {}
+    for _, w in ipairs(widgets) do
       table.insert(cards, widgetCard(w))
     end
-    if #cards == 0 then
+    if #widgets == 0 then
       table.insert(cards, ui.label({ text = tr("panel.no_widgets"), color = "on_surface_variant", fontSize = 12 }))
     end
     table.insert(children, ui.scroll({ flexGrow = 1, gap = 8 }, cards))

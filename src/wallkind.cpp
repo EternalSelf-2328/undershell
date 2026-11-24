@@ -7,47 +7,71 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <regex>
+#include <nlohmann/json.hpp>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
 namespace undershell {
 
-bool skwdShowsMotion(const std::string& json, const std::vector<std::string>& outputs) {
-  // one {...} per output; only the fields we need, no JSON library required
-  static const std::regex kOutput(R"(\{[^{}]*\})");
-  static const std::regex kName(R"re("name"\s*:\s*"([^"]*)")re");
-  static const std::regex kType(R"re("type"\s*:\s*"([^"]*)")re");
-  static const std::regex kConnected(R"re("connected"\s*:\s*(true|false))re");
-  for (auto it = std::sregex_iterator(json.begin(), json.end(), kOutput); it != std::sregex_iterator(); ++it) {
-    const std::string obj = it->str();
-    std::smatch name, type, conn;
-    if (!std::regex_search(obj, type, kType)) continue;
-    if (std::regex_search(obj, conn, kConnected) && conn[1] == "false") continue;
-    if (!outputs.empty() && std::regex_search(obj, name, kName) &&
-        std::find(outputs.begin(), outputs.end(), name[1].str()) == outputs.end())
+namespace {
+void collectOutputObjects(const nlohmann::json& node, std::vector<const nlohmann::json*>& out) {
+  if (node.is_array()) {
+    for (const auto& item : node) collectOutputObjects(item, out);
+  } else if (node.is_object()) {
+    if (node.contains("name") && (node.contains("type") || node.contains("path"))) {
+      out.push_back(&node);
+      return;
+    }
+    for (const auto& [k, v] : node.items()) collectOutputObjects(v, out);
+  }
+}
+}  // namespace
+
+bool skwdShowsMotion(const std::string& jsonText, const std::vector<std::string>& outputs) {
+  nlohmann::json doc;
+  try {
+    doc = nlohmann::json::parse(jsonText);
+  } catch (const std::exception&) {
+    return false;
+  }
+  std::vector<const nlohmann::json*> objs;
+  collectOutputObjects(doc, objs);
+  for (const nlohmann::json* obj : objs) {
+    auto itType = obj->find("type");
+    if (itType == obj->end() || !itType->is_string()) continue;
+    if (auto itConn = obj->find("connected"); itConn != obj->end() && itConn->is_boolean() && !itConn->get<bool>())
       continue;
-    if (type[1] == "video" || type[1] == "we") return true;
+    if (!outputs.empty()) {
+      if (auto itName = obj->find("name"); itName != obj->end() && itName->is_string() &&
+          std::find(outputs.begin(), outputs.end(), itName->get<std::string>()) == outputs.end())
+        continue;
+    }
+    const std::string& type = itType->get_ref<const std::string&>();
+    if (type == "video" || type == "we") return true;
   }
   return false;
 }
 
-std::map<std::string, std::string> skwdPaths(const std::string& json) {
+std::map<std::string, std::string> skwdPaths(const std::string& jsonText) {
   std::map<std::string, std::string> out;
-  static const std::regex kOutput(R"(\{[^{}]*\})");
-  static const std::regex kName(R"re("name"\s*:\s*"([^"]*)")re");
-  static const std::regex kPath(R"re("path"\s*:\s*"((?:[^"\\]|\\.)*)")re");
-  static const std::regex kConnected(R"re("connected"\s*:\s*(true|false))re");
-  for (auto it = std::sregex_iterator(json.begin(), json.end(), kOutput); it != std::sregex_iterator(); ++it) {
-    const std::string obj = it->str();
-    std::smatch name, path, conn;
-    if (!std::regex_search(obj, name, kName) || !std::regex_search(obj, path, kPath)) continue;
-    if (std::regex_search(obj, conn, kConnected) && conn[1] == "false") continue;
-    std::string p;  // JSON escapes: \" \\ \/ (paths need no others)
-    const std::string raw = path[1].str();
-    for (size_t i = 0; i < raw.size(); ++i) p += raw[i] == '\\' && i + 1 < raw.size() ? raw[++i] : raw[i];
-    if (!p.empty() && p[0] == '/' && !name[1].str().empty()) out[name[1].str()] = p;
+  nlohmann::json doc;
+  try {
+    doc = nlohmann::json::parse(jsonText);
+  } catch (const std::exception&) {
+    return out;
+  }
+  std::vector<const nlohmann::json*> objs;
+  collectOutputObjects(doc, objs);
+  for (const nlohmann::json* obj : objs) {
+    auto itName = obj->find("name");
+    auto itPath = obj->find("path");
+    if (itName == obj->end() || !itName->is_string() || itPath == obj->end() || !itPath->is_string()) continue;
+    if (auto itConn = obj->find("connected"); itConn != obj->end() && itConn->is_boolean() && !itConn->get<bool>())
+      continue;
+    const std::string& name = itName->get_ref<const std::string&>();
+    const std::string& p = itPath->get_ref<const std::string&>();
+    if (!p.empty() && p[0] == '/' && !name.empty()) out[name] = p;
   }
   return out;
 }

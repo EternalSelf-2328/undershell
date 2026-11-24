@@ -54,8 +54,12 @@ void WindowFeed::want(bool on) {
   }
   if (pid == 0) {
     dup2(fds[1], STDOUT_FILENO);
-    const int null = open("/dev/null", O_RDWR);
-    if (null >= 0) dup2(null, STDERR_FILENO), dup2(null, STDIN_FILENO);
+    const int null = open("/dev/null", O_RDWR | O_CLOEXEC);
+    if (null >= 0) {
+      dup2(null, STDERR_FILENO);
+      dup2(null, STDIN_FILENO);
+      if (null > 2) close(null);
+    }
     execl(umbriel.c_str(), "umbriel", "subscribe", "windows", static_cast<char*>(nullptr));
     _exit(127);
   }
