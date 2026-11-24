@@ -291,6 +291,9 @@ public:
     if (mode != m_mode) {  // a new screen
       m_lines.clear();
       m_cols.clear();
+      m_glyphs.clear();
+      m_typed = 0;
+      m_budget = 0;
     }
     m_mode = mode;
     const std::string colour = t["term_color"].value_or(std::string("green"));
@@ -417,7 +420,8 @@ private:
       return;
     }
     // typed: a command after a prompt, or code, characters a second
-    if (m_typed == 0) {
+    if (m_typed == 0 || m_lines.empty()) {
+      m_typed = 0;
       m_current = fill(line.text);
       push(line.kind == Kind::Cmd ? kPrompt : "", line.kind == Kind::Cmd ? 1.0F : 0.85F);
     }
@@ -555,7 +559,9 @@ private:
   }
   void drawMatrix(float boost) {
     const int cols = m_screen.cols(), rows = m_screen.rows();
-    if (static_cast<int>(m_cols.size()) != cols) return;
+    if (cols <= 0 || rows <= 0 || static_cast<int>(m_cols.size()) != cols ||
+        m_glyphs.size() < static_cast<size_t>(cols) * static_cast<size_t>(rows))
+      return;
     for (int c = 0; c < cols; ++c) {
       const Stream& s = m_cols[static_cast<size_t>(c)];
       const int head = static_cast<int>(s.head);

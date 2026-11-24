@@ -130,7 +130,12 @@ void App::paintUndo() {
     m_maskUndo.pop_back();
     DepthMask* m = m_depth.paintable(u.output);
     if (!m || !maskReady(*m, u.output)) return;
+    if (u.channel < 0 || u.channel >= 4 || u.box.x0 < 0 || u.box.y0 < 0 ||
+        u.box.x1 > m->fieldW || u.box.y1 > m->fieldH || u.box.x1 <= u.box.x0 || u.box.y1 <= u.box.y0)
+      return;
     const int bw = u.box.x1 - u.box.x0;
+    const size_t need = static_cast<size_t>(bw) * static_cast<size_t>(u.box.y1 - u.box.y0);
+    if (u.before.size() < need) return;
     for (int y = u.box.y0; y < u.box.y1; ++y)
       for (int x = u.box.x0; x < u.box.x1; ++x)
         m->fxMask[(static_cast<size_t>(y) * m->fieldW + x) * 4 + static_cast<size_t>(u.channel)] =
@@ -247,8 +252,10 @@ void App::paintZoom(double factor, double sx, double sy) {
 bool App::fieldAt(const Output* o, double wx, double wy, int& fx, int& fy) {
   double x = 0, y = 0, r = 0;
   if (!paintMap(o, wx, wy, x, y, r)) return false;
-  fx = static_cast<int>(x);
-  fy = static_cast<int>(y);
+  DepthMask* m = m_depth.paintable(o->name);
+  if (!m || m->fieldW <= 0 || m->fieldH <= 0) return false;
+  fx = std::clamp(static_cast<int>(x), 0, m->fieldW - 1);
+  fy = std::clamp(static_cast<int>(y), 0, m->fieldH - 1);
   return true;
 }
 

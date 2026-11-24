@@ -13,6 +13,7 @@
 #include "media.hpp"
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <thread>
 #include "video.hpp"
 #include "sfx.hpp"

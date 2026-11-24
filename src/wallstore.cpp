@@ -95,23 +95,25 @@ const WallPic* WallpaperStore::get(const std::string& path, int maxSide, double 
   }
   if (e.decode) {
     if (!e.decode->done) return nullptr;
-    std::lock_guard g(e.decode->lock);
-    if (e.decode->rgba.empty()) {
-      e.pic.failed = true;
-    } else {
-      glGenTextures(1, &e.pic.tex);
-      glBindTexture(GL_TEXTURE_2D, e.pic.tex);
-      glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, e.decode->w, e.decode->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, e.decode->rgba.data());
-      glGenerateMipmap(GL_TEXTURE_2D);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-      e.pic.imgW = e.decode->imgW;
-      e.pic.imgH = e.decode->imgH;
-      e.pic.texW = e.decode->w;
-      e.pic.texH = e.decode->h;
+    {
+      std::lock_guard g(e.decode->lock);
+      if (e.decode->rgba.empty()) {
+        e.pic.failed = true;
+      } else {
+        glGenTextures(1, &e.pic.tex);
+        glBindTexture(GL_TEXTURE_2D, e.pic.tex);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, e.decode->w, e.decode->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, e.decode->rgba.data());
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        e.pic.imgW = e.decode->imgW;
+        e.pic.imgH = e.decode->imgH;
+        e.pic.texW = e.decode->w;
+        e.pic.texH = e.decode->h;
+      }
     }
     e.decode.reset();
   }
@@ -124,8 +126,10 @@ bool WallpaperFade::update(const std::string& path, int maxSide, double now) {
   m_maxSide = maxSide;
   // the new picture takes over once it is decoded; until then the old one stays
   if (!path.empty() && path != m_curPath) {
+    // read m_cur before store.get(), whose trim() may evict m_cur's map entry
+    const bool hadCur = m_cur && !m_cur->failed;
     if (const WallPic* want = store.get(path, maxSide, now)) {
-      m_prevPath = (m_cur && !m_cur->failed) ? m_curPath : std::string();
+      m_prevPath = hadCur ? m_curPath : std::string();
       m_curPath = path;
       m_fadeAt = now;
       m_mix = (m_prevPath.empty() || want->failed) ? 1.0F : 0.0F;

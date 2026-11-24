@@ -173,12 +173,16 @@ void ActivityWidget::startScan(double now) {
 void ActivityWidget::tick(const TickContext& ctx) {
   if (!m_fixed) {
     if (m_scan) {
-      std::lock_guard g(m_scan->mutex);
-      if (m_scan->done) {
-        m_days = std::move(m_scan->days);
-        m_repos = m_scan->repos;
-        m_scan.reset();
+      bool done = false;
+      {
+        std::lock_guard g(m_scan->mutex);
+        if (m_scan->done) {
+          m_days = std::move(m_scan->days);
+          m_repos = m_scan->repos;
+          done = true;
+        }
       }
+      if (done) m_scan.reset();
     }
     if (!m_scan && ctx.now >= m_nextScan) startScan(ctx.now);
     m_today = localDay(static_cast<int64_t>(std::time(nullptr)));

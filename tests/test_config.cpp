@@ -9,6 +9,9 @@
 #include "gnome.hpp"
 #include "ics.hpp"
 #include "calsources.hpp"
+#include "shells.hpp"
+#include "wallkind.hpp"
+#include "weatherfeed.hpp"
 
 #include <glib.h>
 #ifdef US_HAVE_SQLITE
@@ -681,6 +684,69 @@ int main() {
     own.look.insert_or_assign("color", "#ffffff");
     ws = screensaverWidgets(own, 800, 600);
     CHECK(ws.size() == 1 && ws[0].options["style"].value_or(std::string()) == "stars" && !ws[0].options.contains("pixels_text"));
+  }
+
+  // Regressions: multi-line tomlText, switchProfile read failure, VALARM/RRULE overflow in ICS,
+  // null/malformed JSON in shells and weatherfeed, nested objects in skwdPaths
+  {
+    toml::table tbl;
+    tbl.insert("text", "line1\nline2\t\"quoted\"\\end");
+    const std::string lit = Config::tomlText(*tbl.get("text"));
+    CHECK(lit.find('\n') == std::string::npos);
+    auto reparsed = toml::parse("text = " + lit);
+    CHECK(reparsed["text"].value_or(std::string()) == "line1\nline2\t\"quoted\"\\end");
+
+    CHECK(Config::switchProfile(dir + "/does-not-exist.toml", dir + "/profiles", "a", "A", "b") == -1);
+
+    const std::string icsValarm =
+        "BEGIN:VCALENDAR\r\n"
+        "BEGIN:VEVENT\r\n"
+        "UID:ev-valarm\r\n"
+        "DTSTART:20261124T100000Z\r\n"
+        "DTEND:20261124T110000Z\r\n"
+        "SUMMARY:Real Event\r\n"
+        "BEGIN:VALARM\r\n"
+        "ACTION:DISPLAY\r\n"
+        "DURATION:PT15M\r\n"
+        "SUMMARY:Alarm notification\r\n"
+        "END:VALARM\r\n"
+        "END:VEVENT\r\n"
+        "BEGIN:VEVENT\r\n"
+        "UID:ev-huge\r\n"
+        "DTSTART;VALUE=DATE:20261124\r\n"
+        "DURATION:P99999999D\r\n"
+        "RRULE:FREQ=DAILY;INTERVAL=1000000\r\n"
+        "SUMMARY:Huge\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n";
+    const auto evs = parseIcs(icsValarm, 1795400000, 1795600000, "#ff0000");
+    bool sawReal = false;
+    for (const auto& e : evs)
+      if (e.uid == "ev-valarm") {
+        CHECK(e.title == "Real Event");
+        sawReal = true;
+      }
+    CHECK(sawReal);
+
+    bool dark = true;
+    std::string wp;
+    ShellState ss;
+    CHECK(caelestiaScheme(R"({"mode":null,"colours":null})", dark).empty());
+    CHECK(dmsColors(R"({"mode":null,"colors":{"dark":null}})", dark).empty());
+    CHECK(pywalPalette(R"({"wallpaper":null,"colors":null,"special":null})", wp, dark).empty());
+    CHECK(!dmsSession(R"({"perModeWallpaper":null,"perMonitorWallpaper":null,"wallpaperPath":null})",
+                      R"({"wallpaperFillMode":null})", true, ss));
+    CHECK(!ambxstWallpapers(R"({"currentWall":null,"perScreenWallpapers":null})", ss));
+    CHECK(iiWallpaper(R"({"background":{"wallpaperPath":null}})").empty());
+
+    WeatherReport wr;
+    CHECK(WeatherService::parseForecast(R"({"current":{"temperature_2m":20},"hourly":null,"daily":null})", wr));
+
+    const std::string skwdJson =
+        R"([{"name":"HDMI-A-1","connected":true,"type":"image","meta":{"a":1},"path":"/tmp/wall{1}.png"}])";
+    const auto paths = skwdPaths(skwdJson);
+    CHECK(paths.contains("HDMI-A-1") && paths.at("HDMI-A-1") == "/tmp/wall{1}.png");
+    CHECK(!skwdShowsMotion(skwdJson, {"HDMI-A-1"}));
   }
   return TEST_RESULT();
 }

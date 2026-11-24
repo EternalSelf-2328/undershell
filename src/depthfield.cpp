@@ -39,13 +39,20 @@ bool loadNpyF32(const std::string& path, DepthField& out) {
     if (!f.read(reinterpret_cast<char*>(b), 4)) return false;
     headerLen = b[0] | (b[1] << 8) | (b[2] << 16) | (static_cast<size_t>(b[3]) << 24);
   }
+  if (headerLen == 0 || headerLen > 1024 * 1024) return false;
   std::string header(headerLen, '\0');
   if (!f.read(header.data(), static_cast<std::streamsize>(headerLen))) return false;
   if (header.find("'descr': '<f4'") == std::string::npos || header.find("'fortran_order': False") == std::string::npos)
     return false;
   std::smatch m;
   if (!std::regex_search(header, m, std::regex(R"('shape': \((\d+), (\d+)\))"))) return false;
-  const int h = std::stoi(m[1].str()), w = std::stoi(m[2].str());
+  int h = 0, w = 0;
+  try {
+    h = std::stoi(m[1].str());
+    w = std::stoi(m[2].str());
+  } catch (const std::exception&) {
+    return false;
+  }
   if (w <= 0 || h <= 0 || w > 16384 || h > 16384) return false;
   out.w = w;
   out.h = h;

@@ -133,13 +133,32 @@ int fillFrom(const std::string& tool, const std::string& m) {
   return 1;  // crop, cover, zoom, scrolling, default
 }
 
+namespace {
+std::string jStr(const json& obj, const std::string& key, const std::string& def = {}) {
+  if (obj.is_object())
+    if (auto it = obj.find(key); it != obj.end() && it->is_string()) return it->get<std::string>();
+  return def;
+}
+bool jBool(const json& obj, const std::string& key, bool def = false) {
+  if (obj.is_object())
+    if (auto it = obj.find(key); it != obj.end() && it->is_boolean()) return it->get<bool>();
+  return def;
+}
+const json& jObj(const json& obj, const std::string& key) {
+  static const json kEmpty = json::object();
+  if (obj.is_object())
+    if (auto it = obj.find(key); it != obj.end() && it->is_object()) return *it;
+  return kEmpty;
+}
+}  // namespace
+
 // caelestia cli utils/scheme.py → $XDG_STATE_HOME/caelestia/scheme.json:
 // {"mode": "dark", "colours": {"primary": "a6c8ff", "onPrimary": …}}
 std::map<std::string, Color> caelestiaScheme(const std::string& text, bool& dark) {
   const json j = parse(text);
   if (!j.is_object()) return {};
-  auto pal = rolesOf(j.value("colours", json::object()));
-  dark = j.value("mode", std::string("dark")) != "light";
+  auto pal = rolesOf(jObj(j, "colours"));
+  dark = jStr(j, "mode", "dark") != "light";
   return pal;
 }
 
@@ -147,10 +166,10 @@ std::map<std::string, Color> caelestiaScheme(const std::string& text, bool& dark
 // {"mode": "dark", "colors": {"dark": {"primary": "#…"}, "light": {…}}}
 std::map<std::string, Color> dmsColors(const std::string& text, bool& dark) {
   const json j = parse(text);
-  if (!j.is_object() || !j.contains("colors")) return {};
-  const std::string mode = j.value("mode", std::string("dark"));
+  if (!j.is_object() || !j.contains("colors") || !j["colors"].is_object()) return {};
+  const std::string mode = jStr(j, "mode", "dark");
   dark = mode != "light";
-  return rolesOf(j["colors"].value(mode, json::object()));
+  return rolesOf(jObj(j["colors"], mode));
 }
 
 // end-4 ii ~/.local/state/quickshell/user/generated/colors.json and Ambxst
@@ -165,14 +184,14 @@ std::map<std::string, Color> flatPalette(const std::string& text, bool& dark) {
 // usual reading of its sixteen colours
 std::map<std::string, Color> pywalPalette(const std::string& text, std::string& wallpaper, bool& dark) {
   const json j = parse(text);
-  if (!j.is_object() || !j.contains("colors")) return {};
-  wallpaper = j.value("wallpaper", std::string());
+  if (!j.is_object() || !j.contains("colors") || !j["colors"].is_object()) return {};
+  wallpaper = jStr(j, "wallpaper");
   const json& c = j["colors"];
-  const json& s = j.value("special", json::object());
+  const json& s = jObj(j, "special");
   std::map<std::string, Color> pal;
   auto put = [&](const char* role, const json& from, const char* key) {
     Color col;
-    if (from.contains(key) && from[key].is_string() && hexColor(from[key].get<std::string>(), col)) pal[role] = col;
+    if (from.is_object() && from.contains(key) && from[key].is_string() && hexColor(from[key].get<std::string>(), col)) pal[role] = col;
   };
   put("surface", s, "background");
   put("on_surface", s, "foreground");
@@ -193,21 +212,21 @@ std::map<std::string, Color> pywalPalette(const std::string& text, std::string& 
 bool dmsSession(const std::string& session, const std::string& settings, bool dark, ShellState& out) {
   const json s = parse(session);
   if (!s.is_object()) return false;
-  const bool perMode = s.value("perModeWallpaper", false);
+  const bool perMode = jBool(s, "perModeWallpaper", false);
   const char* suffix = dark ? "Dark" : "Light";
-  auto image = [](const json& v) {
-    const std::string p = v.is_string() ? v.get<std::string>() : std::string();
+  auto image = [](const std::string& p) {
     return p.starts_with('#') ? std::string() : expandHome(p);  // "#1e1e2e": a plain colour
   };
-  out.fallback = image(s.value(perMode ? std::string("wallpaperPath") + suffix : std::string("wallpaperPath"), json()));
-  if (out.fallback.empty()) out.fallback = image(s.value("wallpaperPath", json()));
-  if (s.value("perMonitorWallpaper", false)) {
-    const json mons = s.value(perMode ? std::string("monitorWallpapers") + suffix : std::string("monitorWallpapers"), json::object());
+  out.fallback = image(jStr(s, perMode ? std::string("wallpaperPath") + suffix : std::string("wallpaperPath")));
+  if (out.fallback.empty()) out.fallback = image(jStr(s, "wallpaperPath"));
+  if (jBool(s, "perMonitorWallpaper", false)) {
+    const json& mons = jObj(s, perMode ? std::string("monitorWallpapers") + suffix : std::string("monitorWallpapers"));
     for (auto& [name, v] : mons.items())
-      if (const std::string p = image(v); !p.empty()) out.byOutput[name] = p;
+      if (v.is_string())
+        if (const std::string p = image(v.get<std::string>()); !p.empty()) out.byOutput[name] = p;
   }
   const json st = parse(settings);
-  out.fillMode = fillFrom("dms", st.is_object() ? st.value("wallpaperFillMode", std::string("Fill")) : std::string("Fill"));
+  out.fillMode = fillFrom("dms", jStr(st, "wallpaperFillMode", "Fill"));
   return !out.fallback.empty() || !out.byOutput.empty();
 }
 
@@ -216,8 +235,8 @@ bool dmsSession(const std::string& session, const std::string& settings, bool da
 bool ambxstWallpapers(const std::string& text, ShellState& out) {
   const json j = parse(text);
   if (!j.is_object()) return false;
-  out.fallback = expandHome(j.value("currentWall", std::string()));
-  const json screens = j.value("perScreenWallpapers", json::object());
+  out.fallback = expandHome(jStr(j, "currentWall"));
+  const json& screens = jObj(j, "perScreenWallpapers");
   for (auto& [name, v] : screens.items())
     if (v.is_string() && !v.get<std::string>().empty()) out.byOutput[name] = expandHome(v.get<std::string>());
   out.fillMode = 1;
@@ -228,7 +247,7 @@ bool ambxstWallpapers(const std::string& text, ShellState& out) {
 std::string iiWallpaper(const std::string& text) {
   const json j = parse(text);
   if (!j.is_object() || !j.contains("background") || !j["background"].is_object()) return {};
-  return expandHome(j["background"].value("wallpaperPath", std::string()));
+  return expandHome(jStr(j["background"], "wallpaperPath"));
 }
 
 // HyprPanel ~/.config/hyprpanel/config.json, flat dotted keys (nested also

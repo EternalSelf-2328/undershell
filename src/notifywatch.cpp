@@ -17,16 +17,24 @@
 namespace undershell {
 
 namespace {
-std::mutex g_mutex;
-std::deque<Notice> g_notes;
-std::uint64_t g_seq = 0;
+struct WatchState {
+  std::mutex mutex;
+  std::deque<Notice> notes;
+  std::uint64_t seq = 0;
+};
+// Immortal state: the detached D-Bus monitor thread may still be winding down at process exit.
+WatchState& watchState() {
+  static auto* s = new WatchState();
+  return *s;
+}
 std::atomic<int> g_state{0};  // 0 not started, 1 listening, -1 failed
 
 void push(Notice n) {
-  std::lock_guard lock(g_mutex);
-  n.seq = ++g_seq;
-  g_notes.push_back(std::move(n));
-  while (g_notes.size() > 16) g_notes.pop_front();
+  auto& s = watchState();
+  std::lock_guard lock(s.mutex);
+  n.seq = ++s.seq;
+  s.notes.push_back(std::move(n));
+  while (s.notes.size() > 16) s.notes.pop_front();
 }
 
 sd_bus* openMonitor() {
@@ -134,11 +142,12 @@ void NotifyWatch::loop() {
 }
 
 std::vector<Notice> NotifyWatch::since(std::uint64_t& cursor) {
-  std::lock_guard lock(g_mutex);
+  auto& s = watchState();
+  std::lock_guard lock(s.mutex);
   std::vector<Notice> out;
-  for (const Notice& n : g_notes)
+  for (const Notice& n : s.notes)
     if (n.seq > cursor) out.push_back(n);
-  if (cursor < g_seq) cursor = g_seq;
+  if (cursor < s.seq) cursor = s.seq;
   return out;
 }
 

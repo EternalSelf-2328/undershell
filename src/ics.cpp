@@ -161,24 +161,25 @@ std::vector<CalEvent> parseIcs(const std::string& text, int64_t from, int64_t to
   std::vector<VEvent> events;
   std::string calColor = color;
   int depth = 0;
-  bool inEvent = false;
+  int eventDepth = 0;
   for (const std::string& l : lines) {
     Prop p;
     if (!parseLine(l, p)) continue;
     if (p.name == "BEGIN") {
       ++depth;
-      if (upper(p.value) == "VEVENT") {
-        inEvent = true;
+      if (upper(p.value) == "VEVENT" && eventDepth == 0) {
+        eventDepth = depth;
         events.emplace_back();
       }
       continue;
     }
     if (p.name == "END") {
-      --depth;
-      if (upper(p.value) == "VEVENT") inEvent = false;
+      if (upper(p.value) == "VEVENT" && depth == eventDepth) eventDepth = 0;
+      if (depth > 0) --depth;
       continue;
     }
-    if (inEvent) events.back().props.push_back(std::move(p));
+    // ignore nested components inside VEVENT (e.g. VALARM SUMMARY/DURATION)
+    if (eventDepth > 0 && depth == eventDepth) events.back().props.push_back(std::move(p));
     else if (depth == 1 && p.name == "X-APPLE-CALENDAR-COLOR" && p.value.size() >= 7 && p.value[0] == '#')
       calColor = p.value.substr(0, 7);
     if (events.size() > 50000) break;
@@ -249,8 +250,8 @@ std::vector<CalEvent> parseIcs(const std::string& text, int64_t from, int64_t to
       CalEvent o = ev;
       o.start = t;
       if (ev.allDay) {
-        DT e2 = dt(g_date_time_add_days(s, allDays));
-        o.end = g_date_time_to_unix(e2.get());
+        DT e2 = dt(g_date_time_add_days(s, std::min(allDays, 366000)));
+        o.end = e2 ? g_date_time_to_unix(e2.get()) : t + static_cast<int64_t>(allDays) * 86400;
       } else {
         o.end = t + length;
       }
@@ -323,28 +324,38 @@ std::vector<CalEvent> parseIcs(const std::string& text, int64_t from, int64_t to
     }
     for (int step = startStep; step < startStep + 5000 && !done; ++step) {
       if (freq == "DAILY") {
-        DT c = dt(g_date_time_add_days(s0, step * interval));
+        const int64_t off = static_cast<int64_t>(step) * interval;
+        if (off > 3650000) break;
+        DT c = dt(g_date_time_add_days(s0, static_cast<gint>(off)));
+        if (!c) break;
         take(g_date_time_get_year(c.get()), g_date_time_get_month(c.get()), g_date_time_get_day_of_month(c.get()));
       } else if (freq == "WEEKLY") {
         // the week (Monday first) step weeks on, and its days the rule names
-        DT monday = dt(g_date_time_add_days(s0, step * 7 * interval - (g_date_time_get_day_of_week(s0) - 1)));
+        const int64_t off = static_cast<int64_t>(step) * 7 * interval - (g_date_time_get_day_of_week(s0) - 1);
+        if (off > 3650000 || off < -3650000) break;
+        DT monday = dt(g_date_time_add_days(s0, static_cast<gint>(off)));
+        if (!monday) break;
         std::vector<int> wds;
         for (const auto& b : byDay) wds.push_back(b.weekday);
         if (wds.empty()) wds.push_back(g_date_time_get_day_of_week(s0));
         std::sort(wds.begin(), wds.end());
         for (int wd : wds) {
           DT c = dt(g_date_time_add_days(monday.get(), wd - 1));
+          if (!c) continue;
           take(g_date_time_get_year(c.get()), g_date_time_get_month(c.get()), g_date_time_get_day_of_month(c.get()));
         }
       } else if (freq == "MONTHLY") {
-        const int mm = m0 - 1 + step * interval;
-        const int y = y0 + mm / 12, m = mm % 12 + 1;
+        const int64_t mm = static_cast<int64_t>(m0 - 1) + static_cast<int64_t>(step) * interval;
+        const int64_t y64 = static_cast<int64_t>(y0) + mm / 12;
+        if (y64 < 1 || y64 > 9999) break;
+        const int y = static_cast<int>(y64), m = static_cast<int>(mm % 12) + 1;
         const int len = g_date_get_days_in_month(static_cast<GDateMonth>(m), static_cast<GDateYear>(y));
         std::vector<int> days;
         for (int v : byMonthDay) days.push_back(v > 0 ? v : len + 1 + v);
         for (const auto& b : byDay) {
           // the weekday of the 1st, then every one that matches (or the nth)
           DT firstDay = dt(g_date_time_new(tz, y, m, 1, 12, 0, 0));
+          if (!firstDay) continue;
           const int wd1 = g_date_time_get_day_of_week(firstDay.get());
           std::vector<int> all;
           for (int d = 1 + ((b.weekday - wd1 + 7) % 7); d <= len; d += 7) all.push_back(d);
@@ -357,7 +368,9 @@ std::vector<CalEvent> parseIcs(const std::string& text, int64_t from, int64_t to
         for (int d : days)
           if (d >= 1 && d <= len) take(y, m, d);
       } else if (freq == "YEARLY") {
-        const int y = y0 + step * interval;
+        const int64_t y64 = static_cast<int64_t>(y0) + static_cast<int64_t>(step) * interval;
+        if (y64 < 1 || y64 > 9999) break;
+        const int y = static_cast<int>(y64);
         if (d0 <= g_date_get_days_in_month(static_cast<GDateMonth>(m0), static_cast<GDateYear>(y))) take(y, m0, d0);
       } else {
         add(s0);  // a rule this does not know: the first occurrence only

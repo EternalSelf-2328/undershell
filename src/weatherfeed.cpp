@@ -132,29 +132,42 @@ bool WeatherService::parseForecast(const std::string& text, WeatherReport& r) {
   r.code = field(c, "weather_code", 0);
   r.day = field(c, "is_day", 1) != 0;
   r.hours.clear();
-  if (j.contains("hourly")) {
-    const json& h = j["hourly"];
-    const json& t = h.contains("time") ? h["time"] : json::array();
+  auto arrOf = [](const json& obj, const char* key) -> const json& {
+    static const json kEmpty = json::array();
+    if (obj.is_object())
+      if (auto it = obj.find(key); it != obj.end() && it->is_array()) return *it;
+    return kEmpty;
+  };
+  if (auto it = j.find("hourly"); it != j.end() && it->is_object()) {
+    const json& h = *it;
+    const json& t = arrOf(h, "time");
+    const json& temp = arrOf(h, "temperature_2m");
+    const json& code = arrOf(h, "weather_code");
+    const json& isDay = arrOf(h, "is_day");
     for (size_t i = 0; i < t.size(); ++i) {
       WeatherReport::Hour hr;
       hr.at = localToUnix(at<std::string>(t, i, ""), r.utcOffset);
-      hr.temp = at(h.value("temperature_2m", json::array()), i, 0.0);
-      hr.code = at(h.value("weather_code", json::array()), i, 0);
-      hr.day = at(h.value("is_day", json::array()), i, 1) != 0;
+      hr.temp = at(temp, i, 0.0);
+      hr.code = at(code, i, 0);
+      hr.day = at(isDay, i, 1) != 0;
       if (hr.at) r.hours.push_back(hr);
     }
   }
   r.days.clear();
-  if (j.contains("daily")) {
-    const json& d = j["daily"];
-    const json& t = d.contains("time") ? d["time"] : json::array();
+  if (auto it = j.find("daily"); it != j.end() && it->is_object()) {
+    const json& d = *it;
+    const json& t = arrOf(d, "time");
+    const json& code = arrOf(d, "weather_code");
+    const json& hi = arrOf(d, "temperature_2m_max");
+    const json& lo = arrOf(d, "temperature_2m_min");
+    const json& rain = arrOf(d, "precipitation_probability_max");
     for (size_t i = 0; i < t.size(); ++i) {
       WeatherReport::Day day;
       if (std::sscanf(at<std::string>(t, i, "").c_str(), "%d-%d-%d", &day.y, &day.m, &day.d) != 3) continue;
-      day.code = at(d.value("weather_code", json::array()), i, 0);
-      day.hi = at(d.value("temperature_2m_max", json::array()), i, 0.0);
-      day.lo = at(d.value("temperature_2m_min", json::array()), i, 0.0);
-      day.rain = at(d.value("precipitation_probability_max", json::array()), i, 0);
+      day.code = at(code, i, 0);
+      day.hi = at(hi, i, 0.0);
+      day.lo = at(lo, i, 0.0);
+      day.rain = at(rain, i, 0);
       r.days.push_back(day);
     }
   }

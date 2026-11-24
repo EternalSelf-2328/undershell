@@ -104,53 +104,59 @@ SystemConfig SystemConfig::fromTable(const toml::table& t) {
 
 void SystemReader::find() {
   m_found = true;
-  std::error_code ec;
+  auto eachDir = [](const std::string& dir, auto&& fn) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return;
+    for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+      if (!fn(*it)) break;
+  };
   // the GPU: a busy share (AMD), or the time asleep (Intel i915, Xe)
-  if (fs::is_directory(path("/sys/class/drm"), ec))
-    for (const auto& e : fs::directory_iterator(path("/sys/class/drm"), ec)) {
-      const std::string n = e.path().filename().string();
-      if (!n.starts_with("card") || n.find('-') != std::string::npos) continue;  // not a connector
-      const std::string d = e.path().string();
-      if (m_gpuBusy.empty() && exists(d + "/device/gpu_busy_percent")) m_gpuBusy = d + "/device/gpu_busy_percent";
-      if (m_gpuIdle.empty() && exists(d + "/power/rc6_residency_ms")) m_gpuIdle = d + "/power/rc6_residency_ms";
-      if (m_gpuIdle.empty() && exists(d + "/device/tile0/gt0/gtidle/idle_residency_ms"))
-        m_gpuIdle = d + "/device/tile0/gt0/gtidle/idle_residency_ms";
-    }
+  eachDir(path("/sys/class/drm"), [&](const fs::directory_entry& e) {
+    const std::string n = e.path().filename().string();
+    if (!n.starts_with("card") || n.find('-') != std::string::npos) return true;  // not a connector
+    const std::string d = e.path().string();
+    if (m_gpuBusy.empty() && exists(d + "/device/gpu_busy_percent")) m_gpuBusy = d + "/device/gpu_busy_percent";
+    if (m_gpuIdle.empty() && exists(d + "/power/rc6_residency_ms")) m_gpuIdle = d + "/power/rc6_residency_ms";
+    if (m_gpuIdle.empty() && exists(d + "/device/tile0/gt0/gtidle/idle_residency_ms"))
+      m_gpuIdle = d + "/device/tile0/gt0/gtidle/idle_residency_ms";
+    return true;
+  });
   if (!m_gpuBusy.empty()) m_gpuIdle.clear();  // a real busy share wins
   // the CPU package's temperature
-  if (fs::is_directory(path("/sys/class/hwmon"), ec))
-    for (const auto& e : fs::directory_iterator(path("/sys/class/hwmon"), ec)) {
-      const std::string d = e.path().string(), name = firstLine(d + "/name");
-      if (name != "coretemp" && name != "k10temp" && name != "zenpower") continue;
-      std::string pick;
-      for (int i = 1; i <= 8 && pick.empty(); ++i) {
-        const std::string label = firstLine(std::format("{}/temp{}_label", d, i));
-        if (label.starts_with("Package") || label == "Tctl" || label == "Tdie") pick = std::format("{}/temp{}_input", d, i);
-      }
-      if (pick.empty() && exists(d + "/temp1_input")) pick = d + "/temp1_input";
-      if (!pick.empty()) {
-        m_temp = pick;
-        break;
-      }
+  eachDir(path("/sys/class/hwmon"), [&](const fs::directory_entry& e) {
+    const std::string d = e.path().string(), name = firstLine(d + "/name");
+    if (name != "coretemp" && name != "k10temp" && name != "zenpower") return true;
+    std::string pick;
+    for (int i = 1; i <= 8 && pick.empty(); ++i) {
+      const std::string label = firstLine(std::format("{}/temp{}_label", d, i));
+      if (label.starts_with("Package") || label == "Tctl" || label == "Tdie") pick = std::format("{}/temp{}_input", d, i);
     }
-  if (m_temp.empty() && fs::is_directory(path("/sys/class/thermal"), ec)) {
+    if (pick.empty() && exists(d + "/temp1_input")) pick = d + "/temp1_input";
+    if (!pick.empty()) {
+      m_temp = pick;
+      return false;
+    }
+    return true;
+  });
+  if (m_temp.empty()) {
     std::string acpi;
-    for (const auto& e : fs::directory_iterator(path("/sys/class/thermal"), ec)) {
+    eachDir(path("/sys/class/thermal"), [&](const fs::directory_entry& e) {
       const std::string d = e.path().string(), type = firstLine(d + "/type");
       if (type == "x86_pkg_temp") m_temp = d + "/temp";
       else if (type == "acpitz" && acpi.empty()) acpi = d + "/temp";
-    }
+      return true;
+    });
     if (m_temp.empty()) m_temp = acpi;
   }
   // the battery
-  if (fs::is_directory(path("/sys/class/power_supply"), ec))
-    for (const auto& e : fs::directory_iterator(path("/sys/class/power_supply"), ec)) {
-      const std::string d = e.path().string();
-      if (firstLine(d + "/type") == "Battery" && exists(d + "/capacity") && firstLine(d + "/scope") != "Device") {
-        m_battery = d;  // (scope Device: a mouse's or a headset's)
-        break;
-      }
+  eachDir(path("/sys/class/power_supply"), [&](const fs::directory_entry& e) {
+    const std::string d = e.path().string();
+    if (firstLine(d + "/type") == "Battery" && exists(d + "/capacity") && firstLine(d + "/scope") != "Device") {
+      m_battery = d;  // (scope Device: a mouse's or a headset's)
+      return false;
     }
+    return true;
+  });
 }
 
 SystemSample SystemReader::sample(double now, const std::string& diskPath) {
@@ -163,7 +169,9 @@ SystemSample SystemReader::sample(double now, const std::string& diskPath) {
     std::ifstream f(path("/proc/stat"));
     std::vector<std::pair<double, double>> cores;
     for (std::string line; std::getline(f, line) && line.starts_with("cpu");) {
-      std::istringstream ss(line.substr(line.find(' ')));
+      const size_t sp = line.find(' ');
+      if (sp == std::string::npos) continue;
+      std::istringstream ss(line.substr(sp));
       double v[8] = {0};
       for (double& x : v) ss >> x;
       const double idle = v[3] + v[4], total = v[0] + v[1] + v[2] + v[3] + v[4] + v[5] + v[6] + v[7];

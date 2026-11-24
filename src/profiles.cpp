@@ -67,7 +67,8 @@ void App::checkProfile() {
     m_profileKey = owner.empty() ? key : owner;
     m_profileWall = wall;
     if (owner.empty()) {
-      fs::create_directories(dir);
+      std::error_code ec;
+      fs::create_directories(dir, ec);
       writeFileAtomic(marker, key + "\n");
       return;
     }
