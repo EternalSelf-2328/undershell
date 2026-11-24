@@ -3,6 +3,8 @@
 
 #include "text.hpp"
 
+#include <EGL/egl.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -296,6 +298,10 @@ void TermScreen::draw(const Crt& crt) {
   glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
   drawUnitQuad();
   glDisable(GL_BLEND);
+}
+
+TermScreen::~TermScreen() {
+  if (eglGetCurrentContext() != EGL_NO_CONTEXT) release();
 }
 
 void TermScreen::release() {

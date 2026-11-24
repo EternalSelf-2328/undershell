@@ -124,7 +124,11 @@ struct Script {
 std::string text(JSContext* ctx, JSValueConst v) {
   size_t n = 0;
   const char* s = JS_ToCStringLen(ctx, &n, v);
-  if (!s) return {};
+  if (!s) {
+    JSValue ex = JS_GetException(ctx);
+    JS_FreeValue(ctx, ex);
+    return {};
+  }
   std::string out(s, std::min<size_t>(n, 4096));
   JS_FreeCString(ctx, s);
   return out;
@@ -245,6 +249,12 @@ int main(int argc, char** argv) {
         out["value"] = s.value;
       }
       JS_FreeValue(ctx, mod);
+      if (auto it = scripts.find(id); it != scripts.end()) {
+        JS_FreeValue(ctx, it->second.update);
+        JS_FreeValue(ctx, it->second.init);
+        JS_FreeValue(ctx, it->second.props);
+        JS_FreeValue(ctx, it->second.layer);
+      }
       scripts[id] = s;
     } else if (op == "update") {
       JSValue global = JS_GetGlobalObject(ctx);

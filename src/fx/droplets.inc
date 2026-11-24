@@ -29,9 +29,9 @@ vec2 warp(vec2 uv) {
         if (rnd.x > amount * 0.9) continue;
         vec2 c = (rnd.yz - 0.5) * 0.5;
         float life = fract(t * 0.03 + rnd.x * 7.0);
-        float r = (0.1 + 0.17 * rnd.w) * smoothstep(0.0, 0.04, life) * smoothstep(1.0, 0.75, life);
+        float r = (0.1 + 0.17 * rnd.w) * smoothstep(0.0, 0.04, life) * (1.0 - smoothstep(0.75, 1.0, life));
         vec2 d = f - c;
-        off -= d * smoothstep(r, r * 0.35, length(d)) * 2.4 / k;
+        if (r > 1e-4) off -= d * (1.0 - smoothstep(r * 0.35, r, length(d))) * 2.4 / k;
     }
     // drops that run: one lane each, sliding faster and slower
     float lanes = 16.0 / size;
@@ -43,8 +43,8 @@ vec2 warp(vec2 uv) {
         float x = fract(p.x * lanes) - 0.5 - (lr.z - 0.5) * 0.4 + sin(uv.y * 31.0 + hl * 40.0) * 0.06;
         float dy = (uv.y - y) * lanes;  // in the lane's own units, below the head is positive
         vec2 d = vec2(x, dy * 0.75);
-        off -= vec2(x, dy) * smoothstep(0.2, 0.06, length(d)) * 2.2 / lanes;
-        float trail = smoothstep(0.05, 0.0, abs(x)) * step(dy, 0.0) * smoothstep(-5.0, 0.0, dy);
+        off -= vec2(x, dy) * (1.0 - smoothstep(0.06, 0.2, length(d))) * 2.2 / lanes;
+        float trail = (1.0 - smoothstep(0.0, 0.05, abs(x))) * step(dy, 0.0) * smoothstep(-5.0, 0.0, dy);
         off.x -= x * trail * 0.8 / lanes;
     }
     return uv + pictureOffset(off * bend);

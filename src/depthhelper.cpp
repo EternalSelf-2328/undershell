@@ -84,6 +84,10 @@ int main(int argc, char** argv) {
     if (err) g_error_free(err);
     return 3;
   }
+  if (GdkPixbuf* rot = gdk_pixbuf_apply_embedded_orientation(src)) {
+    g_object_unref(src);
+    src = rot;
+  }
   GdkPixbuf* small = gdk_pixbuf_scale_simple(src, mw, mh, GDK_INTERP_HYPER);
   g_object_unref(src);
   if (!small) return 3;

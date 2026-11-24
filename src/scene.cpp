@@ -209,6 +209,7 @@ bool SceneWidget::loadTexture(const std::string& base, Pixels& out) {
 
 SceneWidget::~SceneWidget() {
   for (auto& [k, t] : m_tex) glDeleteTextures(1, &t.first);
+  m_video.releaseGl();
 }
 
 SceneWidget::LayerFx::~LayerFx() {
@@ -293,6 +294,7 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
       m_pt.configureDefs({});
       m_scripts.reset();
       m_texts.clear();
+      m_video.releaseGl();
       m_video.close();
       m_model = {};
       m_ready = false;
@@ -320,6 +322,7 @@ void SceneWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
   m_stillTried = false;
   m_stillPath.clear();
   m_still = std::make_shared<std::atomic<bool>>(false);
+  m_video.releaseGl();
   m_video.close();
   m_model = {};
   start();
@@ -956,7 +959,10 @@ void SceneWidget::drawLayers(const DrawContext& ctx, bool particles) {
       DrawContext lc;
       lc.w = static_cast<float>(fw), lc.h = static_cast<float>(fh), lc.now = ctx.now, lc.fillMode = 1;
       if (li < m_layerMasks.size())
-        if (auto mt = m_tex.find(m_layerMasks[li]); mt != m_tex.end()) lc.effectMasks = mt->second.first;
+        if (auto mt = m_tex.find(m_layerMasks[li]); mt != m_tex.end()) {
+          lc.effectMasks = mt->second.first;
+          lc.effectMasksUsed = 0xF;
+        }
       L.chain.build(kFxHead, "", kFxBody, kFxLights);
       auto picture = [&](const Program& p) {
         glActiveTexture(GL_TEXTURE0);

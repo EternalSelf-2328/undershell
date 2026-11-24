@@ -6,6 +6,7 @@
 #include "offscreen.hpp"
 #include "wescene.hpp"
 
+#include <EGL/egl.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib.h>
 
@@ -121,8 +122,9 @@ ThumbCache::~ThumbCache() {
   }
   m_cv.notify_all();
   if (m_worker.joinable()) m_worker.join();
-  for (auto& [p, t] : m_thumbs)
-    if (t.tex) glDeleteTextures(1, &t.tex);
+  if (eglGetCurrentContext() != EGL_NO_CONTEXT)
+    for (auto& [p, t] : m_thumbs)
+      if (t.tex) glDeleteTextures(1, &t.tex);
 }
 
 void ThumbCache::run() {

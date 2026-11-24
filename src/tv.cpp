@@ -250,6 +250,8 @@ public:
     if (channels != m_channels || paths != m_paths) {
       m_channels = channels;
       m_paths = paths;
+      for (auto& [k, src] : m_sources)
+        if (src) src->releaseGl();
       m_sources.clear();
       m_current = 0;
     }
@@ -410,6 +412,8 @@ public:
   }
 
   ~Tv() override {
+    for (auto& [k, src] : m_sources)
+      if (src) src->releaseGl();
     if (m_tex) glDeleteTextures(1, &m_tex);
     if (m_fbo) glDeleteFramebuffers(1, &m_fbo);
   }

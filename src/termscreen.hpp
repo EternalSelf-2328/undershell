@@ -17,6 +17,7 @@ namespace undershell {
 
 class TermScreen {
 public:
+  ~TermScreen();
   // Lays the grid out for a box of `w` x `h` logical px at `scale` device px
   // each, the text `textScale` times its usual size.
   void layout(float w, float h, float scale, float textScale);
