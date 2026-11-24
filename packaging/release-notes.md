@@ -1,43 +1,37 @@
-## What's new in 1.8.0
+## What's fixed in 1.8.1
 
-### Painted companions
+A stability and bug-fix release addressing over 40 verified issues found across the codebase, plus clock update reliability.
 
-- **36 companions in two art styles:** chibi and side-view pixel art, with 24
-  painted frames per species and style: **72 atlases and 1,728 frames**.
-- Six-frame walking cycles, breathing, blinking, sleeping, jumping, alerts and
-  species-specific actions. Select **Art → Chibi / Pixel art** in the pet's
-  inspector. The classic collections remain available.
-- Embedded artwork decodes directly with the existing Cairo dependency.
-  Importing a sheet preserves long tails and rejects placements that crop
-  painted pixels.
+### Clock update reliability
 
-[Companion catalogue](https://github.com/EternalSelf-2328/undershell/blob/v1.8.0/docs/PETS.md)
+- **Minute/second boundary lag:** `ClockWidget` and `{time}` text widgets now read the same high-resolution `CLOCK_REALTIME` source as `nextWakeup()` (with a 20 ms margin) instead of Linux `CLOCK_REALTIME_COARSE` (`std::time`), preventing clocks from redrawing the previous minute and sleeping for another 60 seconds.
+- **Suspend/resume and NTP jumps:** the main loop detects wall-clock vs monotonic-clock jumps (> 1.5 s) and immediately re-arms scheduled widgets.
+- **Withheld Wayland frame callbacks:** scheduled wall-clock widgets (desktop and screensaver clocks) cancel stale `wl_surface_frame` callbacks after 2 seconds when `wakeAt` is due, preventing clocks from freezing when a compositor withholds `frame.done` under occlusion, DPMS, or VFR.
 
-### Mirrors and water
+### Memory safety and crash fixes
 
-- Add **Reflection** under **Animated effects → Water** to mirror the picture
-  above a configurable rectangle. Choose a still mirror or animated water,
-  with wave size/speed, vertical stretch, soft edges and fading.
-- Reflections now carry transparency and opacity, so they appear in empty
-  parts of visualizers, text and image widgets.
-- A still mirror does not request continuous frames.
+- **Use-after-free on locked mutexes:** fixed deterministic UAF in `ActivityWidget::tick()` and `WallpaperStore::get()` where `shared_ptr::reset()` destroyed the mutex while `std::lock_guard` still held it, and in `WallpaperFade::update()` where `trim()` could evict `m_cur` before reading it.
+- **Buffer bounds:** fixed heap over-read in `Terminal::drawMatrix()` on vertical resize, empty `deque::back()` in `Terminal::stepCode()` when switching modes mid-line, heap overflow in `App::paintUndo()` for effect masks after wallpaper changes, and out-of-bounds reads in `App::fieldAt()` (`wandAt`/`lassoClose`) at right/bottom edges.
+- **Uncaught exceptions on external data:** guarded `nlohmann::json` type mismatches in `WeatherService::parseForecast()` (`"hourly": null` / `"daily": null`) and `shells.cpp` (Caelestia, DMS, pywal, Ambxst, end-4), throwing `/sys` directory iterators and malformed `/proc/stat` lines in `sysmon.cpp`, unbounded `.npy` header allocations / `std::stoi` in `loadNpyF32()`, `fs::create_directories` in `profiles.cpp`, and exit-time teardown in `NotifyWatch`.
+- **Calendar ICS parsing:** nested `VALARM` blocks no longer overwrite the parent `VEVENT`'s `SUMMARY` or `DURATION`, and extreme `INTERVAL`/`DURATION` values no longer overflow or dereference null `GDateTime*`.
 
-[Reflection guide](https://github.com/EternalSelf-2328/undershell/blob/v1.8.0/docs/WALLPAPER.md#mirror-and-water-reflections)
+### Editor, configuration and documentation
 
-### Fixes and controls
+- **Multi-line `text` undo:** `Config::tomlText()` now escapes `\n`, `\r`, `\t`, and control characters, and `storeOption()` unescapes TOML strings so undoing multi-line text never writes invalid TOML into `config.toml`.
+- **Profile switching safety:** `Config::switchProfile()` now checks file reads with `readFileChecked()` so transient read failures cannot wipe `config.toml` or saved profiles.
+- **Editor interaction:** fixed `m_drag` getting permanently stuck when clicking a widget while renaming a layer, stopped `widgetAt()` from hitting hidden or locked selected widgets, fixed double `SpaceMap` inverse transforms on `pin`/`mesh` undo and `pin_corners`, offset `pin`/`mesh` points in `duplicateWidget()`, ensured `msg card color` populates `m_inspSchema`, and ensured `~App()` destroys active screensaver surfaces before EGL/Wayland teardown.
+- **Inspector, i18n and docs:** fixed unreachable `lyrics_style` visibility condition when `show_lyrics = false`, added Spanish labels for clock `ink`/`accent` swatches, and restored missing `system`, `activity`, and `pet` headings in `docs/OPTIONS.md`.
 
-- **Frame visualizer:** the corner fans now reach the physical screen corners
-  while retaining rounded inner tips and the mirrored spectrum.
-- **Split:** the inspector offers horizontal/vertical orientation.
-- **Curtain:** the inspector offers its four supported growth edges.
-- Existing saved directions retain their equivalent appearance.
+### Graphics, scenes and resource leaks
 
-### Artwork sources
+- **Wallpaper Engine effect masks:** `SceneWidget::drawLayers()` now sets `lc.effectMasksUsed` so packed per-layer effect masks are actually applied instead of being ignored.
+- **Shader NaNs:** fixed GLSL ES 3.00 undefined `smoothstep(edge0 >= edge1)` and `0/0` NaNs in `fx/droplets.inc`.
+- **GL, QuickJS and FD leaks:** added `~TermScreen()` cleanup, called `VideoSource::releaseGl()` in `Tv` and `SceneWidget`, guarded `glDeleteTextures()` on shutdown in `ThumbCache` and `MediaService`, freed overwritten QuickJS script handles and cleared pending exceptions in `undershell-script`, applied EXIF orientation in `undershell-depth` to match `refineDepth()`, and closed the leaked `/dev/null` FD in `WindowFeed`.
 
-The optional `undershell-pet-sources.tar` contains the classic generated source
-pictures. `undershell-painted-pet-sources.tar.zst` contains the 72 selected
-painted source sheets and their checksums. These are for editing or repacking;
-all runtime artwork is already embedded in the packages.
+### Companions, services and Noctalia plugin
+
+- **Pets:** fixed default `Sprout` species missing hitboxes (`inputRects`) and speech bubbles, fixed rigged pet crouch animation skipping `m_life.step()`, fixed `std::clamp` UB on 1-character bubbles and mid-codepoint UTF-8 truncation, applied `body_color`/`mark_color` overrides on drawn/painted pets under `paint = "variant"`, and skipped `scope == "Device"` batteries.
+- **Services and UI:** reset per-track metadata and `canToggle` cleanly in `MediaService::onPlayerReply()`, refreshed `colors_from = "cover"` immediately in `setPaletteWanted()`, replaced fragile regex JSON parsing in `skwdShowsMotion()`/`skwdPaths()` with `nlohmann::json`, fixed `Globe::moving()` for active kick rings when `globe_spin = 0`, used `g_utf8_strup` for accented calendar headings, fixed the unreachable `panel.no_widgets` empty state in the Noctalia panel plugin, and added missing `<cmath>` includes for GCC 16 builds.
 
 ## Install a prebuilt package
 

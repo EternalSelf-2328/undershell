@@ -1,3 +1,25 @@
+undershell (1.8.1) unstable; urgency=medium
+
+  * Fix clock widgets freezing or lagging across minute boundaries, system
+    suspend/resume, NTP jumps, and withheld Wayland frame callbacks
+  * Fix deterministic use-after-free bugs when releasing locked mutexes in
+    ActivityWidget and WallpaperStore, plus WallpaperFade eviction UAF
+  * Fix buffer overflows and out-of-bounds reads in Terminal matrix mode,
+    depth/effect mask painting, and ICS recurrence expansion
+  * Guard external JSON, ICS (nested VALARM), weather, shell, /proc, /sys,
+    and .npy parsers against uncaught exceptions and unbounded allocations
+  * Fix multi-line text undo corrupting config.toml, profile switching on
+    read failure, editor drag lockups after layer rename, and double
+    SpaceMap inverse transforms on pin/mesh undo
+  * Fix Wallpaper Engine scene effect masks being ignored, GLSL ES 3.00
+    smoothstep NaNs in droplets, EXIF orientation in undershell-depth, and
+    GL/QuickJS resource leaks
+  * Fix Sprout hitboxes/bubbles, rigged pet crouch animation, UTF-8 bubble
+    wrapping, media metadata/cover palette refresh, skwd JSON parsing,
+    UTF-8 calendar uppercase, Noctalia panel empty state, and GCC 16 builds
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Tue, 24 Nov 2026 09:10:00 -0500
+
 undershell (1.8.0) unstable; urgency=medium
 
   * Add 36 painted companions in chibi and side-view pixel styles, with 24

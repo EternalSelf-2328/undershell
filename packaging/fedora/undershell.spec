@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.8.0
+Version:        1.8.1
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -88,6 +88,13 @@ undershell's own depth maps to pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Tue Nov 24 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.8.1-1
+- Fix clock widgets freezing or lagging across minute boundaries, suspend, and withheld frame callbacks
+- Fix use-after-free, buffer overflows, and uncaught JSON/ICS/sysfs exceptions across core modules
+- Fix multi-line TOML undo corruption, editor drag lockups, and SpaceMap pin/mesh undo
+- Fix Wallpaper Engine scene effect masks, shader NaNs, and GL/QuickJS resource leaks
+- Fix default Sprout pet interaction/bubbles, rigged crouch animation, media/skwd/calendar bugs, and Noctalia panel empty state
+
 * Sat Nov 14 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.8.0-1
 - Add 36 painted companions in chibi and pixel styles, with 1728 animation frames
 - Add configurable rectangular mirror and water reflections with transparency
