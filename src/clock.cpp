@@ -266,7 +266,12 @@ void ClockWidget::configure(const ClockConfig& cfg, const NoctaliaState& noct) {
   m_measures.clear();
 }
 
-std::time_t ClockWidget::currentTime() const { return s_fixedTime ? s_fixedTime : std::time(nullptr); }
+std::time_t ClockWidget::currentTime() const {
+  if (s_fixedTime) return s_fixedTime;
+  // Use the same high-res CLOCK_REALTIME source as nextWakeup(): std::time()
+  // reads Linux CLOCK_REALTIME_COARSE and can lag by several ms right at :00.
+  return std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+}
 
 Canvas::Size ClockWidget::measure(const std::string& text, const TextStyle& st) {
   const std::string key = std::format("{}\x1f{}\x1f{}\x1f{}\x1f{}", text, st.family, st.size, st.weight, st.letterSpacing);
@@ -1080,7 +1085,7 @@ double ClockWidget::nextWakeup(double now) const {
   const auto sys = std::chrono::system_clock::now().time_since_epoch();
   const double wall = std::chrono::duration<double>(sys).count();
   const double period = perSecond ? 1.0 : 60.0;
-  const double toNext = period - std::fmod(wall, period) + 0.002;
+  const double toNext = period - std::fmod(wall, period) + 0.02;
   return now + toNext;
 }
 

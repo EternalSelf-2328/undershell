@@ -2342,12 +2342,21 @@ int App::computeTimeout() {
       next = std::min(next, w->wakeAt);
       continue;
     }
-    if (w->frameCb) continue;
+    if (w->frameCb) {
+      // Scheduled wall-clock widgets (clock, calendar, {time} text) must not
+      // stall forever if a compositor withholds frame.done while occluded/VFR.
+      if (w->wakeAt < 1e8) next = std::min(next, std::max(w->wakeAt, w->frameAskedAt + 2.0));
+      continue;
+    }
     const double due = w->lastRender + 1.0 / fpsOf(*w);
     next = std::min(next, due);
   }
   for (auto& w : m_saver) {
-    if (!w->configured || !w->impl || w->frameCb) continue;
+    if (!w->configured || !w->impl) continue;
+    if (w->frameCb) {
+      if (w->wakeAt < 1e8) next = std::min(next, std::max(w->wakeAt, w->frameAskedAt + 2.0));
+      continue;
+    }
     next = std::min(next, w->needsRender ? w->lastRender + 1.0 / fpsOf(*w) : w->wakeAt);
   }
   if (m_userIdle && m_saver.empty()) next = std::min(next, now + 1.0);  // waiting for the music to stop
@@ -2429,6 +2438,11 @@ int App::run() {
   // KDE Plasma's desktop, colour and activity files (written by rename)
   if (Plasma::present() || Plasma::session()) m_wdPlasma = inotify_add_watch(m_inotify, Plasma::configDir().c_str(), mask);
   if (Gnome::session()) m_dconf.start();
+
+  auto wallNow = [] {
+    return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+  };
+  double lastMono = nowSeconds(), lastWall = wallNow();
 
   while (m_running && !g_quit) {
     while (wl_display_prepare_read(m_display) != 0) wl_display_dispatch_pending(m_display);
@@ -2604,6 +2618,20 @@ int App::run() {
       for (auto& w : m_widgets)
         if ((m_demo || m_edit || w->idleState == 2) && w->impl && (w->impl->usesAudio() || w->impl->wantsMedia())) w->needsRender = true;
     }
+    // System suspend/resume or NTP clock jump: monotonic time paused while
+    // wall-clock time moved on, so re-arm every scheduled widget right away.
+    {
+      const double wNow = wallNow();
+      if (std::abs((wNow - lastWall) - (now - lastMono)) > 1.5) {
+        for (auto& w : m_widgets) {
+          if (!w->impl) continue;
+          w->wakeAt = now;
+          w->needsRender = true;
+        }
+      }
+      lastMono = now;
+      lastWall = wNow;
+    }
     for (auto& w : m_widgets) {
       // a live option change (inspector) may turn a boxed look fullscreen
       if (w->impl && w->surface && w->surfaceFullscreen != w->impl->fullscreen()) {
@@ -2613,6 +2641,13 @@ int App::run() {
       // nextWakeup(now) is always ahead of `now` (a clock's next minute, from
       // now): compare with the time fixed at the last tick, or it never comes
       if (w->impl && !w->needsRender && now >= w->wakeAt) w->needsRender = true;
+      if (w->impl && w->frameCb && w->wakeAt < 1e8 && now >= w->wakeAt && now - w->frameAskedAt >= 2.0) {
+        // Stale frame callback on a scheduled widget (e.g. compositor withheld
+        // frame.done after DPMS/occlusion/VFR): cancel it so the clock updates.
+        delete static_cast<WidgetCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(w->frameCb)));
+        wl_callback_destroy(w->frameCb);
+        w->frameCb = nullptr;
+      }
       if (!w->needsRender) continue;
       if (now + 0.0005 < w->lastRender + 1.0 / fpsOf(*w)) continue;
       render(*w);
@@ -2620,6 +2655,11 @@ int App::run() {
     updateSaver(now);
     for (auto& w : m_saver) {
       if (w->impl && !w->needsRender && now >= w->wakeAt) w->needsRender = true;
+      if (w->impl && w->frameCb && w->wakeAt < 1e8 && now >= w->wakeAt && now - w->frameAskedAt >= 2.0) {
+        delete static_cast<WidgetCtx*>(wl_proxy_get_user_data(reinterpret_cast<wl_proxy*>(w->frameCb)));
+        wl_callback_destroy(w->frameCb);
+        w->frameCb = nullptr;
+      }
       if (w->impl && w->impl->usesAudio() && m_audioOk && !m_audio.idle()) w->needsRender = true;
       if (!w->needsRender || now + 0.0005 < w->lastRender + 1.0 / fpsOf(*w)) continue;
       render(*w);

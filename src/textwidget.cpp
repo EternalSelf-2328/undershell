@@ -132,7 +132,7 @@ std::string TextWidget::expand(const std::string& text, const MediaState* media,
   if (usesTime) *usesTime = false;
   if (text.find('{') == std::string::npos) return text;
   const bool es = spanishUi();
-  const std::time_t tt = std::time(nullptr);
+  const std::time_t tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
   std::tm tm{};
   localtime_r(&tt, &tm);
   static const char* daysEs[] = {"domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"};
