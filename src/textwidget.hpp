@@ -20,6 +20,7 @@ struct MediaState;
 
 struct TextConfig {
   std::string text = "undershell";  // {title} {artist} {album} {time} {date} {day} are filled in
+  std::string dataFile, dataKey;
   std::string style = "plain";      // the preset the keys below start from
   std::string font = "Inter Display";
   int weight = 800;
@@ -56,6 +57,8 @@ public:
   [[nodiscard]] double nextWakeup(double now) const override;
   [[nodiscard]] int fps() const override;
   [[nodiscard]] bool usesAudio() const override { return m_cfg.react != "none"; }
+  [[nodiscard]] std::vector<std::string> watchedFiles() const override;
+  void filesChanged() override;
   [[nodiscard]] bool wantsMedia() const override { return m_media; }
   [[nodiscard]] Color accent() const override { return m_accent; }
 
@@ -66,12 +69,14 @@ public:
   // The look a config asks for, with the editor's accent for it
   static TextFxStyle styleOf(const TextConfig& cfg, const NoctaliaState& noct, Color* accent = nullptr);
   // `text` with its placeholders filled in
-  static std::string expand(const std::string& text, const MediaState* media, bool* usesTime = nullptr);
+  static std::string expand(const std::string& text, const MediaState* media, bool* usesTime = nullptr,
+                            std::string_view data = {}, std::string_view focus = {});
 
 private:
   void move(double now, size_t n);
 
   TextConfig m_cfg;
+  std::string m_dataPath, m_data;
   TextFxStyle m_style;
   Color m_accent;  // the editor's: the text's own colour when it has one, else the theme's
   TextFx m_fx;

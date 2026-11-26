@@ -557,7 +557,7 @@ void App::syncFileWatches() {
   for (const auto& d : dirs) {
     std::error_code ec;
     fs::create_directories(d, ec);  // a note's folder, before its first save
-    if (const int wd = inotify_add_watch(m_inotify, d.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE); wd >= 0)
+    if (const int wd = inotify_add_watch(m_inotify, d.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE); wd >= 0)
       m_wdFiles[wd] = d;
   }
 }
@@ -1997,7 +1997,7 @@ std::string App::handleCommand(const std::string& cmd) {
     for (auto& w : m_widgets)
       if (w->cfg.id == id) {
         if (m_picker.busy()) return "error: a file chooser is already open";
-        if (w->cfg.type == "image") pickFiles(*w, false, "file");  // its one picture
+        if (w->cfg.type == "image") pickFiles(*w, what == "folder", what == "folder" ? "photo_folder" : "file");
         else pickFiles(*w, what == "folder");
         return "choosing";
       }

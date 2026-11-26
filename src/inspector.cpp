@@ -290,6 +290,7 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
   }
   if (c.type == "lyrics" && key == "transition") return o["layout"].value_or(std::string("lines")) == "line";
   if (c.type == "text" || c.type == "lyrics") {
+    if (key == "data_key") return !o["data_file"].value_or(std::string()).empty();
     const TextConfig t = TextConfig::fromTable(o);  // what its style leaves out counts too
     if (key == "color") return t.fill == "solid" || t.fill == "gradient";
     if (key == "color2" || key == "angle") return t.fill == "gradient";
@@ -302,6 +303,7 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     return true;
   }
   if (c.type == "image") {
+    if (key == "photo_interval") return !o["photo_folder"].value_or(std::string()).empty();
     if (key == "corner") return o["cut"].value_or(std::string("none")) == "none";
     if (key == "outline_color") return o["outline"].value_or(0.0) > 0 || o["outline"].value_or(int64_t{0}) > 0;
     if (key == "depth_level") return o["depth"].value_or(true);
@@ -558,7 +560,16 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
     name.labelEn = file.empty() ? "PNG, JPG, GIF, WebP, APNG or a video" : p.filename().string();
     name.labelEs = file.empty() ? "PNG, JPG, GIF, WebP, APNG o un video" : p.filename().string();
     if (!file.empty() && !fs::exists(p, ec)) name.labelEn += "  (missing)", name.labelEs += "  (no existe)";
-    s.insert(s.begin(), {pick, name});
+    const std::string folder = w.cfg.options["photo_folder"].value_or(std::string());
+    PropSpec pickFolder{K::Action, "photo_folder", "Choose photo folder…", "Elegir carpeta de fotos…"};
+    PropSpec folderName;
+    folderName.kind = K::File;
+    folderName.key = "photo_folder";
+    folderName.def = folder.empty() ? -1 : 0;
+    folderName.defText = folder;
+    folderName.labelEn = folder.empty() ? "Rotate local pictures" : folder;
+    folderName.labelEs = folder.empty() ? "Alternar fotos locales" : folder;
+    s.insert(s.begin(), {pick, name, pickFolder, folderName});
   }
   if (w.cfg.type == "now_playing" && w.cfg.options["layout"].value_or(std::string("sheet")) != "text" &&
       w.cfg.options["show_cover"].value_or(true)) {
@@ -1301,12 +1312,13 @@ void App::reshapeMesh(Widget& w, const std::string& preset, double amount, int g
 // would. The editor steps aside so the dialog gets the keyboard.
 void App::pickFiles(Widget& w, bool folders, const std::string& key) {
   const bool es = spanishUi();
-  const bool one = key == "file" || key == "cover_file";  // one picture: the image widget's, the music card's cover
+  const bool one = key == "file" || key == "cover_file" || key == "photo_folder";  // one picture: the image widget's, the music card's cover
   FilePicker::Request req;
   req.folders = folders;
   req.multiple = !one;
   if (one) {
-    req.title = es ? "Imagen, sticker, GIF o video" : "Picture, sticker, GIF or video";
+    req.title = key == "photo_folder" ? (es ? "Carpeta de fotos" : "Photo folder")
+                                    : (es ? "Imagen, sticker, GIF o video" : "Picture, sticker, GIF or video");
     req.filterName = es ? "Imágenes y videos" : "Pictures and videos";
     req.mimes = {"image/*", "video/*"};
   } else {
@@ -2819,10 +2831,10 @@ bool App::uiPress(int index, double x) {
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "tv_files" &&
           !m_picker.busy())
         pickFiles(*w, c.value == "folder");
-      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) &&
-          (m_inspSchema[static_cast<size_t>(c.prop)].key == "file" || m_inspSchema[static_cast<size_t>(c.prop)].key == "cover_file") &&
-          !m_picker.busy())
-        pickFiles(*w, false, m_inspSchema[static_cast<size_t>(c.prop)].key);
+      if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && !m_picker.busy()) {
+        const auto& key = m_inspSchema[static_cast<size_t>(c.prop)].key;
+        if (key == "file" || key == "cover_file" || key == "photo_folder") pickFiles(*w, key == "photo_folder", key);
+      }
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "_note") {
         if (c.value == "open") {  // in the desktop's text editor; the file is watched
           endNote();
@@ -2857,7 +2869,7 @@ bool App::uiPress(int index, double x) {
     case UiControl::FileRemove:
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
         const PropSpec p = m_inspSchema[static_cast<size_t>(c.prop)];
-        if (p.key == "file" || p.key == "cover_file") {  // the image widget's picture, the music card's cover
+        if (p.key == "file" || p.key == "cover_file" || p.key == "photo_folder") {  // the image widget's picture, the music card's cover
           m_lastOpKind.clear();
           setProp(*w, p.key, "\"\"");
           m_pickNote.clear();
@@ -3701,7 +3713,7 @@ void App::drawUi(EditSurface& e) {
             // a button across the row, or two side by side
             const int idx = static_cast<int>(&p - &schema[0]);
             const bool fetch = p.key == "_depth_model";
-            const bool waiting = ((p.key == "tv_files" || p.key == "file") && m_picker.busy()) ||  // the chooser is open
+            const bool waiting = ((p.key == "tv_files" || p.key == "file" || p.key == "photo_folder" || p.key == "cover_file") && m_picker.busy()) ||  // the chooser is open
                                  (fetch && (m_depthGen.downloading() || m_depthGen.computing()));
             const size_t n = p.options.size() == 2 ? 2 : 1;
             const float bw = n == 2 ? (kPanelW - 40) / 2 : kPanelW - 32;

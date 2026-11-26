@@ -11,6 +11,8 @@
 #include <EGL/egl.h>
 #include <algorithm>
 #include <cmath>
+#include <cctype>
+#include <filesystem>
 
 namespace undershell {
 
@@ -126,12 +128,14 @@ void main() {
 ImageConfig ImageConfig::fromTable(const toml::table& t) {
   ImageConfig c;
   c.file = get<std::string>(t, "file", "");
+  c.folder = get<std::string>(t, "photo_folder", "");
   c.fit = get<std::string>(t, "fit", c.fit);
   auto num = [&](const char* key, double def, double lo, double hi) {
     double v = def;
     if (auto d = t[key].value<double>()) v = *d;
-    return std::clamp(v, lo, hi);
+    return std::isfinite(v) ? std::clamp(v, lo, hi) : def;
   };
+  c.interval = num("photo_interval", c.interval, 2, 3600);
   c.corner = num("corner", c.corner, 0, 1);
   c.cut = get<std::string>(t, "cut", c.cut);
   c.outline = num("outline", c.outline, 0, 40);
@@ -151,7 +155,15 @@ ImageWidget::~ImageWidget() {
 void ImageWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) { configure(ImageConfig::fromTable(cfg.options), noct); }
 
 void ImageWidget::configure(const ImageConfig& cfg, const NoctaliaState& noct) {
+  const bool intervalChanged = cfg.interval != m_cfg.interval;
   m_cfg = cfg;
+  const std::string folder = cfg.folder.empty() ? std::string() : std::filesystem::path(expandHome(cfg.folder)).lexically_normal().string();
+  if (folder != m_folder) {
+    m_folder = folder;
+    filesChanged();
+  }
+  if (m_folder.empty()) setPicture(expandHome(cfg.file));
+  if (intervalChanged) m_nextPhoto = -1;
   m_outlineC = noct.color(cfg.outlineColor, Color{1, 1, 1, 1});
   m_radii.clear();
   if (cfg.cut == "circle") m_radii.assign(64, 1.0F);
@@ -162,10 +174,39 @@ void ImageWidget::configure(const ImageConfig& cfg, const NoctaliaState& noct) {
     if (most > 0)
       for (float& r : m_radii) r /= most;
   }
-  if (expandHome(cfg.file) != m_openPath && m_src) {  // another picture: decoded again at the next draw
-    if (eglGetCurrentContext() != EGL_NO_CONTEXT) m_src->releaseGl();
-    m_src.reset();
-    m_openPath.clear();
+}
+
+void ImageWidget::setPicture(std::string path) {
+  m_picture = std::move(path);
+  if (m_picture == m_openPath || !m_src) return;
+  if (eglGetCurrentContext() != EGL_NO_CONTEXT) m_src->releaseGl();
+  m_src.reset();
+  m_openPath.clear();
+}
+
+std::vector<std::string> ImageWidget::watchedFiles() const {
+  if (m_folder.empty()) return {};
+  return {m_folder.ends_with('/') ? m_folder : m_folder + '/'};
+}
+
+void ImageWidget::filesChanged() {
+  namespace fs = std::filesystem;
+  m_photos.clear();
+  if (!m_folder.empty()) {
+    std::error_code ec;
+    for (fs::directory_iterator it(m_folder, ec), end; !ec && it != end; it.increment(ec)) {
+      std::error_code typeError;
+      if (!it->is_regular_file(typeError)) continue;
+      auto extension = it->path().extension().string();
+      for (char& c : extension) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      constexpr std::string_view formats[] = {".jpg", ".jpeg", ".png", ".webp", ".avif", ".bmp", ".tif", ".tiff"};
+      if (std::ranges::find(formats, extension) != std::end(formats)) m_photos.push_back(it->path().string());
+    }
+    std::ranges::sort(m_photos);
+    if (!std::binary_search(m_photos.begin(), m_photos.end(), m_picture)) {
+      setPicture(m_photos.empty() ? expandHome(m_cfg.file) : m_photos.front());
+      m_nextPhoto = -1;
+    }
   }
 }
 
@@ -173,6 +214,12 @@ void ImageWidget::tick(const TickContext& ctx) {
   // its own clock: a slow GIF wakes once a frame, longer apart than the App's dt allows
   const double dt = m_lastNow < 0 ? 0 : std::clamp(ctx.now - m_lastNow, 0.0, 2.0);
   m_lastNow = ctx.now;
+  if (m_nextPhoto < 0) m_nextPhoto = ctx.now + m_cfg.interval;
+  if (m_photos.size() > 1 && ctx.now >= m_nextPhoto) {
+    const auto next = std::upper_bound(m_photos.begin(), m_photos.end(), m_picture);
+    setPicture(next == m_photos.end() ? m_photos.front() : *next);
+    m_nextPhoto = ctx.now + m_cfg.interval;
+  }
   if (m_src) m_src->advance(dt, m_cfg.speed);
   m_beat *= std::exp(-dt * 6);
   if (m_cfg.react != "none") {
@@ -188,15 +235,16 @@ void ImageWidget::tick(const TickContext& ctx) {
 bool ImageWidget::animating(const TickContext&) const { return m_beat > 0.004; }
 
 double ImageWidget::nextWakeup(double now) const {
-  if (m_cfg.file.empty()) return 1e18;
+  const double next = m_photos.size() > 1 && m_nextPhoto >= 0 ? m_nextPhoto : 1e18;
+  if (m_picture.empty()) return next;
   if (!m_src) return now + 0.03;  // opened at the next draw
   const double in = m_src->nextFrameIn(m_cfg.speed);
-  return in > 1e8 ? 1e18 : now + std::max(0.004, in);
+  return in > 1e8 ? next : std::min(next, now + std::max(0.004, in));
 }
 
 void ImageWidget::draw(const DrawContext& ctx) {
   const float W = ctx.w, H = ctx.h;
-  if (m_cfg.file.empty()) {
+  if (m_picture.empty()) {
     if (!m_hint.valid()) m_hint.create(kQuadVertexShader, kHintFrag, "image-hint");
     glUseProgram(m_hint.id());
     glUniform2f(m_hint.uniform("u_size"), W, H);
@@ -209,7 +257,7 @@ void ImageWidget::draw(const DrawContext& ctx) {
   const int devW = std::max(16, static_cast<int>(std::lround(W * ctx.scale)));
   const int devH = std::max(16, static_cast<int>(std::lround(H * ctx.scale)));
   // decoded to the box's size: again when it grows well past it
-  const std::string path = expandHome(m_cfg.file);
+  const std::string& path = m_picture;
   if (!m_src || (m_src->still() && (devW > m_src->wantWidth() * 1.4 || devH > m_src->wantHeight() * 1.4))) {
     if (m_src && eglGetCurrentContext() != EGL_NO_CONTEXT) m_src->releaseGl();
     m_src = std::make_unique<VideoSource>();

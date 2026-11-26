@@ -10,6 +10,12 @@
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <filesystem>
+#include <fcntl.h>
+#include <glib.h>
+#include <nlohmann/json.hpp>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace undershell {
 
@@ -99,6 +105,8 @@ TextConfig TextConfig::fromTable(const toml::table& given) {
   c.style = style;
   c.text = get<std::string>(t, "text", c.text);
   c.font = get<std::string>(t, "font", c.font);
+  c.dataFile = get<std::string>(t, "data_file", "");
+  c.dataKey = get<std::string>(t, "data_key", "");
   auto num = [&](const char* key, double def, double lo, double hi) {
     double v = def;
     if (auto d = t[key].value<double>()) v = *d;
@@ -128,7 +136,8 @@ TextConfig TextConfig::fromTable(const toml::table& given) {
   return c;
 }
 
-std::string TextWidget::expand(const std::string& text, const MediaState* media, bool* usesTime) {
+std::string TextWidget::expand(const std::string& text, const MediaState* media, bool* usesTime,
+                               std::string_view data, std::string_view focus) {
   if (usesTime) *usesTime = false;
   if (text.find('{') == std::string::npos) return text;
   const bool es = spanishUi();
@@ -149,6 +158,8 @@ std::string TextWidget::expand(const std::string& text, const MediaState* media,
         if (name == "title") out += media && media->present ? media->title : "";
         else if (name == "artist") out += media && media->present ? media->artist : "";
         else if (name == "album") out += media && media->present ? media->album : "";
+        else if (name == "data") out += data;
+        else if (name == "focus") out += focus;
         else if (name == "time") {
           out += std::format("{:02}:{:02}", tm.tm_hour, tm.tm_min);
           if (usesTime) *usesTime = true;
@@ -206,9 +217,54 @@ TextFxStyle TextWidget::styleOf(const TextConfig& cfg, const NoctaliaState& noct
   return s;
 }
 
+std::vector<std::string> TextWidget::watchedFiles() const {
+  return m_dataPath.empty() ? std::vector<std::string>{} : std::vector<std::string>{m_dataPath};
+}
+
+void TextWidget::filesChanged() {
+  m_data.clear();
+  if (m_dataPath.empty()) return;
+  const int fd = open(m_dataPath.c_str(), O_RDONLY | O_CLOEXEC | O_NONBLOCK);
+  if (fd < 0) return;
+  constexpr size_t limit = 16384;
+  struct stat st {};
+  std::string data;
+  if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size <= limit) {
+    std::array<char, 4096> chunk;
+    for (ssize_t n; (n = read(fd, chunk.data(), chunk.size())) > 0 && data.size() <= limit;)
+      data.append(chunk.data(), static_cast<size_t>(n));
+  }
+  close(fd);
+  if (data.empty() || data.size() > limit || !g_utf8_validate(data.data(), static_cast<gssize>(data.size()), nullptr)) return;
+  if (!m_cfg.dataKey.empty()) {
+    try {
+      using Json = nlohmann::json;
+      auto parsed = Json::parse(data, nullptr, false);
+      const auto& value = parsed.at(Json::json_pointer(m_cfg.dataKey));
+      if (!value.is_primitive() || value.is_null()) return;
+      data = value.is_string() ? value.get<std::string>() : value.dump();
+    } catch (const nlohmann::json::exception&) {
+      return;
+    }
+  }
+  while (!data.empty() && (data.back() == '\r' || data.back() == '\n')) data.pop_back();
+  if (data.size() > 1024) {
+    size_t end = 1024;
+    while ((static_cast<unsigned char>(data[end]) & 0xC0) == 0x80) --end;
+    data.resize(end);
+  }
+  if (data.find('\0') == std::string::npos) m_data = std::move(data);
+}
+
 void TextWidget::configure(const TextConfig& cfg, const NoctaliaState& noct) {
   const bool restart = cfg.animation != m_cfg.animation || cfg.text != m_cfg.text;
+  const bool keyChanged = m_cfg.dataKey != cfg.dataKey;
   m_cfg = cfg;
+  const std::string path = cfg.dataFile.empty() ? std::string() : std::filesystem::path(expandHome(cfg.dataFile)).lexically_normal().string();
+  if (path != m_dataPath || keyChanged) {
+    m_dataPath = path;
+    filesChanged();
+  }
   m_style = styleOf(cfg, noct, &m_accent);
   m_fx.setStyle(m_style);
   const std::string& t = cfg.text;
@@ -220,7 +276,7 @@ void TextWidget::tick(const TickContext& ctx) {
   const double dt = ctx.dt;
   m_now = ctx.now;
   if (m_start == 0) m_start = ctx.now;
-  m_shown = expand(m_cfg.text, ctx.media ? &ctx.media->state() : nullptr, &m_time);
+  m_shown = expand(m_cfg.text, ctx.media ? &ctx.media->state() : nullptr, &m_time, m_data);
   m_beat *= std::exp(-dt * 7);
   m_playing = !ctx.audio.silent;
   if (m_cfg.react != "none") {

@@ -300,6 +300,21 @@ flickers at 12 fps, and only moving letters draw at 60.
   <img src="media/text.webp" alt="The ten text styles: plain, neon, retro, comic, outline, sticker, chrome, glitch, rainbow and typewriter" width="600">
 </p>
 
+Use `{data}` in the text to show a watched local file. Set **Data file** to
+its path. For JSON, set **JSON pointer** to a scalar such as
+`/transfer/progress`. With an empty pointer, the widget displays the file
+as UTF-8 text. Files up to 16 KiB are read on change, including atomic
+replacement. The widget displays up to 1,024 bytes of text.
+
+```toml
+[[widget]]
+id = "transfer"
+type = "text"
+text = "Transfer {data}%"
+data_file = "~/.local/state/transfer.json"
+data_key = "/transfer/progress"
+```
+
 ## Shapes
 
 Geometric shapes to build compositions out of layers (see **Layers** and
@@ -329,6 +344,13 @@ or **cut** to a circle or a Material 3 shape, and as a sticker: an
 it. **Mirror** flips it; an animation has a **speed**; it can **bounce** or
 **pulse** with the music's kicks. Like every widget it can pass behind the
 wallpaper's subject.
+
+Choose **Choose photo folder…** in the inspector for a photo frame. Pictures
+in that folder are shown in filename order at the chosen interval
+(`photo_interval`, 30 seconds by default). The original picture remains the
+fallback for an empty folder. Rotation preserves the widget's perspective,
+cut and depth. In the terminal, `msg pick-files <id> folder` opens the
+folder chooser, and `msg set <id> photo_folder "~/Pictures/Album"` sets it.
 
 A still picture is decoded once, at the size it is shown, and drawn once. An
 animation is decoded on its own thread (FFmpeg, as for the TV; GIFs and still

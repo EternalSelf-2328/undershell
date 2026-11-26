@@ -193,6 +193,8 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   // the defaults are the "plain" style's; another style brings its own (TextWidget::preset)
   static const std::vector<PropSpec> text = {
       {K::Text, "text", "Text", "Texto", {}, 0, 0, 0, 0, "undershell"},
+      {K::Text, "data_file", "Data file", "Archivo de datos"},
+      {K::Text, "data_key", "JSON pointer", "Ruta JSON"},
       {K::Enum, "style", "Style", "Estilo",
        {"plain", "neon", "retro", "comic", "outline", "sticker", "chrome", "glitch", "rainbow", "typewriter"}, 0, 0, 0, 0, "plain"},
       {K::Font, "font", "Font", "Fuente", {}, 0, 0, 0, 0, "Inter Display"},
@@ -404,6 +406,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, -999, "", true},
   };
   static const std::vector<PropSpec> image = {
+      {K::Number, "photo_interval", "Photo interval (s)", "Intervalo (s)", {}, 2, 3600, 1, 30, "", true},
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
       {K::Enum, "cut", "Cut to", "Recorte", {"none", "circle", "cookie12Sided", "cookie9Sided", "cookie7Sided", "cookie6Sided",
        "cookie4Sided", "flower", "clover8Leaf", "clover4Leaf", "softBurst", "burst", "sunny", "verySunny", "puffyDiamond", "pentagon",

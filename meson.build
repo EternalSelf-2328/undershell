@@ -258,7 +258,7 @@ install_data('README.md', 'NOTICE.md', 'docs/OPTIONS.md', 'docs/EFFECTS.md', 'do
 install_data('docs/media/pets-bestiary.png', 'docs/media/pets-chibi.png', 'docs/media/pets-painted.png', 'docs/media/pets-painted-pixel.png', install_dir : docdir / 'media')
 install_data('LICENSE', install_dir : prefix / get_option('datadir') / 'licenses/undershell')
 
-foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles', 'motion', 'perf', 'render', 'system', 'wallset', 'pets']
+foreach t : ['config', 'depth', 'docs', 'editor', 'effects', 'media', 'particles', 'motion', 'perf', 'render', 'system', 'wallset', 'pets', 'desktop']
   test(t, executable('test_' + t, 'tests/test_' + t + '.cpp', dependencies : core_dep, cpp_args : test_args),
        env : ['UNDERSHELL_DATA_DIR=' + meson.project_source_root() / 'data', 'UNDERSHELL_SCENE_SELF=1'])
 endforeach

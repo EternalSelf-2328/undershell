@@ -173,6 +173,8 @@ A picture, a sticker, a GIF or a video, with its transparency.
 | Key | Values | Default | |
 |---|---|---|---|
 | `file` | path (`~/` allowed) | `""` | PNG, JPG, GIF, WebP, APNG or a video (the inspector's Choose button) |
+| `photo_folder` | path (`~/` allowed) | `""` | rotate photos from this folder in filename order |
+| `photo_interval` | 2 – 3600 | `30` | Photo interval (s) |
 | `fit` | `fit`, `fill`, `stretch` | `"fit"` | Fit |
 | `cut` | `none`, `circle`, `cookie12Sided`, `cookie9Sided`, `cookie7Sided`, `cookie6Sided`, `cookie4Sided`, `flower`, `clover8Leaf`, `clover4Leaf`, `softBurst`, `burst`, `sunny`, `verySunny`, `puffyDiamond`, `pentagon`, `pill`, `oval` | `"none"` | Cut to |
 | `corner` | 0 – 1 | `0` | Rounding |
@@ -190,11 +192,13 @@ A picture, a sticker, a GIF or a video, with its transparency.
 
 ## `type = "text"`
 
-Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, `{time}`, `{date}` and `{day}` the clock; `\n` starts a new line. A `style` sets the keys after `font`; a key the block sets wins over its style. The defaults below are the `plain` style's.
+Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, `{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer). `\n` starts a new line. A `style` sets the keys after `font`; a key the block sets wins over its style. The defaults below are the `plain` style's.
 
 | Key | Values | Default | |
 |---|---|---|---|
 | `text` | text | `"undershell"` | Text |
+| `data_file` | text | `""` | Data file |
+| `data_key` | text | `""` | JSON pointer |
 | `style` | `plain`, `neon`, `retro`, `comic`, `outline`, `sticker`, `chrome`, `glitch`, `rainbow`, `typewriter` | `"plain"` | Style |
 | `font` |  | `"Inter Display"` | Font |
 | `weight` | 100 – 900 | `800` | Weight |
@@ -234,6 +238,8 @@ The synced lyrics of the song playing (LRCLIB), with the text widget's styles an
 | `transition` | `slide`, `fade`, `pop`, `typewriter` | `"slide"` | Change |
 | `fallback` | `title`, `note`, `hide` | `"title"` | Without lyrics |
 | `offset` | -5 – 5 | `0` | Delay s |
+| `data_file` | text | `""` | Data file |
+| `data_key` | text | `""` | JSON pointer |
 | `style` | `plain`, `neon`, `retro`, `comic`, `outline`, `sticker`, `chrome`, `glitch`, `rainbow`, `typewriter` | `"plain"` | Style |
 | `font` |  | `"Inter Display"` | Font |
 | `weight` | 100 – 900 | `800` | Weight |

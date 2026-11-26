@@ -98,13 +98,15 @@ std::string optionsMarkdown() {
   md += "\n## `type = \"image\"`\n\nA picture, a sticker, a GIF or a video, with its transparency.\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `file` | path (`~/` allowed) | `\"\"` | PNG, JPG, GIF, WebP, APNG or a video (the inspector's Choose button) |\n";
+  md += "| `photo_folder` | path (`~/` allowed) | `\"\"` | rotate photos from this folder in filename order |\n";
   {
     std::string rest;
     table(rest, "image");
     md += rest.substr(rest.find("|---|---|---|---|\n") + 18);
   }
   md += "\n## `type = \"text\"`\n\nWords with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, "
-        "`{time}`, `{date}` and `{day}` the clock; `\\n` starts a new line. A `style` sets the keys after `font`; a key "
+        "`{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer). "
+        "`\\n` starts a new line. A `style` sets the keys after `font`; a key "
         "the block sets wins over its style. The defaults below are the `plain` style's.\n\n";
   table(md, "text");
   md += "\n## `type = \"lyrics\"`\n\nThe synced lyrics of the song playing (LRCLIB), with the text widget's styles and "

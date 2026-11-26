@@ -21,6 +21,8 @@
 namespace undershell {
 
 struct ImageConfig {
+  std::string folder;
+  double interval = 30;
   std::string file;              // a path (~/ allowed)
   std::string fit = "fit";       // fit (all of it) fill (covers the box) stretch
   double corner = 0;             // rounded corners, a share of the picture's shorter side
@@ -45,13 +47,20 @@ public:
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool animating(const TickContext& ctx) const override;
   [[nodiscard]] double nextWakeup(double now) const override;
+  [[nodiscard]] std::vector<std::string> watchedFiles() const override;
+  void filesChanged() override;
   [[nodiscard]] bool usesAudio() const override { return m_cfg.react != "none"; }
   [[nodiscard]] Color accent() const override { return m_outlineC.a > 0 && m_cfg.outline > 0 ? m_outlineC : Color::fromHex("#7fc8ff"); }
   // why nothing shows ("" when it does, or while it loads)
   [[nodiscard]] std::string error() const { return m_src ? m_src->error() : std::string(); }
 
 private:
+  void setPicture(std::string path);
+
   ImageConfig m_cfg;
+  std::string m_folder, m_picture;
+  std::vector<std::string> m_photos;
+  double m_nextPhoto = -1;
   Color m_outlineC;
   std::vector<float> m_radii;  // the cut shape's outline (64 angles)
   std::unique_ptr<VideoSource> m_src;

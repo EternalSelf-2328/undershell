@@ -405,8 +405,9 @@ void VideoSource::upload(const Frame& f) {
 
 double VideoSource::nextFrameIn(double speed) const {
   std::lock_guard lock(m_mutex);
-  if (!m_open || speed <= 0 || !m_error.empty()) return 1e9;
-  if (m_clock < 0) return 0.03;  // the first frame is on its way
+  if (!m_open || !m_error.empty()) return 1e9;
+  if (m_clock < 0) return 0.03;  // even a paused picture needs its first frame
+  if (speed <= 0) return 1e9;
   if (!m_queue.empty()) return std::max(0.0, (m_queue.front().pts - m_clock) / speed);
   if (m_cached) {
     if (m_cache.size() < 2) return 1e9;  // a still picture
