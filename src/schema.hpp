@@ -235,7 +235,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
         {K::Number, "offset", "Delay s", "Retraso s", {}, -5, 5, 0.1, 0},
     };
     for (const auto& p : text)
-      if (p.key != "text") v.push_back(p);
+      if (p.key != "text" && p.key != "data_file" && p.key != "data_key") v.push_back(p);
     return v;
   }();
   static const std::vector<PropSpec> calendar = {

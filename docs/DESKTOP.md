@@ -2,6 +2,15 @@
 
 Part of [undershell](../README.md)'s documentation.
 
+## Focus timer
+
+Start a focus session from the Noctalia panel or use `undershell msg focus
+start [work minutes] [break minutes]` (25 and 5 by default). Use `focus pause`,
+`focus resume`, `focus stop` or `focus status` after `undershell msg`.
+Set the break to zero to end after work. A desktop pet announces the break
+and the end of the session. Show the remaining time in a Text widget with
+`text = "{focus}"`. The timer is local to the running process.
+
 ## Screensaver
 
 After a while without input, undershell can cover every screen with a look

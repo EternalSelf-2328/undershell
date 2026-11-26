@@ -1347,6 +1347,7 @@ void App::render(Widget& w) {
   tctx.media = &m_media;
   tctx.weather = &m_weather;
   tctx.userAway = m_userAway;
+  tctx.focus = m_focusText;
   for (const auto& o : m_widgets)  // the place the weather widget names
     if (o->cfg.type == "weather")
       if (auto p = o->cfg.options["location"].value<std::string>(); p && !p->empty()) {
@@ -1882,6 +1883,7 @@ std::string App::setWallpaper(const std::string& args) {
 
 std::string App::handleCommand(const std::string& cmd) {
   if (cmd == "ping") return "pong";
+  if (cmd == "focus" || cmd.starts_with("focus ")) return focusCommand(cmd.size() > 6 ? cmd.substr(6) : std::string());
   if (cmd == "perf") return perfStatus();
   if (cmd.rfind("wallpaper-set ", 0) == 0) return setWallpaper(cmd.substr(14));
   if (cmd.rfind("perf ", 0) == 0) {  // perf auto|eco|balanced|high|ultra: [general] performance
@@ -2222,7 +2224,8 @@ std::string App::handleCommand(const std::string& cmd) {
       s += std::format("{}{{\"name\":{},\"width\":{:.0f},\"height\":{:.0f},\"widgets\":{}}}", i ? "," : "", q(o.name),
                        o.logicalW(), o.logicalH(), n);
     }
-    s += "],\"widgets\":[";
+    s += std::format("],\"focus\":{{\"state\":{},\"seconds\":{}}},\"widgets\":[",
+                     q(std::string(m_focus.state())), m_focus.seconds(nowSeconds()));
     bool first = true;
     for (auto& w : m_widgets) {
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
@@ -2324,7 +2327,7 @@ void App::handleInotify() {
 
 int App::computeTimeout() {
   const double now = nowSeconds();
-  double next = 1e9;
+  double next = std::min(1e9, m_focus.next(now));
   for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt, m_endPidsAt})
     if (t > 0) next = std::min(next, t);
   if (!m_noctalia.ready()) next = std::min(next, m_noctRetryAt);
@@ -2595,6 +2598,7 @@ int App::run() {
           w->drewEmpty = false;
         }
     }
+    updateFocus(now);
     updateIdle(now);
     updatePerf(now);
     bool idleDemo = false;

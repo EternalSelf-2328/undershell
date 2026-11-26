@@ -192,7 +192,7 @@ A picture, a sticker, a GIF or a video, with its transparency.
 
 ## `type = "text"`
 
-Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, `{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer). `\n` starts a new line. A `style` sets the keys after `font`; a key the block sets wins over its style. The defaults below are the `plain` style's.
+Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, `{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer), and `{focus}` the focus countdown. `\n` starts a new line. A `style` sets the keys after `font`; a key the block sets wins over its style. The defaults below are the `plain` style's.
 
 | Key | Values | Default | |
 |---|---|---|---|
@@ -238,8 +238,6 @@ The synced lyrics of the song playing (LRCLIB), with the text widget's styles an
 | `transition` | `slide`, `fade`, `pop`, `typewriter` | `"slide"` | Change |
 | `fallback` | `title`, `note`, `hide` | `"title"` | Without lyrics |
 | `offset` | -5 – 5 | `0` | Delay s |
-| `data_file` | text | `""` | Data file |
-| `data_key` | text | `""` | JSON pointer |
 | `style` | `plain`, `neon`, `retro`, `comic`, `outline`, `sticker`, `chrome`, `glitch`, `rainbow`, `typewriter` | `"plain"` | Style |
 | `font` |  | `"Inter Display"` | Font |
 | `weight` | 100 – 900 | `800` | Weight |

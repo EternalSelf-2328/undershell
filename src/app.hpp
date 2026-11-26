@@ -8,6 +8,7 @@
 #include "depth.hpp"
 #include "depthgen.hpp"
 #include "filepicker.hpp"
+#include "focus.hpp"
 #include "geom.hpp"
 #include "i18n.hpp"
 #include "ipc.hpp"
@@ -371,6 +372,10 @@ private:
   AudioFrame audioFrame(const Widget* w = nullptr);
   std::string idleModeOf(const Widget& w) const;  // show | hide | demo
   void updateIdle(double now);
+  void updateFocus(double now);
+  std::string focusCommand(const std::string& args);
+  FocusTimer m_focus;
+  std::string m_focusText;
   // performance profiles: once a second, the governor, the battery and which
   // widgets are costly; the frame rate a widget is drawn at; whether anything
   // shown needs the audio analysis right now

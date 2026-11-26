@@ -149,6 +149,23 @@ local function profileCard()
   })
 end
 
+local function focusActions()
+  local focus = state.focus
+  if type(focus) ~= "table" then return nil end
+  local status = focus.state or "idle"
+  if status == "idle" then
+    return ui.button({ text = tr("focus.start"), glyph = "player-play", onClick = function() send({ "focus", "start" }) end })
+  end
+  local paused = status == "paused"
+  return ui.row({ gap = 8, align = "center" }, {
+    ui.label({ text = tr("focus." .. status), flexGrow = 1 }),
+    ui.button({ text = tr(paused and "focus.resume" or "focus.pause"), onClick = function()
+      send({ "focus", paused and "resume" or "pause" })
+    end }),
+    ui.button({ text = tr("focus.stop"), onClick = function() send({ "focus", "stop" }) end }),
+  })
+end
+
 local function actions()
   return ui.row({ gap = 8 }, {
     ui.button({
@@ -362,6 +379,8 @@ render = function()
   else
     table.insert(children, profileCard())
     table.insert(children, actions())
+    local focus = focusActions()
+    if focus then table.insert(children, focus) end
     table.insert(children, ui.separator({}))
     local cards = { savesSection(), ui.separator({}) }
     local widgets = state.widgets or {}

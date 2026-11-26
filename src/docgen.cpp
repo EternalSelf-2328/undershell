@@ -105,7 +105,7 @@ std::string optionsMarkdown() {
     md += rest.substr(rest.find("|---|---|---|---|\n") + 18);
   }
   md += "\n## `type = \"text\"`\n\nWords with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, "
-        "`{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer). "
+        "`{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer), and `{focus}` the focus countdown. "
         "`\\n` starts a new line. A `style` sets the keys after `font`; a key "
         "the block sets wins over its style. The defaults below are the `plain` style's.\n\n";
   table(md, "text");

@@ -2,6 +2,7 @@
 #include "check.hpp"
 #include "common.hpp"
 #include "image.hpp"
+#include "focus.hpp"
 #include "offscreen.hpp"
 #include "textwidget.hpp"
 
@@ -12,6 +13,18 @@ using namespace undershell;
 namespace fs = std::filesystem;
 
 int main() {
+  FocusTimer focus;
+  CHECK(focus.state() == "idle");
+  focus.start(100, 1, 1);
+  CHECK(focus.state() == "work" && focus.seconds(100) == 60 && focus.next(100) == 101);
+  CHECK(focus.pause(126.25) && focus.seconds(400) == 34 && focus.next(400) > 1e8);
+  CHECK(focus.resume(500) && focus.seconds(500) == 34);
+  CHECK(focus.update(534) && focus.state() == "break" && focus.seconds(534) == 60);
+  CHECK(focus.update(594) && focus.state() == "idle");
+  focus.start(100, 1, 0);
+  CHECK(focus.update(160) && focus.state() == "idle");
+  CHECK(TextWidget::expand("{focus}", nullptr, nullptr, {}, "00:29") == "00:29");
+
   char directory[] = "/tmp/undershell-desktop-XXXXXX";
   if (!mkdtemp(directory)) return 1;
   const fs::path scratch(directory);

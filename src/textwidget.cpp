@@ -276,7 +276,7 @@ void TextWidget::tick(const TickContext& ctx) {
   const double dt = ctx.dt;
   m_now = ctx.now;
   if (m_start == 0) m_start = ctx.now;
-  m_shown = expand(m_cfg.text, ctx.media ? &ctx.media->state() : nullptr, &m_time, m_data);
+  m_shown = expand(m_cfg.text, ctx.media ? &ctx.media->state() : nullptr, &m_time, m_data, ctx.focus);
   m_beat *= std::exp(-dt * 7);
   m_playing = !ctx.audio.silent;
   if (m_cfg.react != "none") {

@@ -2,6 +2,15 @@
   "bar": {
     "tooltip": "undershell — click: panel · right click: edit the desktop"
   },
+  "focus": {
+    "start": "Start focus",
+    "work": "Focus in progress",
+    "break": "On a break",
+    "paused": "Focus paused",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "End session"
+  },
   "panel": {
     "demo": "Demo",
     "demo_hint": "Visualizers move with a demo spectrum while there is no music",

@@ -2,6 +2,15 @@
   "bar": {
     "tooltip": "undershell — clic: panel · clic derecho: editar el escritorio"
   },
+  "focus": {
+    "start": "Iniciar concentración",
+    "work": "Sesión en curso",
+    "break": "En descanso",
+    "paused": "Sesión en pausa",
+    "pause": "Pausar",
+    "resume": "Reanudar",
+    "stop": "Terminar sesión"
+  },
   "panel": {
     "demo": "Demo",
     "demo_hint": "Los visualizadores se mueven con un espectro de prueba mientras no hay música",
