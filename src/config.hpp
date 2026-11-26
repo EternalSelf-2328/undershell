@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "desktoprules.hpp"
+
 #include <string>
 #include <toml++/toml.hpp>
 #include <vector>
@@ -120,6 +122,7 @@ struct Config {
   std::string onBattery = "lower";
   std::vector<std::string> wallpaperDirs;  // the gallery's picture folders (empty: guessed)
   ScreensaverConfig screensaver;
+  std::vector<SceneRule> sceneRules;
 
   static std::string defaultPath();
   static Config load(const std::string& path);

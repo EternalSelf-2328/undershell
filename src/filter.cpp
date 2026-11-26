@@ -218,6 +218,7 @@ void FilterWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct)
   effectLibrary().refresh();  // a file added while undershell was not watching
   particleLibrary().refresh();
   m_opts = cfg.options;
+  m_forceWallpaper = cfg.options["draw_wallpaper"].value_or(false);
   m_noct = noct;
   m_weather = cfg.options["weather_fx"].value_or(false);
   m_place = cfg.options["weather_location"].value_or(std::string());

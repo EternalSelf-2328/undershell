@@ -3,6 +3,7 @@
 #include "common.hpp"
 #include "image.hpp"
 #include "focus.hpp"
+#include "desktoprules.hpp"
 #include "offscreen.hpp"
 #include "textwidget.hpp"
 
@@ -24,6 +25,30 @@ int main() {
   focus.start(100, 1, 0);
   CHECK(focus.update(160) && focus.state() == "idle");
   CHECK(TextWidget::expand("{focus}", nullptr, nullptr, {}, "00:29") == "00:29");
+
+  const auto rulesConfig = toml::parse(R"(
+[[scene_rule]]
+profile = "night"
+from = "20:00"
+until = "06:00"
+battery = true
+[[scene_rule]]
+profile = "code"
+workspace = "Code"
+[[scene_rule]]
+profile = "base"
+)");
+  const auto rules = readSceneRules(rulesConfig["scene_rule"].as_array());
+  CHECK(rules.size() == 3);
+  std::vector<WorkspaceState> workspaces;
+  CHECK(parseWorkspaceEvent(R"({"event":"workspaces","data":[{"name":"Code","active":true,"focused":true,"index":2}]})", workspaces));
+  CHECK(workspaces.size() == 1 && workspaces.front().name == "Code" && workspaces.front().index == 2);
+  SceneInputs inputs{.minute = 180, .battery = true, .workspaces = &workspaces};
+  CHECK(matchSceneRule(rules, inputs)->profile == "night");
+  inputs.minute = 360;
+  CHECK(matchSceneRule(rules, inputs)->profile == "code");
+  workspaces.clear();
+  CHECK(matchSceneRule(rules, inputs)->profile == "base");
 
   char directory[] = "/tmp/undershell-desktop-XXXXXX";
   if (!mkdtemp(directory)) return 1;

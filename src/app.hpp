@@ -373,6 +373,15 @@ private:
   std::string idleModeOf(const Widget& w) const;  // show | hide | demo
   void updateIdle(double now);
   void updateFocus(double now);
+  void updateDesktopRules(double now);
+  bool rulesWantMedia() const;
+  bool rulesWantWorkspaces() const;
+  std::string sceneRulesCommand(const std::string& args);
+  bool m_rulesPaused = false, m_ruleActive = false, m_ruleDirty = true;
+  bool m_ruleBattery = false, m_rulePlaying = false, m_ruleFocus = false;
+  double m_ruleCheckAt = 0;
+  std::string m_ruleProfile, m_ruleWallpaper, m_ruleRequestedWallpaper;
+  std::vector<WidgetConfig> m_ruleWidgets;
   std::string focusCommand(const std::string& args);
   FocusTimer m_focus;
   std::string m_focusText;

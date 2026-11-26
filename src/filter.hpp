@@ -93,7 +93,7 @@ public:
   static const std::map<std::string, std::string>& preset(const std::string& style);
 
 private:
-  [[nodiscard]] bool idle() const { return m_cfg.neutral() && m_fx.empty() && m_pt.empty(); }
+  [[nodiscard]] bool idle() const { return !m_forceWallpaper && m_cfg.neutral() && m_fx.empty() && m_pt.empty(); }
   void drawPicture(const WallPic& pic, const DrawContext& ctx, float opacity);
 
   void applyWeather();
@@ -101,6 +101,7 @@ private:
   FilterConfig m_cfg;
   toml::table m_opts;  // as written (the weather lays its own over them)
   NoctaliaState m_noct;
+  bool m_forceWallpaper = false;
   bool m_weather = false;
   std::string m_place;
   Sky m_sky = Sky::Clear;

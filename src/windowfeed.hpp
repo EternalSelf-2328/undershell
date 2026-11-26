@@ -5,6 +5,8 @@
 // there; on other compositors there are no windows to tell, and nothing runs.
 #pragma once
 
+#include "desktoprules.hpp"
+
 #include <string>
 #include <sys/types.h>
 #include <vector>
@@ -26,8 +28,9 @@ public:
   WindowFeed(const WindowFeed&) = delete;
   WindowFeed& operator=(const WindowFeed&) = delete;
   ~WindowFeed() { stop(); }
-  void want(bool on);  // starts or stops the stream
+  void want(bool windows, bool workspaces = false);  // starts or stops the stream
   [[nodiscard]] int fd() const { return m_fd; }
+  [[nodiscard]] const std::vector<WorkspaceState>& workspaces() const { return m_workspaces; }
   bool dispatch();     // reads what came; true when the list changed
   [[nodiscard]] const std::vector<WindowBox>& windows() const { return m_windows; }
 
@@ -35,7 +38,8 @@ private:
   void stop();
   int m_fd = -1;
   pid_t m_pid = -1;
-  bool m_tried = false;
+  std::string m_subscription;
+  std::vector<WorkspaceState> m_workspaces;
   std::string m_buf;
   std::vector<WindowBox> m_windows;
 };

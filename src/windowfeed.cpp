@@ -34,14 +34,12 @@ bool parseWindowsEvent(const std::string& line, std::vector<WindowBox>& out) {
   }
 }
 
-void WindowFeed::want(bool on) {
-  if (!on) {
-    stop();
-    m_tried = false;
-    return;
-  }
-  if (m_fd >= 0 || m_tried) return;
-  m_tried = true;  // one try per want(true): no umbriel, no retries every frame
+void WindowFeed::want(bool windows, bool workspaces) {
+  const std::string subscription = windows ? (workspaces ? "windows,workspaces" : "windows") : (workspaces ? "workspaces" : "");
+  if (subscription == m_subscription) return;
+  stop();
+  m_subscription = subscription;
+  if (subscription.empty()) return;
   const std::string umbriel = findProgram("umbriel");
   if (umbriel.empty()) return;
   int fds[2];
@@ -60,14 +58,14 @@ void WindowFeed::want(bool on) {
       dup2(null, STDIN_FILENO);
       if (null > 2) close(null);
     }
-    execl(umbriel.c_str(), "umbriel", "subscribe", "windows", static_cast<char*>(nullptr));
+    execl(umbriel.c_str(), "umbriel", "subscribe", subscription.c_str(), static_cast<char*>(nullptr));
     _exit(127);
   }
   close(fds[1]);
   fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL) | O_NONBLOCK);
   m_fd = fds[0];
   m_pid = pid;
-  US_INFO("windows: following them through umbriel (for the pet)");
+  US_INFO("umbriel: subscribed to {}", subscription);
 }
 
 void WindowFeed::stop() {
@@ -80,6 +78,7 @@ void WindowFeed::stop() {
   m_pid = -1;
   m_buf.clear();
   m_windows.clear();
+  m_workspaces.clear();
 }
 
 bool WindowFeed::dispatch() {
@@ -98,8 +97,11 @@ bool WindowFeed::dispatch() {
   bool changed = false;
   for (size_t nl; (nl = m_buf.find('\n')) != std::string::npos;) {
     std::vector<WindowBox> w;
-    if (parseWindowsEvent(m_buf.substr(0, nl), w)) {
+    const std::string line = m_buf.substr(0, nl);
+    if (parseWindowsEvent(line, w)) {
       m_windows = std::move(w);
+      changed = true;
+    } else if (parseWorkspaceEvent(line, m_workspaces)) {
       changed = true;
     }
     m_buf.erase(0, nl + 1);

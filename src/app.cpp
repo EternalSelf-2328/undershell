@@ -371,7 +371,11 @@ void App::onGlobalRemove(uint32_t name) {
     m_outputs.erase(it);
     syncScreens();
     // the widgets that lost their screen go to one that is still there
-    if (m_eglContext != EGL_NO_CONTEXT) syncWidgets();
+    if (m_eglContext != EGL_NO_CONTEXT) {
+      m_ruleDirty = true;
+      m_ruleCheckAt = 0;
+      syncWidgets();
+    }
     return;
   }
 }
@@ -379,7 +383,11 @@ void App::onGlobalRemove(uint32_t name) {
 void App::onOutputDone(Output*) {
   // outputs can appear after startup (hotplug): (re)attach widgets
   syncScreens();
-  if (m_eglContext != EGL_NO_CONTEXT) syncWidgets();
+  if (m_eglContext != EGL_NO_CONTEXT) {
+    m_ruleDirty = true;
+    m_ruleCheckAt = 0;
+    syncWidgets();
+  }
 }
 
 Output* App::outputByWl(wl_output* o) {
@@ -453,6 +461,8 @@ void App::loadConfig() {
   if (const int n = Config::uniquifyIds(m_configPath); n > 0) US_INFO("renamed {} repeated widget id(s)", n);
   try {
     m_config = Config::load(m_configPath);
+    m_ruleDirty = true;
+    m_ruleCheckAt = 0;
   } catch (...) {
     US_WARN("keeping the previous configuration");
     return;
@@ -461,14 +471,10 @@ void App::loadConfig() {
     setUiLanguage(m_config.language);
     markEditDirty();
   }
-  int maxBars = 16;
-  for (auto& w : m_config.widgets)
-    if (w.type == "visualizer") maxBars = std::max(maxBars, VisualizerConfig::fromTable(w.options).bars);
-  m_audio.setBandCount(maxBars);
   m_audio.setNoiseReduction(static_cast<float>(m_config.noiseReduction));
   m_audio.setMonstercat(m_config.monstercat);
   // a wallpaper named in [general]: over whatever the source says
-  const bool manual = m_noctalia.setManual(m_config.wallpaper, m_config.wallpaperFill);
+  const bool manual = m_noctalia.setManual(m_ruleWallpaper.empty() ? m_config.wallpaper : m_ruleWallpaper, m_config.wallpaperFill);
   syncWidgets();
   if (manual && m_eglContext != EGL_NO_CONTEXT) noctaliaChanged();
   if (m_config.depthModel != depthModelWas) m_refreshDepthAt = nowSeconds();
@@ -728,7 +734,11 @@ void App::syncWidgets() {
   m_anchorKey = anchorKey();
   std::vector<std::unique_ptr<Widget>> next;
   bool stamped = false;
-  for (auto& stored : m_config.widgets) {
+  auto& layout = m_ruleActive ? m_ruleWidgets : m_config.widgets;
+  int maxBars = 16;
+  for (auto& stored : layout) {
+    if (stored.enabled && stored.type == "visualizer")
+      maxBars = std::max(maxBars, VisualizerConfig::fromTable(stored.options).bars);
     if (!stored.enabled) continue;
     std::unique_ptr<Widget> w;
     for (auto& old : m_widgets) {
@@ -760,7 +770,7 @@ void App::syncWidgets() {
       // this screen; write that down so another screen can follow the wallpaper
       stored.spaceW = std::round(out->logicalW());
       stored.spaceH = std::round(out->logicalH());
-      stamped |= Config::setKey(m_configPath, stored.id, "space",
+      if (!m_ruleActive) stamped |= Config::setKey(m_configPath, stored.id, "space",
                                 std::format("[{}, {}]", static_cast<int>(stored.spaceW), static_cast<int>(stored.spaceH)));
     }
     // the block's box, moved to where its part of the wallpaper is on this output
@@ -799,6 +809,7 @@ void App::syncWidgets() {
     }
     next.push_back(std::move(w));
   }
+  m_audio.setBandCount(maxBars);
   if (stamped) US_INFO("recorded the screen size of older widget blocks (space = [w, h])");
   for (auto& old : m_widgets)
     if (old) destroySurface(*old);
@@ -1538,6 +1549,8 @@ void App::setEditMode(bool on) {
   if (on == m_edit) return;
   if (on && !m_placesLoaded) loadPanelPlaces();
   m_edit = on;
+  if (on && m_ruleActive) updateDesktopRules(nowSeconds());
+  m_ruleCheckAt = 0;
   m_drag = Drag::None;
   m_groupMove = false;
   commitLayerRename();
@@ -1883,6 +1896,8 @@ std::string App::setWallpaper(const std::string& args) {
 
 std::string App::handleCommand(const std::string& cmd) {
   if (cmd == "ping") return "pong";
+  if (cmd == "scene-rules" || cmd.starts_with("scene-rules "))
+    return sceneRulesCommand(cmd.size() > 12 ? cmd.substr(12) : std::string());
   if (cmd == "focus" || cmd.starts_with("focus ")) return focusCommand(cmd.size() > 6 ? cmd.substr(6) : std::string());
   if (cmd == "perf") return perfStatus();
   if (cmd.rfind("wallpaper-set ", 0) == 0) return setWallpaper(cmd.substr(14));
@@ -1947,8 +1962,9 @@ std::string App::handleCommand(const std::string& cmd) {
     for (auto& c : m_config.widgets) {
       if (id != "all" && c.id != id) continue;
       Widget* live = nullptr;
-      for (auto& w : m_widgets)
-        if (w->cfg.id == c.id) live = w.get();
+      if (!m_ruleActive)
+        for (auto& w : m_widgets)
+          if (w->cfg.id == c.id) live = w.get();
       if (live && (live->cfg.type == "text" || live->cfg.type == "lyrics" || live->cfg.type == "filter") && key == "style" &&
           toml.size() >= 2 && toml.front() == '"') {  // the style's keys reset too
         setTextStyle(*live, toml.substr(1, toml.size() - 2));
@@ -2328,6 +2344,7 @@ void App::handleInotify() {
 int App::computeTimeout() {
   const double now = nowSeconds();
   double next = std::min(1e9, m_focus.next(now));
+  if (!m_config.sceneRules.empty() && !m_rulesPaused && !m_edit) next = std::min(next, m_ruleCheckAt);
   for (double t : {m_reloadConfigAt, m_refreshNoctAt, m_refreshDepthAt, m_endPidsAt})
     if (t > 0) next = std::min(next, t);
   if (!m_noctalia.ready()) next = std::min(next, m_noctRetryAt);
@@ -2459,7 +2476,7 @@ int App::run() {
     {  // the windows, while a widget walks on them
       bool want = false;
       for (auto& w : m_widgets) want = want || (w->impl && !w->cfg.hidden && w->impl->wantsWindows());
-      m_windowFeed.want(want);
+      m_windowFeed.want(want, rulesWantWorkspaces());
     }
     pollfd fds[11] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
@@ -2487,9 +2504,11 @@ int App::run() {
 
     if (r > 0 && (fds[1].revents & POLLIN)) m_audio.dispatch();
     if (r > 0 && (fds[9].revents & (POLLIN | POLLHUP | POLLERR)) && m_skwd.dispatch()) checkWallpaperKind();
-    if (r > 0 && (fds[10].revents & (POLLIN | POLLHUP | POLLERR)) && m_windowFeed.dispatch())
+    if (r > 0 && (fds[10].revents & (POLLIN | POLLHUP | POLLERR)) && m_windowFeed.dispatch()) {
+      if (rulesWantWorkspaces()) m_ruleCheckAt = 0;
       for (auto& w : m_widgets)
         if (w->impl && w->impl->wantsWindows()) w->needsRender = true;
+    }
     if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();
@@ -2576,7 +2595,7 @@ int App::run() {
       }
     // the screensaver waits for the music to stop: it has to know
     const bool saverWaits = m_config.screensaver.idle > 0 && !m_config.screensaver.whilePlaying;
-    m_media.setWanted(wantMedia || wantPalette || saverWaits || !m_saver.empty(), wantLyrics);
+    m_media.setWanted(wantMedia || wantPalette || saverWaits || !m_saver.empty() || rulesWantMedia(), wantLyrics);
     m_media.setPaletteWanted(wantPalette, m_noctalia.state().themeMode != "light", m_noctalia.state().themeScheme);
     m_media.poll(now);
     m_media.dispatch();
@@ -2601,6 +2620,7 @@ int App::run() {
     updateFocus(now);
     updateIdle(now);
     updatePerf(now);
+    updateDesktopRules(now);
     bool idleDemo = false;
     if (m_nothingPlaying)
       for (auto& w : m_widgets) idleDemo = idleDemo || idleModeOf(*w) == "demo";
@@ -2627,6 +2647,7 @@ int App::run() {
     {
       const double wNow = wallNow();
       if (std::abs((wNow - lastWall) - (now - lastMono)) > 1.5) {
+        m_ruleCheckAt = 0;
         for (auto& w : m_widgets) {
           if (!w->impl) continue;
           w->wakeAt = now;

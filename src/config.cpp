@@ -127,6 +127,7 @@ Config Config::load(const std::string& path) {
         if (auto s = d.value<std::string>()) cfg.wallpaperDirs.push_back(*s);
     if (cfg.onBattery != "eco" && cfg.onBattery != "keep") cfg.onBattery = "lower";
   }
+  cfg.sceneRules = readSceneRules(root["scene_rule"].as_array());
   if (auto* s = root["screensaver"].as_table()) {
     ScreensaverConfig& v = cfg.screensaver;
     v.idle = std::clamp(get<double>(*s, "idle", 0.0), 0.0, 86400.0);

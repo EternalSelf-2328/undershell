@@ -48,7 +48,7 @@ std::string App::profileWallpaper() const {
 }
 
 void App::checkProfile() {
-  if (!m_config.profiles || !m_noctalia.ready()) return;
+  if (!m_ruleWallpaper.empty() || !m_config.profiles || !m_noctalia.ready()) return;
   const std::string wall = profileWallpaper();
   const std::string key = profileKeyFor(wall);
   if (key.empty()) return;
@@ -143,6 +143,7 @@ void App::checkWallpaperKind() {
 }
 
 void App::setMotion(bool on) {
+  if (!m_ruleWallpaper.empty()) on = false;
   if (on == m_motion) return;
   m_motion = on;
   US_INFO("{}", on ? "moving wallpaper on screen: depth off and locked" : "still wallpaper: depth back on");

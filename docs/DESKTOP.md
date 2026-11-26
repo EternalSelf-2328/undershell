@@ -2,6 +2,44 @@
 
 Part of [undershell](../README.md)'s documentation.
 
+## Automatic scenes
+
+Save layouts in the editor's **Profiles** card, then use their IDs (see
+`undershell msg saves`) in rules in `config.toml`. The first matching rule
+wins and all of its conditions must match. A rule can set a profile, a
+still wallpaper, or both. A wallpaper applies inside undershell and returns
+to the shell's wallpaper when the rule ends. Automatic profiles are
+temporary, and the editor opens on the base layout.
+
+```toml
+[[scene_rule]]
+profile = "20261126-184012"  # replace with a saved profile ID
+battery = true
+
+[[scene_rule]]
+profile = "20261126-184030"
+focus = true
+
+[[scene_rule]]
+profile = "20261126-184041"
+workspace = "Code"
+# workspace_index = 2  # alternative to, or additional check on, a name
+
+[[scene_rule]]
+profile = "20261126-184058"
+playing = true
+
+[[scene_rule]]
+from = "19:00"
+until = "06:30"
+wallpaper = "~/Pictures/Night.png"
+```
+
+Time ranges use local time and exclude the end. An omitted condition matches
+any state. Playback is reported by MPRIS. Umbriel's focused workspace is
+used unless `workspace_output` names a connected output. Use `undershell msg
+scene-rules status`, `scene-rules pause` or `scene-rules resume`.
+
 ## Focus timer
 
 Start a focus session from the Noctalia panel or use `undershell msg focus
