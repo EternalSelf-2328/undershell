@@ -107,10 +107,15 @@ Building, the tests and how the code is laid out: [docs/DEVELOPMENT.md](docs/DEV
 
 ## Status
 
-A personal project, shared as is: it works day to day on the setup it was
-made on (Umbriel + Noctalia, Arch), but it is young and not every compositor
-or setup has been tried. It was written with a lot of help from an AI
-assistant (Claude); issues and pull requests are welcome.
+This is a personal project, shared as is. It works day to day on the setup it
+was built on (Umbriel + Noctalia, Arch), though it is still young and not every
+compositor or setup has been tried. It was written with a lot of help from an
+AI assistant (Claude).
+
+Because it's a personal project, updates may be infrequent and tend to focus on
+whatever ideas come to mind at the moment. If you run into a bug, have a
+suggestion, or want to contribute, you're more than welcome to open an issue or
+a pull request — I'm always open to new ideas!
 
 ## License
 
