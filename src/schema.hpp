@@ -405,6 +405,16 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 0},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, -999, "", true},
   };
+  static const std::vector<PropSpec> instrument = {
+      {K::Enum, "style", "Instrument", "Instrumento", {"scope", "meters", "spectrogram"}, 0, 0, 0, 0, "scope"},
+      {K::Color, "color", "First colour", "Primer color", {}, 0, 0, 0, 0, "primary"},
+      {K::Color, "color2", "Second colour", "Segundo color", {}, 0, 0, 0, 0, "tertiary"},
+      {K::Number, "gain", "Gain", "Ganancia", {}, 0.2, 4, 0.1, 1},
+      {K::Bool, "plate", "Dark backing", "Fondo oscuro", {}, 0, 1, 1, 1},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> image = {
       {K::Number, "photo_interval", "Photo interval (s)", "Intervalo (s)", {}, 2, 3600, 1, 30, "", true},
       {K::Enum, "fit", "Fit", "Ajuste", {"fit", "fill", "stretch"}, 0, 0, 0, 0, "fit"},
@@ -426,6 +436,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   };
   static const std::vector<PropSpec> none;
   if (type == "shape") return shape;
+  if (type == "instrument") return instrument;
   if (type == "image") return image;
   if (type == "scene") return scene;
   if (type == "text") return text;

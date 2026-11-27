@@ -315,6 +315,16 @@ data_file = "~/.local/state/transfer.json"
 data_key = "/transfer/progress"
 ```
 
+## Audio instruments
+
+Add **Audio instruments** from the Music section of the editor or run
+`undershell msg add instrument scope`. **Oscilloscope** draws the left and
+right signals, **Needles** displays the level of each channel, and
+**Spectrogram** keeps about five seconds of frequency history at 30 fps.
+The instruments use desktop playback. Set `plate = false` to fit the
+display into an illustration without its dark backing. In silence the
+oscilloscope settles, the needles return to rest and the history freezes.
+
 ## Shapes
 
 Geometric shapes to build compositions out of layers (see **Layers** and

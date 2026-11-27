@@ -228,6 +228,21 @@ Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song 
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
 
+## `type = "instrument"`
+
+A stereo oscilloscope, needle meters, or scrolling spectrogram for playback audio.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `style` | `scope`, `meters`, `spectrogram` | `"scope"` | Instrument |
+| `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | First colour |
+| `color2` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"tertiary"` | Second colour |
+| `gain` | 0.2 – 4 | `1` | Gain |
+| `plate` | `true` / `false` | `true` | Dark backing |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
+
 ## `type = "lyrics"`
 
 The synced lyrics of the song playing (LRCLIB), with the text widget's styles and effects; the keys after `style` are the text widget's.

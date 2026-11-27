@@ -5,6 +5,8 @@
 // src/pipewire/pipewire_spectrum.cpp (MIT, (c) 2026 noctalia-dev).
 #pragma once
 
+#include "stereo.hpp"
+
 #include <array>
 #include <chrono>
 #include <complex>
@@ -31,6 +33,9 @@ public:
   void dispatch();           // call when fd() is readable
 
   void setBandCount(int n);
+  void setStereoWanted(bool wanted);
+  [[nodiscard]] const StereoFrame* stereo(double now) const;
+  bool feedStereo(const float* samples, int frames, int channels, int left, int right);
   void setNoiseReduction(float nr) { m_noiseReduction = nr; }
   void setMonstercat(bool on) { m_monstercat = on; }
 
@@ -92,6 +97,12 @@ private:
   bool m_sensInit = true;
 
   std::vector<float> m_ring;
+  bool m_stereoWanted = false, m_stereoUpdated = false;
+  double m_stereoAt = -1;
+  StereoFrame m_stereo;
+  static constexpr int kStereoStride = 4, kStereoWindow = StereoFrame::samples * kStereoStride;
+  std::array<std::array<float, kStereoWindow>, 2> m_stereoWindow{};
+  int m_stereoPosition = 0;
   int m_ringPos = 0;
   bool m_ringFull = false;
   bool m_samplesReceived = false;

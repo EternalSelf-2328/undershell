@@ -81,6 +81,7 @@ const char* lookKey(const Widget& w) {
   return "style";
 }
 std::string lookOf(const Widget& w) {
+  if (w.cfg.type == "instrument") return w.cfg.options["style"].value_or(std::string("scope"));
   if (w.cfg.type == "clock") return w.cfg.options["face"].value_or(std::string("digital"));
   if (w.cfg.type == "shape") return w.cfg.options["shape"].value_or(std::string("rect"));
   if (w.cfg.type == "now_playing") return w.cfg.options["layout"].value_or(std::string("sheet"));
@@ -1460,6 +1461,8 @@ void App::onScroll(double value) {
     looks = {"rings", "bars", "graph", "text"};
   } else if (w.cfg.type == "activity") {
     looks = {"grid", "weeks"};
+  } else if (w.cfg.type == "instrument") {
+    looks = schemaFor("instrument").front().options;
   } else if (w.cfg.type == "filter") {
     looks = FilterWidget::styles();
   } else if (w.cfg.type == "visualizer") {

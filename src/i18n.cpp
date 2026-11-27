@@ -34,6 +34,9 @@ bool spanishDates() {
 }
 
 std::string optionLabel(const std::string& value, bool es) {
+  if (value == "scope") return es ? "Osciloscopio" : "Oscilloscope";
+  if (value == "meters") return es ? "Agujas" : "Needle meters";
+  if (value == "spectrogram") return es ? "Espectrograma" : "Spectrogram";
   static const std::map<std::string_view, const char*> kEs = {
       {"album", "Álbum"}, {"analog", "Analógico"}, {"auto", "Auto"}, {"badge", "Insignia"}, {"banner", "Banner"},
       {"bar", "Barra"}, {"bars", "Barras"}, {"bighour", "Hora grande"}, {"bonfire", "Hoguera"}, {"brand", "Marca"},

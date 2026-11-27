@@ -15,6 +15,7 @@
 
 namespace undershell {
 
+struct StereoFrame;
 class TextRenderer;
 class MediaService;
 class WeatherService;
@@ -39,6 +40,7 @@ struct AudioFrame {
   bool onsets = false;
   uint64_t kicks = 0;
   double kickStrength = 0, kickAge = 0;
+  const StereoFrame* stereo = nullptr;
 };
 
 struct TickContext {
@@ -110,6 +112,7 @@ public:
   [[nodiscard]] virtual int fps() const { return 60; }
   [[nodiscard]] virtual bool fullscreen() const { return false; }
   [[nodiscard]] virtual bool usesAudio() const { return false; }
+  [[nodiscard]] virtual bool usesStereo() const { return false; }
   // a still picture this widget shows as the wallpaper of its output (a
   // Wallpaper Engine scene): the app then treats it as that output's
   // wallpaper, for depth and the layouts kept per wallpaper ("" = none)

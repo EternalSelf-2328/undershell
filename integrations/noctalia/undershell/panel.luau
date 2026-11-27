@@ -67,6 +67,7 @@ local kGlyphs = {
   clock = "clock",
   filter = "color-filter",
   image = "photo",
+  instrument = "wave-sine",
   lyrics = "microphone",
   notes = "notes",
   now_playing = "music",

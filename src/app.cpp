@@ -1141,6 +1141,8 @@ AudioFrame App::audioFrame(const Widget* w) {
   for (size_t i = 0; i < vals.size(); ++i) bands[i] = silent ? 0.0F : vals[i] / 0.9F;
   f.bands = &bands;
   f.silent = silent;
+  if (!demo && m_audioOk && w && w->impl && w->impl->usesStereo())
+    f.stereo = m_audio.stereo(nowSeconds());
   f.energy = silent ? 0.0 : (demo ? 0.3 : m_audio.energy());
   if (!demo && m_audioOk) {
     f.onsets = true;
@@ -2245,6 +2247,7 @@ std::string App::handleCommand(const std::string& cmd) {
     bool first = true;
     for (auto& w : m_widgets) {
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
+                               : w->cfg.type == "instrument" ? w->cfg.options["style"].value_or(std::string("scope"))
                                : w->cfg.type == "clock"    ? w->cfg.options["face"].value_or(std::string("digital"))
                                : w->cfg.type == "shape"    ? w->cfg.options["shape"].value_or(std::string("rect"))
                                : w->cfg.type == "text"     ? w->cfg.options["style"].value_or(std::string("plain"))
@@ -2581,6 +2584,9 @@ int App::run() {
     // nothing shown uses the spectrum (no visualizer, or every one covered
     // by a window): the samples keep arriving, the analysis waits
     m_audioPaused = !audioWanted(now);
+    m_audio.setStereoWanted(!m_audioPaused && std::ranges::any_of(m_widgets, [](const auto& w) {
+      return w->impl && w->surface && !w->cfg.hidden && w->impl->usesStereo();
+    }));
     if (m_audioOk && !m_audioPaused && m_audio.tick()) {
       for (auto& w : m_widgets)
         if (w->impl && w->impl->usesAudio()) w->needsRender = true;

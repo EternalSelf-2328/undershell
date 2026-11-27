@@ -1026,6 +1026,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
 }
 
 const char* typeName(const std::string& type, bool es) {
+  if (type == "instrument") return es ? "Instrumentos de audio" : "Audio instruments";
   if (type == "visualizer") return es ? "Visualizador" : "Visualizer";
   if (type == "clock") return es ? "Reloj" : "Clock";
   if (type == "now_playing") return es ? "Música" : "Now playing";
@@ -1614,7 +1615,7 @@ struct GalleryGroup {
 };
 const std::vector<GalleryGroup>& galleryGroups() {
   static const std::vector<GalleryGroup> groups = {
-      {"Music", "Música", {"visualizer", "lyrics", "now_playing"}},
+      {"Music", "Música", {"visualizer", "instrument", "lyrics", "now_playing"}},
       {"Time & info", "Hora e información", {"clock", "calendar", "weather", "system", "activity", "notes"}},
       {"Decoration", "Decoración", {"text", "shape", "image", "pet"}},
       {"Wallpaper", "Fondo de pantalla", {"filter", "filter:fx", "filter:pt", "scene"}},
@@ -1638,6 +1639,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "pet") return "pet";
   if (type == "filter") return "filter";
   if (type == "scene") return "scene";
+  if (type == "instrument") return "instrument";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -3246,6 +3248,9 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "instrument") {
+    c.roundRect(cx - 8, cy - 6, 16, 12, 2.5F, Color{0, 0, 0, 0}, 1.4F, col);
+    c.wave(cx - 6, cx + 6, cy, 2.4F, 8.0F, 0, 1.2F, col);
   } else if (name == "scene") {  // a frame with layers stacked in it
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.segment(cx - 4, cy - 1, cx + 4, cy - 1, 1.5F, col);

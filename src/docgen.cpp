@@ -109,6 +109,8 @@ std::string optionsMarkdown() {
         "`\\n` starts a new line. A `style` sets the keys after `font`; a key "
         "the block sets wins over its style. The defaults below are the `plain` style's.\n\n";
   table(md, "text");
+  md += "\n## `type = \"instrument\"`\n\nA stereo oscilloscope, needle meters, or scrolling spectrogram for playback audio.\n\n";
+  table(md, "instrument");
   md += "\n## `type = \"lyrics\"`\n\nThe synced lyrics of the song playing (LRCLIB), with the text widget's styles and "
         "effects; the keys after `style` are the text widget's.\n\n";
   table(md, "lyrics");

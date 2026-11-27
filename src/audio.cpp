@@ -8,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <numbers>
+#include <utility>
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
 #include <spa/pod/builder.h>
@@ -50,6 +51,7 @@ struct Audio::Stream {
   spa_hook listener{};
   spa_audio_info_raw format{};
   bool ready = false;
+  int left = 0, right = 1;
   std::vector<float> mono;
 
   static void onParam(void* data, uint32_t id, const spa_pod* param) {
@@ -64,6 +66,12 @@ struct Audio::Stream {
       return;
     }
     self->format = raw;
+    self->left = 0;
+    self->right = raw.channels > 1 ? 1 : 0;
+    for (uint32_t channel = 0; channel < raw.channels && channel < SPA_AUDIO_MAX_CHANNELS; ++channel) {
+      if (raw.position[channel] == SPA_AUDIO_CHANNEL_FL) self->left = static_cast<int>(channel);
+      if (raw.position[channel] == SPA_AUDIO_CHANNEL_FR) self->right = static_cast<int>(channel);
+    }
     self->ready = raw.channels > 0;
     if (self->ready) self->audio->setSampleRate(static_cast<int>(raw.rate));
   }
@@ -90,7 +98,8 @@ struct Audio::Stream {
           self->mono[static_cast<size_t>(i)] = s;
           nonZero = nonZero || s != 0.0F;
         }
-        self->audio->feed(self->mono.data(), frames, nonZero);
+        const bool stereoSignal = self->audio->feedStereo(samples, frames, ch, self->left, self->right);
+        self->audio->feed(self->mono.data(), frames, nonZero || stereoSignal);
       }
     }
     pw_stream_queue_buffer(self->stream, b);
@@ -285,6 +294,44 @@ void Audio::computeBins() {
   }
 }
 
+void Audio::setStereoWanted(bool wanted) {
+  if (m_stereoWanted == wanted) return;
+  m_stereoWanted = wanted;
+  m_stereoAt = -1;
+  m_stereoUpdated = false;
+  m_stereoPosition = 0;
+  m_stereoWindow = {};
+  m_stereo = {};
+}
+
+const StereoFrame* Audio::stereo(double now) const {
+  return m_stereoWanted && m_stereoAt >= 0 && now - m_stereoAt <= 0.25 ? &m_stereo : nullptr;
+}
+
+bool Audio::feedStereo(const float* samples, int frames, int channels, int left, int right) {
+  if (!m_stereoWanted || frames <= 0 || left < 0 || right < 0 || left >= channels || right >= channels) return false;
+  double leftPower = 0, rightPower = 0;
+  for (int i = 0; i < frames; ++i) {
+    const float l = samples[i * channels + left], r = samples[i * channels + right];
+    const float cleanL = std::isfinite(l) ? l : 0.0F, cleanR = std::isfinite(r) ? r : 0.0F;
+    m_stereoWindow[0][m_stereoPosition] = cleanL;
+    m_stereoWindow[1][m_stereoPosition] = cleanR;
+    leftPower += static_cast<double>(cleanL) * cleanL;
+    rightPower += static_cast<double>(cleanR) * cleanR;
+    m_stereoPosition = (m_stereoPosition + 1) % kStereoWindow;
+  }
+  m_stereo.left = static_cast<float>(std::sqrt(leftPower / frames));
+  m_stereo.right = static_cast<float>(std::sqrt(rightPower / frames));
+  const bool signal = std::max(m_stereo.left, m_stereo.right) > 0.001F;
+  if (signal) m_stereoAt = nowSeconds();
+  for (size_t channel = 0; channel < 2; ++channel)
+    for (int sample = 0; sample < StereoFrame::samples; ++sample)
+      m_stereo.wave[channel * StereoFrame::samples + sample] =
+          m_stereoWindow[channel][(m_stereoPosition + sample * kStereoStride) % kStereoWindow];
+  m_stereoUpdated |= signal;
+  return signal;
+}
+
 void Audio::feed(const float* mono, int count, bool nonZero) {
   for (int i = 0; i < count; ++i) {
     m_ring[static_cast<size_t>(m_ringPos)] = mono[i];
@@ -320,7 +367,8 @@ bool Audio::tick() {
                       : m_nextFrameAt + interval;
   const bool wasIdle = m_idle;
   processFrame();
-  return !(wasIdle && m_idle);
+  const bool stereoUpdated = std::exchange(m_stereoUpdated, false);
+  return !(wasIdle && m_idle) || stereoUpdated;
 }
 
 float Audio::energy() const {

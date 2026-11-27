@@ -2,6 +2,7 @@
 #include "check.hpp"
 #include "common.hpp"
 #include "image.hpp"
+#include "audio.hpp"
 #include "focus.hpp"
 #include "desktoprules.hpp"
 #include "offscreen.hpp"
@@ -50,6 +51,19 @@ profile = "base"
   workspaces.clear();
   CHECK(matchSceneRule(rules, inputs)->profile == "base");
 
+  Audio audio;
+  std::array<float, StereoFrame::samples * 8> stereoSamples;
+  for (size_t i = 0; i < stereoSamples.size(); i += 2) {
+    stereoSamples[i] = 0.5F;
+    stereoSamples[i + 1] = -0.25F;
+  }
+  CHECK(!audio.feedStereo(stereoSamples.data(), stereoSamples.size() / 2, 2, 0, 1));
+  audio.setStereoWanted(true);
+  CHECK(audio.feedStereo(stereoSamples.data(), stereoSamples.size() / 2, 2, 0, 1));
+  const auto* stereo = audio.stereo(nowSeconds());
+  CHECK(stereo && stereo->left == 0.5F && stereo->right == 0.25F);
+  CHECK(stereo && stereo->wave.front() == 0.5F && stereo->wave.back() == -0.25F);
+  CHECK(!audio.stereo(nowSeconds() + 1));
   char directory[] = "/tmp/undershell-desktop-XXXXXX";
   if (!mkdtemp(directory)) return 1;
   const fs::path scratch(directory);
@@ -72,6 +86,18 @@ profile = "base"
   Headless egl;
   CHECK(egl.ok());
   if (egl.ok()) {
+    for (const auto style : {"scope", "meters", "spectrogram"}) {
+      auto instrument = createWidget("instrument");
+      WidgetConfig configuration;
+      configuration.type = "instrument";
+      configuration.options.insert("style", style);
+      instrument->configure(configuration, testPalette());
+      std::vector<float> bands(64, 0.7F);
+      instrument->tick(TickContext{.now = 100, .dt = 0.1, .audio = {.bands = &bands, .silent = false, .stereo = stereo}});
+      const auto image = renderDrawn(240, 120, [&] { instrument->draw(DrawContext{.w = 240, .h = 120}); });
+      CHECK(image.rgba.size() == 240 * 120 * 4 && image.rgba[3] > 220);
+      CHECK(instrument->usesStereo() == (std::string_view(style) != "spectrogram"));
+    }
     const auto data = (scratch / "status.json").string();
     CHECK(writeFileAtomic(data, R"({"download":{"progress":42}})"));
     const toml::table opts{{"text", "{data}%"}, {"data_file", data}, {"data_key", "/download/progress"}};

@@ -30,6 +30,7 @@ public:
   [[nodiscard]] double nextWakeup(double now) const override { return m_inner->nextWakeup(now); }
   [[nodiscard]] int fps() const override { return m_fx.empty() ? m_inner->fps() : std::max(m_inner->fps(), m_fx.fps()); }
   [[nodiscard]] bool fullscreen() const override { return m_inner->fullscreen(); }
+  [[nodiscard]] bool usesStereo() const override { return m_inner->usesStereo(); }
   [[nodiscard]] bool usesAudio() const override { return m_inner->usesAudio() || m_fx.audio(); }
   [[nodiscard]] bool wantsDepth() const override { return m_inner->wantsDepth(); }
   [[nodiscard]] std::string stillWallpaper() const override { return m_inner->stillWallpaper(); }
