@@ -36,6 +36,15 @@ std::vector<SceneRule> readSceneRules(const toml::array* rules) {
   for (const auto& node : *rules) {
     const auto* t = node.as_table();
     if (!t) continue;
+    bool typed = true;
+    for (const auto* key : {"profile", "wallpaper", "workspace", "workspace_output", "from", "until"})
+      if (t->contains(key) && !(*t)[key].is_string()) typed = false;
+    for (const auto* key : {"battery", "playing", "focus"})
+      if (t->contains(key) && !(*t)[key].is_boolean()) typed = false;
+    if (!typed || (t->contains("workspace_index") && !(*t)["workspace_index"].is_integer())) {
+      US_WARN("scene rule ignored: wrong field type");
+      continue;
+    }
     const auto from = minuteOf((*t)["from"].value_or(std::string("00:00")));
     const auto until = minuteOf((*t)["until"].value_or(std::string("24:00")));
     auto text = [&](const char* key) { return (*t)[key].value_or(std::string()); };

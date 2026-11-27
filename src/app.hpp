@@ -402,7 +402,7 @@ private:
   // the program that draws the wallpaper now, as wallset.hpp names it
   [[nodiscard]] std::string wallpaperSetter() const;
   std::string setWallpaper(const std::string& args);
-  void handleInotify();
+  void handleInotify(int fd);
   std::string handleCommand(const std::string& cmd);
   std::vector<std::string> outputNames() const;
 
@@ -486,7 +486,7 @@ private:
   TextRenderer m_text;
   OverlayPass m_overlay;
   IpcServer m_ipc;
-  int m_inotify = -1;
+  int m_inotify = -1, m_widgetInotify = -1;
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdPlasma = -1;
   std::map<int, std::string> m_wdFiles;  // folders of files widgets show (WidgetImpl::watchedFiles)
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;

@@ -229,7 +229,7 @@ void TextWidget::filesChanged() {
   constexpr size_t limit = 16384;
   struct stat st {};
   std::string data;
-  if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size <= limit) {
+  if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_size >= 0 && static_cast<uintmax_t>(st.st_size) <= limit) {
     std::array<char, 4096> chunk;
     for (ssize_t n; (n = read(fd, chunk.data(), chunk.size())) > 0 && data.size() <= limit;)
       data.append(chunk.data(), static_cast<size_t>(n));
@@ -260,7 +260,9 @@ void TextWidget::configure(const TextConfig& cfg, const NoctaliaState& noct) {
   const bool restart = cfg.animation != m_cfg.animation || cfg.text != m_cfg.text;
   const bool keyChanged = m_cfg.dataKey != cfg.dataKey;
   m_cfg = cfg;
-  const std::string path = cfg.dataFile.empty() ? std::string() : std::filesystem::path(expandHome(cfg.dataFile)).lexically_normal().string();
+  std::error_code ec;
+  const std::string path = cfg.dataFile.empty() ? std::string()
+                                              : std::filesystem::absolute(expandHome(cfg.dataFile), ec).lexically_normal().string();
   if (path != m_dataPath || keyChanged) {
     m_dataPath = path;
     filesChanged();

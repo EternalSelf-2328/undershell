@@ -263,6 +263,7 @@ App::~App() {
   if (m_cursorSurface) wl_surface_destroy(m_cursorSurface);
   if (m_cursorTheme) wl_cursor_theme_destroy(m_cursorTheme);
   if (m_inotify >= 0) close(m_inotify);
+  if (m_widgetInotify >= 0) close(m_widgetInotify);
   if (m_display) wl_display_disconnect(m_display);
 }
 
@@ -552,20 +553,22 @@ void App::syncSourceWatches() {
 
 // the folders of the files widgets show, watched while some widget shows one
 void App::syncFileWatches() {
-  if (m_inotify < 0) return;
+  // A watched widget file can share a directory with the main configuration.
+  // Separate descriptors keep the two subscriptions independent.
+  if (m_widgetInotify < 0) return;
   std::set<std::string> dirs, have;
   for (auto& w : m_widgets)
     if (w->impl && !w->cfg.hidden)
       for (const auto& f : w->impl->watchedFiles())
-        if (!f.empty()) dirs.insert(f.back() == '/' ? f.substr(0, f.size() - 1) : fs::path(f).parent_path().string());
+        if (!f.empty()) dirs.insert(fs::path(f).parent_path().string());
   for (const auto& [wd, d] : m_wdFiles) have.insert(d);
   if (dirs == have) return;
-  for (const auto& [wd, d] : m_wdFiles) inotify_rm_watch(m_inotify, wd);
+  for (const auto& [wd, d] : m_wdFiles) inotify_rm_watch(m_widgetInotify, wd);
   m_wdFiles.clear();
   for (const auto& d : dirs) {
     std::error_code ec;
     fs::create_directories(d, ec);  // a note's folder, before its first save
-    if (const int wd = inotify_add_watch(m_inotify, d.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE); wd >= 0)
+    if (const int wd = inotify_add_watch(m_widgetInotify, d.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE); wd >= 0)
       m_wdFiles[wd] = d;
   }
 }
@@ -2339,22 +2342,25 @@ std::string App::handleCommand(const std::string& cmd) {
 
 // ── file watching ───────────────────────────────────────────────────────────
 
-void App::handleInotify() {
+void App::handleInotify(int fd) {
+  const bool widgetFiles = fd == m_widgetInotify;
   alignas(inotify_event) char buf[8192];
   for (;;) {
-    ssize_t n = read(m_inotify, buf, sizeof(buf));
+    ssize_t n = read(fd, buf, sizeof(buf));
     if (n <= 0) break;
     for (char* p = buf; p < buf + n;) {
       auto* ev = reinterpret_cast<inotify_event*>(p);
       std::string name = ev->len ? ev->name : "";
-      const double now = nowSeconds();
-      if (ev->wd == m_wdConfig && name == fs::path(m_configPath).filename().string()) m_reloadConfigAt = now + 0.15;
-      if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
-      if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
-      if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
-      if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
-      if (auto f = m_wdFiles.find(ev->wd); f != m_wdFiles.end() && !name.empty()) {
-        const std::string path = f->second + "/" + name, folder = f->second + "/";
+      if (!widgetFiles) {
+        const double now = nowSeconds();
+        if (ev->wd == m_wdConfig && name == fs::path(m_configPath).filename().string()) m_reloadConfigAt = now + 0.15;
+        if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
+        if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
+        if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
+        if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
+      } else if (auto f = m_wdFiles.find(ev->wd); f != m_wdFiles.end() && !name.empty()) {
+        const std::string path = (fs::path(f->second) / name).string();
+        const std::string folder = f->second.ends_with('/') ? f->second : f->second + '/';
         for (auto& w : m_widgets) {
           if (!w->impl) continue;
           const auto files = w->impl->watchedFiles();
@@ -2477,6 +2483,7 @@ int App::run() {
   m_media.start();
 
   m_inotify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+  m_widgetInotify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
   const uint32_t mask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE;
   m_wdConfig = inotify_add_watch(m_inotify, fs::path(m_configPath).parent_path().c_str(), mask);
   m_wdNoctState = inotify_add_watch(m_inotify, fs::path(Noctalia::settingsPath()).parent_path().c_str(), mask);
@@ -2506,7 +2513,7 @@ int App::run() {
       for (auto& w : m_widgets) want = want || (w->impl && !w->cfg.hidden && w->impl->wantsWindows());
       m_windowFeed.want(want, rulesWantWorkspaces());
     }
-    pollfd fds[11] = {{wl_display_get_fd(m_display), POLLIN, 0},
+    pollfd fds[] = {{wl_display_get_fd(m_display), POLLIN, 0},
                      {m_audioOk ? m_audio.fd() : -1, POLLIN, 0},
                      {m_inotify, POLLIN, 0},
                      {m_ipc.fd(), POLLIN, 0},
@@ -2516,8 +2523,9 @@ int App::run() {
                      {m_dconf.fd(), POLLIN, 0},
                      {m_sourceJobs.fd(), POLLIN, 0},
                      {m_skwd.fd(), POLLIN, 0},
-                     {m_windowFeed.fd(), POLLIN, 0}};
-    int r = poll(fds, 11, computeTimeout());
+                     {m_windowFeed.fd(), POLLIN, 0},
+                     {m_widgetInotify, POLLIN, 0}};
+    int r = poll(fds, std::size(fds), computeTimeout());
     if (r < 0 && errno != EINTR) {
       wl_display_cancel_read(m_display);
       break;
@@ -2537,7 +2545,8 @@ int App::run() {
       for (auto& w : m_widgets)
         if (w->impl && w->impl->wantsWindows()) w->needsRender = true;
     }
-    if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
+    if (r > 0 && (fds[2].revents & POLLIN)) handleInotify(m_inotify);
+    if (r > 0 && (fds[11].revents & POLLIN)) handleInotify(m_widgetInotify);
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();
     if (r > 0 && (fds[5].revents & POLLIN)) {

@@ -55,6 +55,10 @@ profile = "code"
 workspace = "Code"
 [[scene_rule]]
 profile = "base"
+
+[[scene_rule]]
+profile = "malformed"
+battery = "true"
 )");
   const auto rules = readSceneRules(rulesConfig["scene_rule"].as_array());
   CHECK(rules.size() == 3);

@@ -157,7 +157,9 @@ void ImageWidget::configure(const WidgetConfig& cfg, const NoctaliaState& noct) 
 void ImageWidget::configure(const ImageConfig& cfg, const NoctaliaState& noct) {
   const bool intervalChanged = cfg.interval != m_cfg.interval;
   m_cfg = cfg;
-  const std::string folder = cfg.folder.empty() ? std::string() : std::filesystem::path(expandHome(cfg.folder)).lexically_normal().string();
+  std::error_code ec;
+  const std::string folder = cfg.folder.empty() ? std::string()
+                                               : std::filesystem::absolute(expandHome(cfg.folder), ec).lexically_normal().string();
   if (folder != m_folder) {
     m_folder = folder;
     filesChanged();
