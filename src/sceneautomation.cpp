@@ -38,17 +38,19 @@ void App::updateDesktopRules(double now) {
                                   : nullptr;
   const std::string profile = rule ? rule->profile : std::string();
   const std::string wallpaper = rule ? rule->wallpaper : std::string();
-  if (!m_ruleDirty && profile == m_ruleProfile && wallpaper == m_ruleRequestedWallpaper) return;
+  if (!m_ruleDirty && profile == m_ruleRequestedProfile && wallpaper == m_ruleRequestedWallpaper) return;
   m_ruleDirty = false;
-  m_ruleProfile = profile;
+  m_ruleRequestedProfile = profile;
   m_ruleRequestedWallpaper = wallpaper;
 
   m_ruleActive = false;
+  m_ruleProfile.clear();
   m_ruleWidgets.clear();
   if (!profile.empty()) {
     refreshSaves();
     const auto byId = std::ranges::find(m_saves, profile, &SavedLayout::id);
     if (byId != m_saves.end()) {
+      m_ruleProfile = profile;
       m_ruleWidgets = byId->widgets;
       m_ruleActive = true;
     } else {
@@ -103,7 +105,7 @@ std::string App::sceneRulesCommand(const std::string& args) {
     return "error: scene-rules pause|resume|status";
   }
   return std::format("{} · {} rule(s) · profile {} · wallpaper {}", m_rulesPaused ? "paused" : "enabled",
-                     m_config.sceneRules.size(), m_ruleActive && !m_ruleProfile.empty() ? m_ruleProfile : "-",
+                     m_config.sceneRules.size(), m_ruleProfile.empty() ? "-" : m_ruleProfile,
                      m_ruleWallpaper.empty() ? "-" : m_ruleWallpaper);
 }
 

@@ -1247,9 +1247,9 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   return id;
 }
 
-void App::removeWidget(Widget& w) {
+bool App::removeWidget(Widget& w) {
   std::string block;
-  if (!Config::removeBlock(m_configPath, w.cfg.id, &block)) return;
+  if (!Config::removeBlock(m_configPath, w.cfg.id, &block)) return false;
   EditOp op;
   op.kind = "remove";
   op.id = w.cfg.id;
@@ -1263,6 +1263,7 @@ void App::removeWidget(Widget& w) {
   if (m_pointerWidget == &w) m_pointerWidget = nullptr;
   m_reloadConfigAt = nowSeconds() + 0.02;
   markEditDirty();
+  return true;
 }
 
 void App::duplicateWidget(Widget& w) {
@@ -2925,9 +2926,8 @@ bool App::uiPress(int index, double x) {
       return true;
     case UiControl::SaveDelete:
       if (m_confirmDelete == c.value) {
-        Config::deleteSave(savesDir(), c.value);
+        deleteSave(c.value);
         m_confirmDelete.clear();
-        refreshSaves();
       } else {
         m_confirmDelete = c.value;
       }

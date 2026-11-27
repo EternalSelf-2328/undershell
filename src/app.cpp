@@ -2030,11 +2030,15 @@ std::string App::handleCommand(const std::string& cmd) {
     const std::string id = cmd.substr(7);
     for (auto& w : m_widgets)
       if (w->cfg.id == id) {
-        removeWidget(*w);
+        if (!m_ruleProfile.empty() || (m_ruleActive && id.starts_with("@scene-wallpaper:")))
+          return "error: cannot remove a widget from an automatic scene; pause the rules or open the editor";
+        if (!removeWidget(*w)) return "error: could not remove widget '" + id + "'";
         return "removed " + id;
       }
     // disabled widgets have no instance: remove the block directly
-    return Config::removeBlock(m_configPath, id) ? "removed " + id : "error: no widget '" + id + "'";
+    if (!Config::removeBlock(m_configPath, id)) return "error: no widget '" + id + "'";
+    m_reloadConfigAt = nowSeconds() + 0.02;
+    return "removed " + id;
   }
   if (cmd == "depth-model") {  // fetch the depth model (Depth Anything V2 Small, ~95 MB)
     if (DepthGen::helperPath().empty()) return "error: this build has no depth model support (built without ONNX Runtime)";
@@ -2231,12 +2235,7 @@ std::string App::handleCommand(const std::string& cmd) {
     return loadSave(id, output) ? "loaded" : "error: no such save";
   }
   if (cmd.rfind("save-overwrite ", 0) == 0) return overwriteSave(cmd.substr(15)) ? "overwritten" : "error: no such save";
-  if (cmd.rfind("save-delete ", 0) == 0) {
-    const bool ok = Config::deleteSave(savesDir(), cmd.substr(12));
-    refreshSaves();
-    markEditDirty();
-    return ok ? "deleted" : "error: no such save";
-  }
+  if (cmd.rfind("save-delete ", 0) == 0) return deleteSave(cmd.substr(12)) ? "deleted" : "error: no such save";
   if (cmd.rfind("save-rename ", 0) == 0) {
     const std::string rest = cmd.substr(12);
     const size_t sp = rest.find(' ');

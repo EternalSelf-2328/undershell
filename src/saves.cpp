@@ -40,6 +40,7 @@ std::string App::saveLayout(const std::string& name) {
   }
   const std::string id = Config::writeSave(savesDir(), use, fs::path(profileWallpaper()).filename().string(),
                                            Config::widgetBlocks(readFile(m_configPath)));
+  if (!id.empty()) m_ruleDirty = true;
   refreshSaves();
   markEditDirty();
   return id;
@@ -49,9 +50,18 @@ bool App::overwriteSave(const std::string& id) {
   const bool ok = !Config::writeSave(savesDir(), "", fs::path(profileWallpaper()).filename().string(),
                                      Config::widgetBlocks(readFile(m_configPath)), id)
                        .empty();
+  if (ok) m_ruleDirty = true;
   refreshSaves();
   markEditDirty();
   return ok;
+}
+
+bool App::deleteSave(const std::string& id) {
+  if (!Config::deleteSave(savesDir(), id)) return false;
+  m_ruleDirty = true;
+  refreshSaves();
+  markEditDirty();
+  return true;
 }
 
 // replaces the widgets on screen with `blocks`, as one undo step

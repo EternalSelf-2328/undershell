@@ -227,6 +227,7 @@ private:
   void refreshSaves();
   std::string saveLayout(const std::string& name);  // "" = "Profile N"
   bool overwriteSave(const std::string& id);
+  bool deleteSave(const std::string& id);
   // A saved layout. With `output` it goes onto that monitor ("all": a copy
   // on each) and only that monitor's widgets are replaced; without, it
   // replaces the whole layout as saved.
@@ -361,7 +362,7 @@ private:
   // value that follows from another change, like a mesh turning custom)
   void setQuietly(Widget& w, const std::string& key, const std::string& tomlValue);
   std::string addWidget(const std::string& type, const std::string& look, int x, int y, bool record);
-  void removeWidget(Widget& w);
+  bool removeWidget(Widget& w);
   void duplicateWidget(Widget& w);
   void moveWidget(Widget& w, int x, int y);
   void resizeWidget(Widget& w, int width, int height);
@@ -399,7 +400,7 @@ private:
   bool m_rulesPaused = false, m_ruleActive = false, m_ruleDirty = true;
   bool m_ruleBattery = false, m_rulePlaying = false, m_ruleFocus = false;
   double m_ruleCheckAt = 0;
-  std::string m_ruleProfile, m_ruleWallpaper, m_ruleRequestedWallpaper;
+  std::string m_ruleProfile, m_ruleWallpaper, m_ruleRequestedProfile, m_ruleRequestedWallpaper;
   std::vector<WidgetConfig> m_ruleWidgets;
   std::string focusCommand(const std::string& args);
   FocusTimer m_focus;
