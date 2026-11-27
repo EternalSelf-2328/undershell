@@ -5,12 +5,16 @@
 #include "geom.hpp"
 #include "perf.hpp"
 
+#include <glib.h>
+
 #include <algorithm>
 #include <cmath>
 #include <ctime>
 #include <filesystem>
 #include <cstring>
 #include <regex>
+#include <set>
+#include <span>
 #include <sstream>
 #include <toml++/toml.hpp>
 
@@ -217,125 +221,154 @@ Config Config::load(const std::string& path) {
   return cfg;
 }
 
-// locate [[widget]] block of `id`: [start, end) line range
-static bool findBlock(const std::vector<std::string>& lines, const std::string& id, size_t& start, size_t& end) {
-  static const std::regex kHeader(R"(^\s*\[)");
-  static const std::regex kWidget(R"(^\s*\[\[\s*widget\s*\]\]\s*(#.*)?$)");
-  const std::regex kId("^\\s*id\\s*=\\s*\"" + std::regex_replace(id, std::regex(R"([.^$|()\[\]{}*+?\\])"), R"(\$&)") + "\"");
-  for (size_t i = 0; i < lines.size(); ++i) {
-    if (!std::regex_search(lines[i], kWidget)) continue;
-    size_t j = i + 1;
-    while (j < lines.size() && !std::regex_search(lines[j], kHeader)) ++j;
-    for (size_t k = i + 1; k < j; ++k) {
-      if (std::regex_search(lines[k], kId)) {
-        start = i;
-        end = j;
-        return true;
-      }
-    }
-  }
-  return false;
+namespace {
+using Lines = std::vector<std::string>;
+
+Lines configLines(const std::string& text) {
+  std::istringstream in(text);
+  Lines lines;
+  for (std::string line; std::getline(in, line);) lines.push_back(std::move(line));
+  return lines;
 }
 
-// a key as a regex that matches only itself
-static std::string keyRegex(const std::string& key) {
-  std::string out;
-  for (char c : key) {
-    if (std::strchr(".^$|()[]{}*+?\\", c)) out += '\\';
-    out += c;
-  }
-  return out;
+std::string configText(std::span<const std::string> lines) {
+  std::string text;
+  for (const auto& line : lines) text += line + "\n";
+  return text;
 }
 
-static void setLine(std::vector<std::string>& lines, size_t start, size_t& end, const std::string& key,
-                    const std::string& value) {
-  // a value: a string, an array (corner pins, paths that may hold "]"), or a bare token
-  const std::regex re("^(\\s*" + keyRegex(key) +
-                      R"(\s*=\s*)("(?:[^"\\]|\\.)*"|\[(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^\]"'])*\]|(?:[^#\s\[][^#\s]*)?)(\s*#.*)?\s*$)");
-  for (size_t k = start + 1; k < end; ++k) {
-    std::smatch m;
-    if (std::regex_match(lines[k], m, re)) {
-      lines[k] = m[1].str() + value + (m[3].matched ? m[3].str() : std::string());
-      return;
-    }
+std::optional<toml::table> parseConfig(const std::string& text) {
+  try {
+    return toml::parse(text);
+  } catch (const toml::parse_error&) {
+    return {};
   }
-  // an array written by hand over several lines: replace all of them
-  const std::regex open("^(\\s*" + key + R"(\s*=\s*)\[)");
-  for (size_t k = start + 1; k < end; ++k) {
-    std::smatch m;
-    if (!std::regex_search(lines[k], m, open)) continue;
-    int depth = 0;
-    char quote = 0;
-    for (size_t j = k; j < end; ++j) {
-      const std::string& l = lines[j];
-      for (size_t i = j == k ? static_cast<size_t>(m.length(1)) : 0; i < l.size(); ++i) {  // from its "["
-        const char c = l[i];
-        if (quote) {
-          if (c == '\\' && quote == '"') ++i;
-          else if (c == quote) quote = 0;
-        } else if (c == '"' || c == '\'') {
-          quote = c;
-        } else if (c == '#') {
-          break;  // a comment to the end of the line
-        } else if (c == '[') {
-          ++depth;
-        } else if (c == ']' && --depth == 0) {
-          lines[k] = m[1].str() + value + l.substr(i + 1);
-          lines.erase(lines.begin() + static_cast<long>(k) + 1, lines.begin() + static_cast<long>(j) + 1);
-          end -= j - k;
-          return;
-        }
-      }
-    }
-    break;  // never closed (the file does not parse anyway): append below
-  }
-  // append after the last non-empty line of the block
-  size_t at = end;
-  while (at > start + 1 && lines[at - 1].find_first_not_of(" \t") == std::string::npos) --at;
-  lines.insert(lines.begin() + static_cast<long>(at), key + " = " + value);
-  ++end;
 }
+
+bool writeConfig(const std::string& path, const Lines& lines) {
+  const std::string text = configText(lines);
+  return parseConfig(text) && writeFileAtomic(path, text);
+}
+
+size_t sourceLine(toml::source_position p) { return p.line - 1; }
+
+size_t sourceByte(const std::string& line, toml::source_position p) {
+  return static_cast<size_t>(g_utf8_offset_to_pointer(line.c_str(), p.column - 1) - line.c_str());
+}
+
+bool isHeader(const Lines& lines, size_t index) {
+  const size_t first = lines[index].find_first_not_of(" \t");
+  return first != std::string::npos && lines[index][first] == '[';
+}
+
+// TOML source regions keep bracket-prefixed lines inside strings or arrays
+// from being confused with section headers.
+size_t assignmentsEnd(const Lines& lines, const toml::table& table) {
+  size_t end = table.source().begin.line;
+  for (const auto& [key, value] : table) {
+    if (const auto* child = value.as_table(); child && !child->is_inline()) {
+      if (!isHeader(lines, sourceLine(child->source().begin)))
+        end = std::max(end, assignmentsEnd(lines, *child));
+    } else if (const auto* array = value.as_array(); array && !array->empty() &&
+               (*array)[0].as_table() && !(*array)[0].as_table()->is_inline()) {
+      continue;  // a separate array-of-tables header
+    } else {
+      end = std::max(end, static_cast<size_t>(value.source().end.line));
+    }
+  }
+  return end;
+}
+
+size_t sectionEnd(const Lines& lines, const toml::table& table) {
+  size_t end = assignmentsEnd(lines, table);
+  while (end < lines.size() && !isHeader(lines, end)) ++end;
+  return end;
+}
+
+const toml::table* findWidget(const toml::table& document, const std::string& id) {
+  const auto* widgets = document["widget"].as_array();
+  if (!widgets) return nullptr;
+  for (const auto& node : *widgets)
+    if (const auto* widget = node.as_table(); widget && !widget->is_inline() &&
+        (*widget)["id"].value<std::string>() == id)
+      return widget;
+  return nullptr;
+}
+
+bool findBlock(const Lines& lines, const std::string& id, size_t& start, size_t& end) {
+  const auto document = parseConfig(configText(lines));
+  const auto* widget = document ? findWidget(*document, id) : nullptr;
+  if (!widget) return false;
+  start = sourceLine(widget->source().begin);
+  end = sectionEnd(lines, *widget);
+  return true;
+}
+
+void replaceValue(Lines& lines, toml::source_region where, const std::string& value, size_t base = 0) {
+  const size_t first = base + sourceLine(where.begin), last = base + sourceLine(where.end);
+  const size_t firstByte = sourceByte(lines[first], where.begin), lastByte = sourceByte(lines[last], where.end);
+  lines[first] = lines[first].substr(0, firstByte) + value + lines[last].substr(lastByte);
+  lines.erase(lines.begin() + first + 1, lines.begin() + last + 1);
+}
+
+bool setLine(Lines& lines, size_t start, size_t& end, const std::string& key, const std::string& value) {
+  const auto section = parseConfig(configText(std::span(lines).subspan(start, end - start)));
+  if (!section) return false;
+  const auto* table = (*section)["widget"][0].as_table();
+  if (!table) table = (*section)["general"].as_table();
+  if (!table) return false;
+
+  if (const auto* current = table->get(key)) {
+    const auto where = current->source();
+    const size_t extra = where.end.line - where.begin.line;
+    if (value.empty()) {
+      const size_t first = start + sourceLine(where.begin);
+      lines.erase(lines.begin() + first, lines.begin() + first + extra + 1);
+      end -= extra + 1;
+    } else {
+      replaceValue(lines, where, value, start);
+      end -= extra;
+    }
+  } else if (!value.empty()) {
+    size_t at = end;
+    while (at > start + 1 && lines[at - 1].find_first_not_of(" \t") == std::string::npos) --at;
+    lines.insert(lines.begin() + at, key + " = " + value);
+    ++end;
+  }
+  return true;
+}
+}  // namespace
 
 bool Config::setGeneral(const std::string& path, const std::string& key, const std::string& tomlValue) {
   std::string text;
   if (!readFileChecked(path, text)) return false;
-  std::istringstream in(text);
-  std::vector<std::string> lines;
-  for (std::string l; std::getline(in, l);) lines.push_back(l);
-  size_t start = lines.size(), end = lines.size();
-  for (size_t k = 0; k < lines.size(); ++k) {
-    const auto first = lines[k].find_first_not_of(" \t");
-    if (first == std::string::npos || lines[k][first] != '[') continue;
-    if (start < lines.size()) {  // the next table ends [general]
-      end = k;
-      break;
-    }
-    if (lines[k].compare(first, 9, "[general]") == 0) start = k;
+  const auto document = parseConfig(text);
+  if (!document) return false;
+  auto lines = configLines(text);
+  const auto* general = (*document)["general"].as_table();
+  size_t start, end;
+  if (general && isHeader(lines, sourceLine(general->source().begin))) {
+    start = sourceLine(general->source().begin);
+    end = sectionEnd(lines, *general);
+  } else {
+    if (document->contains("general")) return false;
+    start = lines.size();
+    lines.emplace_back("[general]");
+    end = lines.size();
   }
-  if (start == lines.size()) {  // no [general] yet: one at the top
-    lines.insert(lines.begin(), {"[general]", ""});
-    start = 0;
-    end = 2;
-  }
-  setLine(lines, start, end, key, tomlValue);
-  std::string out;
-  for (auto& l : lines) out += l + "\n";
-  return writeFileAtomic(path, out);
+  return setLine(lines, start, end, key, tomlValue) && writeConfig(path, lines);
 }
 
 static bool editBlock(const std::string& path, const std::string& id,
                       const std::vector<std::pair<std::string, std::string>>& kv) {
-  std::string text = readFile(path);
-  if (text.empty()) return false;
-  std::istringstream in(text);
-  std::vector<std::string> lines;
-  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  std::string text;
+  if (!readFileChecked(path, text)) return false;
+  auto lines = configLines(text);
   size_t start = 0, end = 0;
   if (!findBlock(lines, id, start, end)) return false;
-  for (auto& [k, v] : kv) setLine(lines, start, end, k, v);
-  std::string out;
-  for (auto& l : lines) out += l + "\n";
-  return writeFileAtomic(path, out);
+  for (const auto& [key, value] : kv)
+    if (!setLine(lines, start, end, key, value)) return false;
+  return writeConfig(path, lines);
 }
 
 VisualizerConfig VisualizerConfig::fromTable(const toml::table& t) {
@@ -362,13 +395,6 @@ VisualizerConfig VisualizerConfig::fromTable(const toml::table& t) {
   return v;
 }
 
-static std::vector<std::string> fileLines(const std::string& path) {
-  std::istringstream in(readFile(path));
-  std::vector<std::string> lines;
-  for (std::string l; std::getline(in, l);) lines.push_back(l);
-  return lines;
-}
-
 // a block runs from its [[widget]] header up to the next header, minus the
 // blank lines that separate it from that header
 static void trimBlockEnd(const std::vector<std::string>& lines, size_t start, size_t& end) {
@@ -376,7 +402,7 @@ static void trimBlockEnd(const std::vector<std::string>& lines, size_t start, si
 }
 
 std::string Config::blockText(const std::string& path, const std::string& id) {
-  auto lines = fileLines(path);
+  auto lines = configLines(readFile(path));
   size_t start = 0, end = 0;
   if (!findBlock(lines, id, start, end)) return {};
   trimBlockEnd(lines, start, end);
@@ -386,7 +412,7 @@ std::string Config::blockText(const std::string& path, const std::string& id) {
 }
 
 bool Config::removeBlock(const std::string& path, const std::string& id, std::string* removed) {
-  auto lines = fileLines(path);
+  auto lines = configLines(readFile(path));
   size_t start = 0, end = 0;
   if (!findBlock(lines, id, start, end)) return false;
   size_t cut = end;
@@ -405,79 +431,67 @@ bool Config::removeBlock(const std::string& path, const std::string& id, std::st
 }
 
 int Config::uniquifyIds(const std::string& path) {
-  auto lines = fileLines(path);
-  static const std::regex kHeader(R"(^\s*\[)");
-  static const std::regex kWidget(R"(^\s*\[\[\s*widget\s*\]\]\s*(#.*)?$)");
-  static const std::regex kId(R"re(^(\s*id\s*=\s*)"([^"]*)"(.*)$)re");
-  // every id line, in order
-  std::vector<size_t> at;
-  std::vector<std::string> ids;
-  for (size_t i = 0; i < lines.size(); ++i) {
-    if (!std::regex_search(lines[i], kWidget)) continue;
-    for (size_t k = i + 1; k < lines.size() && !std::regex_search(lines[k], kHeader); ++k) {
-      std::smatch m;
-      if (std::regex_match(lines[k], m, kId)) {
-        at.push_back(k);
-        ids.push_back(m[2].str());
-        break;
-      }
-    }
+  const std::string text = readFile(path);
+  const auto document = parseConfig(text);
+  const auto* widgets = document ? (*document)["widget"].as_array() : nullptr;
+  if (!widgets) return 0;
+  std::set<std::string> taken, seen;
+  std::vector<const toml::value<std::string>*> ids;
+  for (const auto& node : *widgets) {
+    const auto* widget = node.as_table();
+    const auto* id = widget ? (*widget)["id"].as_string() : nullptr;
+    if (!id) continue;
+    ids.push_back(id);
+    taken.insert(id->get());
   }
-  int renamed = 0;
-  std::vector<std::string> seen;
-  auto taken = [&](const std::string& id) {
-    return std::find(seen.begin(), seen.end(), id) != seen.end() || std::find(ids.begin(), ids.end(), id) != ids.end();
-  };
-  for (size_t n = 0; n < ids.size(); ++n) {
-    if (std::find(seen.begin(), seen.end(), ids[n]) == seen.end()) {
-      seen.push_back(ids[n]);
-      continue;
-    }
+  std::vector<std::pair<toml::source_region, std::string>> edits;
+  for (const auto* node : ids) {
+    if (seen.insert(node->get()).second) continue;
     std::string id;
-    for (int k = 2;; ++k) {
-      id = ids[n] + "-" + std::to_string(k);
-      if (!taken(id)) break;
+    for (int n = 2;; ++n) {
+      id = node->get() + "-" + std::to_string(n);
+      if (taken.insert(id).second) break;
     }
-    std::smatch m;
-    std::regex_match(lines[at[n]], m, kId);
-    lines[at[n]] = m[1].str() + "\"" + id + "\"" + m[3].str();
-    seen.push_back(id);
-    ++renamed;
+    edits.emplace_back(node->source(), tomlText(toml::value(id)));
   }
-  if (renamed == 0) return 0;
-  std::string out;
-  for (auto& l : lines) out += l + "\n";
-  return writeFileAtomic(path, out) ? renamed : 0;
+  if (edits.empty()) return 0;
+  auto lines = configLines(text);
+  // IDs can be inline or span multiple lines. Apply edits back to front.
+  std::ranges::sort(edits, [](const auto& a, const auto& b) { return b.first.begin < a.first.begin; });
+  for (const auto& [where, value] : edits) replaceValue(lines, where, value);
+  return writeConfig(path, lines) ? static_cast<int>(edits.size()) : 0;
 }
 
-// splits a config into its [[widget]] blocks and the rest; a block runs from
-// its header to the next header, its trailing blank lines left to the rest
-static void splitWidgets(const std::string& text, std::string& rest, std::string& blocks) {
-  static const std::regex kHeader(R"(^\s*\[)");
-  static const std::regex kWidget(R"(^\s*\[\[\s*widget\s*\]\]\s*(#.*)?$)");
-  std::istringstream in(text);
-  std::vector<std::string> lines;
-  for (std::string l; std::getline(in, l);) lines.push_back(l);
-  std::vector<bool> inWidget(lines.size(), false);
-  for (size_t i = 0; i < lines.size(); ++i) {
-    if (!std::regex_search(lines[i], kWidget)) continue;
-    size_t j = i + 1;
-    while (j < lines.size() && !std::regex_search(lines[j], kHeader)) ++j;
-    size_t end = j;
-    trimBlockEnd(lines, i, end);
-    for (size_t k = i; k < end; ++k) inWidget[k] = true;
-    i = j - 1;
+// A saved layout preserves each widget's text, including multiline values.
+static std::vector<std::pair<size_t, size_t>> widgetRanges(const Lines& lines, const std::string& text) {
+  std::vector<std::pair<size_t, size_t>> ranges;
+  const auto document = parseConfig(text);
+  const auto* widgets = document ? (*document)["widget"].as_array() : nullptr;
+  if (!widgets) return ranges;
+  for (const auto& node : *widgets) {
+    const auto* widget = node.as_table();
+    if (!widget || widget->is_inline()) continue;
+    const size_t start = sourceLine(widget->source().begin);
+    size_t end = sectionEnd(lines, *widget);
+    trimBlockEnd(lines, start, end);
+    ranges.emplace_back(start, end);
   }
+  return ranges;
+}
+
+static void splitWidgets(const std::string& text, std::string& rest, std::string& blocks) {
+  const auto lines = configLines(text);
+  const std::span<const std::string> all(lines);
+  size_t previous = 0;
   rest.clear();
   blocks.clear();
-  for (size_t i = 0; i < lines.size(); ++i) {
-    if (!inWidget[i]) {
-      rest += lines[i] + "\n";
-      continue;
-    }
-    if (i > 0 && !inWidget[i - 1] && !blocks.empty()) blocks += "\n";  // one blank line between blocks
-    blocks += lines[i] + "\n";
+  for (const auto& [start, end] : widgetRanges(lines, text)) {
+    rest += configText(all.subspan(previous, start - previous));
+    if (!blocks.empty() && start != previous) blocks += '\n';
+    blocks += configText(all.subspan(start, end - start));
+    previous = end;
   }
+  rest += configText(all.subspan(previous));
 }
 
 std::string Config::widgetBlocks(const std::string& text) {
@@ -487,37 +501,22 @@ std::string Config::widgetBlocks(const std::string& text) {
 }
 
 std::string Config::moveToOutput(const std::string& blocks, const std::string& output) {
-  std::istringstream in(blocks);
-  std::vector<std::string> lines;
-  for (std::string l; std::getline(in, l);) lines.push_back(l);
-  auto header = [&](size_t k) {
-    const auto first = lines[k].find_first_not_of(" \t");
-    return first != std::string::npos && lines[k][first] == '[';
-  };
-  for (size_t start = 0; start < lines.size(); ++start) {
-    if (lines[start].find("[[widget]]") != 0) continue;
-    size_t end = start + 1;
-    while (end < lines.size() && !header(end)) ++end;
-    setLine(lines, start, end, "output", "\"" + output + "\"");
-    start = end - 1;
+  auto lines = configLines(blocks);
+  const auto ranges = widgetRanges(lines, blocks);
+  const auto value = tomlText(toml::value(output));
+  for (auto it = ranges.rbegin(); it != ranges.rend(); ++it) {
+    auto [start, end] = *it;
+    if (!setLine(lines, start, end, "output", value)) return blocks;
   }
-  std::string out;
-  for (auto& l : lines) out += l + "\n";
-  return out;
+  return configText(lines);
 }
 
 std::vector<std::string> Config::splitBlocks(const std::string& blocks) {
-  std::istringstream in(blocks);
-  std::vector<std::string> out;
-  for (std::string l; std::getline(in, l);) {
-    const auto first = l.find_first_not_of(" \t");
-    if (l.find("[[widget]]") == 0) out.emplace_back();
-    else if (first != std::string::npos && l[first] == '[') continue;  // not ours (widgetBlocks has none)
-    if (!out.empty()) out.back() += l + "\n";
-  }
-  for (auto& b : out)
-    while (b.size() > 1 && b.ends_with("\n\n")) b.pop_back();
-  return out;
+  const auto lines = configLines(blocks);
+  std::vector<std::string> result;
+  for (const auto& [start, end] : widgetRanges(lines, blocks))
+    result.push_back(configText(std::span(lines).subspan(start, end - start)));
+  return result;
 }
 
 std::string Config::replaceWidgetBlocks(const std::string& text, const std::string& blocks) {
@@ -640,44 +639,24 @@ int Config::switchProfile(const std::string& path, const std::string& dir, const
 }
 
 std::string Config::retargetBlock(const std::string& block, const std::string& id, int x, int y) {
-  std::istringstream in(block);
-  std::vector<std::string> lines;
-  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  auto lines = configLines(block);
   size_t end = lines.size();
-  setLine(lines, 0, end, "id", "\"" + id + "\"");
-  setLine(lines, 0, end, "x", std::to_string(x));
-  setLine(lines, 0, end, "y", std::to_string(y));
-  std::string out;
-  for (auto& l : lines) out += l + "\n";
-  return out;
+  if (!setLine(lines, 0, end, "id", tomlText(toml::value(id))) ||
+      !setLine(lines, 0, end, "x", std::to_string(x)) ||
+      !setLine(lines, 0, end, "y", std::to_string(y)))
+    return block;
+  return configText(lines);
 }
 
 std::string Config::setBlockKey(const std::string& block, const std::string& key, const std::string& tomlValue) {
-  std::istringstream in(block);
-  std::vector<std::string> lines;
-  for (std::string l; std::getline(in, l);) lines.push_back(l);
+  auto lines = configLines(block);
   size_t end = lines.size();
-  if (!tomlValue.empty()) {
-    setLine(lines, 0, end, key, tomlValue);
-  } else {
-    // taken out: set it to a marker first, so a value over several lines is one line
-    setLine(lines, 0, end, key, "0");
-    const std::regex re("^\\s*" + keyRegex(key) + R"(\s*=)");
-    for (size_t k = 1; k < end; ++k)
-      if (std::regex_search(lines[k], re)) {
-        lines.erase(lines.begin() + static_cast<long>(k));
-        break;
-      }
-  }
-  std::string out;
-  for (auto& l : lines) out += l + "\n";
-  return out;
+  return setLine(lines, 0, end, key, tomlValue) ? configText(lines) : block;
 }
 
 std::string Config::blockId(const std::string& block) {
-  static const std::regex kId(R"re((^|\n)\s*id\s*=\s*"((?:[^"\\]|\\.)*)")re");
-  std::smatch m;
-  return std::regex_search(block, m, kId) ? m[2].str() : std::string();
+  const auto document = parseConfig(block);
+  return document ? (*document)["widget"][0]["id"].value_or(std::string()) : std::string();
 }
 
 bool Config::appendBlock(const std::string& path, const std::string& block) {

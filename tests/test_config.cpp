@@ -189,6 +189,44 @@ int main() {
 
   // an array value (corner pins) is replaced in place, never repeated
   {
+    const std::string original = R"toml([general]
+language = 'es'
+
+[[widget]]
+id = "message"
+type = "text"
+text = """First line
+[a line that looks like a table]
+Última línea""" # keep this
+
+[[widget]]
+id = 'literal'
+type = "clock"
+x = 1
+)toml";
+    CHECK(writeFileAtomic(path, original));
+    CHECK(Config::setKey(path, "message", "text", "\"new text\""));
+    CHECK(readFile(path).find("text = \"new text\" # keep this") != std::string::npos);
+    CHECK(Config::setKey(path, "literal", "x", "75"));
+    CHECK(Config::setGeneral(path, "language", "\"en\""));
+    const auto updated = readFile(path);
+    try {
+      const auto doc = toml::parse(updated);
+      CHECK(doc["widget"][0]["text"].value_or(std::string()) == "new text");
+      CHECK(doc["widget"][1]["x"].value_or(0) == 75);
+      CHECK(doc["general"]["language"].value_or(std::string()) == "en");
+    } catch (const toml::parse_error&) {
+      CHECK(false);
+    }
+    CHECK(!Config::setKey(path, "message", "text", "\"unfinished"));
+    CHECK(readFile(path) == updated);
+    CHECK(Config::blockId(Config::blockText(path, "literal")) == "literal");
+    CHECK(Config::removeBlock(path, "literal"));
+    CHECK(toml::parse(readFile(path))["widget"].as_array()->size() == 1);
+  }
+
+  // an array value (corner pins) is replaced in place, never repeated
+  {
     writeFileAtomic(path, "[[widget]]\nid = \"p\"\npin_corners = true\npin = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]\n");
     CHECK(Config::setKey(path, "p", "pin", "[9.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]"));
     const std::string t2 = readFile(path);
