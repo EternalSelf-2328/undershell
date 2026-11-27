@@ -108,9 +108,9 @@ Building, the tests and how the code is laid out: [docs/DEVELOPMENT.md](docs/DEV
 ## Status
 
 This is a personal project, shared as is. It works day to day on the setup it
-was built on (Umbriel + Noctalia, Arch), though it is still young and not every
-compositor or setup has been tried. It was written with a lot of help from an
-AI assistant (Claude).
+was built on (Umbriel + Noctalia, CachyOS), though it is still young and not
+every compositor or setup has been tried. It was written with a lot of help
+from AI agents.
 
 Because it's a personal project, updates may be infrequent and tend to focus on
 whatever ideas come to mind at the moment. If you run into a bug, have a
