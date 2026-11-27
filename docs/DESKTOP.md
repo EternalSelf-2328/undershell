@@ -4,10 +4,15 @@ Part of [undershell](../README.md)'s documentation.
 
 ## Automatic scenes
 
-Save layouts in the editor's **Profiles** card, then use their IDs (see
-`undershell msg saves`) in rules in `config.toml`. The first matching rule
-wins and all of its conditions must match. A rule can set a profile, a
-still wallpaper, or both. A wallpaper applies inside undershell and returns
+Open **Scenes → Automatic rules → Add rule** in the editor. Choose a
+previously saved profile from the list, a still wallpaper from the file
+chooser, or both. Click a condition to set it, then choose **Save rule**.
+The first matching rule wins and all of its conditions must match. Open
+a rule to change its priority or remove it. Use **Pause rules** to hold
+the base layout until you resume.
+
+You can also add rules to `config.toml` using IDs from `undershell msg saves`.
+A wallpaper applies inside undershell and returns
 to the shell's wallpaper when the rule ends. Automatic profiles are
 temporary, and the editor opens on the base layout.
 

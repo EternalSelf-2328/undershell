@@ -4,23 +4,31 @@ Part of [undershell](../README.md)'s documentation.
 
 ## Native scenes
 
-Use the current layout as a composition of layers. Add a still image, text,
-lights made from shapes or animated widgets, and place them with the regular
-editor. Each ordinary widget has a **Scene animation** section. Choose
+Open **Scenes** in the editor toolbar. In **Composition**, choose **Add
+layer…** to open the widget gallery or select **Animate** on a layer already
+on the current output. The inspector opens directly on its **Scene
+animation** settings. Choose
 **Loop** to move between its starting point and a target, or **Night** to
 apply the target during a range of local hours. Set movement relative to
 the widget's box, brightness and opacity. For a light that turns on at night,
 set the starting opacity to zero and the target to one. **Preview** sets the percentage
 in the editor only. At `-1` the widget follows its regular timing.
 
-Open **Saved profiles** to **Export scene…** or **Import scene…**. Export
+Choose **Export scene…** or **Import scene…** from **Composition**. Export
 creates a folder containing a TOML manifest and referenced local media.
 Import copies the resources to undershell's configuration folder and applies
 the layout as one undo step. Use a scene folder also on another computer.
 Custom effects and Workshop items use that computer's own installed
 resources. Exported notes and data files can contain local information.
 
-From a terminal, use `undershell msg scene-export <parent folder>`,
+Use **Profiles** to save or restore the current layout. Use **Automatic
+rules** to switch profiles or wallpapers by time, workspace, power, media
+playback or a focus session. See [Automatic scenes](DESKTOP.md#automatic-scenes)
+for how priority works. In the Scenes panel, move between controls with
+the arrow keys, IJKL or Tab and activate a control with Enter.
+
+Open the panel from a terminal with `undershell msg card scenes`. Use
+`undershell msg scene-export <parent folder>`,
 `undershell msg scene-import <scene folder>`, and
 `undershell msg scene-bundle-status`.
 
@@ -37,6 +45,7 @@ in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.loca
 |---|---|
 | Toolbar | drag it by its grip (the dots at its start) anywhere; let go near the left or right edge and it stands up as a column there; double-click the grip to give it back its own place: the top, or the bottom while a widget lies under it at the top. Panels and popovers follow it |
 | Select | click or its chip (empty space: deselect) · **Tab** / Shift+Tab · **Shift+click** adds a widget to the selection or takes it out; the selected widgets move together, and their box has corners that scale them all (keeping their proportions) and a knob that turns them all about its centre |
+| Scenes | **Composition** opens animation settings, import and export. **Automatic rules** edits triggers. **Profiles** saves and loads layouts |
 | Layers | the toolbar's **layers** button opens a panel with the screen's widgets front to back. Drag a row up or down to restack it (or **PgUp** / **PgDn**, Shift: to the front / back); the **eye** hides a widget (hidden, it has no surface at all: it costs nothing), the **lock** keeps it from being picked or moved on the desktop (it can still be selected in the panel); double-click a row to name it. A wheel scrolls a long list. Saved in the widget's block as `layer`, `hidden`, `locked` and `name` |
 | Groups | select several widgets and press **Ctrl+G** (or the panel's group button): clicking any of them then picks the whole group, to move, scale, turn, duplicate or delete it as one. **Double-click** one to pick just that member; **Ctrl+Shift+G** ungroups (with a member alone picked, it just leaves the group). In the panel a group folds under its name: its eye and lock act on every member, a row dropped between two members joins the group and one dragged out of it leaves. Saved as `group = "Group 1"` in each member, so groups go along with profiles and saved layouts |
 | Move / resize | drag · **any corner** (the opposite one stays put, turned widgets too) |

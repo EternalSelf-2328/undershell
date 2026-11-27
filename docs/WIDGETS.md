@@ -300,11 +300,14 @@ flickers at 12 fps, and only moving letters draw at 60.
   <img src="media/text.webp" alt="The ten text styles: plain, neon, retro, comic, outline, sticker, chrome, glitch, rainbow and typewriter" width="600">
 </p>
 
-Use `{data}` in the text to show a watched local file. Set **Data file** to
-its path. For JSON, set **JSON pointer** to a scalar such as
-`/transfer/progress`. With an empty pointer, the widget displays the file
-as UTF-8 text. Files up to 16 KiB are read on change, including atomic
-replacement. The widget displays up to 1,024 bytes of text.
+Open **Source → Choose data file…** in the Text inspector. Choose a plain
+text or JSON file. A new Text widget displays the data immediately. To add
+it to text you already wrote, choose **Insert data into text** or put
+`{data}` where you want the value. For JSON, **JSON field** accepts a key
+such as `progress` or a pointer such as `/download/progress`. The widget
+updates when the file changes.
+
+The same setup in TOML follows.
 
 ```toml
 [[widget]]
@@ -317,29 +320,47 @@ data_key = "/transfer/progress"
 
 ## Audio instruments
 
-Add **Audio instruments** from the Music section of the editor or run
-`undershell msg add instrument scope`. **Oscilloscope** draws the left and
-right signals, **Needles** displays the level of each channel, and
-**Spectrogram** keeps about five seconds of frequency history at 30 fps.
-The instruments use desktop playback. Set `plate = false` to fit the
-display into an illustration without its dark backing. In silence the
-oscilloscope settles, the needles return to rest and the history freezes.
+Add **Audio instruments** from the Music section. Use **Oscilloscope** to
+compare the left and right waveforms, **Stereo level meters** to check
+channel balance with a dBFS scale and a held maximum, or **Spectrogram** to
+follow how the frequency content builds over the last 6.4 seconds of
+playback. Turn off **Plate** to place the display directly over wallpaper
+art. In silence the waveforms settle, the meters return to rest and the
+spectrogram holds the last signal.
+
+<p align="center">
+  <img src="media/audio-instruments.webp" alt="Two-channel oscilloscope, stereo level meters, and spectrogram responding to a stereo test signal" width="860">
+</p>
 
 ## Dioramas
 
-Add **Diorama** from Decoration. Choose an **Aquarium**, a **Terrarium** or
-a **Rainy room**. Each fills a small box so it can sit inside the artwork
-of a wallpaper. **Animate** controls movement. The terrarium's lighting
-follows local time. The rainy room uses a configured weather location, or
-simulates rain when there is no location. Give a Pet widget the rainy room's
-ID in **Rain shelter ID** to have it sit there during rain.
+Add **Diorama** from Decoration to place an animated illustration in a quiet
+part of your wallpaper. **Aquarium** shows fish and shifting underwater
+light. **Terrarium** shifts from daylight to fireflies at night. **Rainy
+room** keeps the movement in the window and can shelter a Pet. Set the
+diorama's ID in the pet's **Rain shelter ID**. With a weather location the
+room follows local rain. Otherwise it plays the rain effect continuously.
+Switch off **Animate** for a still illustration.
+
+<p align="center">
+  <img src="media/dioramas.webp" alt="The aquarium, terrarium at night, and rainy window with their photographic artwork at desktop scale" width="860">
+</p>
+
+Undershell's diorama artwork was made with OpenAI image generation. The
+art direction draws on layered planting and open space in Takashi Amano's
+work and the miniature textures in L. Torres's terrarium. Instrument
+markings draw on a physical oscilloscope graticule and a compact audio
+mixer. [Lisbon aquascape](https://www.adana.co.jp/en/lisbon/allabout.html)
+· [Forest in a Bottle](https://l_torres.artstation.com/projects/d8N00W)
+· [Tektronix 465](https://www.tek.com/en/manual/465-instruction-manual)
+· [Teenage Engineering TX-6](https://teenage.engineering/guides/tx-6).
 
 ## Shapes
 
 Geometric shapes to build compositions out of layers (see **Layers** and
 **Groups** under Usage): rectangle, ellipse, triangle, polygon (3–16 sides),
 star (its points and how sharp they are), heart, ring (or an arc of one),
-line, and the Material 3 shapes (cookies, clovers, bursts, flower, sun…).
+line, paint splatter with detached drops, and the Material 3 shapes (cookies, clovers, bursts, flower, sun…).
 Each has a **fill** (a colour, a linear or radial gradient between two, or
 none), an **outline** inside its edge, a **glow** and a soft **shadow**, and
 can **spin** or **pulse** / **glow** with the music's kicks. Every colour can be
@@ -354,8 +375,8 @@ over one in the editor steps through the shapes.
 ## Pictures and stickers
 
 The **image** widget puts a picture on the desktop: a photo, a sticker, a GIF,
-an animated WebP or APNG, or a video, keeping its transparency. **Choose a
-picture…** in the inspector opens the desktop's file chooser (or
+an animated WebP or APNG, or a video, keeping its transparency. **Source → Choose a single
+image…** in the inspector opens the desktop's file chooser (or
 `msg pick-files <id>`, or `file = "~/Pictures/cat.png"`). It is fitted into
 its box (**Fit**: all of it, filling it, or stretched), with rounded corners
 or **cut** to a circle or a Material 3 shape, and as a sticker: an
@@ -364,8 +385,9 @@ it. **Mirror** flips it; an animation has a **speed**; it can **bounce** or
 **pulse** with the music's kicks. Like every widget it can pass behind the
 wallpaper's subject.
 
-Choose **Choose photo folder…** in the inspector for a photo frame. Pictures
-in that folder are shown in filename order at the chosen interval
+Choose **Source → Start a slideshow…** to turn the image widget into a
+rotating frame for a folder of photos. The inspector shows the active folder
+and **Seconds per photo**. Photos advance in filename order at that interval
 (`photo_interval`, 30 seconds by default). The original picture remains the
 fallback for an empty folder. Rotation preserves the widget's perspective,
 cut and depth. In the terminal, `msg pick-files <id> folder` opens the
