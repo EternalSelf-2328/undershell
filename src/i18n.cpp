@@ -34,12 +34,13 @@ bool spanishDates() {
 }
 
 std::string optionLabel(const std::string& value, bool es) {
+  if (value == "splatter") return es ? "Salpicadura de pintura" : "Paint splatter";
   if (value == "loop") return es ? "Ciclo" : "Loop";
   if (value == "aquarium") return es ? "Pecera" : "Aquarium";
   if (value == "terrarium") return es ? "Terrario" : "Terrarium";
   if (value == "rainy_room") return es ? "Cuarto bajo la lluvia" : "Rainy room";
   if (value == "scope") return es ? "Osciloscopio" : "Oscilloscope";
-  if (value == "meters") return es ? "Agujas" : "Needle meters";
+  if (value == "meters") return es ? "Medidores estéreo" : "Stereo level meters";
   if (value == "spectrogram") return es ? "Espectrograma" : "Spectrogram";
   static const std::map<std::string_view, const char*> kEs = {
       {"album", "Álbum"}, {"analog", "Analógico"}, {"auto", "Auto"}, {"badge", "Insignia"}, {"banner", "Banner"},

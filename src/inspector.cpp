@@ -562,10 +562,31 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
     // write on it, or open its file in a text editor
     s.insert(s.begin(), PropSpec{K::Action, "_note", "Write on it", "Escribir en la nota", {"write", "open"}});
   }
+  if (w.cfg.type == "text") {
+    const auto file = w.cfg.options["data_file"].value_or(std::string());
+    PropSpec pick{K::Action, "data_file", file.empty() ? "Choose data file…" : "Change data file…",
+                                          file.empty() ? "Elegir archivo de datos…" : "Cambiar archivo de datos…"};
+    PropSpec name{K::File, "data_file", "Text or JSON · reloads on change", "Texto o JSON · se actualiza al cambiar"};
+    name.def = file.empty() ? -1 : 0;
+    name.defText = file;
+    if (!file.empty()) {
+      const fs::path path = expandHome(file);
+      std::error_code ec;
+      name.labelEn = name.labelEs = path.filename().string();
+      if (!fs::is_regular_file(path, ec)) {
+        name.labelEn += " (unavailable)";
+        name.labelEs += " (no disponible)";
+      }
+    }
+    s.insert(s.begin(), {pick, name});
+    const auto content = w.cfg.options["text"].value_or(std::string("undershell"));
+    if (!file.empty() && content.find("{data}") == std::string::npos)
+      s.insert(s.begin() + 2, PropSpec{K::Action, "_insert_data", "Insert data into text", "Insertar dato en el texto"});
+  }
   if (w.cfg.type == "image") {
     // the picture: a button that opens the desktop's chooser, then its name (× takes it out)
     const std::string file = w.cfg.options["file"].value_or(std::string());
-    PropSpec pick{K::Action, "file", "Choose a picture…", "Elegir imagen…"};
+    PropSpec pick{K::Action, "file", "Choose a single image…", "Elegir una sola imagen…"};
     PropSpec name;
     name.kind = K::File;
     name.key = "file";
@@ -577,14 +598,21 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
     name.labelEs = file.empty() ? "PNG, JPG, GIF, WebP, APNG o un video" : p.filename().string();
     if (!file.empty() && !fs::exists(p, ec)) name.labelEn += "  (missing)", name.labelEs += "  (no existe)";
     const std::string folder = w.cfg.options["photo_folder"].value_or(std::string());
-    PropSpec pickFolder{K::Action, "photo_folder", "Choose photo folder…", "Elegir carpeta de fotos…"};
+    PropSpec pickFolder{K::Action, "photo_folder", folder.empty() ? "Start a slideshow…" : "Change slideshow folder…",
+                                                 folder.empty() ? "Iniciar pase de fotos…" : "Cambiar carpeta del pase…"};
     PropSpec folderName;
     folderName.kind = K::File;
     folderName.key = "photo_folder";
     folderName.def = folder.empty() ? -1 : 0;
     folderName.defText = folder;
-    folderName.labelEn = folder.empty() ? "Rotate local pictures" : folder;
-    folderName.labelEs = folder.empty() ? "Alternar fotos locales" : folder;
+    const fs::path dir = fs::path(expandHome(folder)).lexically_normal();
+    const auto basename = dir.filename().empty() ? dir.parent_path().filename().string() : dir.filename().string();
+    folderName.labelEn = folder.empty() ? "Shows the folder's photos in order" : basename + " · slideshow";
+    folderName.labelEs = folder.empty() ? "Muestra en orden las fotos de una carpeta" : basename + " · pase de fotos";
+    if (!folder.empty() && !fs::is_directory(dir, ec)) {
+      folderName.labelEn = basename + " · folder unavailable";
+      folderName.labelEs = basename + " · carpeta no disponible";
+    }
     s.insert(s.begin(), {pick, name, pickFolder, folderName});
   }
   if (w.cfg.type == "now_playing" && w.cfg.options["layout"].value_or(std::string("sheet")) != "text" &&
@@ -997,17 +1025,18 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
                "interval", "weather_fx", "weather_location", "weeks", "folders", "author", "show_total"}))
       return 3;
     if (k.starts_with("scene_")) return 6;
+    if (in(k, {"file", "photo_folder", "photo_interval", "data_file", "data_key", "_insert_data"})) return 7;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
     if (in(k, {"warp", "tilt_x", "tilt_y", "skew", "perspective", "mesh_preset", "mesh_amount", "mesh_grid", "mesh_between",
                "mesh_reset"}))
       return 5;
     return 0;  // the look and its shape
   };
-  static const char* titles[7][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
+  static const char* titles[8][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
                                      {"Time & data", "Hora y datos"}, {"Placement", "Colocación"},
-                                     {"Shape", "Forma"}, {"Scene animation", "Animación de escena"}};
+                                     {"Shape", "Forma"}, {"Scene animation", "Animación de escena"}, {"Source", "Origen"}};
   std::vector<PropSpec> out;
-  for (int sec = 0; sec < 7; ++sec) {
+  for (const int sec : {7, 0, 1, 2, 3, 4, 5, 6}) {
     std::vector<PropSpec> part;
     for (size_t i = 0; i < split; ++i)
       if (section(rows[i].key) == sec) part.push_back(rows[i]);
@@ -1332,11 +1361,16 @@ void App::reshapeMesh(Widget& w, const std::string& preset, double amount, int g
 // would. The editor steps aside so the dialog gets the keyboard.
 void App::pickFiles(Widget& w, bool folders, const std::string& key) {
   const bool es = spanishUi();
-  const bool one = key == "file" || key == "cover_file" || key == "photo_folder";  // one picture: the image widget's, the music card's cover
+  const bool data = key == "data_file";
+  const bool one = data || key == "file" || key == "cover_file" || key == "photo_folder";  // one picture: the image widget's, the music card's cover
   FilePicker::Request req;
   req.folders = folders;
   req.multiple = !one;
-  if (one) {
+  if (data) {
+    req.title = es ? "Elegir archivo de datos" : "Choose a data file";
+    req.filterName = es ? "Texto y JSON" : "Text and JSON";
+    req.mimes = {"text/plain", "text/csv", "text/markdown", "application/json"};
+  } else if (one) {
     req.title = key == "photo_folder" ? (es ? "Carpeta de fotos" : "Photo folder")
                                     : (es ? "Imagen, sticker, GIF o video" : "Picture, sticker, GIF or video");
     req.filterName = es ? "Imágenes y videos" : "Pictures and videos";
@@ -1347,7 +1381,8 @@ void App::pickFiles(Widget& w, bool folders, const std::string& key) {
     req.mimes = {"video/*", "image/gif", "image/webp", "image/apng"};
   }
   std::vector<const char*> exts = {"gif", "mp4", "webm", "mkv", "mov", "avi", "m4v", "apng", "webp"};
-  if (one) exts.insert(exts.end(), {"png", "jpg", "jpeg", "svg", "avif", "bmp", "tif", "tiff"});
+  if (data) exts = {"txt", "json", "csv", "log", "md"};
+  else if (one) exts.insert(exts.end(), {"png", "jpg", "jpeg", "svg", "avif", "bmp", "tif", "tiff"});
   for (const char* x : exts) {
     std::string up = x;
     for (char& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
@@ -1371,7 +1406,7 @@ void App::pickFiles(Widget& w, bool folders, const std::string& key) {
   m_pickNote.clear();
   setEditorAside(true);
   const std::string id = w.cfg.id;
-  const bool opened = m_picker.open(std::move(req), [this, id, es, key, one](std::vector<std::string> paths, std::string error) {
+  const bool opened = m_picker.open(std::move(req), [this, id, es, key, one, data](std::vector<std::string> paths, std::string error) {
     setEditorAside(false);
     markEditDirty();
     if (!error.empty()) {
@@ -1390,12 +1425,15 @@ void App::pickFiles(Widget& w, bool folders, const std::string& key) {
     };
     m_lastOpKind.clear();
     if (one) {
-      std::string q = "\"";
-      for (char c : tilde(paths.front())) {
-        if (c == '"' || c == '\\') q += '\\';
-        q += c;
+      std::ostringstream value;
+      value << toml::toml_formatter(toml::value(tilde(paths.front())), toml::format_flags::allow_unicode_strings);
+      setProp(*target, key, value.str());
+      if (data) {
+        const auto content = target->cfg.options["text"].value_or(std::string("undershell"));
+        if (content.empty() || content == "undershell") {
+          setProp(*target, "text", "\"{data}\"");
+        }
       }
-      setProp(*target, key, q + "\"");
       return;
     }
     std::vector<std::string> list = pathList(target->cfg.options, key);
@@ -1417,6 +1455,8 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
   if (m_motion && (key == "depth" || key == "depth_level")) return;  // locked under a moving wallpaper
   std::string v = tomlValue;
   if (v.empty() && key == "tv_files") v = "[]";  // a list: empty, not a default
+  if (v.empty() && (key == "file" || key == "cover_file" || key == "photo_folder" || key == "data_file"))
+    v = "\"\"";  // an unset source has no path
   if (v.empty())  // "absent before": restore the schema default
     for (const auto& p : inspectorSchema(w, "*"))
       if (key == p.key)
@@ -1673,7 +1713,7 @@ std::string tipFor(App::UiControl::Type t, bool es) {
     case T::Grid: return es ? "Cuadrícula" : "Grid";
     case T::Help: return es ? "Ajustes y atajos" : "Settings and shortcuts";
     case T::Collapse: return es ? "Minimizar / expandir" : "Fold / unfold";
-    case T::Saves: return es ? "Perfiles guardados" : "Saved profiles";
+    case T::Saves: return es ? "Escenas, reglas y perfiles" : "Scenes, rules and profiles";
     case T::Walls: return es ? "Fondos: tus imágenes y el Workshop de Wallpaper Engine" : "Wallpapers: your pictures and Wallpaper Engine's Workshop";
     case T::Layers: return es ? "Capas: orden, grupos, ocultar y bloquear" : "Layers: order, groups, hide and lock";
     case T::LayerEye: return es ? "Mostrar / ocultar (oculto no gasta nada)" : "Show / hide (hidden costs nothing)";
@@ -1723,7 +1763,7 @@ void App::layoutUi(const EditSurface& e) {
                              {UiControl::Undo, kBtn, ""},   {UiControl::Redo, kBtn, ""},
                              {UiControl::Panel, kSep, "sep"}, {UiControl::Magnet, kBtn, ""},
                              {UiControl::Grid, kBtn, ""},   {UiControl::Panel, kSep, "sep"},
-                             {UiControl::Saves, kBtn, ""},  {UiControl::Walls, kBtn, ""},  {UiControl::Layers, kBtn, ""},
+                             {UiControl::Saves, vertical || W < 560 ? kBtn : 104.0F, ""},  {UiControl::Walls, kBtn, ""},  {UiControl::Layers, kBtn, ""},
                              {UiControl::Paint, kBtn, ""},  {UiControl::Panel, kSep, "sep"}};
   // a chip per widget while they fit on a row (the Layers panel lists them all)
   std::vector<Item> chips;
@@ -1799,8 +1839,12 @@ void App::layoutUi(const EditSurface& e) {
 
   // ── inspector of the selected widget ──
   Widget* w = m_selected;
-  if (w && w->output == e.output && w->impl && !multiSelected()) {  // several picked: the Layers panel
+  if (!m_savesOpen && w && w->output == e.output && w->impl && !multiSelected()) {  // several picked: the Layers panel
     m_inspSchema = inspectorSchema(*w, m_elExpanded);
+    if (m_sceneAnimationInspector) {
+      std::erase_if(m_inspSchema, [](const PropSpec& p) { return !p.key.starts_with("scene_") && p.key != "_sec6"; });
+      m_inspSchema.push_back({PropSpec::Action, "_all_widget_settings", "All widget settings", "Todos los ajustes del widget"});
+    }
     if (!m_pickNote.empty()) {  // why the chooser did not open, under the files
       size_t at = 0;
       for (size_t i = 0; i < m_inspSchema.size(); ++i)
@@ -2129,7 +2173,8 @@ void App::layoutUi(const EditSurface& e) {
       if (k > 0) y += ((k + 1) / 2) * kChipPitch;
     }
   }
-  if (m_savesOpen) {
+  if (m_savesOpen && m_sceneTab != 2) layoutScenes(savesRect);
+  if (m_savesOpen && m_sceneTab == 2) {
     const float saveW = std::min(kSavesW, std::max(1.0F, W - 24));
     const int n = static_cast<int>(m_saves.size());
     // as many rows as the screen has room for
@@ -2145,6 +2190,12 @@ void App::layoutUi(const EditSurface& e) {
       sy = std::clamp(savesRect.y - 8, 12.0F, std::max(12.0F, H - sh - 12));
     }
     m_ui.push_back({UiControl::Panel, {sx, sy, saveW, sh}, -1, "saves"});
+    const float tabW = (saveW - 44) / 3;
+    int tab = 0;
+    for (const char* name : {"composition", "automation", "profiles"}) {
+      m_ui.push_back({UiControl::SceneAction, {sx + 14 + tab * (tabW + 8), sy + 43, tabW, 34}, -1, name});
+      ++tab;
+    }
     m_ui.push_back({UiControl::SaveNew, {sx + 14, sy + kSavesHead, saveW - 28, 38}});
     const float bundleW = (saveW - 36) / 2;
     m_ui.push_back({UiControl::SceneBundle, {sx + 14, sy + kSavesHead + 44, bundleW, 34}, -1, "export"});
@@ -2165,7 +2216,7 @@ void App::layoutUi(const EditSurface& e) {
       m_ui.push_back({UiControl::SaveLoad, {bx, by, 68, 28}, -1, sv.id});
       ry += kSavePitch;
     }
-    addScrollBar("saves", {sx + kSavesW - 9, sy + kSavesHead + 48, 5, shown * kSavePitch - 6}, static_cast<float>(n),
+    addScrollBar("saves", {sx + saveW - 9, sy + kSavesHead + 94, 5, shown * kSavePitch - 6}, static_cast<float>(n),
                  static_cast<float>(kSaveRows), static_cast<float>(m_saveScroll));
   }
   // ── the wallpaper gallery ──
@@ -2730,12 +2781,15 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     case UiControl::Saves:
-      m_savesOpen = !m_savesOpen;
-      m_wallsOpen = false;
-      m_galleryOpen = m_helpOpen = false;
-      if (m_savesOpen) refreshSaves();
-      markEditDirty();
+      if (m_savesOpen) {
+        m_savesOpen = false;
+        m_sceneDraft.reset();
+        m_sceneField.clear();
+        markEditDirty();
+      } else openScenes();
       return true;
+    case UiControl::SceneAction:
+      return sceneAction(c);
     case UiControl::SaveNew: {
       const std::string id = saveLayout("");
       if (!id.empty()) {
@@ -2862,7 +2916,18 @@ bool App::uiPress(int index, double x) {
         pickFiles(*w, c.value == "folder");
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && !m_picker.busy()) {
         const auto& key = m_inspSchema[static_cast<size_t>(c.prop)].key;
-        if (key == "file" || key == "cover_file" || key == "photo_folder") pickFiles(*w, key == "photo_folder", key);
+        if (key == "file" || key == "cover_file" || key == "photo_folder" || key == "data_file") pickFiles(*w, key == "photo_folder", key);
+        else if (key == "_all_widget_settings") {
+          m_sceneAnimationInspector = false;
+          m_inspScroll = 0;
+          markEditDirty();
+        } else if (key == "_insert_data") {
+          const auto current = w->cfg.options["text"].value_or(std::string());
+          std::ostringstream value;
+          value << toml::toml_formatter(toml::value(current.empty() ? "{data}" : current + "\n{data}"),
+                                        toml::format_flags::allow_unicode_strings);
+          setProp(*w, "text", value.str());
+        }
       }
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && m_inspSchema[static_cast<size_t>(c.prop)].key == "_note") {
         if (c.value == "open") {  // in the desktop's text editor; the file is watched
@@ -2898,7 +2963,7 @@ bool App::uiPress(int index, double x) {
     case UiControl::FileRemove:
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size())) {
         const PropSpec p = m_inspSchema[static_cast<size_t>(c.prop)];
-        if (p.key == "file" || p.key == "cover_file" || p.key == "photo_folder") {  // the image widget's picture, the music card's cover
+        if (p.key == "file" || p.key == "cover_file" || p.key == "photo_folder" || p.key == "data_file") {  // the image widget's picture, the music card's cover
           m_lastOpKind.clear();
           setProp(*w, p.key, "\"\"");
           m_pickNote.clear();
@@ -3103,6 +3168,13 @@ bool App::uiScroll(double x, double y, int step) {
     const int before = m_wallsScroll;
     m_wallsScroll = std::max(0, m_wallsScroll + step);  // clamped when laid out
     if (m_wallsScroll != before) markEditDirty();
+    return true;
+  }
+  if (c.value == "scene-panel" || c.type == UiControl::SceneAction) {
+    if (m_sceneTab != 2) {
+      m_sceneScroll = std::max(0, m_sceneScroll + step);
+      markEditDirty();
+    }
     return true;
   }
   if (c.value == "saves" || isSaveControl(c.type)) {
@@ -3576,8 +3648,15 @@ void App::drawUi(EditSurface& e) {
       }
       case UiControl::Magnet:
       case UiControl::Grid:
-      case UiControl::Help:
       case UiControl::Saves:
+        if (c.r.w > c.r.h) {
+          cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, c.r.h / 2, m_savesOpen ? withAlphaC(accent, 0.22F) : (hot ? raised : Color{0, 0, 0, 0}));
+          icon(cv, "scene", c.r.x + 18, cy, m_savesOpen ? accent : ink);
+          cv.text(es ? "Escenas" : "Scenes", strong, c.r.x + 34, cy - 9, ink);
+          break;
+        }
+        [[fallthrough]];
+      case UiControl::Help:
       case UiControl::Walls:
       case UiControl::Layers:
       case UiControl::Paint: {
@@ -3595,7 +3674,7 @@ void App::drawUi(EditSurface& e) {
              c.type == UiControl::Magnet ? "magnet"
              : c.type == UiControl::Grid ? "grid"
              : c.type == UiControl::Help ? "help"
-             : c.type == UiControl::Saves ? "save"
+             : c.type == UiControl::Saves ? "scene"
              : c.type == UiControl::Walls ? "image"
              : c.type == UiControl::Layers ? "layers"
                                           : "brush",
@@ -3690,10 +3769,12 @@ void App::drawUi(EditSurface& e) {
             cv.roundRect(cx, y + 3, cw, 24, 8, typing ? Color{0, 0, 0, 0.35F} : raised, typing ? 1.4F : 1, typing ? accent : line);
             std::string shown;
             for (char ch : typing ? m_fieldText : v) shown += ch == '\n' ? std::string(" \u21b5 ") : std::string(1, ch);
+            const bool jsonHint = !typing && shown.empty() && p.key == "data_key";
+            if (jsonHint) shown = es ? "Ej. estado" : "e.g. status";
             cv.clip(cx + 6, y + 3, cw - 12, 24);
             auto [fw, fh] = measure(shown, label);
             const float off = typing ? std::max(0.0F, fw - (cw - 20)) : 0.0F;
-            cv.text(shown, label, cx + 8 - off, y + 15 - fh / 2, ink);
+            cv.text(shown, label, cx + 8 - off, y + 15 - fh / 2, jsonHint ? dim : ink);
             if (typing) cv.segment(cx + 9 + fw - off, y + 8, cx + 9 + fw - off, y + 22, 1.5F, accent, false);
             cv.clip(P.x, top + 2, P.w, bottom - top - 4);  // back to the inspector's own clip
           } else if (p.kind == PropSpec::Font) {
@@ -3749,7 +3830,7 @@ void App::drawUi(EditSurface& e) {
             // a button across the row, or two side by side
             const int idx = static_cast<int>(&p - &schema[0]);
             const bool fetch = p.key == "_depth_model";
-            const bool waiting = ((p.key == "tv_files" || p.key == "file" || p.key == "photo_folder" || p.key == "cover_file") && m_picker.busy()) ||  // the chooser is open
+            const bool waiting = ((p.key == "tv_files" || p.key == "file" || p.key == "photo_folder" || p.key == "cover_file" || p.key == "data_file") && m_picker.busy()) ||  // the chooser is open
                                  (fetch && (m_depthGen.downloading() || m_depthGen.computing()));
             const size_t n = p.options.size() == 2 ? 2 : 1;
             const float bw = n == 2 ? (kPanelW - 40) / 2 : kPanelW - 32;
@@ -3861,7 +3942,7 @@ void App::drawUi(EditSurface& e) {
     icon(cv, chipIcon(c.value), c.r.x + 28, c.r.y + 31, accent);
     const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 32 estilos" : "Audio spectrum · 32 looks")
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
-                       : c.value == "shape"   ? (es ? "22 formas · degradado · brillo" : "22 shapes · gradient · glow")
+                       : c.value == "shape"   ? (es ? "Salpicadura · degradado · brillo" : "Paint splatter · gradient · glow")
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")
                        : c.value == "text"    ? (es ? "10 estilos · efectos" : "10 styles · effects")
                        : c.value == "lyrics"  ? (es ? "Línea a línea · karaoke" : "Line by line · karaoke")
@@ -3874,6 +3955,8 @@ void App::drawUi(EditSurface& e) {
                        : c.value == "filter"  ? (es ? "Estilos · duotono · viñeta" : "Looks · two-tone · vignette")
                        : c.value == "filter:fx" ? (es ? "Agua · luz · movimiento · retro" : "Water · light · motion · retro")
                        : c.value == "filter:pt" ? (es ? "Nieve · lluvia · pétalos · chispas" : "Snow · rain · petals · sparks")
+                       : c.value == "diorama" ? (es ? "Acuario · terrario · ventana de lluvia" : "Aquarium · terrarium · rainy window")
+                       : c.value == "instrument" ? (es ? "Señal estéreo · nivel · historial" : "Stereo signal · level · history")
                        : c.value == "scene"   ? (es ? "Escenas y videos de Steam" : "Steam scenes and videos")
                                               : (es ? "Portada · letra · controles" : "Cover · lyrics · controls");
     const std::string title = c.value == "filter"      ? (es ? "Filtro de color" : "Colour filter")
@@ -4115,6 +4198,43 @@ void App::drawUi(EditSurface& e) {
   }
   if (m_thumbs && (m_thumbs->upload(6) || thumbsPending)) markEditDirty();  // more thumbnails on the way
 
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "scene-panel") continue;
+    const Rect p = c.r;
+    plateAt(p, 16);
+    icon(cv, "scene", p.x + 28, p.y + 24, accent);
+    const bool editingRule = m_sceneTab == 1 && m_sceneDraft;
+    const auto title = m_scenePickingProfile ? (es ? "Elegir perfil" : "Choose profile") :
+        editingRule ? (es ? "Editar regla" : "Edit rule") : (es ? "Escenas" : "Scenes");
+    cv.text(title, head, p.x + 47, p.y + 13, ink);
+    if (m_scenePickingProfile) continue;
+    if (editingRule) {
+      const auto hint = m_sceneNotice.empty() ? (p.h < 406 ?
+          (es ? "Desplázate para ver todas las condiciones." : "Scroll for all conditions.") :
+          (es ? "Define qué aplicar y en qué condiciones." : "Choose what to apply and when.")) : m_sceneNotice;
+      fitText(hint, label, p.x + 14, p.y + p.h - 66, p.w - 28, m_sceneNotice.empty() ? dim : accent);
+    } else if (m_sceneTab == 0) {
+      std::string status = es ? "Elige una capa para ajustar su movimiento en la escena." : "Choose a layer to adjust its motion in the scene.";
+      if (!m_sceneBundleStatus.empty()) {
+        status = m_sceneBundleStatus;
+        if (es && status.starts_with("error:")) status = "No se pudo completar la operación de escena.";
+        else if (es && status.starts_with("Imported scene: ")) status.replace(0, 15, "Escena importada:");
+        else if (es && status.starts_with("Exported scene: ")) status.replace(0, 15, "Escena exportada:");
+        else if (es && status == "Importing scene…") status = "Importando escena…";
+        else if (es && status == "Exporting scene…") status = "Exportando escena…";
+      }
+      const bool hasLayer = std::ranges::any_of(m_ui, [](const UiControl& item) { return item.type == UiControl::SceneAction && item.value == "layer"; });
+      if (!hasLayer && m_sceneBundleStatus.empty())
+        status = es ? "Añade una capa para empezar a componer." : "Add a layer to start composing.";
+      fitText(status, label, p.x + 14, p.y + p.h - 22, p.w - 28, dim);
+    } else {
+      const auto hint = m_config.sceneRules.empty()
+          ? (es ? "Añade una regla para cambiar de perfil o fondo automáticamente." : "Add a rule to switch profiles or wallpapers automatically.")
+          : (es ? "Se aplica la primera regla que coincida." : "The first matching rule applies.");
+      fitText(hint, label, p.x + 14, p.y + p.h - 22, p.w - 28, dim);
+    }
+  }
+
   // ── saved profiles ──
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::Panel || c.value != "saves") continue;
@@ -4123,27 +4243,16 @@ void App::drawUi(EditSurface& e) {
     cv.roundRect(P.x + 16, P.y + 16, 24, 24, 8, withAlphaC(accent, 0.22F));
     icon(cv, "save", P.x + 28, P.y + 28, accent);
     cv.text(es ? "Perfiles guardados" : "Saved profiles", head, P.x + 50, P.y + 18, ink);
-    const std::string wallPath = profileWallpaper();
-    const std::string wall = wallPath.empty() ? "-" : std::filesystem::path(wallPath).filename().string();
-    cv.text(es ? "Cada fondo ya recuerda su disposición por sí solo (este: " + wall + ")."
-               : "Each wallpaper already remembers its own layout (this one: " + wall + ").",
-            label, P.x + 18, P.y + 50, dim);
-    if (!m_sceneBundleStatus.empty()) {
-      std::string note = m_sceneBundleStatus;
-      if (es) {
-        if (note.starts_with("error:")) note = "No se pudo completar la operación";
-        else if (note.starts_with("Imported scene: ")) note.replace(0, 15, "Escena importada:");
-        else if (note.starts_with("Exported scene: ")) note.replace(0, 15, "Escena exportada:");
-        else if (note == "Importing scene…") note = "Importando escena…";
-        else if (note == "Exporting scene…") note = "Exportando escena…";
-      }
-      fitText(note, label, P.x + 18, P.y + 67, P.w - 36, dim);
-    }
     const int n = static_cast<int>(m_saves.size());
     if (n == 0)
       cv.text(es ? "Aún no hay perfiles. Guarda el primero con el botón de arriba."
                  : "No profiles yet. Save the first one with the button above.",
               label, P.x + 18, P.y + kSavesHead + 110, dim);
+    if (!m_sceneBundleStatus.empty()) {
+      const auto text = es ? (m_sceneBundleStatus.starts_with("error:") ? "No se pudo completar la operación." :
+          m_sceneBundleBusy ? "Preparando la escena…" : "Operación de escena completada.") : m_sceneBundleStatus;
+      fitText(text, label, P.x + 18, P.y + kSavesHead + 78, P.w - 36, dim);
+    }
     if (n > m_saveRows) {
       const std::string more = std::format("{}–{} / {}  ·  {}", m_saveScroll + 1, m_saveScroll + std::min(m_saveRows, n - m_saveScroll), n,
                                            es ? "rueda para ver más" : "scroll for more");
@@ -4153,7 +4262,21 @@ void App::drawUi(EditSurface& e) {
   }
   for (const UiControl& c : m_ui) {
     const bool hot = hovered(c);
-    if (c.type == UiControl::SaveNew) {
+    if (c.type == UiControl::SceneAction) {
+      const bool selected = (c.value == "composition" && m_sceneTab == 0) ||
+                            (c.value == "automation" && m_sceneTab == 1) ||
+                            (c.value == "profiles" && m_sceneTab == 2);
+      const bool primary = c.value == "new" || c.value == "apply" || c.value == "add-layer";
+      const bool disabled = m_sceneDraft && ((c.value == "clear-wallpaper" && m_sceneDraft->wallpaper.empty()) ||
+                            (c.value == "earlier" && m_sceneRule <= 0) ||
+                            (c.value == "later" && m_sceneRule + 1 >= static_cast<int>(m_sceneOriginal.size())));
+      const bool focused = c.value == m_sceneField ||
+                           (m_sceneKeyboard >= 0 && static_cast<size_t>(m_sceneKeyboard) < m_ui.size() && &c == &m_ui[m_sceneKeyboard]);
+      const auto fill = selected || primary ? withAlphaC(accent, hot ? 0.32F : 0.21F) : (hot && !disabled ? withAlphaC(ink, 0.14F) : raised);
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, fill, 1,
+                   focused || selected ? accent : primary ? withAlphaC(accent, 0.55F) : line);
+      fitText(sceneControlText(c), strong, c.r.x + 11, c.r.y + 8, c.r.w - 22, disabled ? dim : ink);
+    } else if (c.type == UiControl::SaveNew) {
       cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 12, hot ? withAlphaC(accent, 0.32F) : withAlphaC(accent, 0.2F), 1,
                    withAlphaC(accent, 0.5F));
       const std::string t = es ? "Guardar lo que hay en pantalla" : "Save what is on screen";
@@ -4223,6 +4346,9 @@ void App::drawUi(EditSurface& e) {
       icon(cv, c.type == UiControl::SaveOverwrite ? "save" : c.type == UiControl::SaveRename ? "pencil" : "trash",
            c.r.x + c.r.w / 2, c.r.y + c.r.h / 2, fg);
     }
+    if (m_sceneTab == 2 && m_sceneKeyboard >= 0 && static_cast<size_t>(m_sceneKeyboard) < m_ui.size() &&
+        &c == &m_ui[m_sceneKeyboard] && isSaveControl(c.type))
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, Color{0, 0, 0, 0}, 1, accent);
     if (hot && !tipFor(c.type, es).empty() && isSaveControl(c.type)) tipCtl = &c;
   }
 

@@ -20,6 +20,7 @@ struct SceneRule {
   // Local minutes since midnight. A range may wrap across midnight.
   int from = 0, until = 1440;
   std::optional<bool> battery, playing, focus;
+  bool operator==(const SceneRule&) const = default;
 };
 
 struct SceneInputs {
@@ -28,6 +29,10 @@ struct SceneInputs {
   const std::vector<WorkspaceState>* workspaces = nullptr;
 };
 
+[[nodiscard]] std::optional<int> sceneMinute(const std::string& time);
+[[nodiscard]] std::string sceneTime(int minute);
+[[nodiscard]] bool storeSceneRules(const std::string& path, const std::vector<SceneRule>& expected,
+                                   const std::vector<SceneRule>& rules, std::string& error);
 [[nodiscard]] std::vector<SceneRule> readSceneRules(const toml::array* rules);
 [[nodiscard]] const SceneRule* matchSceneRule(const std::vector<SceneRule>& rules, const SceneInputs& inputs);
 [[nodiscard]] bool parseWorkspaceEvent(const std::string& line, std::vector<WorkspaceState>& workspaces);

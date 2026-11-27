@@ -158,6 +158,7 @@ struct EditSurface {
 
 class App {
 public:
+  struct UiControl;
   App();
   ~App();
   int run();
@@ -235,6 +236,20 @@ private:
   bool replaceLayout(const std::string& blocks, bool record);
   std::string startSceneBundle(bool importing, const std::string& path);
   void chooseSceneBundle(bool importing);
+  void openScenes(int tab = 0);
+  void layoutScenes(const Rect& anchor);
+  bool sceneAction(const UiControl& control);
+  bool sceneKey(uint32_t key);
+  bool sceneNavigate(uint32_t key, bool backwards);
+  void saveSceneDraft();
+  std::string sceneControlText(const UiControl& control) const;
+  int m_sceneTab = 0, m_sceneRule = -1, m_sceneScroll = 0, m_sceneVisibleRows = 1;
+  int m_sceneKeyboard = -1;
+  std::optional<SceneRule> m_sceneDraft;
+  std::vector<SceneRule> m_sceneOriginal;
+  std::string m_sceneField, m_sceneBuffer, m_sceneNotice;
+  bool m_scenePickingProfile = false;
+  bool m_sceneDelete = false, m_sceneAnimationInspector = false;
   bool m_sceneBundleBusy = false;
   std::string m_sceneBundleStatus;
   std::string savesJson();
@@ -312,7 +327,7 @@ public:
   // inspector + gallery (inspector.cpp)
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
-                Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, SceneBundle, Paint, PaintTool,
+                Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, SceneBundle, SceneAction, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset, PaintTarget, Walls, WallTab, WallItem,
                 ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Perf, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,

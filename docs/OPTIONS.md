@@ -159,7 +159,7 @@ A geometric shape, to build compositions out of layers.
 
 | Key | Values | Default | |
 |---|---|---|---|
-| `shape` | `rect`, `ellipse`, `triangle`, `polygon`, `star`, `heart`, `ring`, `line`, `pill`, `sunny`, `verySunny`, `cookie4Sided`, `cookie6Sided`, `cookie7Sided`, `cookie9Sided`, `cookie12Sided`, `clover4Leaf`, `clover8Leaf`, `burst`, `softBurst`, `flower`, `puffyDiamond` | `"rect"` | Shape |
+| `shape` | `rect`, `ellipse`, `triangle`, `polygon`, `star`, `heart`, `ring`, `line`, `splatter`, `pill`, `sunny`, `verySunny`, `cookie4Sided`, `cookie6Sided`, `cookie7Sided`, `cookie9Sided`, `cookie12Sided`, `clover4Leaf`, `clover8Leaf`, `burst`, `softBurst`, `flower`, `puffyDiamond` | `"rect"` | Shape |
 | `sides` | 3 – 16 | `5` | Sides / points |
 | `sharpness` | 0 – 1 | `0.5` | Sharpness |
 | `corner` | 0 – 1 | `0.15` | Rounding |
@@ -190,7 +190,7 @@ A picture, a sticker, a GIF or a video, with its transparency.
 |---|---|---|---|
 | `file` | path (`~/` allowed) | `""` | PNG, JPG, GIF, WebP, APNG or a video (the inspector's Choose button) |
 | `photo_folder` | path (`~/` allowed) | `""` | rotate photos from this folder in filename order |
-| `photo_interval` | 2 – 3600 | `30` | Photo interval (s) |
+| `photo_interval` | 2 – 3600 | `30` | Seconds per photo |
 | `fit` | `fit`, `fill`, `stretch` | `"fit"` | Fit |
 | `cut` | `none`, `circle`, `cookie12Sided`, `cookie9Sided`, `cookie7Sided`, `cookie6Sided`, `cookie4Sided`, `flower`, `clover8Leaf`, `clover4Leaf`, `softBurst`, `burst`, `sunny`, `verySunny`, `puffyDiamond`, `pentagon`, `pill`, `oval` | `"none"` | Cut to |
 | `corner` | 0 – 1 | `0` | Rounding |
@@ -208,13 +208,12 @@ A picture, a sticker, a GIF or a video, with its transparency.
 
 ## `type = "text"`
 
-Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, `{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer), and `{focus}` the focus countdown. `\n` starts a new line. A `style` sets the keys after `font`; a key the block sets wins over its style. The defaults below are the `plain` style's.
+Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, `{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON key or pointer), and `{focus}` the focus countdown. `\n` starts a new line. A `style` sets the keys after `font`; a key the block sets wins over its style. The defaults below are the `plain` style's.
 
 | Key | Values | Default | |
 |---|---|---|---|
 | `text` | text | `"undershell"` | Text |
-| `data_file` | text | `""` | Data file |
-| `data_key` | text | `""` | JSON pointer |
+| `data_key` | text | `""` | JSON field |
 | `style` | `plain`, `neon`, `retro`, `comic`, `outline`, `sticker`, `chrome`, `glitch`, `rainbow`, `typewriter` | `"plain"` | Style |
 | `font` |  | `"Inter Display"` | Font |
 | `weight` | 100 – 900 | `800` | Weight |
@@ -243,10 +242,11 @@ Words with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song 
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+| `data_file` | path | `""` | local text or JSON, chosen in the inspector |
 
 ## `type = "instrument"`
 
-A stereo oscilloscope, needle meters, or scrolling spectrogram for playback audio.
+A stereo oscilloscope, stereo dBFS meters, or scrolling spectrogram for playback audio.
 
 | Key | Values | Default | |
 |---|---|---|---|

@@ -464,6 +464,7 @@ bool App::modActive(const char* name) const {
 
 // Returns true for keys that auto-repeat while held.
 bool App::keyAction(uint32_t key) {
+  if (m_savesOpen && !m_sceneField.empty()) return sceneKey(key);
   if (!m_renaming.empty()) return textKey(key);
   if (!m_layerRenaming.empty()) return layerKey(key);
   if (!m_fieldKey.empty()) return fieldKey(key);
@@ -517,6 +518,7 @@ bool App::keyAction(uint32_t key) {
   const bool shift = modActive(XKB_MOD_NAME_SHIFT);
   const bool ctrl = modActive(XKB_MOD_NAME_CTRL);
   const bool alt = modActive(XKB_MOD_NAME_ALT);
+  if (m_savesOpen && !ctrl && !alt && sceneNavigate(key, shift)) return false;
   const int step = shift ? std::max(1, m_config.gridSize) : 1;
   xkb_keysym_t sym = m_xkbState ? xkb_state_key_get_one_sym(m_xkbState, key + 8) : XKB_KEY_NoSymbol;
   switch (key) {
@@ -527,6 +529,8 @@ bool App::keyAction(uint32_t key) {
       }
       if (m_helpOpen || m_galleryOpen || m_savesOpen) {
         m_helpOpen = m_galleryOpen = m_savesOpen = false;
+        m_sceneDraft.reset();
+        m_sceneField.clear();
         m_confirmDelete.clear();
         markEditDirty();
         return false;

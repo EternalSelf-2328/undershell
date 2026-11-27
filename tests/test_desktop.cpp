@@ -93,6 +93,41 @@ battery = "true"
   char directory[] = "/tmp/undershell-desktop-XXXXXX";
   if (!mkdtemp(directory)) return 1;
   const fs::path scratch(directory);
+  const auto configFile = (scratch / "rules.toml").string();
+  const auto mixedConfig = R"([general]
+language = "es"
+[[scene_rule]]
+profile = "early"
+from = "18:00"
+[[widget]]
+# Keep the layout and its comment when editing rules.
+id = "unchanged"
+type = "clock"
+[[scene_rule]]
+profile = "later"
+playing = false
+)";
+  CHECK(writeFileAtomic(configFile, mixedConfig));
+  const auto oldTable = toml::parse(mixedConfig);
+  const auto oldRules = readSceneRules(oldTable["scene_rule"].as_array());
+  auto editedRules = oldRules;
+  std::swap(editedRules[0], editedRules[1]);
+  editedRules[0].wallpaper = "/tmp/quoted \"wall\".png";
+  editedRules[0].focus = true;
+  std::string ruleError;
+  CHECK(storeSceneRules(configFile, oldRules, editedRules, ruleError));
+  const auto written = readFile(configFile);
+  CHECK(written.find("[[widget]]\n# Keep the layout and its comment") != std::string::npos);
+  const auto editedTable = toml::parse(written);
+  CHECK(editedTable["widget"][0]["id"].value_or(std::string()) == "unchanged");
+  CHECK(readSceneRules(editedTable["scene_rule"].as_array()) == editedRules);
+  CHECK(!storeSceneRules(configFile, oldRules, {}, ruleError) && ruleError == "changed");
+  CHECK(readFile(configFile) == written);
+  CHECK(storeSceneRules(configFile, editedRules, {}, ruleError));
+  CHECK(!toml::parse_file(configFile)["scene_rule"]);
+  CHECK(writeFileAtomic(configFile, "[[scene_rule]]\nbattery = \"false\"\n"));
+  CHECK(!storeSceneRules(configFile, {}, oldRules, ruleError) && ruleError == "format");
+
   const auto first = (scratch / "01.PNG").string();
   const auto second = (scratch / "02.png").string();
   CHECK(writeFileAtomic(first, "placeholder"));
@@ -168,9 +203,16 @@ file = "assets/../outside"
       playback.audio.bands = &bands;
       playback.audio.silent = false;
       playback.audio.stereo = stereo;
+      auto draw = [&] { return renderDrawn(240, 120, [&] { instrument->draw(surface(240, 120)); }); };
+      const auto idle = draw();
       instrument->tick(playback);
-      const auto image = renderDrawn(240, 120, [&] { instrument->draw(surface(240, 120)); });
-      CHECK(image.rgba.size() == 240 * 120 * 4 && image.rgba[3] > 220);
+      if (std::string_view(style) == "spectrogram") {
+        playback.now += 1;
+        instrument->tick(playback);
+      }
+      const auto image = draw();
+      CHECK(image.rgba.size() == 240 * 120 * 4 && image.rgba[(60 * 240 + 120) * 4 + 3] > 220);
+      CHECK(imageDiff(idle, image) > 0.25);
       CHECK(instrument->usesStereo() == (std::string_view(style) != "spectrogram"));
     }
     std::vector<Image> dioramas;

@@ -139,6 +139,7 @@ core = static_library('undershell-core',
   'src/layermotion.cpp',
   'src/scenebundle.cpp',
   'src/sceneeditor.cpp',
+  'src/scenepanel.cpp',
   'src/depthfield.cpp',
   'src/depthpaint.cpp',
   'src/docgen.cpp',
@@ -243,6 +244,7 @@ if lz4_dep.found()
   executable('undershell-scene', 'src/scenehelper.cpp', dependencies : [lz4_dep], install : true, install_dir : libexecdir)
 endif
 install_subdir('data/fonts', install_dir : datadir)
+install_subdir('data/dioramas', install_dir : datadir)
 # GNOME has no layer-shell: its extension starts undershell and places the widgets
 if get_option('gnome_extension')
   install_subdir('integrations/gnome/undershell@eternalself-2328.github.io',

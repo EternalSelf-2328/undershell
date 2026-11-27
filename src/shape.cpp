@@ -141,6 +141,31 @@ float shapeDist(vec2 p) {
         float t = max(u_thick * h.y, 0.5);
         return sdRoundBox(p, vec2(h.x, t), u_corner * t);
     }
+    if (u_kind == 9) {
+        vec2 z = q / mn + vec2(0.025, -0.048);
+        float a = atan(z.y, z.x);
+        float r = length(z);
+        float edge = 0.43 + 0.060*cos(3.0*a-0.6) + 0.038*sin(7.0*a+1.1) + 0.021*cos(15.0*a);
+        const vec4 jets[6] = vec4[6](
+            vec4(0.91, -0.40, 0.34, 0.082), vec4(0.34, 0.94, 0.31, 0.125),
+            vec4(-0.46, 0.89, 0.35, 0.105), vec4(-0.95, -0.32, 0.26, 0.083),
+            vec4(-0.35, -0.94, 0.36, 0.078), vec4(0.66, 0.75, 0.25, 0.067));
+        float d = r - edge;
+        for (int i = 0; i < 6; ++i) {
+            vec4 jet = jets[i];
+            float along = dot(z, jet.xy);
+            float crosswise = dot(z, vec2(-jet.y, jet.x));
+            vec2 streak = vec2((along - (0.38 + jet.z * 0.48)) / jet.z,
+                               (crosswise + 0.018 * sin(along * 9.0 + float(i))) / jet.w);
+            d = min(d, (length(streak) - 1.0) * jet.w);
+        }
+        d = min(d, length(z - vec2(-0.81, 0.32)) - 0.071);
+        d = min(d, length(z - vec2(0.70, 0.56)) - 0.048);
+        d = min(d, length(z - vec2(0.57, -0.61)) - 0.048);
+        d = min(d, length(z - vec2(-0.15, -0.86)) - 0.045);
+        d = min(d, length(z - vec2(-0.76, -0.53)) - 0.031);
+        return d * mn / scale;
+    }
     return radial(q, mn) / scale;
 }
 
@@ -189,13 +214,13 @@ int kindOf(const std::string& s) {
   static const char* names[] = {"rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line"};
   for (int i = 0; i < 8; ++i)
     if (s == names[i]) return i;
-  return 8;  // a Material shape
+  return s == "splatter" ? 9 : 8;  // 8: a Material shape
 }
 }  // namespace
 
 const std::vector<std::string>& ShapeWidget::shapes() {
   static const std::vector<std::string> all = [] {
-    std::vector<std::string> v = {"rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line"};
+    std::vector<std::string> v = {"rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line", "splatter"};
     for (const auto& n : m3ShapeNames())
       if (n != "circle" && n != "square" && n != "oval" && n != "pentagon") v.push_back(n);  // those are above already
     return v;

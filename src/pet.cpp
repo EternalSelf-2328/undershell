@@ -352,11 +352,12 @@ void PetWidget::stepBy(const TickContext& ctx, double dt, bool kick) {
     return;
   }
   if (ctx.rainShelter.w > 0 && ctx.box.w > 0) {
-    const float ratio = ctx.rainShelter.w / ctx.rainShelter.h / 1.6F;
-    const double shift = std::min(1.0F, ratio) * 0.36 * ctx.rainShelter.h;
-    const double floorY = std::clamp(ctx.rainShelter.y + ctx.rainShelter.h * 0.5 + shift,
+    const float ratio = ctx.rainShelter.w / ctx.rainShelter.h / 1.5F;
+    const double seatY = std::min(0.95, 0.5 + std::max(1.0F, ratio) * 0.355);
+    const double floorY = std::clamp(ctx.rainShelter.y + ctx.rainShelter.h * seatY,
                                      static_cast<double>(ctx.box.h), std::max<double>(ctx.outputH, ctx.box.h));
-    const double center = std::clamp(ctx.rainShelter.x + ctx.rainShelter.w * 0.54, m_minX, m_maxX);
+    const double seatX = std::min(0.88, 0.5 + 0.22 / std::max(0.1F, std::min(1.0F, ratio)));
+    const double center = std::clamp(ctx.rainShelter.x + ctx.rainShelter.w * seatX, m_minX, m_maxX);
     const double ease = std::min(1.0, dt * 2);
     m_x += (center - m_x) * ease;
     m_y += (floorY - m_y) * ease;

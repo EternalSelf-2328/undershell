@@ -7,7 +7,11 @@
 #include "weatherfeed.hpp"
 #include "widget.hpp"
 
+#include <array>
+#include <cairo.h>
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
 #include <ctime>
 
 namespace undershell {
@@ -23,128 +27,156 @@ bool dioramaRain(WeatherService* weather, const std::string& place) {
 
 namespace {
 
+constexpr std::array kArt = {"aquarium.png", "terrarium.png", "rainy_room.png"};
+
+GLuint loadPlate(int mode) {
+  const char* env = std::getenv("UNDERSHELL_DATA_DIR");
+  const std::array roots = {env, US_INSTALL_DATA_DIR,
+#ifdef US_SOURCE_DATA_DIR
+                            US_SOURCE_DATA_DIR,
+#endif
+  };
+  for (const char* root : roots) {
+    if (!root || !*root) continue;
+    const auto path = (std::filesystem::path(root) / "dioramas" / kArt[mode]).string();
+    using Surface = std::unique_ptr<cairo_surface_t, decltype(&cairo_surface_destroy)>;
+    Surface pixels(cairo_image_surface_create_from_png(path.c_str()), cairo_surface_destroy);
+    if (cairo_surface_status(pixels.get()) != CAIRO_STATUS_SUCCESS) continue;
+    const int w = cairo_image_surface_get_width(pixels.get());
+    const int h = cairo_image_surface_get_height(pixels.get());
+    const int stride = cairo_image_surface_get_stride(pixels.get());
+    const auto* src = cairo_image_surface_get_data(pixels.get());
+    std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
+    for (int y = 0; y < h; ++y) {
+      const auto* row = reinterpret_cast<const uint32_t*>(src + y * stride);
+      for (int x = 0; x < w; ++x) {
+        auto* rgbPixel = rgb.data() + (static_cast<size_t>(y) * w + x) * 3;
+        rgbPixel[0] = static_cast<uint8_t>(row[x] >> 16);
+        rgbPixel[1] = static_cast<uint8_t>(row[x] >> 8);
+        rgbPixel[2] = static_cast<uint8_t>(row[x]);
+      }
+    }
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb.data());
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    return tex;
+  }
+  US_WARN("could not load diorama illustration {}", kArt[mode]);
+  return 0;
+}
+
 constexpr const char* kFragment = R"GLSL(#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 fragColor;
-uniform vec2 u_fit;
+uniform sampler2D u_plate;
+uniform vec2 u_fit, u_size;
 uniform vec3 u_tint;
 uniform float u_time, u_day;
 uniform int u_mode, u_rain, u_quality;
-float rounded(vec2 p, vec2 size, float radius) {
-    vec2 d = abs(p) - size + radius;
-    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0)) - radius;
-}
-float mask(float distance) { return 1.0 - smoothstep(-0.005, 0.005, distance); }
+
 float hash(float i) { return fract(sin(i * 15.713 + 7.0) * 1849.13); }
 float ellipse(vec2 p, vec2 size) { return (length(p / size) - 1.0) * min(size.x, size.y); }
-vec3 paint(vec3 below, vec3 ink, float distance) { return mix(below, ink, mask(distance)); }
+float cover(float d) { return 1.0 - smoothstep(-0.004, 0.004, d); }
+
+vec3 sweepFish(vec2 q, vec3 c, float i) {
+    float phase = u_time*(0.31+i*.012) + i*.54;
+    vec2 origin = vec2(.36+sin(phase)*.205, .48+(i-1.5)*.045+sin(phase*1.27+i)*.043);
+    vec2 p = (q-origin)*vec2(1.0, .667);
+    p.x *= cos(phase)>0.0?1.0:-1.0;
+    p.x /= max(.23,abs(cos(phase)));
+    p *= 1.18 + .08 * i;
+    p.y -= .10*p.x;
+    if (abs(p.x)>.047 || abs(p.y)>.014) return c;
+    float fin = ellipse(p+vec2(.028,.003*sin(u_time*5.0+i)), vec2(.012,.006));
+    float body = ellipse(p, vec2(.026,.0068));
+    vec3 tint = mix(vec3(.55,.79,.76), mix(u_tint, vec3(.53,.76,.80), .58), .55);
+    c = mix(c, c*.68+tint*.27, cover(fin)*.90);
+    c = mix(c, mix(tint*.48,tint*1.25, (1.0-smoothstep(-.004,.006,p.y))), cover(body));
+    float band = cover(abs(p.y+.0008)-.00085)*cover(abs(p.x+.003)-.019);
+    c = mix(c, tint*vec3(.45,1.03,1.24), band*.8);
+    c = mix(c, vec3(.035,.075,.08), cover(length(p-vec2(.016,-.001))-.0017));
+    return c;
+}
 
 vec3 aquarium(vec2 q) {
-    vec3 c = mix(vec3(0.024, 0.13, 0.18), vec3(0.12, 0.43, 0.48), 1.0 - q.y);
-    float rays = pow(max(0.0, cos((q.x - 0.34 * q.y) * 16.0 + u_time * 0.18)), 6.0);
-    c += vec3(0.04, 0.10, 0.10) * rays * (1.0 - q.y);
-    float sand = 0.83 + 0.025 * sin(q.x * 11.0) + 0.012 * sin(q.x * 27.0);
-    c = paint(c, vec3(0.62, 0.46, 0.29), sand - q.y);
-    for (int i = 0; i < 6; ++i) {
-        float fi = float(i);
-        float off = q.x - (0.08 + hash(fi) * 0.87);
-        off -= sin(q.y * 23.0 + fi + u_time * 0.7) * (0.86 - q.y) * 0.10;
-        float tip = 0.43 + hash(fi+2.0) * 0.30;
-        float leaf = max(abs(off) - (0.012 + 0.009 * cos(q.y * 15.0)), max(tip-q.y, q.y-0.89));
-        c = paint(c, mix(vec3(0.09, 0.32, 0.19), vec3(0.35, 0.70, 0.40), hash(fi+1.0)), leaf);
-    }
-    for (int i = 0; i < 4; ++i) {
-        float fi = float(i);
-        if (i >= u_quality + 2) break;
-        float phase = u_time * (0.18 + fi * 0.029) + fi * 1.72;
-        vec2 origin = vec2(0.5 + cos(phase) * 0.36, 0.27 + fi * 0.11 + 0.053 * sin(phase * 1.7));
-        vec2 p = q - origin;
-        p.x *= sin(phase) > 0.0 ? -1.0 : 1.0;
-        float body = ellipse(p, vec2(0.056, 0.026));
-        float tail = max(abs(p.y) - clamp((-p.x-0.035) * 0.68, 0.0, 0.035), max(p.x+0.035, -p.x-0.092));
-        vec3 fish = mix(vec3(0.97, 0.58, 0.32), u_tint * 0.85 + 0.12, hash(fi));
-        c = paint(c, fish * 0.72, tail);
-        c = paint(c, fish, body);
-        c = paint(c, vec3(0.03, 0.09, 0.12), length(p-vec2(0.030, -0.006))-0.007);
-    }
-    for (int i = 0; i < 4; ++i) {
-        float k = float(i);
-        vec2 at = vec2(0.82 + sin(k + u_time)*0.015, 0.8 - fract(u_time * 0.13 + k * 0.23) * 0.70);
-        c = paint(c, vec3(0.53, 0.80, 0.82), abs(length((q-at)*vec2(1.1, 0.85)) - 0.012) - 0.0025);
+    float wave = sin(47.0*q.x + 24.0*q.y + u_time*.6) * sin(25.0*q.x-38.0*q.y-u_time*.77);
+    vec2 sway = vec2(.0017 * wave, .0012 * wave) * (1.0 - q.y);
+    vec3 c = texture(u_plate, q+sway).rgb;
+    float sunlight = pow(max(0.0,cos((q.x-.6*q.y)*22.0+u_time*.6)), 8.0) * (1.0-q.y);
+    c += c * vec3(.075,.068,.05) * sunlight;
+    for (int i=0; i<4; ++i) {
+        if (i>=u_quality+2) break;
+        c = sweepFish(q,c,float(i));
     }
     return c;
 }
 
 vec3 terrarium(vec2 q) {
-    vec3 c = mix(mix(vec3(0.033, 0.076, 0.104), vec3(0.24, 0.46, 0.31), u_day),
-                 mix(vec3(0.090, 0.15, 0.18), vec3(0.73, 0.77, 0.48), u_day), 1.0 - q.y);
-    float soil = 0.74 + 0.045 * sin(q.x * 10.0);
-    c = paint(c, vec3(0.24, 0.15, 0.11), soil - q.y);
-    c = paint(c, vec3(0.28, 0.40, 0.16) * (0.55 + u_day * 0.45), abs(soil - q.y) - 0.024);
-    for (int i = 0; i < 8; ++i) {
-        float at = 0.08 + float(i) * 0.118;
-        float h = 0.25 + hash(float(i) + 3.0) * 0.19;
-        vec2 p = q - vec2(at, soil-0.015);
-        float stem = abs(p.x - 0.024*sin(p.y*14.0)) - 0.006;
-        vec3 green = mix(vec3(0.16, 0.34, 0.16), vec3(0.49, 0.67, 0.29), hash(float(i))) * (0.6 + u_day*0.4);
-        c = paint(c, green * 0.68, max(stem, max(p.y, -p.y-h)));
-        for (int j = 1; j < 5; ++j) {
-            float leaf = float(j);
-            vec2 d = p - vec2((j % 2 == 0 ? -1.0 : 1.0)*0.031, -h*leaf/5.0);
-            d.y += (j % 2 == 0 ? -0.36 : 0.36) * d.x;
-            c = paint(c, green, ellipse(d, vec2(0.042 - leaf * 0.004, 0.023 - leaf*0.002)));
-        }
-    }
-    for (int i = 0; i < 4; ++i) {
-        float fi = float(i);
-        vec2 p = q - vec2(0.2+fi*0.2+0.06*sin(u_time*0.31+fi), 0.43+0.10*sin(u_time*0.67+fi));
-        float glow = exp(-length(p)*36.0) * (0.22 + 0.24*sin(u_time*1.7+fi+1.8));
-        c += vec3(0.83, 1.0, 0.38) * glow * (1.0 - 0.9*u_day);
+    vec3 c = texture(u_plate,q).rgb;
+    vec3 midnight = c*vec3(.51,.65,.83) + vec3(.010,.018,.031);
+    c = mix(midnight,c,.19+u_day*.81);
+    float sunbeam = clamp(1.0-abs((q.x+.42*q.y)-(.54+.035*sin(u_time*.24)))*3.9,0.0,1.0);
+    c += c*vec3(.043,.032,.017)*sunbeam*u_day;
+    for (int i=0; i<5; ++i) {
+        if (i>=u_quality+3) break;
+        float seed = float(i);
+        vec2 p = q - vec2(.54 + seed*.079 + .046*sin(u_time*.36+seed*1.9),
+                          .43 + .095*sin(u_time*.49+seed*1.64));
+        p.x *= 1.5;
+        if (abs(p.x)>.048 || abs(p.y)>.048) continue;
+        float glow = exp(-dot(p,p)*3990.0);
+        float strength = pow(max(0.0,sin(u_time*1.1+seed*.96)), 3.0)*(1.0-.97*u_day);
+        c += vec3(.65,.76,.26)*glow*strength*.28;
+        c += vec3(1.0,.94,.61)*exp(-dot(p,p)*62000.0)*strength*.75;
     }
     return c;
 }
 
 vec3 room(vec2 q) {
-    vec3 c = mix(vec3(0.24, 0.13, 0.12), vec3(0.43, 0.27, 0.20), 1.0 - q.y);
-    vec2 window = q - vec2(0.52, 0.36);
-    float pane = rounded(window, vec2(0.30, 0.28), 0.035);
-    vec3 outside = mix(vec3(0.10, 0.18, 0.28), vec3(0.33, 0.49, 0.59), 1.0 - q.y);
-    float skyline = 0.47 + 0.20 * hash(floor(q.x * 35.0));
-    outside = paint(outside, vec3(0.095, 0.16, 0.22), skyline-q.y);
-    if (u_rain > 0) {
-        float col = floor(q.x * 75.0);
-        float phase = fract(q.y * 2.5 - u_time * (0.30 + hash(col) * 0.34) + hash(col+3.0));
-        float drop = (1.0-smoothstep(0.02, 0.18, abs(fract(q.x * 75.0) - 0.5))) * (1.0-smoothstep(0.08, 0.16, phase));
-        outside += vec3(0.14, 0.28, 0.37) * drop;
-    }
-    if (pane < 0.005) c = mix(c, outside, mask(pane));
-    c = paint(c, vec3(0.34, 0.19, 0.15), abs(pane) - 0.013);
-    if (pane < 0.0) c = paint(c, vec3(0.29, 0.16, 0.14), min(abs(window.x)-0.009, abs(window.y)-0.014));
-    c = paint(c, vec3(0.59, 0.34, 0.20), rounded(q - vec2(0.52, 0.66), vec2(0.33, 0.025), 0.014));
-    c = paint(c, vec3(0.21, 0.13, 0.16), 0.76 - q.y);
-    c = paint(c, mix(vec3(0.63, 0.31, 0.19), u_tint, 0.23), ellipse(q-vec2(0.54, 0.85),vec2(0.34, 0.08)));
-    c = paint(c, vec3(1.0, 0.63, 0.30), rounded(q-vec2(0.12,0.64),vec2(0.036,0.047),0.012));
-    return c;
+    vec3 c = texture(u_plate,q).rgb;
+    // Glass bounds in the illustration's normalized coordinates.
+    if (u_rain==0 || q.x<.302 || q.x>.923 || q.y<.11 || q.y>.576) return c;
+    float seed = floor(q.x*109.0);
+    float variable = hash(seed+4.0);
+    float phase = fract(q.y*(2.2+variable)-u_time*(.2+hash(seed)*.33)+hash(seed+6.0));
+    float center = fract(q.x*109.0)-.5 + (hash(seed+8.0)-.5)*.45;
+    float lead = (1.0-smoothstep(.02,.24,abs(center))) * (1.0-smoothstep(.022,.092,phase));
+    float tail = (1.0-smoothstep(.015,.16,abs(center))) * (1.0-smoothstep(.03,.31,phase));
+    float edge = smoothstep(.0,.012,min(q.y-.11,.576-q.y));
+    float wet = (lead*.78+tail*.22)*edge*(.50+.50*variable);
+    vec3 refracted = texture(u_plate, q+vec2(.003, -.003)*sign(center)).rgb;
+    return mix(c, refracted, wet*.7) + (1.0-c)*vec3(.105,.121,.14)*wet;
 }
 
 void main() {
-    vec2 q = (v_uv - 0.5) * u_fit + 0.5;
-    float radius = u_mode == 1 ? 0.18 : 0.08;
-    float rim = rounded(q - 0.5, vec2(0.495), radius);
-    if (rim > 0.008) { fragColor = vec4(0.0); return; }
-    vec3 c = u_mode == 0 ? aquarium(q) : u_mode == 1 ? terrarium(q) : room(q);
-    float shine = (1.0-smoothstep(0.0, 0.07, abs(q.x + 0.32*q.y - 0.28))) * (1.0-q.y);
-    if (u_mode != 2) c = mix(c, vec3(0.73, 0.87, 0.86), shine * 0.14);
-    float edge = mask(abs(rim + 0.011) - 0.007);
-    c = mix(c, vec3(0.59, 0.66, 0.63), edge * 0.47);
-    float a = mask(rim);
-    fragColor = vec4(c * a, a);
+    // A thin, rounded image edge. The illustration remains the whole scene.
+    vec2 p = v_uv*u_size, halfBox = u_size*.5;
+    float radius = min(8.0, min(halfBox.x,halfBox.y)*.075);
+    vec2 d = abs(p-halfBox)-halfBox+radius+.6;
+    float edge = length(max(d,0.0)) + min(max(d.x,d.y),0.0)-radius;
+    float alpha = 1.0-smoothstep(-.55,.55,edge);
+    if (alpha<=0.0) { fragColor = vec4(0.0); return; }
+    vec2 q = (v_uv-.5)*u_fit+.5;
+    vec3 c = u_mode==0 ? aquarium(q) : u_mode==1 ? terrarium(q) : room(q);
+    c = mix(c, c*(.92+.16*u_tint),.25);
+    c = mix(c, vec3(.77,.84,.88), (1.0-smoothstep(.15,1.3,abs(edge+.55)))*.14);
+    fragColor = vec4(clamp(c,0.0,1.0)*alpha,alpha);
 }
 )GLSL";
 
 class DioramaWidget final : public WidgetImpl {
 public:
+  ~DioramaWidget() override { if (m_plate) glDeleteTextures(1, &m_plate); }
+
   void configure(const WidgetConfig& cfg, const NoctaliaState& noct) override {
     const auto name = cfg.options["style"].value_or(std::string("aquarium"));
     m_mode = name == "terrarium" ? 1 : name == "rainy_room" ? 2 : 0;
@@ -171,10 +203,20 @@ public:
 
   void draw(const DrawContext& ctx) override {
     if (!m_program.valid()) m_program.create(kQuadVertexShader, kFragment, "diorama");
+    if (m_plateMode != m_mode) {
+      if (m_plate) glDeleteTextures(1, &m_plate);
+      m_plate = loadPlate(m_mode);
+      m_plateMode = m_mode;
+    }
+    if (!m_plate) return;
     glUseProgram(m_program.id());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_plate);
+    glUniform1i(m_program.uniform("u_plate"), 0);
     const float ratio = ctx.w / std::max(1.0F, ctx.h);
-    const float fitting = ratio / 1.6F;
-    glUniform2f(m_program.uniform("u_fit"), std::max(1.0F, fitting), std::max(1.0F, 1.0F / std::max(0.01F, fitting)));
+    const float fitting = ratio / 1.5F;
+    glUniform2f(m_program.uniform("u_fit"), std::min(1.0F, fitting), std::min(1.0F, 1.0F / std::max(0.01F, fitting)));
+    glUniform2f(m_program.uniform("u_size"), ctx.w, ctx.h);
     glUniform3f(m_program.uniform("u_tint"), m_accent.r, m_accent.g, m_accent.b);
     glUniform1f(m_program.uniform("u_time"), static_cast<float>(m_time));
     glUniform1f(m_program.uniform("u_day"), m_day);
@@ -200,6 +242,8 @@ public:
 private:
   Color m_accent;
   Program m_program;
+  GLuint m_plate = 0;
+  int m_plateMode = -1;
   std::string m_weatherPlace;
   double m_time = 0, m_origin = -1, m_checkDay = 0;
   float m_day = 0.5F;

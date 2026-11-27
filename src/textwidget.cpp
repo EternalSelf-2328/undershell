@@ -240,7 +240,7 @@ void TextWidget::filesChanged() {
     try {
       using Json = nlohmann::json;
       auto parsed = Json::parse(data, nullptr, false);
-      const auto& value = parsed.at(Json::json_pointer(m_cfg.dataKey));
+      const auto& value = m_cfg.dataKey.starts_with('/') ? parsed.at(Json::json_pointer(m_cfg.dataKey)) : parsed.at(m_cfg.dataKey);
       if (!value.is_primitive() || value.is_null()) return;
       data = value.is_string() ? value.get<std::string>() : value.dump();
     } catch (const nlohmann::json::exception&) {

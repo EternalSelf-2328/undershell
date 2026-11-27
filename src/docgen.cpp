@@ -110,11 +110,12 @@ std::string optionsMarkdown() {
     md += rest.substr(rest.find("|---|---|---|---|\n") + 18);
   }
   md += "\n## `type = \"text\"`\n\nWords with effects. In `text`, `{title}`, `{artist}` and `{album}` are the song playing, "
-        "`{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON pointer), and `{focus}` the focus countdown. "
+        "`{time}`, `{date}` and `{day}` the clock; `{data}` the watched local file (`data_key`: optional JSON key or pointer), and `{focus}` the focus countdown. "
         "`\\n` starts a new line. A `style` sets the keys after `font`; a key "
         "the block sets wins over its style. The defaults below are the `plain` style's.\n\n";
   table(md, "text");
-  md += "\n## `type = \"instrument\"`\n\nA stereo oscilloscope, needle meters, or scrolling spectrogram for playback audio.\n\n";
+  md += "| `data_file` | path | `\"\"` | local text or JSON, chosen in the inspector |\n";
+  md += "\n## `type = \"instrument\"`\n\nA stereo oscilloscope, stereo dBFS meters, or scrolling spectrogram for playback audio.\n\n";
   table(md, "instrument");
   md += "\n## `type = \"diorama\"`\n\nAn aquarium, a terrarium that changes with the hour, or a room with a rainy window.\n\n";
   table(md, "diorama");

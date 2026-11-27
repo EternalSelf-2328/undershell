@@ -1586,6 +1586,9 @@ void App::setEditMode(bool on) {
   m_galleryOpen = false;
   m_helpOpen = false;
   m_savesOpen = false;
+  m_sceneDraft.reset();
+  m_sceneField.clear();
+  m_sceneAnimationInspector = false;
   m_fontPickFor.clear();
   closeColorPick();
   m_confirmDelete.clear();
@@ -2044,7 +2047,8 @@ std::string App::handleCommand(const std::string& cmd) {
     for (auto& w : m_widgets)
       if (w->cfg.id == id) {
         if (m_picker.busy()) return "error: a file chooser is already open";
-        if (w->cfg.type == "image") pickFiles(*w, what == "folder", what == "folder" ? "photo_folder" : "file");
+        if (w->cfg.type == "text") pickFiles(*w, false, "data_file");
+        else if (w->cfg.type == "image") pickFiles(*w, what == "folder", what == "folder" ? "photo_folder" : "file");
         else pickFiles(*w, what == "folder");
         return "choosing";
       }
@@ -2131,12 +2135,19 @@ std::string App::handleCommand(const std::string& cmd) {
     applyPickedColor(true);
     return "picked " + toHex(c);
   }
-  if (cmd == "card help" || cmd == "card saves" || cmd == "card paint" || cmd == "card layers") {  // the editor's cards, from a script
+  if (cmd == "card help" || cmd == "card saves" || cmd == "card scenes" || cmd == "card paint" || cmd == "card layers") {  // the editor's cards, from a script
     // ("saves" alone is the saved-layout list the bar plugin reads)
     if (!m_edit) setEditMode(true);
     const std::string card = cmd.substr(5);
     if (card == "help") m_helpOpen = !m_helpOpen;
-    else if (card == "saves") m_savesOpen = !m_savesOpen;
+    else if (card == "saves" || card == "scenes") {
+      const int tab = card == "saves" ? 2 : 0;
+      if (m_savesOpen && m_sceneTab == tab) {
+        m_savesOpen = false;
+        m_sceneDraft.reset();
+        m_sceneField.clear();
+      } else openScenes(tab);
+    }
     else if (card == "layers") m_layersOpen = !m_layersOpen;
     else setPaintMode(!m_paintMode);
     markEditDirty();

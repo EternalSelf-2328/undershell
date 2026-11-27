@@ -109,6 +109,7 @@ bool App::isSelected(const Widget* w) {
 }
 
 void App::selectOnly(Widget* w) {
+  if (w != m_selected) m_sceneAnimationInspector = false;
   if (w != m_selected) {
     m_inspScroll = 0;
     m_pinCorner = -1;
