@@ -88,6 +88,11 @@ void FxWidget::filesChanged() {
   m_fx.refresh();
 }
 
+void FxWidget::fileChanged(const std::string& path) {
+  m_inner->fileChanged(path);
+  m_fx.refresh();
+}
+
 std::vector<Rect> FxWidget::inputRects() const {
   if (m_layerMotion.pose().opacity < 0.01F) return {};
   auto parts = m_inner->inputRects();

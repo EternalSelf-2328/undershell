@@ -12,6 +12,7 @@
 
 #include <filesystem>
 #include <sstream>
+#include <thread>
 #include <unistd.h>
 
 using namespace undershell;
@@ -191,6 +192,45 @@ file = "assets/../outside"
   Headless egl;
   CHECK(egl.ok());
   if (egl.ok()) {
+    {
+      const auto folder = scratch / "slides";
+      fs::create_directory(folder);
+      const auto current = folder / "photo.png";
+      const auto replacement = scratch / "new-photo.png";
+      auto writeColor = [](const fs::path& path, size_t channel) {
+        Image image{.w = 16, .h = 16, .rgba = std::vector<uint8_t>(16 * 16 * 4)};
+        for (size_t i = 0; i < image.rgba.size(); i += 4) {
+          image.rgba[i + channel] = 255;
+          image.rgba[i + 3] = 255;
+        }
+        return writePng(image, path.string(), false);
+      };
+      CHECK(writeColor(current, 0));
+      auto slide = createWidget("image");
+      WidgetConfig config;
+      config.type = "image";
+      config.options = toml::table{{"photo_folder", folder.string()}, {"fit", "stretch"}};
+      slide->configure(config, testPalette());
+      auto shows = [&](size_t channel) {
+        bool matched = false;
+        const double deadline = nowSeconds() + 2;
+        do {
+          slide->tick(tickAt(nowSeconds()));
+          const auto frame = renderDrawn(32, 32, [&] { slide->draw(surface(32, 32)); });
+          const size_t center = (16 * 32 + 16) * 4;
+          matched = frame.rgba.size() == 32 * 32 * 4 && frame.rgba[center + channel] == 255 &&
+                    frame.rgba[center + 3] == 255;
+          if (!matched) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        } while (!matched && nowSeconds() < deadline);
+        return matched;
+      };
+      CHECK(shows(0));
+      CHECK(writeColor(replacement, 2));
+      fs::rename(replacement, current);
+      slide->fileChanged(current.string());
+      CHECK(shows(2));
+    }
+
     for (const auto style : {"scope", "meters", "spectrogram"}) {
       auto instrument = createWidget("instrument");
       WidgetConfig configuration;

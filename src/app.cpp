@@ -551,26 +551,52 @@ void App::syncSourceWatches() {
       m_wdSource.push_back(wd);
 }
 
-// the folders of the files widgets show, watched while some widget shows one
-void App::syncFileWatches() {
-  // A watched widget file can share a directory with the main configuration.
-  // Separate descriptors keep the two subscriptions independent.
-  if (m_widgetInotify < 0) return;
-  std::set<std::string> dirs, have;
-  for (auto& w : m_widgets)
+namespace {
+fs::path watchedPath(const std::string& name) {
+  if (name.empty()) return {};
+  std::error_code ec;
+  return fs::absolute(name, ec);
+}
+}  // namespace
+
+// Separate widget watches from config watches, which may use the same paths.
+void App::syncFileWatches(bool reattach) {
+  if (m_inotify < 0) return;  // run() hasn't set up file monitoring
+  std::set<fs::path> dirs;
+  for (const auto& w : m_widgets)
     if (w->impl && !w->cfg.hidden)
-      for (const auto& f : w->impl->watchedFiles())
-        if (!f.empty()) dirs.insert(fs::path(f).parent_path().string());
-  for (const auto& [wd, d] : m_wdFiles) have.insert(d);
-  if (dirs == have) return;
-  for (const auto& [wd, d] : m_wdFiles) inotify_rm_watch(m_widgetInotify, wd);
-  m_wdFiles.clear();
-  for (const auto& d : dirs) {
-    std::error_code ec;
-    fs::create_directories(d, ec);  // a note's folder, before its first save
-    if (const int wd = inotify_add_watch(m_widgetInotify, d.c_str(), IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE); wd >= 0)
-      m_wdFiles[wd] = d;
+      for (const auto& name : w->impl->watchedFiles())
+        if (const auto path = watchedPath(name); !path.empty()) dirs.insert(path.parent_path());
+  if (!reattach && dirs == m_fileDirs) return;
+
+  // A fresh fd prevents queued events on a retired watch from being mistaken
+  // for events on a new watch with the same descriptor.
+  const int fd = dirs.empty() ? -1 : inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+  if (!dirs.empty() && fd < 0) return;
+  std::map<int, WidgetFileWatch> watches;
+  constexpr uint32_t topology = IN_CREATE | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE;
+  constexpr uint32_t flags = IN_ONLYDIR | IN_MASK_ADD;
+  for (const auto& dir : dirs) {
+    if (!m_fileDirs.contains(dir)) {
+      std::error_code ec;
+      fs::create_directories(dir, ec);  // prepare a newly configured notes or effects directory
+    }
+    // Watch each ancestor's relevant entry. Reappearing directories can be
+    // attached immediately, including when several levels were missing.
+    std::vector<fs::path> children;
+    for (auto child = dir; child.has_relative_path(); child = child.parent_path()) children.push_back(child);
+    for (auto child = children.rbegin(); child != children.rend(); ++child) {
+      const auto parent = child->parent_path();
+      if (const int wd = inotify_add_watch(fd, parent.c_str(), flags | topology); wd >= 0)
+        watches[wd].children[child->filename().string()].insert(dir);
+    }
+    if (const int wd = inotify_add_watch(fd, dir.c_str(), flags | topology | IN_CLOSE_WRITE | IN_MOVE_SELF | IN_DELETE_SELF); wd >= 0)
+      watches[wd].directories.insert(dir);
   }
+  if (m_widgetInotify >= 0) close(m_widgetInotify);
+  m_widgetInotify = fd;
+  m_wdFiles = std::move(watches);
+  m_fileDirs = std::move(dirs);
 }
 
 bool App::followsCover(const Widget& w) { return w.cfg.options["colors_from"].value_or(std::string("theme")) == "cover"; }
@@ -791,8 +817,10 @@ void App::syncWidgets() {
                              w->cfg.meshed != wc.meshed || w->cfg.meshN != wc.meshN || w->cfg.meshSmooth != wc.meshSmooth ||
                              !std::equal(std::begin(wc.mesh), std::end(wc.mesh), std::begin(w->cfg.mesh)) ||
                              !std::equal(std::begin(wc.pin), std::end(wc.pin), std::begin(w->cfg.pin));
+    const bool unhidden = w->cfg.hidden && !wc.hidden;
     w->cfg = wc;
     w->impl->configure(w->cfg, paletteFor(*w));
+    if (unhidden && !w->impl->watchedFiles().empty()) w->impl->filesChanged();
     w->needsRender = true;
     // a look that switches between boxed and fullscreen (frame) needs a new
     // surface; compare against how the surface was made, not the previous
@@ -2355,36 +2383,85 @@ std::string App::handleCommand(const std::string& cmd) {
 
 // ── file watching ───────────────────────────────────────────────────────────
 
-void App::handleInotify(int fd) {
-  const bool widgetFiles = fd == m_widgetInotify;
+void App::handleInotify() {
   alignas(inotify_event) char buf[8192];
   for (;;) {
-    ssize_t n = read(fd, buf, sizeof(buf));
+    const ssize_t n = read(m_inotify, buf, sizeof(buf));
     if (n <= 0) break;
-    for (char* p = buf; p < buf + n;) {
-      auto* ev = reinterpret_cast<inotify_event*>(p);
-      std::string name = ev->len ? ev->name : "";
-      if (!widgetFiles) {
-        const double now = nowSeconds();
-        if (ev->wd == m_wdConfig && name == fs::path(m_configPath).filename().string()) m_reloadConfigAt = now + 0.15;
-        if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
-        if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
-        if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
-        if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
-      } else if (auto f = m_wdFiles.find(ev->wd); f != m_wdFiles.end() && !name.empty()) {
-        const std::string path = (fs::path(f->second) / name).string();
-        const std::string folder = f->second.ends_with('/') ? f->second : f->second + '/';
-        for (auto& w : m_widgets) {
-          if (!w->impl) continue;
-          const auto files = w->impl->watchedFiles();
-          if (std::ranges::find(files, path) == files.end() && std::ranges::find(files, folder) == files.end()) continue;
-          w->impl->filesChanged();
-          w->needsRender = true;
-          w->drewEmpty = false;
-        }
-      }
+    for (const char* p = buf; p < buf + n;) {
+      const auto* ev = reinterpret_cast<const inotify_event*>(p);
+      const std::string name = ev->len ? ev->name : "";
+      const double now = nowSeconds();
+      if (ev->wd == m_wdConfig && name == fs::path(m_configPath).filename().string()) m_reloadConfigAt = now + 0.15;
+      if (ev->wd == m_wdNoctState && name == "settings.toml") m_refreshNoctAt = now + 0.5;
+      if (ev->wd == m_wdNoctConfig && name.ends_with(".toml")) m_refreshNoctAt = now + 0.5;
+      if (ev->wd == m_wdPlasma && Plasma::watches(name)) m_refreshNoctAt = now + 0.5;
+      if (std::ranges::find(m_wdSource, ev->wd) != m_wdSource.end()) m_refreshNoctAt = now + 0.3;
       p += sizeof(inotify_event) + ev->len;
     }
+  }
+}
+
+void App::handleWidgetInotify() {
+  std::set<fs::path> reattach;
+  std::map<fs::path, std::set<std::string>> changed;
+  alignas(inotify_event) char buf[8192];
+  for (;;) {
+    const ssize_t n = read(m_widgetInotify, buf, sizeof(buf));
+    if (n <= 0) break;
+    for (const char* p = buf; p < buf + n;) {
+      const auto* ev = reinterpret_cast<const inotify_event*>(p);
+      p += sizeof(inotify_event) + ev->len;
+      if (ev->mask & IN_Q_OVERFLOW) {
+        reattach.insert(m_fileDirs.begin(), m_fileDirs.end());
+        continue;
+      }
+      const auto found = m_wdFiles.find(ev->wd);
+      if (found == m_wdFiles.end()) continue;
+      const auto& [directories, children] = found->second;
+      if (ev->mask & (IN_IGNORED | IN_MOVE_SELF | IN_DELETE_SELF)) {
+        reattach.insert(directories.begin(), directories.end());
+        for (const auto& [name, affected] : children) reattach.insert(affected.begin(), affected.end());
+      } else if (ev->len && *ev->name) {
+        const std::string name = ev->name;
+        for (const auto& dir : directories) changed[dir].insert(name);
+        if (ev->mask & (IN_CREATE | IN_MOVED_TO | IN_MOVED_FROM | IN_DELETE))
+          if (const auto child = children.find(name); child != children.end())
+            reattach.insert(child->second.begin(), child->second.end());
+      }
+    }
+  }
+
+  if (!reattach.empty()) syncFileWatches(true);
+  if (changed.empty() && reattach.empty()) return;
+  for (auto& w : m_widgets) {
+    if (!w->impl || w->cfg.hidden) continue;
+    bool refresh = false;
+    std::set<fs::path> paths;
+    for (const auto& name : w->impl->watchedFiles()) {
+      const auto path = watchedPath(name);
+      if (path.empty()) continue;
+      const auto dir = path.parent_path();
+      if (reattach.contains(dir)) {
+        refresh = true;
+        break;
+      }
+      const auto entries = changed.find(dir);
+      if (entries == changed.end()) continue;
+      if (path.filename().empty()) {
+        for (const auto& entry : entries->second) paths.insert(dir / entry);
+      } else if (entries->second.contains(path.filename().string())) {
+        paths.insert(path);
+      }
+    }
+    if (refresh) w->impl->filesChanged();
+    else if (!paths.empty()) {
+      for (const auto& path : paths) w->impl->fileChanged(path.string());
+    } else {
+      continue;
+    }
+    w->needsRender = true;
+    w->drewEmpty = false;
   }
 }
 
@@ -2497,7 +2574,6 @@ int App::run() {
   m_media.start();
 
   m_inotify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-  m_widgetInotify = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
   const uint32_t mask = IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE;
   m_wdConfig = inotify_add_watch(m_inotify, fs::path(m_configPath).parent_path().c_str(), mask);
   m_wdNoctState = inotify_add_watch(m_inotify, fs::path(Noctalia::settingsPath()).parent_path().c_str(), mask);
@@ -2559,8 +2635,8 @@ int App::run() {
       for (auto& w : m_widgets)
         if (w->impl && w->impl->wantsWindows()) w->needsRender = true;
     }
-    if (r > 0 && (fds[2].revents & POLLIN)) handleInotify(m_inotify);
-    if (r > 0 && (fds[11].revents & POLLIN)) handleInotify(m_widgetInotify);
+    if (r > 0 && (fds[2].revents & POLLIN)) handleInotify();
+    if (r > 0 && (fds[11].revents & POLLIN)) handleWidgetInotify();
     if (r > 0 && (fds[3].revents & POLLIN)) m_ipc.dispatch();
     if (r > 0 && (fds[4].revents & POLLIN)) m_media.dispatch();
     if (r > 0 && (fds[5].revents & POLLIN)) {

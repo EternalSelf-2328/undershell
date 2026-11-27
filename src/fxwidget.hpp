@@ -47,6 +47,7 @@ public:
   bool command(const std::string& verb, const std::string& arg) override { return m_inner->command(verb, arg); }
   [[nodiscard]] std::vector<std::string> watchedFiles() const override;
   void filesChanged() override;
+  void fileChanged(const std::string& path) override;
   [[nodiscard]] std::string editableText() const override { return m_inner->editableText(); }
   void setEditing(const std::string* text, size_t caret) override { m_inner->setEditing(text, caret); }
   void saveEditedText(const std::string& text) override { m_inner->saveEditedText(text); }

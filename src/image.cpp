@@ -164,7 +164,7 @@ void ImageWidget::configure(const ImageConfig& cfg, const NoctaliaState& noct) {
     m_folder = folder;
     filesChanged();
   }
-  if (m_folder.empty()) setPicture(expandHome(cfg.file));
+  if (m_photos.empty()) setPicture(expandHome(cfg.file));
   if (intervalChanged) m_nextPhoto = -1;
   m_outlineC = noct.color(cfg.outlineColor, Color{1, 1, 1, 1});
   m_radii.clear();
@@ -178,12 +178,12 @@ void ImageWidget::configure(const ImageConfig& cfg, const NoctaliaState& noct) {
   }
 }
 
-void ImageWidget::setPicture(std::string path) {
+void ImageWidget::setPicture(std::string path, bool reload) {
+  if (!reload && path == m_picture) return;
   m_picture = std::move(path);
-  if (m_picture == m_openPath || !m_src) return;
+  if (!m_src) return;
   if (eglGetCurrentContext() != EGL_NO_CONTEXT) m_src->releaseGl();
   m_src.reset();
-  m_openPath.clear();
 }
 
 std::vector<std::string> ImageWidget::watchedFiles() const {
@@ -191,7 +191,9 @@ std::vector<std::string> ImageWidget::watchedFiles() const {
   return {m_folder.ends_with('/') ? m_folder : m_folder + '/'};
 }
 
-void ImageWidget::filesChanged() {
+void ImageWidget::filesChanged() { fileChanged({}); }
+
+void ImageWidget::fileChanged(const std::string& path) {
   namespace fs = std::filesystem;
   m_photos.clear();
   if (!m_folder.empty()) {
@@ -206,8 +208,11 @@ void ImageWidget::filesChanged() {
     }
     std::ranges::sort(m_photos);
     if (!std::binary_search(m_photos.begin(), m_photos.end(), m_picture)) {
-      setPicture(m_photos.empty() ? expandHome(m_cfg.file) : m_photos.front());
+      const auto picture = m_photos.empty() ? expandHome(m_cfg.file) : m_photos.front();
+      setPicture(picture, path.empty() || path == picture);
       m_nextPhoto = -1;
+    } else if (path.empty() || path == m_picture) {
+      setPicture(m_picture, true);
     }
   }
 }
@@ -264,7 +269,6 @@ void ImageWidget::draw(const DrawContext& ctx) {
     if (m_src && eglGetCurrentContext() != EGL_NO_CONTEXT) m_src->releaseGl();
     m_src = std::make_unique<VideoSource>();
     m_src->open(path, devW, devH, true);
-    m_openPath = path;
     m_src->advance(0, m_cfg.speed);
   }
   if (!m_src->texture() || m_src->width() <= 0) return;  // still loading

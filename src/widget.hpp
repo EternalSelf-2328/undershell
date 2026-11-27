@@ -146,11 +146,11 @@ public:
     return false;
   }
 
-  // Files the widget shows: the App watches their folders and calls
-  // filesChanged() when one of them is written (no polling). A path ending
-  // in '/' is a folder: any file written in it counts.
+  // A path ending in '/' watches the folder's entries. The App reports
+  // individual file changes and calls filesChanged() when reattaching a watch.
   [[nodiscard]] virtual std::vector<std::string> watchedFiles() const { return {}; }
   virtual void filesChanged() {}
+  virtual void fileChanged(const std::string&) { filesChanged(); }
 
   // Text typed straight on the widget in the editor (a note): what to start
   // from, the draft being typed with its caret (a byte offset; nullptr when

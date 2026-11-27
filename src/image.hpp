@@ -49,13 +49,14 @@ public:
   [[nodiscard]] double nextWakeup(double now) const override;
   [[nodiscard]] std::vector<std::string> watchedFiles() const override;
   void filesChanged() override;
+  void fileChanged(const std::string& path) override;
   [[nodiscard]] bool usesAudio() const override { return m_cfg.react != "none"; }
   [[nodiscard]] Color accent() const override { return m_outlineC.a > 0 && m_cfg.outline > 0 ? m_outlineC : Color::fromHex("#7fc8ff"); }
   // why nothing shows ("" when it does, or while it loads)
   [[nodiscard]] std::string error() const { return m_src ? m_src->error() : std::string(); }
 
 private:
-  void setPicture(std::string path);
+  void setPicture(std::string path, bool reload = false);
 
   ImageConfig m_cfg;
   std::string m_folder, m_picture;
@@ -64,7 +65,6 @@ private:
   Color m_outlineC;
   std::vector<float> m_radii;  // the cut shape's outline (64 angles)
   std::unique_ptr<VideoSource> m_src;
-  std::string m_openPath;
   Program m_prog;
   Program m_hint;
   double m_lastNow = -1, m_beat = 0;

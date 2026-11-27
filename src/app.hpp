@@ -418,7 +418,7 @@ private:
   // the program that draws the wallpaper now, as wallset.hpp names it
   [[nodiscard]] std::string wallpaperSetter() const;
   std::string setWallpaper(const std::string& args);
-  void handleInotify(int fd);
+  void handleInotify();
   std::string handleCommand(const std::string& cmd);
   std::vector<std::string> outputNames() const;
 
@@ -504,7 +504,12 @@ private:
   IpcServer m_ipc;
   int m_inotify = -1, m_widgetInotify = -1;
   int m_wdConfig = -1, m_wdNoctState = -1, m_wdNoctConfig = -1, m_wdPlasma = -1;
-  std::map<int, std::string> m_wdFiles;  // folders of files widgets show (WidgetImpl::watchedFiles)
+  struct WidgetFileWatch {
+    std::set<std::filesystem::path> directories;
+    std::map<std::string, std::set<std::filesystem::path>> children;
+  };
+  std::set<std::filesystem::path> m_fileDirs;
+  std::map<int, WidgetFileWatch> m_wdFiles;
   double m_reloadConfigAt = 0, m_refreshNoctAt = 0, m_refreshDepthAt = 0, m_noctRetryAt = 0;
   double m_depthTick = 0;  // redraws the editor's download progress
   double m_sourcePollAt = 0;  // asks a shell or wallpaper tool again (polls())
@@ -664,7 +669,8 @@ private:
   void deleteSelection();
   void duplicateSelection();
   void commitLayerRename();
-  void syncFileWatches();
+  void syncFileWatches(bool reattach = false);
+  void handleWidgetInotify();
   // typing on a widget (a note): its id, the draft and the caret (bytes)
   std::string m_noteFor, m_noteText;
   size_t m_noteCaret = 0;
