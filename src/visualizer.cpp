@@ -121,7 +121,8 @@ void Visualizer::configureHalo(const WidgetConfig& cfg, const NoctaliaState& noc
     BoltRandom r(7);
     for (size_t i = 0; i < kFilaments; ++i) {
       m_filAngle[i] = static_cast<double>(i) * 2.39996 + r.range(-0.3F, 0.3F);
-      m_filSpeed[i] = (r.next() < 0.5F ? -1 : 1) * r.range(0.25F, 0.8F);
+      const double direction = r.next() < 0.5F ? -1.0 : 1.0;
+      m_filSpeed[i] = direction * r.range(0.25F, 0.8F);
       m_filSeed[i] = 101 + static_cast<uint32_t>(i) * 7919;
     }
     for (size_t k = 0; k < m_arcSeed.size(); ++k) m_arcSeed[k] = 3 + static_cast<uint32_t>(k) * 104729;

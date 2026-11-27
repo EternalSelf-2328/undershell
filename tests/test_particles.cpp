@@ -53,6 +53,12 @@ int main() {
   }
   CHECK(lib.find("sparks") && lib.find("sparks")->additive && lib.find("sparks")->react > 0);
 
+  // A TOML nan uses the option's default and still lets the system emit.
+  ParticleField normal, nonFinite;
+  normal.configure(toml::parse("pt_snow = true\n"), testPalette());
+  nonFinite.configure(toml::parse("pt_snow = true\npt_snow_amount = nan\n"), testPalette());
+  CHECK(normal.count() > 0 && nonFinite.count() == normal.count());
+
   // what the format refuses
   CHECK(!parseParticles("x", "{ nope").error.empty());
   CHECK(!parseParticles("x", R"({"sprite": "cube"})").error.empty());

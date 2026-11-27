@@ -342,8 +342,9 @@ ParticleSystem::ParticleSystem(const ParticleDef& def, const ParticleSettings& s
 }
 
 size_t ParticleSystem::wantedCap() const {
-  const double n = m_def.max * m_set.amount * perfKnobs().particles;
-  return std::clamp<size_t>(static_cast<size_t>(std::ceil(n)), 1, kMaxCap);
+  const double n = static_cast<double>(m_def.max) * m_set.amount * perfKnobs().particles;
+  if (std::isnan(n)) return 1;
+  return static_cast<size_t>(std::ceil(std::clamp(n, 1.0, static_cast<double>(kMaxCap))));
 }
 
 void ParticleSystem::resize(size_t cap) {
@@ -700,7 +701,7 @@ void ParticleField::configure(const toml::table& opts, const NoctaliaState& noct
     auto num = [&](const char* opt, double def, double lo, double hi) {
       double v = def;
       if (auto x = opts[particleKey(d.id, opt)].value<double>()) v = *x;
-      return static_cast<float>(std::clamp(v, lo, hi));
+      return static_cast<float>(std::clamp(std::isnan(v) ? def : v, lo, hi));
     };
     ParticleSettings s;
     s.amount = num("amount", 1, 0.1, 3);

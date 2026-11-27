@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  meson:
+    name: Build and test (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      LP_NUM_THREADS: '2'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install build and EGL test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            meson ninja-build pkg-config libwayland-dev wayland-protocols \
+            libegl-dev libgles-dev libegl-mesa0 libgl1-mesa-dri libpipewire-0.3-dev \
+            libtomlplusplus-dev libglib2.0-dev libcairo2-dev libpango1.0-dev \
+            libsqlite3-dev libfontconfig-dev libxkbcommon-dev libsystemd-dev \
+            libgdk-pixbuf-2.0-dev libcurl4-openssl-dev nlohmann-json3-dev \
+            libavformat-dev libavcodec-dev libswscale-dev libavutil-dev liblz4-dev
+      - name: Compile
+        run: |
+          meson setup build -Dvideo=enabled -Devolution=enabled -Dscenes=enabled
+          meson compile -C build -j 2
+      - name: Run tests with headless EGL
+        run: |
+          meson test -C build --no-rebuild --print-errorlogs --num-processes 2 --timeout-multiplier 3
+          jq -e -s 'length > 0 and all(.[]; .result == "OK")' build/meson-logs/testlog.json

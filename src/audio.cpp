@@ -456,7 +456,8 @@ void Audio::processFrame() {
   for (size_t i = 0; i < n; ++i) {
     float v = m_bands[i];
     if (v < m_prev[i] && nr > 0.1F) {
-      v = static_cast<float>(m_peak[i] * (1.0 - m_fall[i] * m_fall[i] * gravityMod));
+      const double fall = m_fall[i];
+      v = static_cast<float>(m_peak[i] * (1.0 - fall * fall * gravityMod));
       v = std::max(v, 0.0F);
       m_fall[i] += 0.04F;
     } else {

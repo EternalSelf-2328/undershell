@@ -59,8 +59,8 @@ double PerfGovernor::upCost(PerfLevel level) {
   if (level == PerfLevel::Ultra) return 1;
   const PerfKnobs &a = knobsFor(level), &b = knobsFor(step(level, +1));
   const double fa = a.fpsCap > 0 ? a.fpsCap : 60, fb = b.fpsCap > 0 ? b.fpsCap : 60;
-  const double px = (b.renderScale / a.renderScale) * (b.renderScale / a.renderScale);
-  return std::max(1.0, fb / fa * px);
+  const double scale = static_cast<double>(b.renderScale) / a.renderScale;
+  return std::max(1.0, fb / fa * (scale * scale));
 }
 
 void PerfGovernor::reset(PerfLevel start, PerfLevel floor, PerfLevel ceiling) {
