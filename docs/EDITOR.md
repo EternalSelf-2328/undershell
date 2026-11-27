@@ -2,6 +2,30 @@
 
 Part of [undershell](../README.md)'s documentation.
 
+## Native scenes
+
+Use the current layout as a composition of layers. Add a still image, text,
+lights made from shapes or animated widgets, and place them with the regular
+editor. Each ordinary widget has a **Scene animation** section. Choose
+**Loop** to move between its starting point and a target, or **Night** to
+apply the target during a range of local hours. Set movement relative to
+the widget's box, brightness and opacity. For a light that turns on at night,
+set the starting opacity to zero and the target to one. **Preview** sets the percentage
+in the editor only. At `-1` the widget follows its regular timing.
+
+Open **Saved profiles** to **Export scene…** or **Import scene…**. Export
+creates a folder containing a TOML manifest and referenced local media.
+Import copies the resources to undershell's configuration folder and applies
+the layout as one undo step. Use a scene folder also on another computer.
+Custom effects and Workshop items use that computer's own installed
+resources. Exported notes and data files can contain local information.
+
+From a terminal, use `undershell msg scene-export <parent folder>`,
+`undershell msg scene-import <scene folder>`, and
+`undershell msg scene-bundle-status`.
+
+## Controls
+
 **Editor** (`msg edit`, e.g. bound to `"Mod+Ctrl+D" = "spawn:/home/USER/.local/bin/undershell msg edit"`
 in Umbriel; use the absolute path, since Umbriel's PATH doesn't include `~/.local/bin`):
 

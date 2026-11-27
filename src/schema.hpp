@@ -68,6 +68,24 @@ inline std::string visualizerGrowValue(const std::string& look, std::string valu
   return value;
 }
 
+inline const std::vector<PropSpec>& layerMotionProperties() {
+  using K = PropSpec::Kind;
+  static const std::vector<PropSpec> properties = {
+      {K::Enum, "scene_motion", "Animate layer", "Animar capa", {"none", "loop", "night"}, 0, 0, 0, 0, "none"},
+      {K::Number, "scene_period", "Loop (s)", "Ciclo (s)", {}, 1, 3600, 1, 12},
+      {K::Number, "scene_from", "Start hour", "Hora de inicio", {}, 0, 23.75, 0.25, 18},
+      {K::Number, "scene_until", "End hour", "Hora de fin", {}, 0, 23.75, 0.25, 6},
+      {K::Number, "scene_fade", "Fade (min)", "Fundido (min)", {}, 0, 180, 1, 12},
+      {K::Number, "scene_x", "Move X (%)", "Mover X (%)", {}, -80, 80, 1, 0},
+      {K::Number, "scene_y", "Move Y (%)", "Mover Y (%)", {}, -80, 80, 1, 0},
+      {K::Number, "scene_brightness", "Target brightness", "Brillo final", {}, 0, 2, 0.05, 1},
+      {K::Number, "scene_start_opacity", "Start opacity", "Opacidad inicial", {}, 0, 1, 0.05, 1},
+      {K::Number, "scene_opacity", "Target opacity", "Opacidad final", {}, 0, 1, 0.05, 1},
+      {K::Number, "scene_preview", "Preview (%)", "Vista previa (%)", {}, -1, 100, 1, -1, "", true},
+  };
+  return properties;
+}
+
 inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   using K = PropSpec::Kind;
   static const std::vector<PropSpec> visualizer = {

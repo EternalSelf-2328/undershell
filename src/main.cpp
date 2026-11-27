@@ -22,7 +22,10 @@ int main(int argc, char** argv) {
                 "       undershell --doc | --version | --snapshot DIR\n"
                 "       undershell msg <command>       edit | edit-on | edit-off | demo | reset | reload | status | quit\n"
                 "                                         set <id|all> <key> <value>   e.g. set all style orb\n"
-                "                                         add <visualizer|clock|now_playing> [look] · remove <id>\n"
+                "                                         add <widget> [look] · remove <id>\n"
+                "                                         focus start|pause|resume|stop|status\n"
+                "                                         scene-rules pause|resume|status\n"
+                "                                         scene-export <folder> · scene-import <folder> · scene-bundle-status\n"
                 "config: ~/.config/undershell/config.toml (applies live)");
       return 0;
     }

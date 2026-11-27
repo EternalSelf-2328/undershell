@@ -27,7 +27,7 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | Key | Values | Default | |
 |---|---|---|---|
 | `id` | text | type name | unique name (used by `msg set/select/remove`) |
-| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `system`, `activity`, `pet`, `scene`, `filter` | `"visualizer"` | |
+| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `instrument`, `diorama`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `system`, `activity`, `pet`, `scene`, `filter` | `"visualizer"` | |
 | `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |
 | `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |
 | `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, `height` and `pin` are in it. On a screen of another size or scale the widget follows the wallpaper (its fill mode), not the screen. Written by the editor; a block without it is given the size of the screen it first appears on |
@@ -38,6 +38,22 @@ also be changed from the editor's inspector (`undershell msg edit`).
 | `hidden` | `true` / `false` | `false` | not shown at all: no surface, nothing drawn (the eye in the Layers panel) |
 | `locked` | `true` / `false` | `false` | cannot be picked or moved on the desktop; still selectable in the Layers panel |
 | `depth` | `true` / `false` | `true` | pass behind what stands in front in the wallpaper (its depth plane: `depth_level`) |
+
+## Scene layer animation
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `scene_motion` | `none`, `loop`, `night` | `"none"` | Animate layer |
+| `scene_period` | 1 – 3600 | `12` | Loop (s) |
+| `scene_from` | 0 – 23.75 | `18` | Start hour |
+| `scene_until` | 0 – 23.75 | `6` | End hour |
+| `scene_fade` | 0 – 180 | `12` | Fade (min) |
+| `scene_x` | -80 – 80 | `0` | Move X (%) |
+| `scene_y` | -80 – 80 | `0` | Move Y (%) |
+| `scene_brightness` | 0 – 2 | `1` | Target brightness |
+| `scene_start_opacity` | 0 – 1 | `1` | Start opacity |
+| `scene_opacity` | 0 – 1 | `1` | Target opacity |
+| `scene_preview` | -1 – 100 | `-1` | Preview (%) |
 
 ## `type = "visualizer"`
 

@@ -232,7 +232,11 @@ private:
   bool loadSave(const std::string& id, const std::string& output = {});
   // the monitor a widget block shows on (its own if present, else the first)
   [[nodiscard]] std::string blockOutput(const std::string& block) const;
-  void replaceLayout(const std::string& blocks, bool record);
+  bool replaceLayout(const std::string& blocks, bool record);
+  std::string startSceneBundle(bool importing, const std::string& path);
+  void chooseSceneBundle(bool importing);
+  bool m_sceneBundleBusy = false;
+  std::string m_sceneBundleStatus;
   std::string savesJson();
   bool textKey(uint32_t key);  // typing a save's name
   bool fontKey(uint32_t key);  // typing in the font picker's search
@@ -308,7 +312,7 @@ public:
   // inspector + gallery (inspector.cpp)
   struct UiControl {
     enum Type { Prev, Next, Slider, Toggle, Swatch, Duplicate, Delete, Plus, GalleryItem, Panel, Undo, Redo, Magnet, Grid, Help,
-                Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, Paint, PaintTool,
+                Done, Chip, Saves, SaveNew, SaveLoad, SaveOverwrite, SaveRename, SaveDelete, SaveRow, SceneBundle, Paint, PaintTool,
                 PaintSize, PaintSmart, PaintUndo, PaintClear, PaintSelect, PaintZoomIn, PaintZoomOut, PaintZoomReset, PaintTarget, Walls, WallTab, WallItem,
                 ElemExpand, ElemShow, ElemUp, ElemDown, FontPick, FontItem, FontClose, TextField, ScrollBar, PanelGrab, Language, Perf, Collapse, Action, FileRemove,
                 ColorMore, ColorClose, ColorSV, ColorHue, ColorHex, ColorDrop, ColorPreset, Layers, LayerRow, LayerEye,

@@ -125,6 +125,16 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
   const toml::table& o = c.options;
   const bool frameLook = c.type == "visualizer" && o["style"].value_or(std::string()) == "frame";
   const std::string mode = c.meshed ? "mesh" : c.pinned ? "pin" : o["warp"].value_or(std::string(warped(c) ? "tilt" : "none"));
+  if (key.starts_with("scene_")) {
+    if (c.type == "filter" || c.type == "scene" || c.type == "pet" ||
+        (c.type == "visualizer" && o["style"].value_or(std::string()) == "frame"))
+      return false;
+    const auto mode = o["scene_motion"].value_or(std::string("none"));
+    if (key == "scene_motion") return true;
+    if (key == "scene_period") return mode == "loop";
+    if (key == "scene_from" || key == "scene_until" || key == "scene_fade") return mode == "night";
+    return mode != "none";
+  }
   if (key == "warp") return !frameLook;  // a frame owns the whole screen
   if (key == "layer") return false;      // the Layers panel orders the widgets
   if (key == "rotation" && handPlaced(c)) return false;  // the points decide the shape
@@ -544,6 +554,7 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
       if (slot && rig) p.defText = toHex(*slot);
     }
   }
+  for (const PropSpec& p : layerMotionProperties()) all.push_back(p);
   for (const auto& p : all)
     if (expanded == "*" || optionApplies(w.cfg, p.key)) s.push_back(p);
   const std::string look = w.cfg.type == "visualizer" ? w.cfg.options["style"].value_or(std::string()) : std::string();
@@ -985,17 +996,18 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
                "week_numbers", "show_cpu", "show_ram", "show_gpu", "show_temp", "show_net", "show_disk", "show_battery", "disk_path",
                "interval", "weather_fx", "weather_location", "weeks", "folders", "author", "show_total"}))
       return 3;
+    if (k.starts_with("scene_")) return 6;
     if (in(k, {"opacity", "rotation", "depth", "depth_level", "layer"})) return 4;
     if (in(k, {"warp", "tilt_x", "tilt_y", "skew", "perspective", "mesh_preset", "mesh_amount", "mesh_grid", "mesh_between",
                "mesh_reset"}))
       return 5;
     return 0;  // the look and its shape
   };
-  static const char* titles[6][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
+  static const char* titles[7][2] = {{"Look", "Estilo"}, {"Colour", "Color"}, {"Music", "Música"},
                                      {"Time & data", "Hora y datos"}, {"Placement", "Colocación"},
-                                     {"Shape", "Forma"}};
+                                     {"Shape", "Forma"}, {"Scene animation", "Animación de escena"}};
   std::vector<PropSpec> out;
-  for (int sec = 0; sec < 6; ++sec) {
+  for (int sec = 0; sec < 7; ++sec) {
     std::vector<PropSpec> part;
     for (size_t i = 0; i < split; ++i)
       if (section(rows[i].key) == sec) part.push_back(rows[i]);
@@ -1589,7 +1601,7 @@ void App::applyProp(Widget& w, const std::string& key, const std::string& tomlVa
 namespace {
 constexpr float kBarY = 50, kBarH = 46, kBtn = 34, kGap = 6, kSep = 14, kChipH = 30;
 // the Profiles (saved layouts) panel
-constexpr float kSavesW = 540, kSavesHead = 92, kSaveRowH = 70, kSavePitch = 76;
+constexpr float kSavesW = 540, kSavesHead = 86, kSaveRowH = 70, kSavePitch = 76;
 constexpr int kSaveRowsMax = 5;
 // the depth brush panel
 constexpr float kPaintW = 300, kPaintH = 530;
@@ -1611,7 +1623,7 @@ bool isLayerControl(App::UiControl::Type t) {
 bool isSaveControl(App::UiControl::Type t) {
   using T = App::UiControl::Type;
   return t == T::SaveNew || t == T::SaveLoad || t == T::SaveOverwrite || t == T::SaveRename || t == T::SaveDelete ||
-         t == T::SaveRow;
+         t == T::SaveRow || t == T::SceneBundle;
 }
 
 // the gallery, by kind: what each title gathers. "filter:fx" and "filter:pt"
@@ -2118,25 +2130,29 @@ void App::layoutUi(const EditSurface& e) {
     }
   }
   if (m_savesOpen) {
+    const float saveW = std::min(kSavesW, std::max(1.0F, W - 24));
     const int n = static_cast<int>(m_saves.size());
     // as many rows as the screen has room for
-    m_saveRows = std::clamp(static_cast<int>((m_areaBottom - m_areaTop - kSavesHead - 48 - 28) / kSavePitch), 1, kSaveRowsMax);
+    m_saveRows = std::clamp(static_cast<int>((m_areaBottom - m_areaTop - kSavesHead - 94 - 28) / kSavePitch), 1, kSaveRowsMax);
     const int kSaveRows = m_saveRows;
     m_saveScroll = std::clamp(m_saveScroll, 0, std::max(0, n - kSaveRows));
     const int shown = std::min(kSaveRows, n - m_saveScroll);
-    const float sh = kSavesHead + 48 + (n == 0 ? 56 : shown * kSavePitch) + 10 + (n > kSaveRows ? 18 : 0);
-    float sx = std::clamp(savesRect.x + savesRect.w / 2 - kSavesW / 2, 12.0F, W - kSavesW - 12);
+    const float sh = kSavesHead + 94 + (n == 0 ? 56 : shown * kSavePitch) + 10 + (n > kSaveRows ? 18 : 0);
+    float sx = std::clamp(savesRect.x + savesRect.w / 2 - saveW / 2, 12.0F, W - saveW - 12);
     float sy = barBelow ? m_barY - 10 - sh : m_barY + kBarH + 10;
     if (vertical) {
-      sx = side < 0 ? m_barRect.x + m_barRect.w + 10 : m_barRect.x - 10 - kSavesW;
+      sx = side < 0 ? m_barRect.x + m_barRect.w + 10 : m_barRect.x - 10 - saveW;
       sy = std::clamp(savesRect.y - 8, 12.0F, std::max(12.0F, H - sh - 12));
     }
-    m_ui.push_back({UiControl::Panel, {sx, sy, kSavesW, sh}, -1, "saves"});
-    m_ui.push_back({UiControl::SaveNew, {sx + 14, sy + kSavesHead, kSavesW - 28, 38}});
-    float ry = sy + kSavesHead + 48;
+    m_ui.push_back({UiControl::Panel, {sx, sy, saveW, sh}, -1, "saves"});
+    m_ui.push_back({UiControl::SaveNew, {sx + 14, sy + kSavesHead, saveW - 28, 38}});
+    const float bundleW = (saveW - 36) / 2;
+    m_ui.push_back({UiControl::SceneBundle, {sx + 14, sy + kSavesHead + 44, bundleW, 34}, -1, "export"});
+    m_ui.push_back({UiControl::SceneBundle, {sx + 22 + bundleW, sy + kSavesHead + 44, bundleW, 34}, -1, "import"});
+    float ry = sy + kSavesHead + 94;
     for (int k = 0; k < shown; ++k) {
       const SavedLayout& sv = m_saves[static_cast<size_t>(m_saveScroll + k)];
-      const Rect row{sx + 14, ry, kSavesW - 28, kSaveRowH};
+      const Rect row{sx + 14, ry, saveW - 28, kSaveRowH};
       m_ui.push_back({UiControl::SaveRow, row, -1, sv.id});
       float bx = row.x + row.w - 10 - 28;
       const float by = row.y + (row.h - 28) / 2;
@@ -2730,6 +2746,9 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     }
+    case UiControl::SceneBundle:
+      chooseSceneBundle(c.value == "import");
+      return true;
     case UiControl::SaveLoad:  // onto the monitor it is loaded from
       loadSave(c.value, m_uiOutput ? m_uiOutput->name : std::string());
       return true;
@@ -4109,14 +4128,22 @@ void App::drawUi(EditSurface& e) {
     cv.text(es ? "Cada fondo ya recuerda su disposición por sí solo (este: " + wall + ")."
                : "Each wallpaper already remembers its own layout (this one: " + wall + ").",
             label, P.x + 18, P.y + 50, dim);
-    cv.text(es ? "Aquí guardas copias con nombre, para volver a ellas cuando quieras."
-               : "Here you keep named copies to come back to whenever you like.",
-            label, P.x + 18, P.y + 68, dim);
+    if (!m_sceneBundleStatus.empty()) {
+      std::string note = m_sceneBundleStatus;
+      if (es) {
+        if (note.starts_with("error:")) note = "No se pudo completar la operación";
+        else if (note.starts_with("Imported scene: ")) note.replace(0, 15, "Escena importada:");
+        else if (note.starts_with("Exported scene: ")) note.replace(0, 15, "Escena exportada:");
+        else if (note == "Importing scene…") note = "Importando escena…";
+        else if (note == "Exporting scene…") note = "Exportando escena…";
+      }
+      fitText(note, label, P.x + 18, P.y + 67, P.w - 36, dim);
+    }
     const int n = static_cast<int>(m_saves.size());
     if (n == 0)
       cv.text(es ? "Aún no hay perfiles. Guarda el primero con el botón de arriba."
                  : "No profiles yet. Save the first one with the button above.",
-              label, P.x + 18, P.y + kSavesHead + 64, dim);
+              label, P.x + 18, P.y + kSavesHead + 110, dim);
     if (n > m_saveRows) {
       const std::string more = std::format("{}–{} / {}  ·  {}", m_saveScroll + 1, m_saveScroll + std::min(m_saveRows, n - m_saveScroll), n,
                                            es ? "rueda para ver más" : "scroll for more");
@@ -4134,6 +4161,13 @@ void App::drawUi(EditSurface& e) {
       const float gx = c.r.x + (c.r.w - tw - 24) / 2;
       icon(cv, "plus", gx + 7, c.r.y + c.r.h / 2, accent);
       cv.text(t, strong, gx + 24, c.r.y + (c.r.h - th) / 2, ink);
+    } else if (c.type == UiControl::SceneBundle) {
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 9, hot && !m_sceneBundleBusy ? withAlphaC(ink, 0.12F) : raised, 1, line);
+      const bool importing = c.value == "import";
+      const std::string title = importing ? (es ? "Importar escena…" : "Import scene…")
+                                          : (es ? "Exportar escena…" : "Export scene…");
+      const auto [tw, th] = measure(title, label);
+      cv.text(title, label, c.r.x + (c.r.w - tw) * 0.5F, c.r.y + (c.r.h - th) * 0.5F, m_sceneBundleBusy ? dim : ink);
     } else if (c.type == UiControl::SaveRow) {
       const SavedLayout* sv = nullptr;
       for (const auto& s2 : m_saves)

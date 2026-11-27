@@ -15,7 +15,8 @@ refinement, the brush), `docs` (`docs/OPTIONS.md` is up to date), `editor`
 (magnet, limits, grid), `media` (LRC, album color, position), `motion`
 (Ryoku's easing) and `render` (the looks against the images in
 `tests/golden/`, every shader, glow edges, and text with the bundled fonts,
-via headless EGL). The golden images pin the exact pixels of the machine they
+via headless EGL), and `desktop` (focus timer, automatic rules, stereo capture,
+dioramas, scene animation, scene bundles, and local data). The golden images pin the exact pixels of the machine they
 were made on; another GPU, Mesa or Pango version draws slightly differently,
 so there a mismatch is only reported. `UNDERSHELL_GOLDEN=strict meson test -C build`
 makes it fail (for development); if you change a look on purpose:
@@ -28,7 +29,10 @@ makes it fail (for development); if you change a look on purpose:
 | `src/app.*` | Wayland, EGL, loop, surfaces, IPC (`msg …`) |
 | `src/anchor.hpp` | layouts that follow the wallpaper across screen sizes |
 | `src/i18n.*` | interface language (system, English, Spanish) |
-| `src/saves.cpp`, `src/profiles.cpp` | saved profiles; a layout per wallpaper |
+| `src/saves.cpp`, `src/profiles.cpp` | saved profiles and layouts per wallpaper |
+| `src/desktoprules.*`, `src/sceneautomation.cpp` | automatic scene conditions and temporary layouts |
+| `src/layermotion.*`, `src/scenebundle.*`, `src/sceneeditor.cpp` | layer animation and portable scene folders |
+| `src/focus.*`, `src/instrument.cpp`, `src/diorama.*` | focus sessions, audio instruments, and dioramas |
 | `src/geom.hpp` | rotation, perspective and corner pins (homographies) |
 | `src/editor.cpp`, `snap.hpp` | the editor: selection, magnet, keyboard, undo/redo, labels |
 | `src/inspector.cpp`, `schema.hpp` | inspector (options per type) and widget gallery |

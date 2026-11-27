@@ -1363,6 +1363,7 @@ void App::render(Widget& w) {
   tctx.weather = &m_weather;
   tctx.userAway = m_userAway;
   tctx.focus = m_focusText;
+  tctx.editing = m_edit;
   for (const auto& o : m_widgets)  // the place the weather widget names
     if (o->cfg.type == "weather")
       if (auto p = o->cfg.options["location"].value<std::string>(); p && !p->empty()) {
@@ -1571,6 +1572,8 @@ void App::setEditMode(bool on) {
   m_edit = on;
   if (on && m_ruleActive) updateDesktopRules(nowSeconds());
   m_ruleCheckAt = 0;
+  for (auto& widget : m_widgets)
+    if (widget->cfg.options["scene_preview"].value_or(-1.0) >= 0) widget->needsRender = true;
   m_drag = Drag::None;
   m_groupMove = false;
   commitLayerRename();
@@ -1916,6 +1919,9 @@ std::string App::setWallpaper(const std::string& args) {
 
 std::string App::handleCommand(const std::string& cmd) {
   if (cmd == "ping") return "pong";
+  if (cmd == "scene-bundle-status") return m_sceneBundleStatus.empty() ? "idle" : m_sceneBundleStatus;
+  if (cmd.starts_with("scene-import ") || cmd.starts_with("scene-export "))
+    return startSceneBundle(cmd.starts_with("scene-import "), cmd.substr(13));
   if (cmd == "scene-rules" || cmd.starts_with("scene-rules "))
     return sceneRulesCommand(cmd.size() > 12 ? cmd.substr(12) : std::string());
   if (cmd == "focus" || cmd.starts_with("focus ")) return focusCommand(cmd.size() > 6 ? cmd.substr(6) : std::string());

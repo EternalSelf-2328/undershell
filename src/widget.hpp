@@ -60,6 +60,7 @@ struct TickContext {
   // compositor's idle notice), false again with the first input
   bool userAway = false;
   std::string_view focus{};
+  bool editing = false;
   Rect rainShelter{};  // optional home on the same output for a roaming pet  // active focus countdown, empty outside a session
 };
 

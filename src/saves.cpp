@@ -55,9 +55,17 @@ bool App::overwriteSave(const std::string& id) {
 }
 
 // replaces the widgets on screen with `blocks`, as one undo step
-void App::replaceLayout(const std::string& blocks, bool record) {
+bool App::replaceLayout(const std::string& blocks, bool record) {
   std::string text;
-  if (!readFileChecked(m_configPath, text)) return;
+  if (!readFileChecked(m_configPath, text)) return false;
+  const std::string layout = Config::replaceWidgetBlocks(text, blocks);
+  try {
+    (void)toml::parse(layout);
+  } catch (const toml::parse_error& error) {
+    US_WARN("layout: {}", error.description());
+    return false;
+  }
+  if (!writeFileAtomic(m_configPath, layout)) return false;
   if (record) {
     EditOp op;
     op.kind = "layout";
@@ -66,7 +74,6 @@ void App::replaceLayout(const std::string& blocks, bool record) {
     m_redo.clear();
     m_lastOpKind.clear();
   }
-  if (!writeFileAtomic(m_configPath, Config::replaceWidgetBlocks(text, blocks))) return;
   m_selected = nullptr;
   m_pointerWidget = nullptr;
   m_drag = Drag::None;
@@ -74,6 +81,7 @@ void App::replaceLayout(const std::string& blocks, bool record) {
   loadConfig();
   refreshSaves();
   markEditDirty();
+  return true;
 }
 
 std::string App::blockOutput(const std::string& block) const {
@@ -105,7 +113,7 @@ bool App::loadSave(const std::string& id, const std::string& output) {
       }
       // replaceLayout re-reads the saves: `s` points into the old list after it
       const std::string name = s.name;
-      replaceLayout(blocks, true);  // repeated ids are renamed on load
+      if (!replaceLayout(blocks, true)) return false;  // repeated ids are renamed on load
       US_INFO("loaded saved layout \"{}\"{}", name, output.empty() ? std::string() : " on " + output);
       return true;
     }

@@ -68,7 +68,7 @@ std::string optionsMarkdown() {
   md += "## Every `[[widget]]`\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `id` | text | type name | unique name (used by `msg set/select/remove`) |\n";
-  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `system`, `activity`, `pet`, `scene`, `filter` | `\"visualizer\"` | |\n";
+  md += "| `type` | `visualizer`, `clock`, `now_playing`, `shape`, `image`, `instrument`, `diorama`, `text`, `lyrics`, `calendar`, `notes`, `weather`, `system`, `activity`, `pet`, `scene`, `filter` | `\"visualizer\"` | |\n";
   md += "| `output` | connector (`HDMI-A-1`, `eDP-1`, …) | first output | monitor |\n";
   md += "| `x`, `y` | logical px | `0` | position on the output (may hang off an edge) |\n";
   md += "| `space` | `[w, h]` | the screen it is first shown on | the output size (logical px) the layout was made on; `x`, `y`, `width`, "
@@ -82,6 +82,11 @@ std::string optionsMarkdown() {
   md += "| `hidden` | `true` / `false` | `false` | not shown at all: no surface, nothing drawn (the eye in the Layers panel) |\n";
   md += "| `locked` | `true` / `false` | `false` | cannot be picked or moved on the desktop; still selectable in the Layers panel |\n";
   md += "| `depth` | `true` / `false` | `true` | pass behind what stands in front in the wallpaper (its depth plane: `depth_level`) |\n\n";
+  md += "## Scene layer animation\n\n";
+  md += "| Key | Values | Default | |\n|---|---|---|---|\n";
+  for (const auto& p : layerMotionProperties())
+    md += std::format("| `{}` | {} | {} | {} |\n", p.key, valuesOf(p), defaultOf(p), p.labelEn);
+  md += "\n";
   md += "## `type = \"visualizer\"`\n\nRyoku's desktop spectrum.\n\n";
   table(md, "visualizer");
   md += "\n## `type = \"clock\"`\n\nRyoku's clock faces and date strips.\n\n";

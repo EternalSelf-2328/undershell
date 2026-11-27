@@ -10,6 +10,7 @@
 #pragma once
 
 #include "effectchain.hpp"
+#include "layermotion.hpp"
 #include "widget.hpp"
 
 #include <memory>
@@ -27,7 +28,9 @@ public:
 
   [[nodiscard]] bool animating(const TickContext& ctx) const override { return m_inner->animating(ctx) || m_fx.moving(); }
   [[nodiscard]] bool visible() const override { return m_inner->visible(); }
-  [[nodiscard]] double nextWakeup(double now) const override { return m_inner->nextWakeup(now); }
+  [[nodiscard]] double nextWakeup(double now) const override {
+    return std::min(m_inner->nextWakeup(now), m_layerMotion.nextWakeup());
+  }
   [[nodiscard]] int fps() const override { return m_fx.empty() ? m_inner->fps() : std::max(m_inner->fps(), m_fx.fps()); }
   [[nodiscard]] bool fullscreen() const override { return m_inner->fullscreen(); }
   [[nodiscard]] bool usesStereo() const override { return m_inner->usesStereo(); }
@@ -38,8 +41,8 @@ public:
   [[nodiscard]] Color accent() const override { return m_inner->accent(); }
   void rest() override { m_inner->rest(); }
   void setHidden(bool hidden) override { m_inner->setHidden(hidden); }
-  [[nodiscard]] std::vector<Rect> inputRects() const override { return m_inner->inputRects(); }
-  bool onPointer(const PointerEvent& ev) override { return m_inner->onPointer(ev); }
+  [[nodiscard]] std::vector<Rect> inputRects() const override;
+  bool onPointer(const PointerEvent& ev) override;
   [[nodiscard]] const char* cursor() const override { return m_inner->cursor(); }
   bool command(const std::string& verb, const std::string& arg) override { return m_inner->command(verb, arg); }
   [[nodiscard]] std::vector<std::string> watchedFiles() const override;
@@ -57,6 +60,9 @@ public:
 private:
   std::unique_ptr<WidgetImpl> m_inner;
   EffectChain m_fx;
+  LayerMotion m_layerMotion;
+  Program m_layerProgram;
+  float m_shiftX = 0, m_shiftY = 0;
   GLuint m_fbo = 0, m_tex = 0;
   int m_w = 0, m_h = 0;
 };
