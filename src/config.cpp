@@ -777,7 +777,7 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
     b += "file = \"\"                # a picture, a GIF or a video (the inspector's Choose button)\n"
          "fit = \"fit\"               # fit fill stretch\n";
   } else if (type == "shape") {
-    b += std::format("shape = \"{}\"           # rect ellipse triangle polygon star heart ring line, or a Material shape\n",
+    b += std::format("shape = \"{}\"           # see Shapes in docs/OPTIONS.md\n",
                      look.empty() ? "rect" : look);
     b += "fill = \"solid\"            # solid gradient radial none\n"
          "color = \"primary\"\ncolor2 = \"tertiary\"\n";

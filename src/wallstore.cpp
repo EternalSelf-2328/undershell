@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <format>
 #include <mutex>
 #include <thread>
@@ -27,6 +28,10 @@ struct WallpaperStore::Decode {
 WallpaperStore& wallpaperStore() {
   static WallpaperStore store;
   return store;
+}
+
+int wallpaperTextureSide(float outputW, float outputH, float pixelScale) {
+  return static_cast<int>(std::ceil(std::max(outputW, outputH) * std::max(1.0F, pixelScale)));
 }
 
 WallpaperStore::~WallpaperStore() {

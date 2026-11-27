@@ -159,13 +159,14 @@ A geometric shape, to build compositions out of layers.
 
 | Key | Values | Default | |
 |---|---|---|---|
-| `shape` | `rect`, `ellipse`, `triangle`, `polygon`, `star`, `heart`, `ring`, `line`, `splatter`, `pill`, `sunny`, `verySunny`, `cookie4Sided`, `cookie6Sided`, `cookie7Sided`, `cookie9Sided`, `cookie12Sided`, `clover4Leaf`, `clover8Leaf`, `burst`, `softBurst`, `flower`, `puffyDiamond` | `"rect"` | Shape |
+| `shape` | `rect`, `ellipse`, `triangle`, `polygon`, `star`, `heart`, `ring`, `line`, `splatter`, `splatter_ink`, `splatter_spray`, `splatter_drip`, `splatter_brush`, `diamond`, `trapezoid`, `parallelogram`, `chevron`, `arrow`, `cross`, `crescent`, `drop`, `cloud`, `ticket`, `shield`, `arch`, `pill`, `sunny`, `verySunny`, `cookie4Sided`, `cookie6Sided`, `cookie7Sided`, `cookie9Sided`, `cookie12Sided`, `clover4Leaf`, `clover8Leaf`, `burst`, `softBurst`, `flower`, `puffyDiamond` | `"rect"` | Shape |
 | `sides` | 3 – 16 | `5` | Sides / points |
 | `sharpness` | 0 – 1 | `0.5` | Sharpness |
 | `corner` | 0 – 1 | `0.15` | Rounding |
 | `thickness` | 0.02 – 1 | `0.25` | Thickness |
 | `arc` | 10 – 360 | `360` | Arc ° |
-| `fill` | `solid`, `gradient`, `radial`, `none` | `"solid"` | Fill |
+| `fill` | `solid`, `gradient`, `radial`, `wallpaper_clone`, `none` | `"solid"` | Fill |
+| `wallpaper_feather` | 0 – 64 | `12` | Soft edge (px) |
 | `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Colour 1 |
 | `color2` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"tertiary"` | Colour 2 |
 | `angle` | 0 – 360 | `90` | Gradient angle |
@@ -181,6 +182,7 @@ A geometric shape, to build compositions out of layers.
 | `depth` | `true` / `false` | `true` | Depth |
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
+| `wallpaper_sample` | `[u, v]` (0–1) | unset | Centre of the donor patch in the image, picked in the inspector |
 
 ## `type = "image"`
 

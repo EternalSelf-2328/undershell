@@ -10,6 +10,8 @@
 #include "gl.hpp"
 #include "widget.hpp"
 
+#include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -23,7 +25,9 @@ struct ShapeConfig {
   double corner = 0.15;   // rounding of corners (rect, triangle, polygon, star, line ends)
   double thickness = 0.25;  // ring band and line width, a share of the shape's size
   double arc = 360;       // ring: how much of it is drawn, degrees
-  std::string fill = "solid";  // solid gradient radial none
+  std::string fill = "solid";  // solid gradient radial none wallpaper_clone
+  std::optional<std::array<double, 2>> wallpaperSample;  // donor centre in image UV
+  double wallpaperFeather = 12;  // soft edge inward, logical px
   std::string color = "primary", color2 = "tertiary";
   double angle = 90;  // gradient direction, degrees (0: left to right, 90: top to bottom)
   double stroke = 0;  // outline width, px (inside the shape)
@@ -43,7 +47,8 @@ public:
   void tick(const TickContext& ctx) override;
   void draw(const DrawContext& ctx) override;
   [[nodiscard]] bool animating(const TickContext& ctx) const override;
-  [[nodiscard]] bool usesAudio() const override { return m_cfg.react != "none"; }
+  [[nodiscard]] bool usesAudio() const override { return m_cfg.fill != "wallpaper_clone" && m_cfg.react != "none"; }
+  [[nodiscard]] double nextWakeup(double now) const override { return m_waitingForWallpaper ? now + 0.05 : 1e18; }
   [[nodiscard]] int fps() const override { return 60; }
   [[nodiscard]] Color accent() const override { return m_c1; }
   static const std::vector<std::string>& shapes();
@@ -56,6 +61,7 @@ private:
   double m_now = 0, m_spinAt = 0;
   double m_beat = 0;  // the last kick, fading
   uint64_t m_kicks = 0;
+  bool m_waitingForWallpaper = false;
 };
 
 }  // namespace undershell

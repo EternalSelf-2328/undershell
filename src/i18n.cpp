@@ -35,6 +35,11 @@ bool spanishDates() {
 
 std::string optionLabel(const std::string& value, bool es) {
   if (value == "splatter") return es ? "Salpicadura de pintura" : "Paint splatter";
+  if (value == "splatter_ink") return es ? "Mancha de tinta" : "Ink blot";
+  if (value == "splatter_spray") return es ? "Rocío de pintura" : "Paint spray";
+  if (value == "splatter_drip") return es ? "Pintura que escurre" : "Dripping paint";
+  if (value == "splatter_brush") return es ? "Pincel seco" : "Dry brush";
+  if (value == "wallpaper_clone") return es ? "Clonar fondo" : "Clone wallpaper";
   if (value == "loop") return es ? "Ciclo" : "Loop";
   if (value == "aquarium") return es ? "Pecera" : "Aquarium";
   if (value == "terrarium") return es ? "Terrario" : "Terrarium";
@@ -71,7 +76,9 @@ std::string optionLabel(const std::string& value, bool es) {
       {"nosignal", "Sin señal"}, {"media", "Tus videos"}, {"channels", "Canales"}, {"fill", "Llenar"}, {"fit", "Encajar"}, {"code", "Código"},
       {"spectrum", "Espectro"}, {"matrix", "Matrix"}, {"monitor", "Monitor del sistema"}, {"green", "Verde"}, {"amber", "Ámbar"}, {"peony", "Peonía"}, {"willow", "Sauce"}, {"heart", "Corazón"}, {"star", "Estrella"},
       {"bolt", "Rayo"}, {"note", "Nota"}, {"arrow", "Flecha"}, {"snow", "Nieve"}, {"petals", "Pétalos"}, {"black", "Negro"}, {"white", "Blanco"}, {"top", "Arriba"}, {"bottom", "Abajo"}, {"straight", "Recto"}, {"3", "3 × 3"}, {"4", "4 × 4"}, {"5", "5 × 5"},
-      {"rect", "Rectángulo"}, {"ellipse", "Elipse"}, {"triangle", "Triángulo"}, {"polygon", "Polígono"}, {"ring", "Anillo"},
+      {"diamond", "Rombo"}, {"trapezoid", "Trapecio"}, {"parallelogram", "Paralelogramo"}, {"chevron", "Chevrón"},
+      {"cross", "Cruz"}, {"crescent", "Luna creciente"}, {"drop", "Gota"}, {"cloud", "Nube"}, {"ticket", "Boleto"},
+      {"shield", "Escudo"}, {"arch", "Arco"}, {"rect", "Rectángulo"}, {"ellipse", "Elipse"}, {"triangle", "Triángulo"}, {"polygon", "Polígono"}, {"ring", "Anillo"},
       {"solid", "Sólido"}, {"pulse", "Pulso"}, {"glow", "Brillo"}, {"stretch", "Estirar"}, {"bounce", "Rebote"},
       {"retro", "Retro"}, {"sticker", "Sticker"}, {"chrome", "Cromo"}, {"glitch", "Glitch"}, {"rainbow", "Arcoíris"},
       {"typewriter", "Máquina de escribir"}, {"flicker", "Parpadeo"}, {"shake", "Temblor"}, {"letters", "Letras que saltan"},

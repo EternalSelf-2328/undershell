@@ -575,6 +575,8 @@ private:
   // "+ Add effect" / "+ Add particles": "fx" or "pt", a picker beside the
   // inspector of m_addPickerFor (a widget id), grouped by kind
   std::string m_addPicker, m_addPickerFor;
+  int m_shapePickerScroll = 0, m_shapePickerFocus = -1, m_shapePickerRows = 1;
+  bool shapePickerKey(uint32_t key);
   bool m_helpOpen = false;
   bool m_savesOpen = false;
   // the wallpaper gallery (wallgallery.hpp)
@@ -615,6 +617,13 @@ private:
   void applyPickedColor(bool remember);
   bool colorKey(uint32_t key);
   void requestWallSample();
+  bool m_wallPatchPicking = false;
+  std::string m_wallPatchPath;
+  int m_wallPatchW = 0, m_wallPatchH = 0;
+  double m_wallPatchRetryAt = 0;
+  std::string wallpaperPatchPath(const Output* output) const;
+  void closeWallpaperPatch();
+  void pickWallpaperPatch();
   // the wallpaper's colour under an output point (the eyedropper)
   bool eyedropAt(const Output* o, double x, double y, Color& out, double* u = nullptr, double* v = nullptr) const;
   void releaseColorGl();

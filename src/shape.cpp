@@ -4,10 +4,15 @@
 // fill, the outline, the glow and the shadow all follow.
 #include "shape.hpp"
 
+#include "depthfield.hpp"
 #include "m3shapes.hpp"
+#include "wallstore.hpp"
+
+#include <array>
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 
 namespace undershell {
 
@@ -29,7 +34,11 @@ uniform vec2 u_half;      // the shape's half size
 uniform float u_turn;     // radians
 uniform float u_sides, u_inner, u_corner, u_thick, u_arc;
 uniform float u_radii[64];
-uniform int u_fill;       // 0 solid 1 gradient 2 radial 3 none
+uniform int u_fill;       // 0 solid 1 gradient 2 radial 3 none 4 wallpaper
+uniform sampler2D u_wallpaper;
+uniform vec4 u_patch;     // image UV at the donor centre and UV span of the shape
+uniform bool u_hasPatch, u_repeat;
+uniform float u_feather;
 uniform vec4 u_c1, u_c2, u_stroke;
 uniform float u_angle, u_strokeW, u_glow, u_glowR, u_shadow, u_shadowR, u_opacity;
 
@@ -113,6 +122,119 @@ float radial(vec2 p, float R) {
     return (length(p) - r) * 0.9;
 }
 
+float sdPolygon(vec2 p, vec2 vertices[7], int count) {
+    float d2 = 8.0;
+    bool inside = false;
+    vec2 a = vertices[count-1];
+    for (int i = 0; i < count; ++i) {
+        vec2 b = vertices[i], edge = b-a, nearA = p-a;
+        vec2 toEdge = nearA - edge * clamp(dot(nearA,edge) / dot2(edge),0.0,1.0);
+        d2 = min(d2,dot2(toEdge));
+        if ((a.y > p.y) != (b.y > p.y))
+            if (p.x < a.x + (p.y-a.y)*edge.x/edge.y) inside = !inside;
+        a = b;
+    }
+    return sqrt(d2) * (inside ? -1.0 : 1.0);
+}
+
+float disc(vec2 p, vec2 center, float radius) { return length(p-center)-radius; }
+
+float softenUnion(float a, float b, float radius) {
+    float overlap = max(radius-abs(a-b),0.0);
+    return min(a,b)-overlap*overlap/(4.0*radius);
+}
+
+float dab(vec2 p, vec2 a, vec2 b, float wide, float narrow) {
+    vec2 edge = b-a;
+    float t = clamp(dot(p-a,edge)/dot2(edge),0.0,1.0);
+    return length(p-a-edge*t)-mix(wide,narrow,t);
+}
+
+float paintMark(vec2 p, int kind) {
+    if (kind == 22) { // broad impact with a scattering of drops off one side
+        float d = softenUnion(disc(p,vec2(-.19,.08),.55),disc(p,vec2(.24,-.14),.37),.19);
+        d = softenUnion(d,dab(p,vec2(.04,-.12),vec2(.55,-.55),.11,.04),.12);
+        d = softenUnion(d,dab(p,vec2(-.29,.20),vec2(-.76,.49),.14,.035),.10);
+        d = min(d,disc(p,vec2(.69,-.70),.058));
+        d = min(d,disc(p,vec2(.79,-.33),.084));
+        d = min(d,disc(p,vec2(.58,.32),.106));
+        d = min(d,disc(p,vec2(.33,.62),.074));
+        return min(d,disc(p,vec2(-.17,.75),.043));
+    }
+    if (kind == 23) { // spray fans out into smaller isolated droplets
+        float d = disc(p,vec2(-.41,.30),.38);
+        d = softenUnion(d,disc(p,vec2(-.13,.12),.33),.18);
+        d = softenUnion(d,dab(p,vec2(-.21,.13),vec2(.38,-.22),.23,.075),.11);
+        const vec3 drops[12] = vec3[12](
+            vec3(.56,-.34,.105), vec3(.57,-.09,.075), vec3(.79,-.23,.055), vec3(.28,-.48,.085),
+            vec3(.46,-.64,.049), vec3(.70,-.56,.050), vec3(.84,-.76,.040), vec3(.06,-.64,.045),
+            vec3(.22,.31,.094), vec3(.49,.22,.053), vec3(.72,.11,.035), vec3(-.31,-.39,.063));
+        for (int i=0; i<12; ++i) d=min(d,disc(p,drops[i].xy,drops[i].z));
+        return d;
+    }
+    if (kind == 24) { // wet paint runs down in three uneven drips
+        float d = softenUnion(disc(p,vec2(-.38,-.28),.33),disc(p,vec2(.18,-.34),.48),.27);
+        d = softenUnion(d,dab(p,vec2(-.43,-.19),vec2(-.50,.51),.16,.069),.17);
+        d = softenUnion(d,dab(p,vec2(.03,-.26),vec2(.07,.79),.18,.079),.17);
+        d = softenUnion(d,dab(p,vec2(.40,-.12),vec2(.46,.31),.12,.055),.12);
+        d = min(d,disc(p,vec2(.48,.58),.077));
+        return min(d,disc(p,vec2(-.75,-.64),.084));
+    }
+    // dry brush dragged across the surface, flecked ends and broken bristle marks
+    vec2 q = vec2(.92*p.x-.39*p.y,.39*p.x+.92*p.y);
+    float d = dab(q,vec2(-.74,.04),vec2(.63,-.06),.26,.28);
+    d = min(d,dab(q,vec2(-.75,-.20),vec2(.78,-.25),.043,.025));
+    d = min(d,dab(q,vec2(-.61,.23),vec2(.84,.23),.065,.019));
+    d = max(d,-dab(q,vec2(.43,-.13),vec2(.94,-.10),.023,.040));
+    d = max(d,-dab(q,vec2(-.94,.13),vec2(-.39,.08),.030,.011));
+    d = min(d,disc(q,vec2(-.88,-.31),.041));
+    return min(d,disc(q,vec2(.81,-.38),.036));
+}
+
+float nativeSilhouette(vec2 p, int kind) {
+    if (kind == 10) return (abs(p.x)+abs(p.y)-.95)*.7071; // diamond
+    if (kind == 15) return min(sdRoundBox(p,vec2(.93,.31),.08),sdRoundBox(p,vec2(.31,.93),.08)); // cross
+    if (kind == 16) return max(disc(p,vec2(-.08,.01),.87),-disc(p,vec2(.42,-.19),.76)); // crescent
+    if (kind == 17) { // drop
+        float base = disc(p,vec2(0.0,.24),.66);
+        float tip = sdTriangle(p-vec2(0.0,-.246),vec2(.58,.70));
+        return softenUnion(base,tip,.12);
+    }
+    if (kind == 18) { // cloud
+        float base = sdRoundBox(p-vec2(0.0,.28),vec2(.94,.34),.32);
+        base = softenUnion(base,disc(p,vec2(-.46,.0),.38),.10);
+        base = softenUnion(base,disc(p,vec2(.01,-.19),.52),.14);
+        return softenUnion(base,disc(p,vec2(.48,.03),.34),.10);
+    }
+    if (kind == 19) { // ticket with semicircular cut-outs
+        float base = sdRoundBox(p,vec2(.95,.70),.10);
+        return max(base,-disc(vec2(abs(p.x),p.y),vec2(.95,0.0),.22));
+    }
+    if (kind == 21) { // arch with a flat bottom
+        float dome = disc(p,vec2(0.0,-.12),.81);
+        float plinth = sdRoundBox(p-vec2(0.0,.405),vec2(.81,.525),0.0);
+        return min(dome,plinth);
+    }
+    if (kind >= 22) return paintMark(p,kind);
+    vec2 points[7];
+    int count = 4;
+    if (kind == 11) {
+        points[0]=vec2(-.58,-.80); points[1]=vec2(.58,-.80); points[2]=vec2(.97,.80); points[3]=vec2(-.97,.80);
+    } else if (kind == 12) {
+        points[0]=vec2(-.49,-.80); points[1]=vec2(.95,-.80); points[2]=vec2(.49,.80); points[3]=vec2(-.95,.80);
+    } else if (kind == 13) { // chevron
+        points[0]=vec2(-.96,-.28); points[1]=vec2(0.0,-.90); points[2]=vec2(.96,-.28);
+        points[3]=vec2(.96,.46); points[4]=vec2(0.0,-.10); points[5]=vec2(-.96,.46); count=6;
+    } else if (kind == 14) {
+        points[0]=vec2(-.92,-.32); points[1]=vec2(.04,-.32); points[2]=vec2(.04,-.84); points[3]=vec2(.94,0.0);
+        points[4]=vec2(.04,.84); points[5]=vec2(.04,.32); points[6]=vec2(-.92,.32); count=7;
+    } else { // shield
+        points[0]=vec2(-.82,-.74); points[1]=vec2(0.0,-.92); points[2]=vec2(.82,-.74);
+        points[3]=vec2(.72,.34); points[4]=vec2(0.0,.91); points[5]=vec2(-.72,.34); count=6;
+    }
+    return sdPolygon(p,points,count);
+}
+
 float shapeDist(vec2 p) {
     vec2 h = u_half;
     float mn = min(h.x, h.y);
@@ -126,7 +248,7 @@ float shapeDist(vec2 p) {
     float scale = min(sq.x, sq.y);
     if (u_kind == 3 || u_kind == 4) {
         // m = 2 is the polygon; nearer n the points get thinner
-    float m = u_kind == 3 ? 2.0 : mix(2.0, u_sides - 0.35 * (u_sides - 2.0), u_inner);
+        float m = u_kind == 3 ? 2.0 : mix(2.0, u_sides - 0.35 * (u_sides - 2.0), u_inner);
         return (sdStar(q, mn - k, u_sides, m) - k) / scale;
     }
     if (u_kind == 5) {  // the heart fills its box
@@ -166,6 +288,7 @@ float shapeDist(vec2 p) {
         d = min(d, length(z - vec2(-0.76, -0.53)) - 0.031);
         return d * mn / scale;
     }
+    if (u_kind >= 10) return nativeSilhouette(q / mn, u_kind) * mn / scale;
     return radial(q, mn) / scale;
 }
 
@@ -198,6 +321,17 @@ void main() {
         } else if (u_fill == 2) {
             f = mix(u_c1, u_c2, clamp(length(p / u_half), 0.0, 1.0));
         }
+        if (u_fill == 4) {
+            f = vec4(0.0);
+            if (u_hasPatch && inside > 0.0) {
+                vec2 uv = u_patch.xy + (v_uv - .5) * u_patch.zw;
+                if (u_repeat || all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)))) {
+                    vec2 halfTexel = 0.5 / vec2(textureSize(u_wallpaper, 0));
+                    f = texture(u_wallpaper, u_repeat ? uv : clamp(uv, halfTexel, 1.0-halfTexel));
+                    if (u_feather > 0.0) f.a *= smoothstep(0.0, u_feather, -d);
+                }
+            }
+        }
         float a = inside * f.a;
         col = over(vec4(f.rgb * a, a), col);
     }
@@ -210,17 +344,26 @@ void main() {
 }
 )";
 
-int kindOf(const std::string& s) {
-  static const char* names[] = {"rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line"};
-  for (int i = 0; i < 8; ++i)
-    if (s == names[i]) return i;
-  return s == "splatter" ? 9 : 8;  // 8: a Material shape
+// Indices are shared with the shader. Slot 8 is the Material silhouette table.
+constexpr std::array<std::string_view, 26> kShapeKinds = {
+    "rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line", "", "splatter",
+    "diamond", "trapezoid", "parallelogram", "chevron", "arrow", "cross", "crescent", "drop", "cloud", "ticket", "shield", "arch",
+    "splatter_ink", "splatter_spray", "splatter_drip", "splatter_brush"};
+
+int kindOf(std::string_view shape) {
+  const auto match = std::ranges::find(kShapeKinds, shape);
+  return match == kShapeKinds.end() ? 8 : static_cast<int>(match - kShapeKinds.begin());
 }
 }  // namespace
 
 const std::vector<std::string>& ShapeWidget::shapes() {
   static const std::vector<std::string> all = [] {
-    std::vector<std::string> v = {"rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line", "splatter"};
+    std::vector<std::string> v;
+    for (const auto& name : kShapeKinds | std::views::take(8)) v.emplace_back(name);
+    for (const auto& name : kShapeKinds)
+      if (name.starts_with("splatter")) v.emplace_back(name);
+    for (const auto& name : kShapeKinds | std::views::drop(10))
+      if (!name.starts_with("splatter")) v.emplace_back(name);
     for (const auto& n : m3ShapeNames())
       if (n != "circle" && n != "square" && n != "oval" && n != "pentagon") v.push_back(n);  // those are above already
     return v;
@@ -242,6 +385,11 @@ ShapeConfig ShapeConfig::fromTable(const toml::table& t) {
   c.thickness = num("thickness", c.thickness, 0.02, 1);
   c.arc = num("arc", c.arc, 10, 360);
   c.fill = get<std::string>(t, "fill", c.fill);
+  if (const auto* sample = t["wallpaper_sample"].as_array(); sample && sample->size() == 2) {
+    const double u = (*sample)[0].value_or(-1.0), v = (*sample)[1].value_or(-1.0);
+    if (u >= 0 && u <= 1 && v >= 0 && v <= 1) c.wallpaperSample = std::array{u, v};
+  }
+  c.wallpaperFeather = num("wallpaper_feather", c.wallpaperFeather, 0, 64);
   c.color = get<std::string>(t, "color", c.color);
   c.color2 = get<std::string>(t, "color2", c.color2);
   c.angle = num("angle", c.angle, 0, 360);
@@ -276,9 +424,9 @@ void ShapeWidget::configure(const ShapeConfig& cfg, const NoctaliaState& noct) {
 void ShapeWidget::tick(const TickContext& ctx) {
   const double dt = ctx.dt;
   m_now = ctx.now;
-  if (m_cfg.spin != 0) m_spinAt += m_cfg.spin * dt;
+  if (m_cfg.fill != "wallpaper_clone") m_spinAt += m_cfg.spin * dt;
   m_beat *= std::exp(-dt * 7);
-  if (m_cfg.react != "none") {
+  if (usesAudio()) {
     if (ctx.audio.kicks != m_kicks) {
       m_kicks = ctx.audio.kicks;
       m_beat = std::max(m_beat, std::clamp(0.55 + ctx.audio.kickStrength * 0.45, 0.55, 1.0));
@@ -288,45 +436,82 @@ void ShapeWidget::tick(const TickContext& ctx) {
   }
 }
 
-bool ShapeWidget::animating(const TickContext&) const { return m_cfg.spin != 0 || m_beat > 0.004; }
+bool ShapeWidget::animating(const TickContext&) const {
+  return m_cfg.fill != "wallpaper_clone" && (m_cfg.spin != 0 || m_beat > 0.004);
+}
 
 void ShapeWidget::draw(const DrawContext& ctx) {
   if (!m_prog.valid()) m_prog.create(kQuadVertexShader, kFrag, "shape");
   const float W = ctx.w, H = ctx.h, mn = std::min(W, H) / 2;
+  const bool clone = m_cfg.fill == "wallpaper_clone";
+  const double shadow = clone ? 0 : m_cfg.shadow;
+  const double glowBase = clone ? 0 : m_cfg.glow;
   // room round the shape for what spills out of it
-  const float glowR = static_cast<float>(1.5 + mn * 0.07 * (0.4 + m_cfg.glow));
-  const float shadowR = static_cast<float>(1.5 + mn * 0.09 * (0.4 + m_cfg.shadow));
+  const float glowR = static_cast<float>(1.5 + mn * 0.07 * (0.4 + glowBase));
+  const float shadowR = static_cast<float>(1.5 + mn * 0.09 * (0.4 + shadow));
   float pad = 1;
-  if (m_cfg.glow > 0) pad = std::max(pad, glowR * 3.2F);
-  if (m_cfg.shadow > 0) pad = std::max(pad, shadowR * 1.6F);
+  if (glowBase > 0) pad = std::max(pad, glowR * 3.2F);
+  if (shadow > 0) pad = std::max(pad, shadowR * 1.6F);
   float scale = 1;
-  const bool pulse = m_cfg.react == "pulse";
+  const bool pulse = !clone && m_cfg.react == "pulse";
   if (pulse) scale = static_cast<float>(0.9 + 0.1 * m_beat);  // grows into its box on a kick
   const float hx = std::max(2.0F, (W / 2 - pad) * scale), hy = std::max(2.0F, (H / 2 - pad) * scale);
-  const double glow = std::clamp(m_cfg.glow + (m_cfg.react == "glow" ? 0.8 * m_beat : 0.0), 0.0, 1.0);
+  const double glow = std::clamp(glowBase + (!clone && m_cfg.react == "glow" ? 0.8 * m_beat : 0.0), 0.0, 1.0);
 
   glUseProgram(m_prog.id());
   glUniform2f(m_prog.uniform("u_size"), W, H);
   glUniform1f(m_prog.uniform("u_px"), 1.0F / std::max(0.25F, ctx.scale));
   glUniform1i(m_prog.uniform("u_kind"), kindOf(m_cfg.shape));
   glUniform2f(m_prog.uniform("u_half"), hx, hy);
-  glUniform1f(m_prog.uniform("u_turn"), static_cast<float>(std::fmod(m_spinAt, 360.0) * M_PI / 180));
+  glUniform1f(m_prog.uniform("u_turn"), clone ? 0 : static_cast<float>(std::fmod(m_spinAt, 360.0) * M_PI / 180));
   glUniform1f(m_prog.uniform("u_sides"), static_cast<float>(m_cfg.shape == "triangle" ? 3 : m_cfg.sides));
   glUniform1f(m_prog.uniform("u_inner"), static_cast<float>(m_cfg.sharpness));
   glUniform1f(m_prog.uniform("u_corner"), static_cast<float>(m_cfg.corner));
   glUniform1f(m_prog.uniform("u_thick"), static_cast<float>(m_cfg.thickness));
   glUniform1f(m_prog.uniform("u_arc"), static_cast<float>(m_cfg.arc / 360.0));
   if (!m_radii.empty()) glUniform1fv(m_prog.uniform("u_radii"), 64, m_radii.data());
-  const int fill = m_cfg.fill == "gradient" ? 1 : m_cfg.fill == "radial" ? 2 : m_cfg.fill == "none" ? 3 : 0;
+  const int fill = m_cfg.fill == "gradient" ? 1 : m_cfg.fill == "radial" ? 2 : m_cfg.fill == "none" ? 3 : clone ? 4 : 0;
+  m_waitingForWallpaper = false;
+  const WallPic* picture = nullptr;
+  if (fill == 4 && m_cfg.wallpaperSample && !ctx.movingWallpaper && !ctx.wallpaper.empty() &&
+      !ctx.wallpaper.starts_with("color:") && ctx.outputW > 0 && ctx.outputH > 0) {
+    picture = wallpaperStore().get(ctx.wallpaper, wallpaperTextureSide(ctx.outputW, ctx.outputH, ctx.scale), ctx.now);
+    m_waitingForWallpaper = !picture;
+  }
+  const bool hasPatch = picture && picture->tex;
+  glUniform1i(m_prog.uniform("u_hasPatch"), hasPatch);
+  if (hasPatch) {
+    const auto [u, v] = *m_cfg.wallpaperSample;
+    // The donor is in image space. Match the scale of the wallpaper as shown
+    // on this output, so the patch preserves the size of features in the image.
+    double du = 1.0 / picture->imgW, dv = 1.0 / picture->imgH;
+    const bool repeat = ctx.fillMode == 4;
+    if (!repeat) {
+      double u0 = 0, v0 = 0;
+      wallpaperUv(0, 0, ctx.outputW, ctx.outputH, picture->imgW, picture->imgH, ctx.fillMode, u0, v0);
+      wallpaperUv(W, H, ctx.outputW, ctx.outputH, picture->imgW, picture->imgH, ctx.fillMode, du, dv);
+      du -= u0;
+      dv -= v0;
+    } else {
+      du *= W;
+      dv *= H;
+    }
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, picture->tex);
+    glUniform1i(m_prog.uniform("u_wallpaper"), 0);
+    glUniform4f(m_prog.uniform("u_patch"), u, v, du, dv);
+    glUniform1i(m_prog.uniform("u_repeat"), repeat);
+    glUniform1f(m_prog.uniform("u_feather"), std::min<float>(m_cfg.wallpaperFeather, std::min(hx, hy) * 0.5F));
+  }
   glUniform1i(m_prog.uniform("u_fill"), fill);
   glUniform4f(m_prog.uniform("u_c1"), m_c1.r, m_c1.g, m_c1.b, 1);
   glUniform4f(m_prog.uniform("u_c2"), m_c2.r, m_c2.g, m_c2.b, 1);
   glUniform4f(m_prog.uniform("u_stroke"), m_strokeC.r, m_strokeC.g, m_strokeC.b, 1);
   glUniform1f(m_prog.uniform("u_angle"), static_cast<float>(m_cfg.angle));
-  glUniform1f(m_prog.uniform("u_strokeW"), static_cast<float>(m_cfg.stroke));
+  glUniform1f(m_prog.uniform("u_strokeW"), clone ? 0 : static_cast<float>(m_cfg.stroke));
   glUniform1f(m_prog.uniform("u_glow"), static_cast<float>(glow));
   glUniform1f(m_prog.uniform("u_glowR"), glowR);
-  glUniform1f(m_prog.uniform("u_shadow"), static_cast<float>(m_cfg.shadow));
+  glUniform1f(m_prog.uniform("u_shadow"), static_cast<float>(shadow));
   glUniform1f(m_prog.uniform("u_shadowR"), shadowR);
   glUniform1f(m_prog.uniform("u_opacity"), static_cast<float>(m_cfg.opacity));
   glEnable(GL_BLEND);

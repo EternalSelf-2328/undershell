@@ -100,6 +100,7 @@ std::string optionsMarkdown() {
   md += "| `music_app` | shell command | `\"spotify\"` | opened by the corner button (not in the inspector) |\n";
   md += "\n## `type = \"shape\"`\n\nA geometric shape, to build compositions out of layers.\n\n";
   table(md, "shape");
+  md += "| `wallpaper_sample` | `[u, v]` (0–1) | unset | Centre of the donor patch in the image, picked in the inspector |\n";
   md += "\n## `type = \"image\"`\n\nA picture, a sticker, a GIF or a video, with its transparency.\n\n";
   md += "| Key | Values | Default | |\n|---|---|---|---|\n";
   md += "| `file` | path (`~/` allowed) | `\"\"` | PNG, JPG, GIF, WebP, APNG or a video (the inspector's Choose button) |\n";

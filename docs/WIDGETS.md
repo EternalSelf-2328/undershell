@@ -357,19 +357,41 @@ mixer. [Lisbon aquascape](https://www.adana.co.jp/en/lisbon/allabout.html)
 
 ## Shapes
 
-Geometric shapes to build compositions out of layers (see **Layers** and
-**Groups** under Usage): rectangle, ellipse, triangle, polygon (3–16 sides),
-star (its points and how sharp they are), heart, ring (or an arc of one),
-line, paint splatter with detached drops, and the Material 3 shapes (cookies, clovers, bursts, flower, sun…).
-Each has a **fill** (a colour, a linear or radial gradient between two, or
-none), an **outline** inside its edge, a **glow** and a soft **shadow**, and
-can **spin** or **pulse** / **glow** with the music's kicks. Every colour can be
-a palette role or any colour from the picker. One distance shader draws it
-all, so a still shape is drawn once and then costs nothing; the mouse wheel
-over one in the editor steps through the shapes.
+Choose **Browse shapes…** in the Shape inspector to see the available
+silhouettes. Alongside the regular geometry and Material 3 shapes, there
+are diamonds, trapezoids, parallelograms, chevrons, arrows, crosses,
+crescents, drops, clouds, tickets, shields, and arches. The paint shapes
+include the original splatter, ink blot, paint spray, dripping paint, and
+dry brush. Scroll to browse or use the arrow keys and Enter. The wheel over
+the widget also cycles through shapes.
+
+Fill a shape with a solid colour, a gradient, or a patch of the wallpaper.
+Shapes also have an outline, glow and soft shadow. They can spin or react
+to music. A still shape draws only when it changes.
 
 <p align="center">
-  <img src="media/shapes.webp" alt="Every shape, and a few with a gradient, a glow, an outline and a shadow" width="600">
+  <img src="media/shapes.webp" alt="Shape silhouettes and examples of gradient, glow, outline and shadow" width="680">
+</p>
+
+### Cover a detail in a static wallpaper
+
+1. Place a shape over the detail with some margin around it. A rectangle
+   is a good starting point.
+2. Set **Fill → Clone wallpaper** and click **Choose source area…**.
+3. Click a clean area of the same wallpaper with similar lighting or
+   texture. The on-screen outline shows how wide a patch you are picking.
+4. Adjust **Soft edge (px)** to blend the edges and choose **Change source
+   area…** to try another spot. For a single flat color, the color picker's
+   eyedropper samples a pixel from the wallpaper.
+
+The source is stored as an image position and the patch keeps the scale
+of the wallpaper on that output. Moving a shape keeps its source in
+place. The soft edge controls the patch outline. Switching back to a
+decorative fill restores any outline, glow, shadow, and music settings.
+The patch is drawn on its own desktop layer.
+
+<p align="center">
+  <img src="media/wallpaper-clone.webp" alt="The original wallpaper detail on the left and the same area covered with matching texture on the right" width="640">
 </p>
 
 ## Pictures and stickers

@@ -1254,6 +1254,7 @@ int main(int argc, char** argv) {
   // the bottom, an outline leaves the middle clear; one matches its golden
   {
     auto alphaAt = [](const Image& img, int x, int y) { return img.rgba[(static_cast<size_t>(y) * img.w + x) * 4 + 3]; };
+    std::vector<Image> splatters;
     for (const auto& name : ShapeWidget::shapes()) {
       toml::table o;
       o.insert_or_assign("shape", name);
@@ -1265,10 +1266,74 @@ int main(int argc, char** argv) {
           lit += a > 128;
           (x < 60 ? left : right) += static_cast<size_t>(a);
         }
-      CHECK(lit > (name == "line" ? 1000u : 3000u));
+      const size_t minimum = name == "line" ? 1000 : name.starts_with("splatter_") ? 1800 : 3000;
+      if (lit <= minimum) std::fprintf(stderr, "shape %s only lit %zu pixels\n", name.c_str(), lit);
+      CHECK(lit > minimum);
+      if (name.starts_with("splatter")) {
+        for (const auto& other : splatters) CHECK(imageDiff(other, img) > 5);
+        splatters.push_back(img);
+      }
       if (name == "rect" || name == "ellipse" || name == "triangle" || name == "polygon" || name == "star" || name == "heart" ||
           name == "ring")
         CHECK(std::abs(static_cast<double>(left) - static_cast<double>(right)) < 0.02 * static_cast<double>(left + right));
+    }
+    char cloneDir[] = "/tmp/undershell-clone-XXXXXX";
+    CHECK(mkdtemp(cloneDir));
+    if (std::filesystem::is_directory(cloneDir)) {
+      const auto path = (std::filesystem::path(cloneDir) / "donor.png").string();
+      Image wallpaper{240, 120, std::vector<uint8_t>(240 * 120 * 4, 255)};
+      for (int y = 0; y < wallpaper.h; ++y)
+        for (int x = 0; x < wallpaper.w; ++x) {
+          auto* pixel = wallpaper.rgba.data() + (y * wallpaper.w + x) * 4;
+          pixel[0] = x;
+          pixel[1] = y * 2;
+          pixel[2] = 47;
+        }
+      CHECK(writePng(wallpaper, path, false));
+      DrawContext ctx;
+      ctx.w = ctx.h = 60;
+      ctx.outputW = 240;
+      ctx.outputH = 120;
+      ctx.wallpaper = path;
+      ctx.fillMode = 3;  // stretch
+      ctx.now = nowSeconds();
+      ShapeConfig cfg;
+      cfg.fill = "wallpaper_clone";
+      cfg.wallpaperFeather = 0;
+      ShapeWidget patch;
+      auto drawPatch = [&] { return renderDrawn(60, 60, [&] { patch.draw(ctx); }); };
+      patch.configure(cfg, pal);
+      CHECK(alphaAt(drawPatch(), 30, 30) == 0);
+      cfg.wallpaperSample = std::array{0.75, 0.5};
+      cfg.shadow = 0.8;
+      cfg.stroke = 7;
+      patch.configure(cfg, pal);
+      auto hard = drawPatch();
+      for (int i = 0; i < 100 && patch.nextWakeup(ctx.now) < 1e8; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        ctx.now = nowSeconds();
+        hard = drawPatch();
+      }
+      auto channel = [](const Image& img, int x, int y, int k) { return img.rgba[(y * img.w + x) * 4 + k]; };
+      CHECK(std::abs(channel(hard, 30, 30, 0) - 180) <= 2);
+      CHECK(std::abs(channel(hard, 30, 30, 1) - 120) <= 2);
+      CHECK(std::abs(channel(hard, 10, 20, 0) - 160) <= 2);
+      CHECK(std::abs(channel(hard, 10, 20, 1) - 100) <= 2);
+      CHECK(alphaAt(hard, 3, 30) > 245);
+      cfg.wallpaperFeather = 12;
+      patch.configure(cfg, pal);
+      const auto soft = drawPatch();
+      CHECK(alphaAt(soft, 3, 30) < 75 && alphaAt(soft, 30, 30) > 245);
+      // A tiled wallpaper wraps across the source edge, at its native scale.
+      ctx.fillMode = 4;
+      cfg.wallpaperSample = std::array{0.0, 0.5};
+      cfg.wallpaperFeather = 0;
+      patch.configure(cfg, pal);
+      const auto tile = drawPatch();
+      CHECK(channel(tile, 24, 30, 0) > 230 && channel(tile, 35, 30, 0) < 10);
+      ctx.movingWallpaper = true;
+      CHECK(alphaAt(drawPatch(), 30, 30) == 0);
+      std::filesystem::remove_all(cloneDir);
     }
     toml::table ring;
     ring.insert_or_assign("shape", "ring");

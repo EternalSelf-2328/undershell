@@ -116,6 +116,7 @@ void App::selectOnly(Widget* w) {
     m_fontPickFor.clear();
     m_elExpanded.clear();
     closeColorPick();
+    closeWallpaperPatch();
   }
   m_selected = w;
   m_multi.clear();

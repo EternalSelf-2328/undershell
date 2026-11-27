@@ -1518,7 +1518,8 @@ void App::render(Widget& w) {
         US_ERROR("widget {}: rotated blit failed: {}", w.cfg.id, ex.what());
       }
     }
-    if (w.cfg.depth && w.output && !m_motion && !w.impl->overlay()) {  // a moving wallpaper has no mask that fits (nor a pet that roams)
+    const bool clone = w.cfg.type == "shape" && w.cfg.options["fill"].value_or(std::string()) == "wallpaper_clone";
+    if (w.cfg.depth && !clone && w.output && !m_motion && !w.impl->overlay()) {  // a moving wallpaper has no mask that fits (nor a pet that roams)
       if (const DepthMask* m = m_depth.get(w.output->name)) {
         MaskParams mp;
         mp.surfaceW = static_cast<float>(w.w);
@@ -1586,11 +1587,13 @@ void App::setEditMode(bool on) {
   m_galleryOpen = false;
   m_helpOpen = false;
   m_savesOpen = false;
+  if (m_addPicker == "shape") m_addPicker.clear();
   m_sceneDraft.reset();
   m_sceneField.clear();
   m_sceneAnimationInspector = false;
   m_fontPickFor.clear();
   closeColorPick();
+  closeWallpaperPatch();
   m_confirmDelete.clear();
   if (!on) {
     endNote();
@@ -1756,7 +1759,7 @@ void App::renderEdit(EditSurface& e) {
   glClearColor(0, 0, 0, 0);
   glClear(GL_COLOR_BUFFER_BIT);
   try {
-    m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, selected, accent,
+    if (!m_wallPatchPicking) m_overlay.draw(static_cast<float>(e.w), static_cast<float>(e.h), rects, hover, active, selected, accent,
                    m_gridOn ? static_cast<float>(m_config.gridSize) : 0.0F, m_guidesV, m_guidesH, handle);
     if (m_paintMode && e.output) {
       // depth mode: tint what would cover the selected widget
@@ -2428,6 +2431,7 @@ int App::computeTimeout() {
   for (auto& e : m_editSurfaces)
     if (e->needsRender && !e->frameCb) next = now;
   if (m_edit && m_repeatKey) next = std::min(next, m_repeatNext);
+  if (m_wallPatchRetryAt > 0) next = std::min(next, m_wallPatchRetryAt);
   if (m_edit && m_depthGen.downloading()) next = std::min(next, m_depthTick);
   if (m_skwdHere && m_skwd.fd() < 0) next = std::min(next, now + 10);  // its daemon may start later
   int timeout = next >= 1e8 ? -1 : std::max(0, static_cast<int>(std::ceil((next - now) * 1000)));

@@ -13,6 +13,14 @@
 using namespace undershell;
 
 int main() {
+  WidgetConfig shape;
+  shape.type = "shape";
+  CHECK(!optionApplies(shape, "wallpaper_feather") && optionApplies(shape, "color"));
+  shape.options.insert("fill", "wallpaper_clone");
+  CHECK(optionApplies(shape, "wallpaper_feather") && !optionApplies(shape, "color"));
+  CHECK(!optionApplies(shape, "depth") && !optionApplies(shape, "depth_level"));
+  shape.options.insert("glow", 0.5);
+  CHECK(!optionApplies(shape, "color") && !optionApplies(shape, "glow"));
   double d = 0, g = 0;
   // a box whose left edge is 5 px right of the screen centre snaps onto it
   CHECK(snapAxis({965, 1065, 1165}, {0, 960, 1920}, 8, d, g));

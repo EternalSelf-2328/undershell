@@ -293,7 +293,7 @@ void FilterWidget::tick(const TickContext& ctx) {
 
 void FilterWidget::draw(const DrawContext& ctx) {
   if (idle() || ctx.movingWallpaper || ctx.wallpaper.empty() || ctx.wallpaper.rfind("color:", 0) == 0) return;  // nothing to change, or nothing still to filter
-  const int maxSide = static_cast<int>(std::ceil(std::max(ctx.outputW, ctx.outputH) * std::max(1.0F, ctx.scale)));
+  const int maxSide = wallpaperTextureSide(ctx.outputW, ctx.outputH, ctx.scale);
   if (!m_fade.update(ctx.wallpaper, maxSide, ctx.now)) return;  // the old picture stays until the new one is in
   m_fx.build(kHead, kFit, kBody, kLights);
   const WallPic& cur = *m_fade.current();

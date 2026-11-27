@@ -5,6 +5,7 @@
 #pragma once
 
 #include "petart.hpp"
+#include "shape.hpp"
 
 #include <string>
 #include <utility>
@@ -182,16 +183,14 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   };
   static const std::vector<PropSpec> shape = {
       {K::Enum, "shape", "Shape", "Forma",
-       {"rect", "ellipse", "triangle", "polygon", "star", "heart", "ring", "line", "splatter", "pill", "sunny", "verySunny", "cookie4Sided",
-        "cookie6Sided", "cookie7Sided", "cookie9Sided", "cookie12Sided", "clover4Leaf", "clover8Leaf", "burst", "softBurst", "flower",
-        "puffyDiamond"},
-       0, 0, 0, 0, "rect"},
+       ShapeWidget::shapes(), 0, 0, 0, 0, "rect"},
       {K::Number, "sides", "Sides / points", "Lados / puntas", {}, 3, 16, 1, 5, "", true},
       {K::Number, "sharpness", "Sharpness", "Agudeza", {}, 0, 1, 0.05, 0.5},
       {K::Number, "corner", "Rounding", "Redondeo", {}, 0, 1, 0.05, 0.15},
       {K::Number, "thickness", "Thickness", "Grosor", {}, 0.02, 1, 0.02, 0.25},
       {K::Number, "arc", "Arc °", "Arco °", {}, 10, 360, 5, 360, "", true},
-      {K::Enum, "fill", "Fill", "Relleno", {"solid", "gradient", "radial", "none"}, 0, 0, 0, 0, "solid"},
+      {K::Enum, "fill", "Fill", "Relleno", {"solid", "gradient", "radial", "wallpaper_clone", "none"}, 0, 0, 0, 0, "solid"},
+      {K::Number, "wallpaper_feather", "Soft edge (px)", "Borde suave (px)", {}, 0, 64, 1, 12, "", true},
       {K::Color, "color", "Colour 1", "Color 1", {}, 0, 0, 0, 0, "primary"},
       {K::Color, "color2", "Colour 2", "Color 2", {}, 0, 0, 0, 0, "tertiary"},
       {K::Number, "angle", "Gradient angle", "Ángulo", {}, 0, 360, 15, 90, "", true},

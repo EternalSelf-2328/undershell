@@ -9,6 +9,7 @@
 #include "filter.hpp"
 #include "particles.hpp"
 #include "wallset.hpp"
+#include "wallstore.hpp"
 #include "wescene.hpp"
 #include "notes.hpp"
 #include "petframes.hpp"
@@ -332,6 +333,10 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "corner") return in(shape, {"rect", "triangle", "polygon", "star", "line"});
     if (key == "thickness") return shape == "ring" || shape == "line";
     if (key == "arc") return shape == "ring";
+    if (key == "wallpaper_feather") return fill == "wallpaper_clone";
+    if (fill == "wallpaper_clone" &&
+        in(key, {"depth", "depth_level", "stroke", "stroke_color", "glow", "shadow", "react", "spin", "color", "colors_from"}))
+      return false;
     if (key == "color") return fill != "none" || o["glow"].value_or(0.0) > 0;
     if (key == "color2") return fill == "gradient" || fill == "radial";
     if (key == "angle") return fill == "gradient";
@@ -515,6 +520,16 @@ std::vector<PropSpec> inspectorRowsOwn(const Widget& w, const std::string& expan
         else if (p.kind == K::Bool) p.def = v == "true" ? 1 : 0;
         else if (v.size() >= 2) p.defText = v.substr(1, v.size() - 2);
       }
+  }
+  if (w.cfg.type == "shape") {
+    using K = PropSpec::Kind;
+    all.insert(all.begin() + 1, {K::Action, "_browse_shapes", "Browse shapes…", "Ver formas…"});
+    if (w.cfg.options["fill"].value_or(std::string()) == "wallpaper_clone") {
+      const bool chosen = ShapeConfig::fromTable(w.cfg.options).wallpaperSample.has_value();
+      const auto fill = std::ranges::find(all, "fill", &PropSpec::key);
+      all.insert(fill + 1, {K::Action, "_wallpaper_sample", chosen ? "Change source area…" : "Choose source area…",
+                            chosen ? "Cambiar zona de origen…" : "Elegir zona de origen…"});
+    }
   }
   if (w.cfg.type == "visualizer")
     for (auto& p : all)
@@ -1018,6 +1033,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
     return false;
   };
   auto section = [&](const std::string& k) {
+    if (w.cfg.type == "shape" && k == "fill") return 0;
     if (in(k, {"color_mode", "color", "color2", "colors_from", "accent", "accent_color", "ink", "accent_source", "fire_colors", "muzzle_colors", "electric_colors", "sfx_colors", "neon_color", "alert", "fill", "angle", "outline_color", "shadow_color", "glow_color", "extrude_color"})) return 1;
     if (in(k, {"gain", "smoothing", "idle", "halo_pulse", "halo_breathe", "halo_hits", "halo_waves", "fps", "react"})) return 2;
     if (in(k, {"clock_24h", "seconds", "language", "weather", "fahrenheit", "show_lyrics", "viz", "fallback", "offset", "first_day", "weekends",
@@ -1240,7 +1256,10 @@ void App::removeWidget(Widget& w) {
   op.block = block;
   m_undo.push_back(op);
   m_redo.clear();
-  if (m_selected == &w) m_selected = nullptr;
+  if (m_selected == &w) {
+    closeWallpaperPatch();
+    m_selected = nullptr;
+  }
   if (m_pointerWidget == &w) m_pointerWidget = nullptr;
   m_reloadConfigAt = nowSeconds() + 0.02;
   markEditDirty();
@@ -1454,6 +1473,7 @@ void App::setQuietly(Widget& w, const std::string& key, const std::string& tomlV
 void App::applyProp(Widget& w, const std::string& key, const std::string& tomlValue) {
   if (m_motion && (key == "depth" || key == "depth_level")) return;  // locked under a moving wallpaper
   std::string v = tomlValue;
+  if (v.empty() && key == "wallpaper_sample") v = "[]";
   if (v.empty() && key == "tv_files") v = "[]";  // a list: empty, not a default
   if (v.empty() && (key == "file" || key == "cover_file" || key == "photo_folder" || key == "data_file"))
     v = "\"\"";  // an unset source has no path
@@ -1743,6 +1763,7 @@ void App::layoutUi(const EditSurface& e) {
   m_scrollInfo.clear();
   m_ui.clear();
   m_uiOutput = e.output;
+  if (m_wallPatchPicking) return;
   const float W = static_cast<float>(e.w), H = static_cast<float>(e.h);
   const TextStyle chipText{.family = "Space Grotesk", .size = 13, .weight = 600};
 
@@ -1894,7 +1915,8 @@ void App::layoutUi(const EditSurface& e) {
       if (px < 12) px = W - kPanelW - 16;
       // never over the toolbar standing as a column at a side
       px = std::clamp(px, m_areaLeft, std::max(m_areaLeft, m_areaRight - kPanelW));
-      py = std::clamp(static_cast<float>(vb.y), top, std::max(top, m_areaBottom - placeH));
+      const bool clone = w->cfg.type == "shape" && w->cfg.options["fill"].value_or(std::string()) == "wallpaper_clone";
+      py = clone ? top : std::clamp(static_cast<float>(vb.y), top, std::max(top, m_areaBottom - placeH));
       if (handPlaced(w->cfg)) {
         // a point under the panel could not be grabbed: take the far side of the screen instead
         const double* hp = handlePoints(w->cfg);
@@ -2123,7 +2145,31 @@ void App::layoutUi(const EditSurface& e) {
   // the effect / particle picker, beside the inspector it was opened from
   if (!m_addPicker.empty() && !(m_selected && m_selected->cfg.id == m_addPickerFor) && m_pendingSelect != m_addPickerFor)
     m_addPicker.clear();  // the widget it was for is no longer the one in the inspector
-  if (!m_addPicker.empty() && m_selected) {
+  if (m_addPicker == "shape" && m_selected && m_selected->output == e.output) {
+    Rect insp{};
+    for (const UiControl& c : m_ui)
+      if (c.type == UiControl::Panel && c.value == "inspector") insp = c.r;
+    const float panelW = std::min(342.0F, std::max(1.0F, m_areaRight - m_areaLeft));
+    const float available = m_areaBottom - m_areaTop;
+    constexpr float pitch = 36, heading = 44;
+    const auto& names = ShapeWidget::shapes();
+    const int rows = (static_cast<int>(names.size()) + 1) / 2;
+    m_shapePickerRows = std::clamp(static_cast<int>((available - heading - 28) / pitch), 1, rows);
+    m_shapePickerScroll = std::clamp(m_shapePickerScroll, 0, rows - m_shapePickerRows);
+    const float panelH = heading + m_shapePickerRows * pitch + 26;
+    float x = insp.x - panelW - 10;
+    if (x < m_areaLeft) x = insp.x + insp.w + 10;
+    x = std::clamp(x, m_areaLeft, std::max(m_areaLeft, m_areaRight - panelW));
+    const float y = std::clamp(insp.y, m_areaTop, std::max(m_areaTop, m_areaBottom - panelH));
+    m_ui.push_back({UiControl::Panel, {x, y, panelW, panelH}, -1, "shape-picker"});
+    const float cellW = (panelW - 32) / 2;
+    for (int row = 0; row < m_shapePickerRows; ++row)
+      for (int col = 0; col < 2; ++col) {
+        const int i = 2 * (m_shapePickerScroll + row) + col;
+        if (static_cast<size_t>(i) >= names.size()) break;
+        m_ui.push_back({UiControl::AddPick, {x + 12 + col * (cellW + 8), y + heading + row * pitch, cellW, 30}, i, names[i]});
+      }
+  } else if (!m_addPicker.empty() && m_addPicker != "shape" && m_selected) {
     Rect insp{};
     for (const UiControl& c : m_ui)
       if (c.type == UiControl::Panel && c.value == "inspector") insp = c.r;
@@ -2388,6 +2434,66 @@ void App::requestWallSample() {
       markEditDirty();
     };
   });
+}
+
+std::string App::wallpaperPatchPath(const Output* output) const {
+  if (!output || m_motion || m_noctalia.state().sceneOutputs.contains(output->name)) return {};
+  const auto path = m_noctalia.state().wallpaperFor(output->name);
+  return path.starts_with("color:") || isVideoPath(path) ? std::string() : path;
+}
+
+void App::closeWallpaperPatch() {
+  if (!m_wallPatchPicking) return;
+  m_wallPatchPicking = false;
+  m_wallPatchPath.clear();
+  m_wallPatchW = m_wallPatchH = 0;
+  m_wallPatchRetryAt = 0;
+  setCursor("default");
+  markEditDirty();
+}
+
+void App::pickWallpaperPatch() {
+  if (!m_selected || !m_pointerEdit || m_pointerEdit->output != m_selected->output || m_wallPatchW <= 0) return;
+  const auto* output = m_pointerEdit->output;
+  if (m_wallPatchPath != wallpaperPatchPath(output)) return;
+  double u, v;
+  if (!wallpaperUv(m_px, m_py, output->logicalW(), output->logicalH(), m_wallPatchW, m_wallPatchH,
+                   m_noctalia.state().fillMode, u, v)) return;
+  m_lastOpKind.clear();  // each donor selection can be undone on its own
+  setProp(*m_selected, "wallpaper_sample", std::format("[{:.9f}, {:.9f}]", u, v));
+  closeWallpaperPatch();
+}
+
+bool App::shapePickerKey(uint32_t key) {
+  if (!m_selected || modActive(XKB_MOD_NAME_CTRL) || modActive(XKB_MOD_NAME_ALT)) return false;
+  const auto& names = ShapeWidget::shapes();
+  const int last = static_cast<int>(names.size()) - 1;
+  int delta = 0;
+  switch (key) {
+    case KEY_LEFT: case KEY_J: delta = -1; break;
+    case KEY_RIGHT: case KEY_L: delta = 1; break;
+    case KEY_UP: case KEY_I: delta = -2; break;
+    case KEY_DOWN: case KEY_K: delta = 2; break;
+    case KEY_PAGEUP: delta = -2 * m_shapePickerRows; break;
+    case KEY_PAGEDOWN: delta = 2 * m_shapePickerRows; break;
+    case KEY_TAB: delta = modActive(XKB_MOD_NAME_SHIFT) ? -1 : 1; break;
+    case KEY_ENTER: case KEY_KPENTER:
+      if (m_shapePickerFocus >= 0) {
+        setProp(*m_selected, "shape", "\"" + names[m_shapePickerFocus] + "\"");
+        m_addPicker.clear();
+        markEditDirty();
+        return true;
+      }
+      delta = 1;
+      break;
+    default: return false;
+  }
+  m_shapePickerFocus = m_shapePickerFocus < 0 ? std::min(last, m_shapePickerScroll * 2) :
+                      std::clamp(m_shapePickerFocus + delta, 0, last);
+  const int row = m_shapePickerFocus / 2;
+  m_shapePickerScroll = std::clamp(m_shapePickerScroll, std::max(0, row - m_shapePickerRows + 1), row);
+  markEditDirty();
+  return true;
 }
 
 bool App::eyedropAt(const Output* o, double x, double y, Color& out, double* pu, double* pv) const {
@@ -2865,7 +2971,10 @@ bool App::uiPress(int index, double x) {
       markEditDirty();
       return true;
     case UiControl::AddPick:
-      if (w && !c.value.empty()) setProp(*w, c.value, "true");
+      if (w && !c.value.empty()) {
+        if (m_addPicker == "shape") setProp(*w, "shape", "\"" + c.value + "\"");
+        else setProp(*w, c.value, "true");
+      }
       m_addPicker.clear();
       markEditDirty();
       return true;
@@ -2917,7 +3026,21 @@ bool App::uiPress(int index, double x) {
       if (w && c.prop >= 0 && c.prop < static_cast<int>(m_inspSchema.size()) && !m_picker.busy()) {
         const auto& key = m_inspSchema[static_cast<size_t>(c.prop)].key;
         if (key == "file" || key == "cover_file" || key == "photo_folder" || key == "data_file") pickFiles(*w, key == "photo_folder", key);
-        else if (key == "_all_widget_settings") {
+        else if (key == "_browse_shapes") {
+          m_addPicker = m_addPicker == "shape" ? "" : "shape";
+          m_addPickerFor = w->cfg.id;
+          const auto& names = ShapeWidget::shapes();
+          const auto current = std::ranges::find(names, w->cfg.options["shape"].value_or(std::string("rect")));
+          m_shapePickerFocus = current == names.end() ? 0 : static_cast<int>(current - names.begin());
+          m_shapePickerScroll = m_shapePickerFocus / 2;
+        } else if (key == "_wallpaper_sample" && !wallpaperPatchPath(w->output).empty()) {
+          closeColorPick();
+          m_addPicker.clear();
+          m_wallPatchPicking = true;
+          m_wallPatchW = m_wallPatchH = 0;
+          m_wallPatchPath.clear();
+          setCursor("crosshair");
+        } else if (key == "_all_widget_settings") {
           m_sceneAnimationInspector = false;
           m_inspScroll = 0;
           markEditDirty();
@@ -3158,6 +3281,12 @@ bool App::uiScroll(double x, double y, int step) {
   const int hit = uiHit(x, y);
   if (hit < 0) return false;
   const UiControl c = m_ui[static_cast<size_t>(hit)];
+  if (m_addPicker == "shape" && (c.value == "shape-picker" || c.type == UiControl::AddPick)) {
+    m_shapePickerScroll += step;
+    m_shapePickerFocus = -1;
+    markEditDirty();
+    return true;
+  }
   if (c.value == "layers" || isLayerControl(c.type)) {
     const int before = m_layersScroll;
     m_layersScroll = std::max(0, m_layersScroll + step);  // clamped when laid out
@@ -3481,6 +3610,54 @@ void App::drawUi(EditSurface& e) {
     cv.roundRect(r.x, r.y + 3, r.w, r.h, radius, Color{0, 0, 0, 0.28F});  // soft drop shadow
     cv.roundRect(r.x, r.y, r.w, r.h, radius, plate, 1, line);
   };
+
+  if (m_wallPatchPicking) {
+    if (!m_selected || !m_selected->output) {
+      closeWallpaperPatch();
+      return;
+    }
+    if (e.output != m_selected->output) return;
+    const auto path = wallpaperPatchPath(e.output);
+    const double now = nowSeconds();
+    const WallPic* picture = path.empty() ? nullptr :
+        wallpaperStore().get(path, wallpaperTextureSide(W, H, e.scale), now);
+    m_wallPatchPath = path;
+    m_wallPatchW = picture && picture->tex ? picture->imgW : 0;
+    m_wallPatchH = picture && picture->tex ? picture->imgH : 0;
+    if (!picture && !path.empty()) m_wallPatchRetryAt = now + 0.05;
+    const int fit = m_noctalia.state().fillMode;
+    if (m_wallPatchW > 0) {
+      MaskParams map;
+      map.surfaceW = map.outputW = W;
+      map.surfaceH = map.outputH = H;
+      map.imageW = m_wallPatchW;
+      map.imageH = m_wallPatchH;
+      map.fillMode = fit;
+      m_maskPass.drawWallpaper(map, picture->tex);
+      if (m_pointerEdit == &e) {
+        const float px = m_px, py = m_py;
+        const float sw = m_selected->cfg.width, sh = m_selected->cfg.height;
+        double u, v;
+        const bool onImage = wallpaperUv(px, py, W, H, map.imageW, map.imageH, fit, u, v);
+        const Color edge = onImage ? ink : dim;
+        cv.roundRect(px - sw / 2, py - sh / 2, sw, sh, 4, Color{0, 0, 0, 0}, 3, Color{0, 0, 0, 0.8F});
+        cv.roundRect(px - sw / 2, py - sh / 2, sw, sh, 4, Color{0, 0, 0, 0}, 1, edge);
+        cv.segment(px - 7, py, px + 7, py, 1.5F, edge);
+        cv.segment(px, py - 7, px, py + 7, 1.5F, edge);
+      }
+    }
+    const std::string instruction = m_wallPatchW > 0 ?
+        (es ? "Haz clic en una zona limpia del fondo · Esc cancela" : "Click a clean area of the wallpaper · Esc cancels") :
+        (picture || path.empty() ?
+          (es ? "No hay un fondo fijo que se pueda leer · Esc cancela" : "No readable still wallpaper · Esc cancels") :
+          (es ? "Cargando el fondo… · Esc cancela" : "Loading wallpaper… · Esc cancels"));
+    const float width = std::min(W - 24, measure(instruction, strong).first + 28);
+    const float x = (W - width) / 2;
+    const float y = m_pointerEdit == &e && m_py < H / 3 ? H - 48 : 12;
+    plateAt({x, y, width, 36}, 12);
+    fitCentered(instruction, strong, x + 9, y + 18, width - 18, ink);
+    return;
+  }
 
   // ── widgets in perspective: their quad, corner grips and the rotation knob ──
   for (auto& wp : m_widgets) {
@@ -3847,6 +4024,8 @@ void App::drawUi(EditSurface& e) {
                 t = value == "open"           ? (es ? "Abrir el .md" : "Open the .md")
                     : m_noteFor == w->cfg.id ? (es ? "Listo (Esc)" : "Done (Esc)")
                                              : (es ? "Escribir" : "Write");
+              const bool noWallpaper = p.key == "_wallpaper_sample" && wallpaperPatchPath(w->output).empty();
+              if (noWallpaper) t = es ? "Necesitas un fondo de imagen fijo" : "A still wallpaper is required";
               if (waiting) t = k == 0 ? (es ? "Eligiendo…" : "Choosing…") : std::string();
               if (fetch)
                 t = m_depthGen.downloading() ? std::format("{} {:.0f} %", es ? "Descargando el modelo…" : "Downloading the model…",
@@ -3855,7 +4034,7 @@ void App::drawUi(EditSurface& e) {
                     : !m_depthGen.error().empty() ? (es ? "Reintentar la descarga (95 MB)" : "Retry the download (95 MB)")
                                                   : (es ? "Descargar modelo de profundidad (95 MB)" : "Download the depth model (95 MB)");
               auto [tw, th] = measure(t, label);
-              cv.text(t, label, bx + (bw - tw) / 2, y + 15 - th / 2, waiting ? dim : ink);
+              cv.text(t, label, bx + (bw - tw) / 2, y + 15 - th / 2, (waiting || noWallpaper) ? dim : ink);
             }
           } else if (p.kind == PropSpec::File) {
             // a file (or folder) of the list, with × to drop it; a hint when there are none
@@ -3942,7 +4121,7 @@ void App::drawUi(EditSurface& e) {
     icon(cv, chipIcon(c.value), c.r.x + 28, c.r.y + 31, accent);
     const char* desc = c.value == "visualizer" ? (es ? "Espectro de audio · 32 estilos" : "Audio spectrum · 32 looks")
                        : c.value == "clock"   ? (es ? "12 caras · fecha · clima" : "12 faces · date · weather")
-                       : c.value == "shape"   ? (es ? "Salpicadura · degradado · brillo" : "Paint splatter · gradient · glow")
+                       : c.value == "shape"   ? (es ? "Salpicaduras · geometría · clonar fondo" : "Paint splashes · geometry · clone wallpaper")
                        : c.value == "image"   ? (es ? "Fotos · stickers · GIFs · videos" : "Photos · stickers · GIFs · videos")
                        : c.value == "text"    ? (es ? "10 estilos · efectos" : "10 styles · effects")
                        : c.value == "lyrics"  ? (es ? "Línea a línea · karaoke" : "Line by line · karaoke")
@@ -3967,6 +4146,14 @@ void App::drawUi(EditSurface& e) {
     fitText(desc, label, c.r.x + 56, c.r.y + 34, c.r.w - 64, dim);  // a long translation ends in "…"
   }
 
+  for (const UiControl& c : m_ui) {
+    if (c.type != UiControl::Panel || c.value != "shape-picker") continue;
+    plateAt(c.r, 16);
+    cv.text(es ? "Formas" : "Shapes", head, c.r.x + 14, c.r.y + 12, ink);
+    const auto footer = es ? "Rueda para ver más · Esc cierra" : "Scroll for more · Esc closes";
+    fitText(footer, label, c.r.x + 14, c.r.y + c.r.h - 24, c.r.w - 28, dim);
+  }
+
   // ── the effect / particle picker ──
   for (const UiControl& c : m_ui) {
     if (c.type != UiControl::Panel || c.value != "addpicker") continue;
@@ -3986,6 +4173,15 @@ void App::drawUi(EditSurface& e) {
     }
     if (c.type != UiControl::AddPick) continue;
     std::string name = c.value;
+    if (m_addPicker == "shape") {
+      name = c.value == "splatter" ? (es ? "Salpicadura" : "Paint splatter") : optionLabel(c.value, es);
+      const bool selected = m_selected && m_selected->cfg.options["shape"].value_or(std::string("rect")) == c.value;
+      const bool focused = c.prop == m_shapePickerFocus;
+      cv.roundRect(c.r.x, c.r.y, c.r.w, c.r.h, 8, selected || hovered(c) ? withAlphaC(accent, 0.22F) : raised, 1,
+                   focused || selected ? withAlphaC(accent, 0.85F) : line);
+      fitText(name, label, c.r.x + 9, c.r.y + 6, c.r.w - 18, ink);
+      continue;
+    }
     if (m_addPicker == "fx") {
       for (const EffectSpec& e : effectLibrary().all())
         if (effectKey(e.id) == c.value) name = es ? e.nameEs : e.nameEn;

@@ -464,6 +464,10 @@ bool App::modActive(const char* name) const {
 
 // Returns true for keys that auto-repeat while held.
 bool App::keyAction(uint32_t key) {
+  if (m_wallPatchPicking) {
+    if (key == KEY_ESC) closeWallpaperPatch();
+    return false;
+  }
   if (m_savesOpen && !m_sceneField.empty()) return sceneKey(key);
   if (!m_renaming.empty()) return textKey(key);
   if (!m_layerRenaming.empty()) return layerKey(key);
@@ -471,6 +475,7 @@ bool App::keyAction(uint32_t key) {
   if (!m_noteFor.empty()) return noteKey(key);
   if (!m_colorPickFor.empty()) return colorKey(key);
   if (!m_fontPickFor.empty()) return fontKey(key);
+  if (m_addPicker == "shape" && shapePickerKey(key)) return false;
   if (!m_addPicker.empty() && key == KEY_ESC) {  // the effect / particle picker first
     m_addPicker.clear();
     markEditDirty();
@@ -895,6 +900,10 @@ void App::onRepeatInfo(int32_t rate, int32_t delay) {
 void App::onKeyboardLeave() { m_repeatKey = 0; }
 
 void App::editorTick(double now) {
+  if (m_wallPatchRetryAt > 0 && now >= m_wallPatchRetryAt) {
+    m_wallPatchRetryAt = 0;
+    markEditDirty();
+  }
   int guard = 0;
   while (m_repeatKey && now >= m_repeatNext && guard++ < 8) {
     keyAction(m_repeatKey);
@@ -908,7 +917,10 @@ void App::validateEditPointers() {
       if (w.get() == p) return true;
     return false;
   };
-  if (m_selected && !alive(m_selected)) m_selected = nullptr;
+  if (m_selected && !alive(m_selected)) {
+    m_selected = nullptr;
+    closeWallpaperPatch();
+  }
   if (m_hoverWidget && !alive(m_hoverWidget)) m_hoverWidget = nullptr;
   if (m_pointerWidget && !alive(m_pointerWidget)) {
     m_pointerWidget = nullptr;
@@ -951,6 +963,11 @@ void App::onPointerMotion(double x, double y) {
   }
   m_px = x;
   m_py = y;
+  if (m_wallPatchPicking) {
+    setCursor("crosshair");
+    markEditDirty();
+    return;
+  }
   uiFor(m_pointerEdit);
   if (m_drag == Drag::Slider) {
     uiDrag(x);
@@ -1154,6 +1171,13 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
   if (!m_edit || !m_pointerEdit) {
     widgetPointer(state == WL_POINTER_BUTTON_STATE_PRESSED ? PointerEvent::Press : PointerEvent::Release, nullptr, m_px,
                   m_py, button);
+    return;
+  }
+  if (m_wallPatchPicking) {
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+      if (button == BTN_RIGHT) closeWallpaperPatch();
+      else if (button == BTN_LEFT) pickWallpaperPatch();
+    }
     return;
   }
   if (button == BTN_RIGHT && state == WL_POINTER_BUTTON_STATE_PRESSED && m_eyedrop) {
@@ -1430,7 +1454,7 @@ void App::onPointerButton(uint32_t serial, uint32_t button, uint32_t state) {
 // wheel over a widget in the editor: step through its looks (visualizer
 // styles, clock faces)
 void App::onScroll(double value) {
-  if (!m_edit || m_drag != Drag::None) return;
+  if (!m_edit || m_wallPatchPicking || m_drag != Drag::None) return;
   m_scrollAcc += value;
   if (std::abs(m_scrollAcc) < 10.0) return;  // one wheel notch
   const int step = m_scrollAcc > 0 ? 1 : -1;
@@ -1494,6 +1518,10 @@ void App::onScroll(double value) {
 // ── on-canvas text ──────────────────────────────────────────────────────────
 
 void App::drawEditorText(EditSurface& e) {
+  if (m_wallPatchPicking) {
+    drawUi(e);
+    return;
+  }
   const float W = static_cast<float>(e.w), H = static_cast<float>(e.h);
   const Color ink{1, 1, 1, 0.92F}, shadow{0, 0, 0, 0.55F};
   const Color plate{0.04F, 0.04F, 0.05F, 0.72F};

@@ -50,6 +50,7 @@ private:
 
 // The one store of the process (one GL context).
 WallpaperStore& wallpaperStore();
+int wallpaperTextureSide(float outputW, float outputH, float pixelScale);
 
 // The picture a widget shows and the one it is fading from.
 class WallpaperFade {
