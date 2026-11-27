@@ -302,6 +302,11 @@ bool optionApplies(const WidgetConfig& c, const std::string& key) {
     if (key == "depth_level") return o["depth"].value_or(true);
     return true;
   }
+  if (c.type == "diorama") {
+    if (key == "weather_location") return o["style"].value_or(std::string("aquarium")) == "rainy_room";
+    if (key == "depth_level") return o["depth"].value_or(true);
+    return true;
+  }
   if (c.type == "image") {
     if (key == "photo_interval") return !o["photo_folder"].value_or(std::string()).empty();
     if (key == "corner") return o["cut"].value_or(std::string("none")) == "none";
@@ -1026,6 +1031,7 @@ std::vector<PropSpec> inspectorSchema(const Widget& w, const std::string& expand
 }
 
 const char* typeName(const std::string& type, bool es) {
+  if (type == "diorama") return "Diorama";
   if (type == "instrument") return es ? "Instrumentos de audio" : "Audio instruments";
   if (type == "visualizer") return es ? "Visualizador" : "Visualizer";
   if (type == "clock") return es ? "Reloj" : "Clock";
@@ -1134,6 +1140,7 @@ std::string App::addWidget(const std::string& type, const std::string& look, int
   const double k = std::clamp(oh / 1080.0, 0.5, 3.0);
   float dw = type == "visualizer" ? 1000 : 560, dh = type == "clock" ? 240 : 280;
   if (type == "shape" || type == "image") dw = dh = 300;
+  if (type == "diorama") dw = 480, dh = 300;
   if (type == "text") dw = 640, dh = 180;
   if (type == "lyrics") dw = 820, dh = 260;
   if (type == "notes") dw = 340, dh = 380;
@@ -1617,7 +1624,7 @@ const std::vector<GalleryGroup>& galleryGroups() {
   static const std::vector<GalleryGroup> groups = {
       {"Music", "Música", {"visualizer", "instrument", "lyrics", "now_playing"}},
       {"Time & info", "Hora e información", {"clock", "calendar", "weather", "system", "activity", "notes"}},
-      {"Decoration", "Decoración", {"text", "shape", "image", "pet"}},
+      {"Decoration", "Decoración", {"text", "shape", "image", "diorama", "pet"}},
       {"Wallpaper", "Fondo de pantalla", {"filter", "filter:fx", "filter:pt", "scene"}},
   };
   return groups;
@@ -1640,6 +1647,7 @@ const char* chipIcon(const std::string& type) {
   if (type == "filter") return "filter";
   if (type == "scene") return "scene";
   if (type == "instrument") return "instrument";
+  if (type == "diorama") return "diorama";
   return type == "clock" ? "clock" : (type == "now_playing" ? "music" : "bars");
 }
 
@@ -3248,6 +3256,10 @@ void icon(Canvas& c, const std::string& name, float cx, float cy, Color col) {
     c.roundRect(cx - 7, cy - 6, 14, 12, 2.5F, Color{0, 0, 0, 0}, 1.5F, col);
     c.circle(cx + 2.5F, cy - 2.2F, 1.6F, col);
     c.triangle(cx - 5.5F, cy + 4.5F, cx - 1.5F, cy - 0.5F, cx + 2.5F, cy + 4.5F, col);
+  } else if (name == "diorama") {
+    c.roundRect(cx - 8, cy - 6, 16, 12, 3, Color{0, 0, 0, 0}, 1.4F, col);
+    c.arc(cx, cy + 2, 4, 1.5F, -1.4F, 0.9F, col);
+    c.circle(cx + 3, cy - 2, 1, col);
   } else if (name == "instrument") {
     c.roundRect(cx - 8, cy - 6, 16, 12, 2.5F, Color{0, 0, 0, 0}, 1.4F, col);
     c.wave(cx - 6, cx + 6, cy, 2.4F, 8.0F, 0, 1.2F, col);

@@ -98,6 +98,23 @@ profile = "base"
       CHECK(image.rgba.size() == 240 * 120 * 4 && image.rgba[3] > 220);
       CHECK(instrument->usesStereo() == (std::string_view(style) != "spectrogram"));
     }
+    std::vector<Image> dioramas;
+    for (const auto style : {"aquarium", "terrarium", "rainy_room"}) {
+      auto diorama = createWidget("diorama");
+      WidgetConfig configuration;
+      configuration.type = "diorama";
+      configuration.options.insert("style", style);
+      diorama->configure(configuration, testPalette());
+      diorama->tick(TickContext{.now = 100});
+      auto draw = [&] { return renderDrawn(240, 150, [&] { diorama->draw(DrawContext{.w = 240, .h = 150}); }); };
+      dioramas.push_back(draw());
+      CHECK(dioramas.back().rgba[3] == 0);
+      CHECK(dioramas.back().rgba[(75 * 240 + 120) * 4 + 3] > 240);
+      diorama->tick(TickContext{.now = 107});
+      CHECK(imageDiff(dioramas.back(), draw()) > 0.01);
+    }
+    CHECK(imageDiff(dioramas[0], dioramas[1]) > 8);
+    CHECK(imageDiff(dioramas[1], dioramas[2]) > 8);
     const auto data = (scratch / "status.json").string();
     CHECK(writeFileAtomic(data, R"({"download":{"progress":42}})"));
     const toml::table opts{{"text", "{data}%"}, {"data_file", data}, {"data_key", "/download/progress"}};

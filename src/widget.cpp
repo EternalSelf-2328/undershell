@@ -21,6 +21,7 @@
 namespace undershell {
 
 std::unique_ptr<WidgetImpl> makeInstrument();
+std::unique_ptr<WidgetImpl> makeDiorama();
 
 namespace {
 std::unique_ptr<WidgetImpl> plainWidget(const std::string& type) {
@@ -36,6 +37,7 @@ std::unique_ptr<WidgetImpl> plainWidget(const std::string& type) {
   if (type == "system") return std::make_unique<SystemWidget>();
   if (type == "activity") return std::make_unique<ActivityWidget>();
   if (type == "pet") return std::make_unique<PetWidget>();
+  if (type == "diorama") return makeDiorama();
   if (type == "instrument") return makeInstrument();
   if (type == "image") return std::make_unique<ImageWidget>();
   if (type == "scene") return std::make_unique<SceneWidget>();
@@ -50,6 +52,6 @@ std::unique_ptr<WidgetImpl> createWidget(const std::string& type) {
   return nullptr;
 }
 
-std::vector<std::string> widgetTypes() { return {"visualizer", "instrument", "clock", "now_playing", "shape", "image", "text", "lyrics", "calendar", "notes", "weather", "system", "activity", "pet", "filter", "scene"}; }
+std::vector<std::string> widgetTypes() { return {"visualizer", "instrument", "clock", "now_playing", "shape", "image", "diorama", "text", "lyrics", "calendar", "notes", "weather", "system", "activity", "pet", "filter", "scene"}; }
 
 }  // namespace undershell

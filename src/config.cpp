@@ -724,6 +724,8 @@ std::string Config::defaultBlock(const std::string& type, const std::string& id,
   } else if (type == "visualizer") {
     b += std::format("style = \"{}\"             # bars split dots segments wave ribbon curtain line frame radial orb spiral halo vortex fire muzzle electric sfx speedlines rain ripples neon fireworks terminal tv pond aura stars pixels life lava globe\n",
                      look.empty() ? "bars" : look);
+  } else if (type == "diorama") {
+    b += std::format("style = \"{}\"             # aquarium terrarium rainy_room\n", look.empty() ? "aquarium" : look);
   } else if (type == "instrument") {
     b += std::format("style = \"{}\"             # scope meters spectrogram\n", look.empty() ? "scope" : look);
   } else if (type == "scene") {

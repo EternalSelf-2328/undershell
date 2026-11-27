@@ -243,6 +243,20 @@ A stereo oscilloscope, needle meters, or scrolling spectrogram for playback audi
 | `depth_level` | 0 – 100 | `0` | Depth plane |
 | `layer` | -999 – 999 | `0` | Layer |
 
+## `type = "diorama"`
+
+An aquarium, a terrarium that changes with the hour, or a room with a rainy window.
+
+| Key | Values | Default | |
+|---|---|---|---|
+| `style` | `aquarium`, `terrarium`, `rainy_room` | `"aquarium"` | Scene |
+| `color` | palette role (`primary`, `secondary`, `tertiary`, `on_surface`, …) or `#rrggbb` | `"primary"` | Accent colour |
+| `motion` | `true` / `false` | `true` | Animate |
+| `weather_location` | text | `""` | Weather at |
+| `depth` | `true` / `false` | `true` | Depth |
+| `depth_level` | 0 – 100 | `0` | Depth plane |
+| `layer` | -999 – 999 | `0` | Layer |
+
 ## `type = "lyrics"`
 
 The synced lyrics of the song playing (LRCLIB), with the text widget's styles and effects; the keys after `style` are the text widget's.
@@ -430,6 +444,7 @@ An animated desktop companion.
 | `sleep` | `true` / `false` | `true` | Sleeps |
 | `interact` | `true` / `false` | `true` | Pat and carry |
 | `notify` | `off`, `react`, `app`, `title`, `full` | `"title"` | Notifications |
+| `rain_shelter` | text | `""` | Rain shelter ID |
 | `notify_ignore` | text | `""` | Ignore apps |
 | `bubble_seconds` | 2 – 20 | `5` | Bubble, s |
 | `greet` | `true` / `false` | `true` | Greets you back |

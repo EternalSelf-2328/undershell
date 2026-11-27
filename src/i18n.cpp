@@ -34,6 +34,9 @@ bool spanishDates() {
 }
 
 std::string optionLabel(const std::string& value, bool es) {
+  if (value == "aquarium") return es ? "Pecera" : "Aquarium";
+  if (value == "terrarium") return es ? "Terrario" : "Terrarium";
+  if (value == "rainy_room") return es ? "Cuarto bajo la lluvia" : "Rainy room";
   if (value == "scope") return es ? "Osciloscopio" : "Oscilloscope";
   if (value == "meters") return es ? "Agujas" : "Needle meters";
   if (value == "spectrogram") return es ? "Espectrograma" : "Spectrogram";

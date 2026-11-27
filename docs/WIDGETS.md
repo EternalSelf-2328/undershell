@@ -325,6 +325,15 @@ The instruments use desktop playback. Set `plate = false` to fit the
 display into an illustration without its dark backing. In silence the
 oscilloscope settles, the needles return to rest and the history freezes.
 
+## Dioramas
+
+Add **Diorama** from Decoration. Choose an **Aquarium**, a **Terrarium** or
+a **Rainy room**. Each fills a small box so it can sit inside the artwork
+of a wallpaper. **Animate** controls movement. The terrarium's lighting
+follows local time. The rainy room uses a configured weather location, or
+simulates rain when there is no location. Give a Pet widget the rainy room's
+ID in **Rain shelter ID** to have it sit there during rain.
+
 ## Shapes
 
 Geometric shapes to build compositions out of layers (see **Layers** and

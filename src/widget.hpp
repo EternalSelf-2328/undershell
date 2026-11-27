@@ -59,7 +59,8 @@ struct TickContext {
   // nobody has touched the keyboard or the pointer for a while (90 s; the
   // compositor's idle notice), false again with the first input
   bool userAway = false;
-  std::string_view focus{};  // active focus countdown, empty outside a session
+  std::string_view focus{};
+  Rect rainShelter{};  // optional home on the same output for a roaming pet  // active focus countdown, empty outside a session
 };
 
 struct DrawContext {

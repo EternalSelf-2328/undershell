@@ -351,6 +351,22 @@ void PetWidget::stepBy(const TickContext& ctx, double dt, bool kick) {
     if (m_rig) m_life.step(lifeIn(dt));
     return;
   }
+  if (ctx.rainShelter.w > 0 && ctx.box.w > 0) {
+    const float ratio = ctx.rainShelter.w / ctx.rainShelter.h / 1.6F;
+    const double shift = std::min(1.0F, ratio) * 0.36 * ctx.rainShelter.h;
+    const double floorY = std::clamp(ctx.rainShelter.y + ctx.rainShelter.h * 0.5 + shift,
+                                     static_cast<double>(ctx.box.h), std::max<double>(ctx.outputH, ctx.box.h));
+    const double center = std::clamp(ctx.rainShelter.x + ctx.rainShelter.w * 0.54, m_minX, m_maxX);
+    const double ease = std::min(1.0, dt * 2);
+    m_x += (center - m_x) * ease;
+    m_y += (floorY - m_y) * ease;
+    m_vx = m_vy = m_vel = 0;
+    m_crouch = -1;
+    m_grounded = true;
+    if (m_mode != Mode::Sit) pick(Mode::Sit, 1);
+    if (m_rig) m_life.step(lifeIn(dt));
+    return;
+  }
   m_timer -= dt;  // in the air too: a dance of hops still ends
   const double gravity = kGravity * (floats() ? 0.45 : 1.0);
   const double under = support(m_x, m_y);

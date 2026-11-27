@@ -363,6 +363,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Enum, "notify", "Notifications", "Notificaciones", {"off", "react", "app", "title", "full"}, 0, 0, 0, 0, "title", false, false, "",
        {{"Ignore them", "No avisar"}, {"Just react", "Solo reaccionar"}, {"The app", "La app"}, {"App and title", "App y título"},
         {"Everything", "Todo"}}},
+      {K::Text, "rain_shelter", "Rain shelter ID", "ID del refugio"},
       {K::Text, "notify_ignore", "Ignore apps", "Ignorar apps", {}, 0, 0, 0, 0, ""},
       {K::Number, "bubble_seconds", "Bubble, s", "Globo, s", {}, 2, 20, 0.5, 5},
       {K::Bool, "greet", "Greets you back", "Saluda al volver", {}, 0, 1, 1, 1},
@@ -405,6 +406,15 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
       {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 0},
       {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, -999, "", true},
   };
+  static const std::vector<PropSpec> diorama = {
+      {K::Enum, "style", "Scene", "Escena", {"aquarium", "terrarium", "rainy_room"}, 0, 0, 0, 0, "aquarium"},
+      {K::Color, "color", "Accent colour", "Color de acento", {}, 0, 0, 0, 0, "primary"},
+      {K::Bool, "motion", "Animate", "Animar", {}, 0, 1, 1, 1},
+      {K::Text, "weather_location", "Weather at", "Clima en"},
+      {K::Bool, "depth", "Depth", "Profundidad", {}, 0, 1, 1, 1},
+      {K::Number, "depth_level", "Depth plane", "Plano de prof.", {}, 0, 100, 1, 0, "", true},
+      {K::Number, "layer", "Layer", "Capa", {}, -999, 999, 1, 0, "", true},
+  };
   static const std::vector<PropSpec> instrument = {
       {K::Enum, "style", "Instrument", "Instrumento", {"scope", "meters", "spectrogram"}, 0, 0, 0, 0, "scope"},
       {K::Color, "color", "First colour", "Primer color", {}, 0, 0, 0, 0, "primary"},
@@ -436,6 +446,7 @@ inline const std::vector<PropSpec>& schemaFor(const std::string& type) {
   };
   static const std::vector<PropSpec> none;
   if (type == "shape") return shape;
+  if (type == "diorama") return diorama;
   if (type == "instrument") return instrument;
   if (type == "image") return image;
   if (type == "scene") return scene;

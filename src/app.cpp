@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "app.hpp"
+
+#include "diorama.hpp"
 #include "pet.hpp"
 
 #include "visualizer.hpp"
@@ -1381,6 +1383,22 @@ void App::render(Widget& w) {
                            static_cast<float>(b.h)});
     tctx.windows = &windows;
   }
+  if (!m_edit && w.cfg.type == "pet") {
+    const auto shelterId = w.cfg.options["rain_shelter"].value_or(std::string());
+    if (!shelterId.empty())
+      for (const auto& candidate : m_widgets) {
+        if (candidate->cfg.id != shelterId || candidate->output != w.output || candidate->cfg.hidden ||
+            candidate->cfg.type != "diorama" || candidate->cfg.options["style"].value_or(std::string()) != "rainy_room")
+          continue;
+        const auto place = candidate->cfg.options["weather_location"].value_or(tctx.weatherPlace);
+        if (dioramaRain(&m_weather, place.empty() ? tctx.weatherPlace : place)) {
+          const Box room = surfaceBox(candidate->cfg);
+          tctx.rainShelter = {static_cast<float>(room.x), static_cast<float>(room.y), static_cast<float>(room.w),
+                              static_cast<float>(room.h)};
+        }
+        break;
+      }
+  }
   w.impl->tick(tctx);
   // a widget that roams (the pet): its surface goes where it is, or home while editing
   if (w.layer && w.output && !w.impl->fullscreen()) {
@@ -2247,6 +2265,7 @@ std::string App::handleCommand(const std::string& cmd) {
     bool first = true;
     for (auto& w : m_widgets) {
       const std::string look = w->cfg.type == "visualizer" ? w->cfg.options["style"].value_or(std::string("bars"))
+                               : w->cfg.type == "diorama" ? w->cfg.options["style"].value_or(std::string("aquarium"))
                                : w->cfg.type == "instrument" ? w->cfg.options["style"].value_or(std::string("scope"))
                                : w->cfg.type == "clock"    ? w->cfg.options["face"].value_or(std::string("digital"))
                                : w->cfg.type == "shape"    ? w->cfg.options["shape"].value_or(std::string("rect"))
