@@ -1,5 +1,5 @@
 Name:           undershell
-Version:        1.8.1
+Version:        1.9.0
 # built from a checkout (build-rpm.sh), the commit count goes in the release
 # so every update is newer to dnf; a release tarball builds plain -1
 Release:        1%{?_gitcount:.git%{_gitcount}}%{?dist}
@@ -88,6 +88,10 @@ undershell's own depth maps to pass behind the subject of the wallpaper.
 %{_userunitdir}/%{name}.service
 
 %changelog
+* Fri Nov 27 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.9.0-1
+- Add native desktop scenes, a focus timer, new widgets and wallpaper clone fills
+- Fix TOML editing, automatic profiles and live reload of photos and data files
+
 * Tue Nov 24 2026 EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com> - 1.8.1-1
 - Fix clock widgets freezing or lagging across minute boundaries, suspend, and withheld frame callbacks
 - Fix use-after-free, buffer overflows, and uncaught JSON/ICS/sysfs exceptions across core modules

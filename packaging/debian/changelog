@@ -1,3 +1,16 @@
+undershell (1.9.0) unstable; urgency=medium
+
+  * Add native desktop scenes with automation, animated layers, and scene bundles.
+  * Add the focus timer, stereo audio instruments, photo slideshows, watched
+    text data, and aquarium, terrarium and rainy-room dioramas.
+  * Expand shape silhouettes and allow fills sampled from a static wallpaper.
+  * Preserve valid TOML while editing multiline values and literal widget IDs.
+  * Refresh automatic scenes when a saved profile is overwritten or deleted.
+  * Recover widget file watches after directories are replaced, and refresh
+    the current photo when its contents change.
+
+ -- EternalSelf-2328 <71615506+EternalSelf-2328@users.noreply.github.com>  Fri, 27 Nov 2026 09:06:00 -0500
+
 undershell (1.8.1) unstable; urgency=medium
 
   * Fix clock widgets freezing or lagging across minute boundaries, system
